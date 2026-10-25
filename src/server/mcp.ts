@@ -44,7 +44,7 @@ export function createArnoldMcpServer(storage: StorageAdapter, uiFile: string) {
   const readAnnotations = { ...readOnly, openWorldHint: !isDemo };
   const server = new McpServer({
     name: "arnold",
-    version: "0.4.0",
+    version: "0.5.0",
   });
   registerAppResource(
     server,

@@ -141,7 +141,8 @@ export type DatasetParts = {
   planItems?: Raw[];
   workouts?: Raw[];
   sets?: Raw[];
-  config?: Partial<typeof CONFIG_VALUES>;
+  /** Widened to plain strings so cases like MASTER_TEMPLATE are expressible. */
+  config?: Partial<Record<keyof typeof CONFIG_VALUES, string>>;
 };
 
 /** Shape of a dataset before validation; used for defect-handling tests. */

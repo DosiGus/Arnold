@@ -29,5 +29,11 @@ export default defineConfig({
       url: "http://127.0.0.1:8791/health",
       reuseExistingServer: false,
     },
+    {
+      // Arnold schema v1 mode: 8792 with history, 8793 empty, 8794 failing.
+      command: "npx tsx tests/fixtures/arnold-server.ts",
+      url: "http://127.0.0.1:8792/health",
+      reuseExistingServer: false,
+    },
   ],
 });

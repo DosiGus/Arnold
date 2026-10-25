@@ -2,12 +2,23 @@ import { createMcpExpressApp } from "@modelcontextprotocol/express";
 import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
 import type { NextFunction, Request, Response } from "express";
 import { resolve } from "node:path";
+import { ARNOLD_UI_CONTRACT } from "../shared/arnold-view.js";
 import { createArnoldMcpServer } from "./mcp.js";
+import { createArnoldV2McpServer } from "./mcp-arnold.js";
 import type { StorageAdapter } from "./storage.js";
-import { createStorage, requirePrivateBinding } from "./storage-config.js";
+import type { ArnoldDataSource } from "./arnold-source.js";
+import {
+  createArnoldSource,
+  createStorage,
+  isArnoldMode,
+  requireLoopbackOnly,
+  requirePrivateBinding,
+} from "./storage-config.js";
 
 export interface ServerOptions {
   storage?: StorageAdapter;
+  /** Arnold schema v1 read source; selects the v2 dashboard mode. */
+  arnoldSource?: ArnoldDataSource;
   root?: string;
   allowedOrigins?: string[];
   allowedHosts?: string[];
@@ -15,7 +26,16 @@ export interface ServerOptions {
 }
 export function createHttpApp(options: ServerOptions = {}) {
   const root = options.root ?? process.cwd();
-  const storage = options.storage ?? createStorage(root);
+  // Exactly one of the two data paths is active per process: the legacy demo /
+  // Sheets storage, or the Arnold schema v1 source behind the v2 tools.
+  const arnoldSource =
+    options.arnoldSource ??
+    (options.storage === undefined && isArnoldMode()
+      ? createArnoldSource(root)
+      : undefined);
+  const storage = arnoldSource
+    ? undefined
+    : (options.storage ?? createStorage(root));
   const host = options.host ?? process.env.HOST ?? "127.0.0.1";
   const allowedHosts = options.allowedHosts ??
     process.env.ALLOWED_HOSTS?.split(",")
@@ -27,7 +47,8 @@ export function createHttpApp(options: ServerOptions = {}) {
       .map((s) => s.trim())
       .filter(Boolean) ??
     [];
-  requirePrivateBinding(storage, host, allowedHosts, allowedOrigins);
+  if (arnoldSource) requireLoopbackOnly(host, allowedHosts, allowedOrigins);
+  else requirePrivateBinding(storage!, host, allowedHosts, allowedOrigins);
   const app = createMcpExpressApp({
     host,
     allowedHosts,
@@ -82,9 +103,14 @@ export function createHttpApp(options: ServerOptions = {}) {
     res.json({
       status: "ok",
       app: "arnold",
-      synthetic: storage.mode === "demo",
-      source: storage.mode === "demo" ? "local_demo" : "google_sheets",
-      version: "0.4.0",
+      synthetic: storage?.mode === "demo",
+      source: arnoldSource
+        ? "arnold_sheets"
+        : storage?.mode === "demo"
+          ? "local_demo"
+          : "google_sheets",
+      ui_contract: arnoldSource ? ARNOLD_UI_CONTRACT : "arnold.dashboard/1",
+      version: "0.5.0",
     }),
   );
   app.get("/", (_req, res) => res.redirect("/preview"));
@@ -95,10 +121,15 @@ export function createHttpApp(options: ServerOptions = {}) {
     res.sendFile(resolve(root, "dist/host/host.html")),
   );
   app.all("/mcp", async (req, res) => {
-    const server = createArnoldMcpServer(
-      storage,
-      resolve(root, "dist/ui/dashboard.html"),
-    );
+    const server = arnoldSource
+      ? createArnoldV2McpServer(
+          arnoldSource,
+          resolve(root, "dist/ui/dashboard.html"),
+        )
+      : createArnoldMcpServer(
+          storage!,
+          resolve(root, "dist/ui/dashboard.html"),
+        );
     const transport = new NodeStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,

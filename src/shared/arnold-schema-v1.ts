@@ -603,3 +603,11 @@ export function indexArnoldDataset(data: ArnoldDataset) {
     >,
   });
 }
+
+export type ArnoldLoadBasis = z.infer<typeof ArnoldLoadBasisSchema>;
+export type ArnoldExecutionMode = z.infer<typeof ArnoldExecutionModeSchema>;
+export type ArnoldSource = z.infer<typeof ArnoldSourceSchema>;
+export type ArnoldRepsBasis = ArnoldSet["reps_basis"];
+export type ArnoldSide = ArnoldSet["side"];
+export type ArnoldSetType = ArnoldSet["set_type"];
+export type ArnoldWorkoutStatus = ArnoldWorkout["status"];
