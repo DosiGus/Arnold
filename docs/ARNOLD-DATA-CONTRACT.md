@@ -16,6 +16,7 @@ Die tatsächlichen sechs Kopfzeilen, CONFIG und alle 25 Katalogeinträge wurden 
 | Datei                                      | Aufgabe                                                                                          |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------ |
 | `src/shared/arnold-schema-v1.ts`           | Exakte Kopfzeilen, TypeScript-Typen, Zod-Schemas, Datensatz- und Referenzvalidierung, ID-Indizes |
+| `src/server/arnold-grid-parser.ts`         | Typisierte Google-Zellwerte, Literal-/Formelunterscheidung und Bereichspositionen                |
 | `src/server/arnold-sheet-parser.ts`        | Reiner Parser von Tabellenwerten zu validierten, unveränderlichen Records; Fehlerpositionen      |
 | `src/server/arnold-sheets-read-adapter.ts` | Begrenzte Google-GET-Abfragen, Read-only-Authentifizierung, Metadaten- und Identitätsprüfungen   |
 | `tests/fixtures/arnold-v1.ts`              | Unabhängige Kopfzeilen und vollständig erfundene synthetische Datensätze                         |
@@ -131,7 +132,15 @@ Der Fingerprint ist der vom Master definierte Tabnamen-Marker, **kein kryptograf
 | `updated_at_utc`       | UTC                                               |
 | `row_revision`         | Integer ≥ 1                                       |
 
-Es ist höchstens eine aktive Planversion erlaubt. Archivierte und Entwurfsversionen bleiben vollständig erhalten. Vorhandene Aktivierungs-/Archivierungsdaten werden auf zeitliche Reihenfolge geprüft. Versionsnummern dürfen im gelesenen Bestand Lücken haben; der Adapter rekonstruiert keine verlorenen Versionen und kann aus einem einzelnen Read keine historische Versionsfolge beweisen.
+Es ist höchstens eine aktive Planversion erlaubt. Archivierte und Entwurfsversionen bleiben vollständig erhalten. Der Lebenszyklus ist verbindlich:
+
+| Status     | `activated_at_utc`                    | `retired_at_utc`                                                 |
+| ---------- | ------------------------------------- | ---------------------------------------------------------------- |
+| `draft`    | muss `null` sein                      | muss `null` sein                                                 |
+| `active`   | gültiger UTC-Zeitstempel erforderlich | muss `null` sein                                                 |
+| `archived` | gültiger UTC-Zeitstempel erforderlich | gültiger UTC-Zeitstempel erforderlich, nicht vor der Aktivierung |
+
+Die bestehende UTC- und Zeitreihenfolgevalidierung bleibt bestehen. Versionsnummern dürfen im gelesenen Bestand Lücken haben; der Adapter rekonstruiert keine verlorenen Versionen und kann aus einem einzelnen Read keine historische Versionsfolge beweisen.
 
 ## PLAN_ITEMS
 
@@ -244,7 +253,11 @@ Eine spätere Planänderung muss eine neue Planversion mit neuen Planpositionen 
 
 Vor jedem Abruf werden Datei-ID, genau sechs Tabs in der Vertragsreihenfolge, eindeutige Tab-IDs, Grid-Größe und fehlende Merges geprüft. Anschließend werden alle sechs Bereiche ab A1 ausschließlich über GET gelesen. Defaults: höchstens 10.000 Grid-Zeilen und 64 Grid-Spalten je Tabelle, zusätzlich höchstens 1.000.000 Zellen je Tabelle; Optionen können Zeilen bis 100.000 gezielt erlauben. Überschreitungen stoppen den Read statt Daten abzuschneiden. Zusätzliche leere Grid-Spalten sind erlaubt; nichtleere unbekannte Spalten nicht.
 
-`valueRenderOption=FORMULA` legt [Formeln offen](https://developers.google.com/workspace/sheets/api/reference/rest/v4/ValueRenderOption) statt berechnete Werte als Rohdaten zu übernehmen. Die [Values-GET-API](https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets.values/get) benötigt keinen Request-Body und unterstützt den verwendeten Read-only-Scope. Der Parser verwirft Zellen mit führendem `=`. Die Values-API unterscheidet dabei nicht sicher zwischen Formel und einem gleich aussehenden Literaltext; auch ein Literaltext mit führendem `=` wird konservativ zurückgewiesen. Eine spätere Erweiterung kann `userEnteredValue` gezielt auswerten.
+Die sechs Bereichsabfragen verwenden [spreadsheets.get](https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/get) mit begrenztem `ranges`-Parameter und einer Feldmaske für `CellData.userEnteredValue`. Ein [ExtendedValue](https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/other#ExtendedValue) unterscheidet `stringValue`, `numberValue`, `boolValue` und `formulaValue`. Damit bleibt `stringValue: "=SUM(1,2)"` unveränderter Literaltext, während `formulaValue: "=SUM(1,2)"` als unerlaubte Formel zurückgewiesen wird. Auch Formeln mit leerem oder harmlos erscheinendem Ergebnis bleiben verboten. `effectiveValue` und `formattedValue` werden nicht zur Entscheidung oder als Rohwerte übernommen.
+
+Die Herkunft des Zelltyps und der Inhalt kommen aus derselben Antwort; es gibt keinen separaten, gegenüber dem Werteabruf möglicherweise zeitlich versetzten Formel-Check. Nicht eindeutige, unbekannte oder fehlerhafte ExtendedValue-Varianten werden abgelehnt. Die bisherigen Datei-, Tabellen-, Größen- und Spaltenprüfungen gelten weiter. Die Grid-Positionen bleiben erhalten. Es gibt keinen Fallback auf untypisierte Values-Antworten oder eine `=`-Heuristik.
+
+Der reine Tabellenparser erhält Literaltexte als Strings und echte Formeln als `ArnoldFormulaCell` (`{formulaValue: string}`). Eigene Import-/Mock-Transporte müssen diese Herkunft korrekt erhalten. Formeln dürfen nicht als vermeintliche Literaltexte weitergereicht werden. Diese Markierungen werden vor der Domain-Validierung abgewiesen und erscheinen nie im zurückgegebenen `ArnoldDataset`.
 
 Gleichzeitige `getDataset`-Aufrufe teilen nur den laufenden Read. Der folgende Aufruf liest Google erneut. Es gibt keinen persistenten Trainingsdaten-Cache. Ein Read umfasst Metadaten plus sechs einzelne Bereichsabfragen und ist **kein transaktionaler Snapshot** gegenüber parallelen externen Änderungen. Referenzprüfung kann dabei Widersprüche erkennen, aber keine vollständige Snapshot-Isolation zusichern.
 
@@ -252,7 +265,7 @@ Gleichzeitige `getDataset`-Aufrufe teilen nur den laufenden Read. Der folgende A
 
 Der alte `GoogleSheetsStorageAdapter` und `parseTrainingSheet` bleiben für den bisherigen Trainingslog erhalten. `StorageAdapter`, Demo-Schemas, Push/Pull/Legs-Berechnungen, UI, bestehende MCP-Tools und `storage-config.ts` sind unverändert. Der neue `ArnoldSheetsReadAdapter` wird explizit als separate Datenquelle instanziiert und liefert kein altes Dashboard-Snapshot. Es gibt keine Fake-Splits oder automatische Migration der alten Tabelle.
 
-Synthetische Tests decken alle sechs Tabellen, leere Historien, Header-/Schemafehler, IDs, Referenzen, Planversionen, archivierte Pläne, freie Workouts, Seiten/Lastdefinitionen, optionale Felder, Zahlen/Enums/Datumswerte, API-Fehler, unveränderliche Snapshots und reine GET-Operationen ab. Fixtures benötigen keine Google-Zugangsdaten. Der reale Master wurde zusätzlich über einen lesenden Connector-Snapshot mit demselben Adapter validiert; dessen fehlende Trainingslogs können naturgemäß keine realen Workout-Beziehungen belegen.
+Synthetische Tests decken alle sechs Tabellen, leere Historien, Header-/Schemafehler, IDs, Referenzen, Planversionen, archivierte Pläne, freie Workouts, Seiten/Lastdefinitionen, optionale Felder, Zahlen/Enums/Datumswerte, API-Fehler, unveränderliche Snapshots und reine GET-Operationen ab. Fixtures benötigen keine Google-Zugangsdaten. Beim ursprünglichen Task 001 wurde der reale Master zusätzlich über einen lesenden Connector-Snapshot im damaligen Leseformat validiert; dessen fehlende Trainingslogs können naturgemäß keine realen Workout-Beziehungen belegen.
 
 ## Tatsächliche Prüfergebnisse für Task 001
 
@@ -267,6 +280,10 @@ Ausgangsstand: sauberer Branch `main`, Commit `406c660d727b6b13eb0cef4a05b6a49ee
 | Formatprüfung   | bestanden                       | bestanden                    |
 
 Damit sind 97 neue automatisierte Testfälle ergänzt; alle 39 bisherigen Tests bestehen weiterhin. Hinzu kommt die erfolgreiche Schema-Prüfung des tatsächlichen Master-Stands über den lesenden Connector-Replay. Die Änderungszeit der Master-Datei war vor und nach der Prüfung identisch. Keine Schreib-, Share-, Copy- oder Credential-Erzeugungsoperation wurde im Rahmen von Task 001 aufgerufen. Es gibt keinen direkten Backend-Live-Test mit Google-Zugangsdaten; der Standardtransport wurde mit Mock-Authentifizierung getestet.
+
+## QA-Korrekturen F1–F3
+
+Die QA-Nachbesserungen sind unter [ARNOLD-TASK-001-QA-FIX.md](ARNOLD-TASK-001-QA-FIX.md) mit Reproduktionsschritten und Prüfergebnissen dokumentiert. Die neue typisierte Grid-Abfrage wurde ausschließlich mit synthetischen API-Antworten geprüft; für diese Korrekturen wurde keine echte Google-Datei gelesen oder verändert.
 
 ## Vor produktiven Schreibzugriffen noch erforderlich
 
