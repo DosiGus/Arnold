@@ -41,6 +41,24 @@ Die lokale App benötigt **keinen OpenAI-API-Key** und führt keine Modell-API-A
 
 Die separate Datenzugriffsschicht für `arnold.training_raw` / `1.0.0` unterstützt CONFIG, EXERCISES, PLANS, PLAN_ITEMS, WORKOUTS und SETS. `ArnoldSheetsReadAdapter.getDataset()` liefert validierte Rohdaten mit stabilen IDs und vollständigen Last-/Ausführungsdefinitionen. Sie ist bewusst noch nicht in das bestehende Dashboard eingebunden. Vertrag, Typen, Referenzen, Grenzen und Prüfstand: [ARNOLD-DATA-CONTRACT.md](docs/ARNOLD-DATA-CONTRACT.md).
 
+## Arnold Analytics Engine (Metrics v1)
+
+Die Berechnungsschicht in `src/analytics/` wertet ein validiertes `ArnoldDataset` aus und liefert ein Zod-geprüftes `ArnoldDashboardAnalytics`-Objekt mit Trainingsaktivität, Volumen, Bestleistungen, Übungsfortschritt, Wochen-/Monatsvergleichen, Planerfüllung und Datenqualität.
+
+```ts
+import { buildArnoldDashboardAnalytics } from "./src/analytics/index.js";
+
+const analytics = buildArnoldDashboardAnalytics(dataset, {
+  filter: { from: "2026-01-01", to: "2026-01-31" },
+  reference_date: "2026-01-31",
+  weekly_goal_training_days: 3,
+});
+```
+
+Die Engine kennt kein Google, kein HTTP, kein MCP, kein React, kein Dateisystem und keine Systemuhr; sie verändert ihre Eingabe nicht und ist deterministisch. `Volumen = Gewicht × Wiederholungen` gilt dort **nicht** allgemein: Lastdefinition, Gerätezahl, Ausführungsart und Wiederholungsbasis gehen in jede Satzrechnung ein, und nicht berechenbare Beiträge werden als `not_available` mit maschinenlesbarem Grund ausgewiesen statt als Nullwert. Wie Task 001 ist diese Schicht bewusst noch nicht an Dashboard oder MCP-Tools angeschlossen.
+
+Verbindliche Konventionen, Formeln, Grenzen und Beispielergebnisse: [ARNOLD-METRICS-SPEC.md](docs/ARNOLD-METRICS-SPEC.md).
+
 ## Google Sheets lesen
 
 Der Adapter für das bestehende `Trainingslog` ist implementiert. Er liest ausschließlich die konfigurierten Bereiche **A:G** (Eingaben) und **O:S** (Typ, effektive Last, Satz-ID, Duplikat, Zeilenstatus) ab Kopfzeile 4. Notizspalten und andere Tabs werden nicht abgefragt. Datei-ID, Tab-ID, Name und Spaltenüberschriften werden vor der Auswertung geprüft.

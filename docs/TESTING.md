@@ -49,6 +49,10 @@ Der Testhost setzt eine CSP mit `connect-src 'none'` für die App. Der bestanden
 
 Bei der Implementierung gefundene und korrigierte Probleme: fehlendes `allow-forms` im lokalen iframe, zu geringe Textkontraste, nicht benannte Status-Tabellenspalte, fehlende zugängliche Namen der kompakten Navigation und Auswahl des passenden Workouts beim Klick aus der Übersicht.
 
+## Analytics Engine
+
+Die Berechnungsschicht aus Task 002 ist mit vollständig synthetischen Fixtures geprüft: Gewichtskonventionen und Ausführungsarten einschließlich der sechs Referenzbeispiele, Volumenkanäle und Abdeckung, Trainingstage über Wochen- und Jahresgrenzen, Wochenstreak mit laufender Woche, Bestleistungen und ihre Vergleichbarkeit, Epley-Grenzen, Übungsverlauf mit Serienaggregation, Planhistorie und Planerfüllung, Filterfehler, Datenqualität, Determinismus sowie numerische Extremwerte. Eine Architekturprüfung stellt sicher, dass die Schicht ausschließlich `zod` und das validierte Rohschema importiert und keine Systemuhr liest. Die Engine ist nicht an HTTP, MCP oder die Oberfläche angeschlossen; Browser-Tests decken sie daher nicht ab.
+
 ## Visuelle Prüfung
 
 Desktop sowie mobile Light-/Dark-Ansichten wurden im Browser aufgenommen und geprüft:
