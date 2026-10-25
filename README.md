@@ -37,6 +37,10 @@ Die lokale App benötigt **keinen OpenAI-API-Key** und führt keine Modell-API-A
 - **Logger:** synthetischen Satz mit Gewicht, Wiederholungen und optionalem RPE speichern. Das Backend aktualisiert die Daten; die Oberfläche übernimmt das Tool-Ergebnis direkt.
 - Helles/dunkles Theme, Host-Theme, mobile Navigation, Tastaturbedienung, Loading-/Empty-/Error-States und Demo-Reset mit Dialog.
 
+## Arnold Data Foundation (Schema v1)
+
+Die separate Datenzugriffsschicht für `arnold.training_raw` / `1.0.0` unterstützt CONFIG, EXERCISES, PLANS, PLAN_ITEMS, WORKOUTS und SETS. `ArnoldSheetsReadAdapter.getDataset()` liefert validierte Rohdaten mit stabilen IDs und vollständigen Last-/Ausführungsdefinitionen. Sie ist bewusst noch nicht in das bestehende Dashboard eingebunden. Vertrag, Typen, Referenzen, Grenzen und Prüfstand: [ARNOLD-DATA-CONTRACT.md](docs/ARNOLD-DATA-CONTRACT.md).
+
 ## Google Sheets lesen
 
 Der Adapter für das bestehende `Trainingslog` ist implementiert. Er liest ausschließlich die konfigurierten Bereiche **A:G** (Eingaben) und **O:S** (Typ, effektive Last, Satz-ID, Duplikat, Zeilenstatus) ab Kopfzeile 4. Notizspalten und andere Tabs werden nicht abgefragt. Datei-ID, Tab-ID, Name und Spaltenüberschriften werden vor der Auswertung geprüft.
