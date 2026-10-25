@@ -18,7 +18,7 @@ import {
   ArnoldSheetsReadAdapter,
   ArnoldSheetsReadError,
 } from "../src/server/arnold-sheets-read-adapter";
-import { FakeArnoldSheets, fixtureFileId } from "./fixtures/arnold-v1";
+import { FakeArnoldSheets, fixtureFileId, setCell } from "./fixtures/arnold-v1";
 beforeEach(() => {
   vi.clearAllMocks();
   getClient.mockResolvedValue({ request });
@@ -26,6 +26,7 @@ beforeEach(() => {
 describe("default Arnold Google transport", () => {
   it("uses only spreadsheets.readonly and seven actual HTTP GET requests; no write requests", async () => {
     const fake = new FakeArnoldSheets();
+    setCell(fake.tables, "SETS", 0, "notes", "=literal note");
     request.mockImplementation(async ({ url }: { url: string }) => {
       const parsed = new URL(url);
       return {
@@ -39,7 +40,8 @@ describe("default Arnold Google transport", () => {
       spreadsheetId: fixtureFileId,
       keyFile: "/synthetic/path/reader.json",
     });
-    await read.getDataset();
+    const data = await read.getDataset();
+    expect(data.sets[0].notes).toBe("=literal note");
     expect(authOptions).toHaveBeenCalledWith({
       keyFile: "/synthetic/path/reader.json",
       scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
@@ -50,6 +52,13 @@ describe("default Arnold Google transport", () => {
       expect(new URL(options.url).origin).toBe("https://sheets.googleapis.com");
       expect(options.timeout).toBe(15000);
       expect(options).not.toHaveProperty("data");
+      const url = new URL(options.url);
+      expect(url.pathname).toBe(`/v4/spreadsheets/${fixtureFileId}`);
+      if (url.searchParams.has("ranges")) {
+        expect(url.searchParams.get("fields")).toContain("userEnteredValue");
+        expect(url.searchParams.get("fields")).not.toContain("effectiveValue");
+        expect(url.searchParams.get("fields")).not.toContain("formattedValue");
+      }
     }
   });
   it("redacts credential-loading failures and request failures", async () => {
