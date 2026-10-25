@@ -1,5 +1,7 @@
 # Lokaler Testbericht
 
+Die Umbenennung zu **Arnold 0.4.0** wurde am **25.10.2026** mit Build, Typecheck, allen **30 Unit-/MCP-Tests**, allen **9 Browser-Tests** und Formatprüfung bestätigt. Browser-Titel, Arnold-Navigation sowie die aktualisierten Desktop-/Mobil-Screenshots wurden zusätzlich geprüft.
+
 Geprüft am **24.10.2026**, macOS/ARM, Node **26.7.0**, npm **11.19.0**, Chromium **156.0.8078.4** über Playwright **1.64.1**.
 
 ## Ergebnisse

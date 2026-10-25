@@ -33,7 +33,7 @@ Vite bündelt jeweils ein vollständiges HTML-Dokument mit eingebettetem JavaScr
 ## MCP-Apps-Lifecycle
 
 1. Host initialisiert einen MCP-Client gegen `/mcp` und entdeckt Tools.
-2. `show_fitness_dashboard` verweist über `_meta.ui.resourceUri` auf die registrierte UI.
+2. `show_arnold_dashboard` verweist über `_meta.ui.resourceUri` auf die registrierte UI.
 3. Host liest das HTML mit `resources/read`; MIME-Typ: `text/html;profile=mcp-app`.
 4. Die UI registriert `ontoolresult`, Theme- und Teardown-Handler **vor** `App.connect()`.
 5. Das SDK führt `ui/initialize` und die Initialized-Notification durch.

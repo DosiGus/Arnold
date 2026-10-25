@@ -49,7 +49,7 @@ import {
   type WorkoutDetail,
 } from "../shared/schemas";
 import { round } from "../shared/calculations";
-import type { FitnessClient } from "./client";
+import type { ArnoldClient } from "./client";
 
 const fmt = (n: number, digits = 1) =>
   new Intl.NumberFormat("de-DE", { maximumFractionDigits: digits }).format(n);
@@ -104,12 +104,12 @@ function ErrorMessage({ error }: { error: string }) {
   ) : null;
 }
 
-export function FitnessApp({
+export function ArnoldApp({
   client,
   data,
   bridgeError,
 }: {
-  client: FitnessClient;
+  client: ArnoldClient;
   data: Dashboard;
   bridgeError: string;
 }) {
@@ -176,11 +176,11 @@ export function FitnessApp({
             e.preventDefault();
             go("dashboard");
           }}
-          aria-label="Fitness Tracker Startseite"
+          aria-label="Arnold Startseite"
         >
-          <span className="brand-icon">f.</span>
+          <span className="brand-icon">a.</span>
           <span>
-            fitness<span className="brand-light">tracker</span>
+            Arnold
             <small>POWERED BY AI</small>
           </span>
         </a>
@@ -378,8 +378,8 @@ export function FitnessApp({
                 : "Mit lokalem MCP-Server verbunden"}
             </span>
             <span>
-              Fitness Tracker AI <span className="footer-separator">/</span>{" "}
-              Dein Fortschritt beginnt hier.
+              Arnold <span className="footer-separator">/</span> Dein
+              Fortschritt beginnt hier.
             </span>
           </footer>
         </main>
@@ -883,7 +883,7 @@ function History({
   data,
   initialWorkoutId,
 }: {
-  client: FitnessClient;
+  client: ArnoldClient;
   data: Dashboard;
   initialWorkoutId?: string;
 }) {
@@ -1080,13 +1080,7 @@ function SetTable({
   );
 }
 
-function Progress({
-  client,
-  data,
-}: {
-  client: FitnessClient;
-  data: Dashboard;
-}) {
+function Progress({ client, data }: { client: ArnoldClient; data: Dashboard }) {
   const [exerciseId, setExerciseId] = useState(data.exercises[0]?.id ?? "");
   const [period, setPeriod] = useState("all");
   const [start, setStart] = useState("");
@@ -1291,7 +1285,7 @@ function Progress({
   );
 }
 
-function Logger({ client, data }: { client: FitnessClient; data: Dashboard }) {
+function Logger({ client, data }: { client: ArnoldClient; data: Dashboard }) {
   const [exerciseId, setExerciseId] = useState(data.exercises[0]?.id ?? "");
   const [date, setDate] = useState(
     data.period.end ?? new Date().toLocaleDateString("sv-SE"),

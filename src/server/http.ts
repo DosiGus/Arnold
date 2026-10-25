@@ -2,7 +2,7 @@ import { createMcpExpressApp } from "@modelcontextprotocol/express";
 import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
 import type { NextFunction, Request, Response } from "express";
 import { resolve } from "node:path";
-import { createFitnessMcpServer } from "./mcp.js";
+import { createArnoldMcpServer } from "./mcp.js";
 import type { StorageAdapter } from "./storage.js";
 import { createStorage, requirePrivateBinding } from "./storage-config.js";
 
@@ -81,10 +81,10 @@ export function createHttpApp(options: ServerOptions = {}) {
   app.get("/health", (_req, res) =>
     res.json({
       status: "ok",
-      app: "fitness-tracker-ai",
+      app: "arnold",
       synthetic: storage.mode === "demo",
       source: storage.mode === "demo" ? "local_demo" : "google_sheets",
-      version: "0.3.0",
+      version: "0.4.0",
     }),
   );
   app.get("/", (_req, res) => res.redirect("/preview"));
@@ -95,7 +95,7 @@ export function createHttpApp(options: ServerOptions = {}) {
     res.sendFile(resolve(root, "dist/host/host.html")),
   );
   app.all("/mcp", async (req, res) => {
-    const server = createFitnessMcpServer(
+    const server = createArnoldMcpServer(
       storage,
       resolve(root, "dist/ui/dashboard.html"),
     );

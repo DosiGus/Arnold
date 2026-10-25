@@ -154,7 +154,7 @@ test("official AppBridge initializes sandboxed UI and forwards tools from the ap
   await expect(app.getByRole("dialog")).not.toBeVisible();
   expect(calls).toEqual(
     expect.arrayContaining([
-      "show_fitness_dashboard",
+      "show_arnold_dashboard",
       "get_workouts",
       "get_exercise_progress",
       "log_demo_set",
@@ -201,7 +201,7 @@ test("replayed host snapshots are reconciled with persisted backend data", async
       request.method() === "POST" ? request.postDataJSON() : undefined;
     if (
       body?.method !== "tools/call" ||
-      body.params.name !== "show_fitness_dashboard"
+      body.params.name !== "show_arnold_dashboard"
     ) {
       await route.continue();
       return;

@@ -24,7 +24,7 @@ import {
 } from "../shared/calculations.js";
 import type { StorageAdapter } from "./storage.js";
 
-export const RESOURCE_URI = "ui://fitness/dashboard-v4.html";
+export const RESOURCE_URI = "ui://arnold/dashboard-v5.html";
 const readOnly = {
   readOnlyHint: true,
   destructiveHint: false,
@@ -36,25 +36,22 @@ const result = (data: Record<string, unknown>, message: string) => ({
   structuredContent: data,
 });
 
-export function createFitnessMcpServer(
-  storage: StorageAdapter,
-  uiFile: string,
-) {
+export function createArnoldMcpServer(storage: StorageAdapter, uiFile: string) {
   const isDemo = storage.mode === "demo";
   const sourceLabel = isDemo
     ? "Synthetische Demo-Daten"
     : "Google Sheets · Trainingslog (lesend)";
   const readAnnotations = { ...readOnly, openWorldHint: !isDemo };
   const server = new McpServer({
-    name: "fitness-tracker-ai",
-    version: "0.3.0",
+    name: "arnold",
+    version: "0.4.0",
   });
   registerAppResource(
     server,
-    "Fitness Tracker AI",
+    "Arnold",
     RESOURCE_URI,
     {
-      description: `Interaktiver Fitness Tracker. Quelle: ${sourceLabel}.`,
+      description: `Interaktiver Trainingsbegleiter Arnold. Quelle: ${sourceLabel}.`,
       mimeType: RESOURCE_MIME_TYPE,
       _meta: {
         ui: {
@@ -82,10 +79,10 @@ export function createFitnessMcpServer(
 
   registerAppTool(
     server,
-    "show_fitness_dashboard",
+    "show_arnold_dashboard",
     {
-      title: "Fitness Tracker öffnen",
-      description: `Öffnet den interaktiven Fitness Tracker. Quelle: ${sourceLabel}. Verwenden, wenn der Nutzer seinen Fitness Tracker oder Trainingsüberblick öffnen möchte.`,
+      title: "Arnold öffnen",
+      description: `Öffnet den interaktiven Trainingsbegleiter Arnold. Quelle: ${sourceLabel}. Verwenden, wenn der Nutzer Arnold oder seinen Trainingsüberblick öffnen möchte.`,
       inputSchema: z.object({}),
       outputSchema: DashboardSchema,
       annotations: readAnnotations,

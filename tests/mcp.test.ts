@@ -27,7 +27,7 @@ let base: string;
 const call = (name: string, args = {}) =>
   client.callTool({ name, arguments: args }) as Promise<CallToolResult>;
 beforeAll(async () => {
-  directory = await mkdtemp(join(tmpdir(), "fitness-mcp-"));
+  directory = await mkdtemp(join(tmpdir(), "arnold-mcp-"));
   http = createHttpApp({
     storage: new JsonStorageAdapter(join(directory, "demo.json")),
   }).listen(0, "127.0.0.1");
@@ -36,7 +36,7 @@ beforeAll(async () => {
     http.once("error", reject);
   });
   base = `http://127.0.0.1:${(http.address() as { port: number }).port}`;
-  client = new Client({ name: "fitness-integration-tests", version: "1.0.0" });
+  client = new Client({ name: "arnold-integration-tests", version: "1.0.0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`${base}/mcp`)),
   );
@@ -52,7 +52,7 @@ afterAll(async () => {
 
 describe("real Streamable HTTP MCP integration", () => {
   it("initializes and advertises all six tools with input/output schemas", async () => {
-    expect(client.getServerVersion()?.name).toBe("fitness-tracker-ai");
+    expect(client.getServerVersion()?.name).toBe("arnold");
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
       "get_dashboard_data",
@@ -60,7 +60,7 @@ describe("real Streamable HTTP MCP integration", () => {
       "get_workouts",
       "log_demo_set",
       "reset_demo_data",
-      "show_fitness_dashboard",
+      "show_arnold_dashboard",
     ]);
     tools.forEach((tool) => {
       expect(tool.inputSchema.type).toBe("object");
@@ -68,7 +68,7 @@ describe("real Streamable HTTP MCP integration", () => {
       expect(tool.description).toBeTruthy();
     });
     expect(
-      tools.find((t) => t.name === "show_fitness_dashboard")?._meta?.ui,
+      tools.find((t) => t.name === "show_arnold_dashboard")?._meta?.ui,
     ).toMatchObject({ resourceUri: RESOURCE_URI });
     expect(
       tools.find((t) => t.name === "reset_demo_data")?.annotations
@@ -86,7 +86,7 @@ describe("real Streamable HTTP MCP integration", () => {
     expect("text" in resource && resource.text).not.toMatch(/<script[^>]*src=/);
   });
   it("opens dashboard and returns known totals", async () => {
-    const result = await call("show_fitness_dashboard");
+    const result = await call("show_arnold_dashboard");
     expect(result.isError).not.toBe(true);
     expect(DashboardSchema.parse(result.structuredContent).totals.sets).toBe(
       108,
@@ -230,11 +230,11 @@ it("offers only four read tools for Google Sheets and refreshes the underlying s
       "get_dashboard_data",
       "get_exercise_progress",
       "get_workouts",
-      "show_fitness_dashboard",
+      "show_arnold_dashboard",
     ]);
     expect(tools.every((t) => t.annotations?.readOnlyHint === true)).toBe(true);
     const first = DashboardSchema.parse(
-      (await reader.callTool({ name: "show_fitness_dashboard", arguments: {} }))
+      (await reader.callTool({ name: "show_arnold_dashboard", arguments: {} }))
         .structuredContent,
     );
     expect(first).toMatchObject({

@@ -1,4 +1,4 @@
-# Fitness Tracker AI
+# Arnold
 
 Ausführbarer lokaler MCP-Apps-Prototyp mit React, TypeScript, Streamable HTTP, Recharts mit lokaler Demo oder einem lesenden Google-Sheets-Adapter.
 
@@ -61,14 +61,14 @@ Der JSON-Adapter unterstützt **einen laufenden Serverprozess pro Datendatei**. 
 
 Alle Tools besitzen Input- und Output-Schemas, lesbare Textantworten und `structuredContent`. Sie können ohne UI aufgerufen werden.
 
-| Tool                     | Eingaben                                                        | Ergebnis / Verhalten                                            |
-| ------------------------ | --------------------------------------------------------------- | --------------------------------------------------------------- |
-| `show_fitness_dashboard` | `{}`                                                            | Kennzahlen und UI-Ressource `ui://fitness/dashboard-v4.html`    |
-| `get_dashboard_data`     | optional `startDate`, `endDate`, `split`                        | Kennzahlen, Einheiten, Wochen, Rekorde, Übungen                 |
-| `get_workouts`           | optional `startDate`, `endDate`, `split`                        | Einheiten einschließlich aller Sätze                            |
-| `get_exercise_progress`  | `exerciseId`, optional Datumsgrenzen                            | Kennzahlen pro Trainingstag                                     |
-| `log_demo_set`           | `requestId`, `date`, `exerciseId`, `kg`, `reps`, optional `rpe` | Gespeicherter Satz, Duplikatstatus und aktualisiertes Dashboard |
-| `reset_demo_data`        | `confirmDemoReset: true`                                        | Ursprüngliches synthetisches Dashboard                          |
+| Tool                    | Eingaben                                                        | Ergebnis / Verhalten                                            |
+| ----------------------- | --------------------------------------------------------------- | --------------------------------------------------------------- |
+| `show_arnold_dashboard` | `{}`                                                            | Kennzahlen und UI-Ressource `ui://arnold/dashboard-v5.html`     |
+| `get_dashboard_data`    | optional `startDate`, `endDate`, `split`                        | Kennzahlen, Einheiten, Wochen, Rekorde, Übungen                 |
+| `get_workouts`          | optional `startDate`, `endDate`, `split`                        | Einheiten einschließlich aller Sätze                            |
+| `get_exercise_progress` | `exerciseId`, optional Datumsgrenzen                            | Kennzahlen pro Trainingstag                                     |
+| `log_demo_set`          | `requestId`, `date`, `exerciseId`, `kg`, `reps`, optional `rpe` | Gespeicherter Satz, Duplikatstatus und aktualisiertes Dashboard |
+| `reset_demo_data`       | `confirmDemoReset: true`                                        | Ursprüngliches synthetisches Dashboard                          |
 
 Datum: `YYYY-MM-DD`, Grenzen inklusive. Split: `Push`, `Pull`, `Legs`. Gewicht: 0–1000 kg, Wiederholungen: ganze Zahlen 1–100, RPE: 1–10. Übungs-IDs kommen aus `get_dashboard_data`, z. B. `bench-press`, `lat-pulldown`, `squat`. Ungültige Argumente oder unbekannte IDs erzeugen MCP-Toolfehler und ändern den Speicher nicht.
 
@@ -124,7 +124,7 @@ Variablen werden aus der Prozessumgebung gelesen. Eine `.env` wird nicht automat
 
 ## In ChatGPT verwenden
 
-Die konkrete Anleitung einschließlich Secure MCP Tunnel und HTTPS-Alternative steht in [docs/CHATGPT.md](docs/CHATGPT.md). Der persönliche Eintrag „Fitness Tracker AI“ ist eingerichtet. Der aktuelle Test verwendet einen temporären Cloudflare-HTTPS-Tunnel. Details und beobachtete Ergebnisse stehen in [docs/CHATGPT-ABNAHME.md](docs/CHATGPT-ABNAHME.md). Es wurden keine API-Keys oder kostenpflichtigen Dienste eingerichtet.
+Die konkrete Anleitung einschließlich Secure MCP Tunnel und HTTPS-Alternative steht in [docs/CHATGPT.md](docs/CHATGPT.md). Eine persönliche ChatGPT-Demo-Verbindung wurde bereits geprüft. Nach der Umbenennung müssen bestehende ChatGPT-Verbindungen ihre Tool-Liste aktualisieren oder neu verbunden werden, damit `show_arnold_dashboard` und die neue UI-Ressource erkannt werden. Für den früheren Test wurde ein temporärer Cloudflare-HTTPS-Tunnel verwendet. Details und beobachtete Ergebnisse stehen in [docs/CHATGPT-ABNAHME.md](docs/CHATGPT-ABNAHME.md). Es wurden keine API-Keys oder kostenpflichtigen Dienste eingerichtet.
 
 ## Architektur und Grenzen
 

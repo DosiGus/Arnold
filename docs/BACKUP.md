@@ -16,8 +16,8 @@ Lokale Änderungen sind erst nach Commit und erfolgreichem Push auf GitHub gesic
 ## Projekt wiederherstellen
 
 ```bash
-git clone https://github.com/DosiGus/fitness-mcp-ui-prototype.git
-cd fitness-mcp-ui-prototype
+git clone https://github.com/DosiGus/Arnold.git
+cd Arnold
 npm ci
 npm run build
 npm start

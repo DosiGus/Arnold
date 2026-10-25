@@ -6,7 +6,7 @@ import {
 } from "@modelcontextprotocol/client";
 import { DashboardSchema, type Dashboard } from "../shared/schemas";
 
-export class FitnessClient {
+export class ArnoldClient {
   private app?: App;
   private preview?: Client;
   readonly embedded = window.parent !== window;
@@ -33,7 +33,7 @@ export class FitnessClient {
   async connect() {
     if (this.embedded) {
       this.app = new App(
-        { name: "Fitness Tracker AI", version: "0.3.0" },
+        { name: "Arnold", version: "0.4.0" },
         {},
         { autoResize: true },
       );
@@ -72,13 +72,13 @@ export class FitnessClient {
       if (context?.theme) this.onTheme?.(context.theme);
     } else {
       this.preview = new Client({
-        name: "fitness-browser-preview",
-        version: "0.3.0",
+        name: "arnold-browser-preview",
+        version: "0.4.0",
       });
       await this.preview.connect(
         new StreamableHTTPClientTransport(new URL("/mcp", location.href)),
       );
-      await this.call("show_fitness_dashboard");
+      await this.call("show_arnold_dashboard");
     }
   }
   async call(name: string, args: Record<string, unknown> = {}) {

@@ -4,7 +4,7 @@ Stand: 24.10.2026. Der lokale MCP- und iframe-Workflow ist getestet. **Die Verbi
 
 ## Aktueller Sheets-Modus
 
-Version 0.3.0 implementiert einen privaten, lesenden Sheets-Adapter. Die bestehende ChatGPT-Installation ist weiterhin die öffentliche synthetische Demo. Für echte Trainingsdaten eine **separate private Verbindung** auf Port 8788 einrichten; siehe [Google Sheets](GOOGLE-SHEETS.md). Im Sheets-Modus werden vier Lesetools entdeckt. Demo-Logger und Reset existieren dort nicht. Der bisherige ChatGPT-Abnahmebericht bezieht sich auf die Demo.
+Version 0.4.0 implementiert einen privaten, lesenden Sheets-Adapter. Die bestehende ChatGPT-Installation ist weiterhin die öffentliche synthetische Demo. Für echte Trainingsdaten eine **separate private Verbindung** auf Port 8788 einrichten; siehe [Google Sheets](GOOGLE-SHEETS.md). Im Sheets-Modus werden vier Lesetools entdeckt. Demo-Logger und Reset existieren dort nicht. Der bisherige ChatGPT-Abnahmebericht bezieht sich auf die Demo.
 
 ## Option A: offizieller Secure MCP Tunnel
 
@@ -14,7 +14,7 @@ Version 0.3.0 implementiert einen privaten, lesenden Sheets-Adapter. Die bestehe
 2. In den [Platform-Tunneleinstellungen](https://platform.openai.com/settings/organization/tunnels) den passenden Tunnel auswählen bzw. einrichten und Organisation/Workspace zuordnen.
 3. Den offiziellen [tunnel-client](https://github.com/openai/tunnel-client/releases/latest) installieren. Mit `tunnel-client help quickstart` die aktuelle CLI prüfen.
 4. Einen HTTP-Client für `http://127.0.0.1:8787/mcp` konfigurieren; bei `tunnel-client init` die Option `--mcp-server-url` verwenden. Profil und Tunnel-ID explizit angeben. Den erforderlichen Runtime-Key über eine sichere lokale Eingabe/Umgebung bereitstellen, niemals in Chat oder Repository einfügen.
-5. `tunnel-client doctor --profile fitness-local --explain`, danach `tunnel-client run --profile fitness-local` ausführen. Lokale Readiness und Polling prüfen.
+5. `tunnel-client doctor --profile arnold-local --explain`, danach `tunnel-client run --profile arnold-local` ausführen. Lokale Readiness und Polling prüfen.
 
 Tunnel-Erstellung verlangt Tunnels Read + Manage; Nutzung Read + Use. Zusätzlich gelten ChatGPT-Workspace-Rechte. Die konkrete Verfügbarkeit und etwaige Kosten im Konto wurden nicht geprüft.
 
@@ -39,10 +39,10 @@ Diese Demo besitzt keine Authentifizierung. Während eines öffentlichen Tests k
 Nach der [offiziellen Testanleitung](https://developers.openai.com/plugins/deploy/connect-chatgpt):
 
 1. [ChatGPT Plugins](https://chatgpt.com/plugins) öffnen, Plus → **Add custom MCP server**.
-2. „Fitness Tracker AI“ benennen. Unter **Connection** den Tunnel oder die HTTPS-URL einschließlich `/mcp` wählen.
+2. „Arnold“ benennen. Unter **Connection** den Tunnel oder die HTTPS-URL einschließlich `/mcp` wählen.
 3. Für diese reine synthetische Demo **No authentication** wählen, falls angeboten. Die Hinweise prüfen und den privaten Testeintrag erstellen. Nichts öffentlich einreichen.
 4. Prüfen, ob alle sechs Tools erkannt wurden. Den Eintrag installieren, einen neuen Chat öffnen und ihn über `@` auswählen.
-5. „Öffne meinen Fitness Tracker.“ schreiben. Erwarteter Aufruf: `show_fitness_dashboard`.
+5. „Öffne Arnold.“ schreiben. Erwarteter Aufruf: `show_arnold_dashboard`.
 6. Prüfen: iframe sichtbar, 12 Workouts/108 Sätze, vier navigierbare Ansichten, Übungs- und Datumsfilter, Theme, Logger.
 7. Einen **synthetischen** 60-kg-/10-Wiederholungs-Satz für Bankdrücken am 24.10.2026 erfassen. Erwartung: 13 Workouts, 109 Sätze und 40.621 kg. UI und späterer Aufruf von `get_dashboard_data` müssen übereinstimmen.
 8. Demo zurücksetzen; 12/108/40.021 bestätigen. Auch ein ungültiges Gewicht bzw. unbekannte Übung soll einen brauchbaren Fehler ergeben.

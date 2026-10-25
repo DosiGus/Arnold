@@ -1,12 +1,12 @@
 import { createRoot } from "react-dom/client";
 import { useEffect, useState } from "react";
-import { FitnessClient } from "./client";
-import { FitnessApp } from "./App";
+import { ArnoldClient } from "./client";
+import { ArnoldApp } from "./App";
 import type { Dashboard } from "../shared/schemas";
 import "./style.css";
 
 function Boot() {
-  const [client] = useState(() => new FitnessClient());
+  const [client] = useState(() => new ArnoldClient());
   const [dashboard, setDashboard] = useState<Dashboard>();
   const [error, setError] = useState("");
   useEffect(() => {
@@ -31,8 +31,8 @@ function Boot() {
   if (!dashboard)
     return (
       <main className="boot">
-        <div className="brand-icon">f.</div>
-        <h1>Fitness Tracker AI</h1>
+        <div className="brand-icon">a.</div>
+        <h1>Arnold</h1>
         {error ? (
           <>
             <p role="alert">{error}</p>
@@ -48,6 +48,6 @@ function Boot() {
         )}
       </main>
     );
-  return <FitnessApp client={client} data={dashboard} bridgeError={error} />;
+  return <ArnoldApp client={client} data={dashboard} bridgeError={error} />;
 }
 createRoot(document.getElementById("root")!).render(<Boot />);

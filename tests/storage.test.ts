@@ -16,7 +16,7 @@ const input = {
   rpe: 8,
 };
 beforeEach(async () => {
-  directory = await mkdtemp(join(tmpdir(), "fitness-storage-"));
+  directory = await mkdtemp(join(tmpdir(), "arnold-storage-"));
   file = join(directory, "demo.json");
   storage = new JsonStorageAdapter(file);
 });

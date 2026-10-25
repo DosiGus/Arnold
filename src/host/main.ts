@@ -17,14 +17,14 @@ const status = document.querySelector<HTMLDivElement>("#host-status")!;
 const iframe = document.querySelector<HTMLIFrameElement>("iframe")!;
 async function start() {
   const client = new Client({
-    name: "fitness-local-test-host",
-    version: "0.3.0",
+    name: "arnold-local-test-host",
+    version: "0.4.0",
   });
   await client.connect(
     new StreamableHTTPClientTransport(new URL("/mcp", location.href)),
   );
   const { tools } = await client.listTools();
-  const tool = tools.find((t) => t.name === "show_fitness_dashboard");
+  const tool = tools.find((t) => t.name === "show_arnold_dashboard");
   const uri = tool && getToolUiResourceUri(tool);
   if (!uri) throw new Error("UI-Ressource fehlt in tools/list.");
   const resource = await client.readResource({ uri });
@@ -41,7 +41,7 @@ async function start() {
   })) as CallToolResult;
   const bridge = new AppBridge(
     client,
-    { name: "fitness-local-test-host", version: "0.3.0" },
+    { name: "arnold-local-test-host", version: "0.4.0" },
     {
       serverTools: {},
       serverResources: {},

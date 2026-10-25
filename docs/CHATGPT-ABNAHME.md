@@ -1,8 +1,10 @@
-# ChatGPT-Abnahme: Fitness Tracker AI
+# ChatGPT-Abnahme: Arnold
+
+Seit dem 25.10.2026 heißt das Projekt **Arnold**. Dieser Bericht dokumentiert den früheren Test unter dem damaligen Namen; Plugin-Bezeichnungen, Ressourcen-IDs und Screenshots sind historische Nachweise. Der aktuelle lokale Stand verwendet `show_arnold_dashboard` und `ui://arnold/dashboard-v5.html`.
 
 **Datum:** 24.10.2026 · **Projektversion:** 0.2.1 · **Status:** persönliches ChatGPT-Testplugin verbunden, echte MCP-App angezeigt und Backend-Interaktionen geprüft.
 
-## Aktuelle Testinstallation
+## Historische Testinstallation
 
 - [Testchat in ChatGPT](https://chatgpt.com/c/6adcd1db-0618-83eb-b99e-b7cce502cce2)
 - [Persönliches Plugin „Fitness Tracker AI“](https://chatgpt.com/plugins/plugin_asdk_app_6adccf5562508191a75073999b0538cb)
