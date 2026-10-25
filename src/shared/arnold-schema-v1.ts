@@ -232,6 +232,43 @@ export const ArnoldPlanVersionSchema = z
     message: "updated_at_utc liegt vor created_at_utc.",
   })
   .superRefine((row, ctx) => {
+    if (row.status === "draft") {
+      if (row.activated_at_utc !== null)
+        ctx.addIssue({
+          code: "custom",
+          path: ["activated_at_utc"],
+          message: "Ein Entwurf darf noch keinen Aktivierungszeitpunkt haben.",
+        });
+      if (row.retired_at_utc !== null)
+        ctx.addIssue({
+          code: "custom",
+          path: ["retired_at_utc"],
+          message: "Ein Entwurf darf noch keinen Archivierungszeitpunkt haben.",
+        });
+    } else {
+      if (row.activated_at_utc === null)
+        ctx.addIssue({
+          code: "custom",
+          path: ["activated_at_utc"],
+          message:
+            "Aktive und archivierte Planversionen benötigen einen Aktivierungszeitpunkt.",
+        });
+      if (row.status === "active" && row.retired_at_utc !== null)
+        ctx.addIssue({
+          code: "custom",
+          path: ["retired_at_utc"],
+          message:
+            "Eine aktive Planversion darf nicht bereits beendet oder archiviert sein.",
+        });
+      if (row.status === "archived" && row.retired_at_utc === null)
+        ctx.addIssue({
+          code: "custom",
+          path: ["retired_at_utc"],
+          message:
+            "Eine archivierte Planversion benötigt einen Archivierungszeitpunkt.",
+        });
+    }
+
     if (
       row.activated_at_utc &&
       row.retired_at_utc &&

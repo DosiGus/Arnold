@@ -24,15 +24,20 @@ describe("ArnoldSheetsReadAdapter", () => {
       path: fixtureFileId,
       params: { includeGridData: "false" },
     });
-    expect(fake.calls.slice(1).map((c) => decodeURIComponent(c.path))).toEqual(
+    expect(fake.calls.slice(1).map((c) => c.params.ranges)).toEqual(
       ["CONFIG", "EXERCISES", "PLANS", "PLAN_ITEMS", "WORKOUTS", "SETS"].map(
-        (t) => `${fixtureFileId}/values/'${t}'!A1:Z1000`,
+        (t) => `'${t}'!A1:Z1000`,
       ),
     );
     expect(
       fake.calls
         .slice(1)
-        .every((c) => c.params.valueRenderOption === "FORMULA"),
+        .every(
+          (c) =>
+            c.path === fixtureFileId &&
+            c.params.includeGridData === "true" &&
+            c.params.fields.includes("userEnteredValue"),
+        ),
     ).toBe(true);
     expect(read.readOnly).toBe(true);
     for (const method of [
@@ -174,13 +179,41 @@ describe("ArnoldSheetsReadAdapter", () => {
         params: Readonly<Record<string, string>>,
       ): Promise<T> => {
         if (kind === "metadata") return {} as T;
-        if (path.includes("/values/"))
+        if (params.ranges)
           return (
             kind === "values"
-              ? { values: [[{ nested: "invalid" }]] }
+              ? {
+                  spreadsheetId: fixtureFileId,
+                  sheets: [
+                    {
+                      properties: { sheetId: 100, title: "CONFIG" },
+                      data: [
+                        {
+                          rowData: [
+                            {
+                              values: [
+                                { userEnteredValue: { nested: "invalid" } },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                }
               : kind === "dimension"
-                ? { majorDimension: "COLUMNS", values: [] }
-                : { values: Array.from({ length: 1001 }, () => []) }
+                ? { values: [["untyped values are not a raw grid"]] }
+                : {
+                    spreadsheetId: fixtureFileId,
+                    sheets: [
+                      {
+                        properties: { sheetId: 100, title: "CONFIG" },
+                        data: [
+                          { rowData: Array.from({ length: 1001 }, () => ({})) },
+                        ],
+                      },
+                    ],
+                  }
           ) as T;
         return get<T>(path, params);
       };

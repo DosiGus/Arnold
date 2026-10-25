@@ -13,6 +13,8 @@ import {
   type ArnoldSheetCell,
 } from "./arnold-sheet-parser.js";
 
+import { parseArnoldGrid } from "./arnold-grid-parser.js";
+
 /** This interface deliberately has no append, update, reset, delete or generic request method. */
 export interface ArnoldSheetsReadTransport {
   get<T>(path: string, params: Readonly<Record<string, string>>): Promise<T>;
@@ -123,12 +125,6 @@ const metadataSchema = z.object({
     }),
   ),
 });
-const valuesSchema = z.object({
-  majorDimension: z.literal("ROWS").optional(),
-  values: z
-    .array(z.array(z.union([z.string(), z.number(), z.boolean(), z.null()])))
-    .optional(),
-});
 const optionsSchema = z.strictObject({
   spreadsheetId: z.string().regex(/^[a-zA-Z0-9_-]{10,200}$/),
   keyFile: z.string().min(1).optional(),
@@ -236,39 +232,22 @@ export class ArnoldSheetsReadAdapter {
         const table = ARNOLD_TABLES[i];
         const { rowCount, columnCount } = sheet.properties.gridProperties;
         const range = `'${table}'!A1:${arnoldColumnLetter(columnCount - 1)}${rowCount}`;
-        // FORMULA preserves native non-formula values, but exposes formulas instead of silently evaluating them.
-        const result = await this.get<unknown>(
-          `${spreadsheetId}/values/${encodeURIComponent(range)}`,
-          {
-            majorDimension: "ROWS",
-            valueRenderOption: "FORMULA",
-            dateTimeRenderOption: "SERIAL_NUMBER",
-          },
-        );
-        const parsed = valuesSchema.safeParse(result);
-        if (!parsed.success)
-          throw new ArnoldDataError([
-            {
-              code: "VALUES",
-              table,
-              message:
-                "Google Sheets lieferte ungültige Zellwerte oder eine unerwartete Dimension.",
-            },
-          ]);
-        const rows = parsed.data.values ?? [];
-        if (
-          rows.length > rowCount ||
-          rows.some((row) => row.length > columnCount)
-        )
-          throw new ArnoldDataError([
-            {
-              code: "BOUNDS",
-              table,
-              message:
-                "Google-Antwort überschreitet den angeforderten Bereich.",
-            },
-          ]);
-        return [table, rows as ArnoldSheetCell[][]] as const;
+        // Read literals and formula provenance in the same response; do not use
+        // evaluated/formatted values or a second, potentially racing formula read.
+        const result = await this.get<unknown>(spreadsheetId, {
+          ranges: range,
+          includeGridData: "true",
+          fields:
+            "spreadsheetId,sheets(properties(sheetId,title),data(startRow,startColumn,rowData(values(userEnteredValue))))",
+        });
+        const rows = parseArnoldGrid(result, {
+          spreadsheetId,
+          sheetId: sheet.properties.sheetId,
+          table,
+          rowCount,
+          columnCount,
+        });
+        return [table, rows] as const;
       }),
     );
     const tables: Record<ArnoldTable, ArnoldSheetCell[][]> = {

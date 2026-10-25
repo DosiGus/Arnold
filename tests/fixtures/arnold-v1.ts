@@ -331,21 +331,52 @@ export class FakeArnoldSheets implements ArnoldSheetsReadTransport {
     })),
   };
   failure: unknown;
+  grid(table: FixtureTable) {
+    const sheet = this.metadata.sheets.find(
+      (sheet) => sheet.properties.title === table,
+    );
+    if (!sheet) throw Error("Unknown fixture sheet");
+    return {
+      spreadsheetId: fixtureFileId,
+      sheets: [
+        {
+          properties: { sheetId: sheet.properties.sheetId, title: table },
+          data: [
+            {
+              startRow: 0,
+              startColumn: 0,
+              rowData: this.tables[table].map((row) => ({
+                values: row.map((value) => ({
+                  userEnteredValue:
+                    value === null
+                      ? undefined
+                      : typeof value === "object"
+                        ? { formulaValue: value.formulaValue }
+                        : typeof value === "string"
+                          ? { stringValue: value }
+                          : typeof value === "number"
+                            ? { numberValue: value }
+                            : { boolValue: value },
+                })),
+              })),
+            },
+          ],
+        },
+      ],
+    };
+  }
   async get<T>(
     path: string,
     params: Readonly<Record<string, string>>,
   ): Promise<T> {
     this.calls.push({ path, params });
     if (this.failure) throw this.failure;
-    if (path === fixtureFileId) return structuredClone(this.metadata) as T;
-    const table = /\/values\/'([A-Z_]+)'!/.exec(
-      decodeURIComponent(path),
-    )?.[1] as FixtureTable | undefined;
+    if (path !== fixtureFileId) throw Error("Unexpected transport route");
+    if (!params.ranges) return structuredClone(this.metadata) as T;
+    const table = /^'([A-Z_]+)'!/.exec(params.ranges)?.[1] as
+      FixtureTable | undefined;
     if (!table || !(table in this.tables))
-      throw Error("Unexpected transport route");
-    return {
-      majorDimension: "ROWS",
-      values: structuredClone(this.tables[table]),
-    } as T;
+      throw Error("Unexpected transport range");
+    return structuredClone(this.grid(table)) as T;
   }
 }

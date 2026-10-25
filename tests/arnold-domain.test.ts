@@ -249,6 +249,7 @@ describe("Arnold v1 domain and exact sheet contract", () => {
   it("rejects multiple active plans, duplicate family versions and contradictory session labels", () => {
     const a = v1Tables();
     setCell(a, "PLANS", 0, "status", "active");
+    setCell(a, "PLANS", 0, "retired_at_utc", null);
     expect(() => parseArnoldTables(a)).toThrow("aktive Planversion");
     const b = v1Tables();
     setCell(b, "PLANS", 2, "version_no", 2);
@@ -423,7 +424,7 @@ describe("Arnold v1 domain and exact sheet contract", () => {
   });
   it("does not accept formula-derived cells or silently parse their evaluated metrics", () => {
     const t = v1Tables();
-    setCell(t, "SETS", 0, "load_kg", "=10*2");
+    setCell(t, "SETS", 0, "load_kg", { formulaValue: "=10*2" });
     expect(() => parseArnoldTables(t)).toThrow("Formeln");
   });
 });

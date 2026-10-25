@@ -14,7 +14,14 @@ import {
   type ArnoldTable,
 } from "../shared/arnold-schema-v1.js";
 
-export type ArnoldSheetCell = string | number | boolean | null;
+/** Only a typed formulaValue from Google is a formula; strings are literal text. */
+export type ArnoldFormulaCell = Readonly<{ formulaValue: string }>;
+export type ArnoldSheetCell =
+  string | number | boolean | null | ArnoldFormulaCell;
+export const isArnoldFormulaCell = (
+  cell: ArnoldSheetCell,
+): cell is ArnoldFormulaCell =>
+  typeof cell === "object" && cell !== null && "formulaValue" in cell;
 export type ArnoldTableValues = Readonly<
   Record<ArnoldTable, readonly (readonly ArnoldSheetCell[])[]>
 >;
@@ -81,7 +88,7 @@ const isBlank = (cell: ArnoldSheetCell | undefined) =>
   cell === undefined || cell === null || cell === "";
 const numeric = (cell: ArnoldSheetCell): unknown => {
   if (typeof cell === "number") return cell;
-  // UNFORMATTED/FORMULA values are native numbers. Accept unambiguous base-10 text too;
+  // userEnteredValue numbers are native numbers. Accept unambiguous base-10 text too;
   // never parse booleans, hexadecimal, localized punctuation or prefixes with parseFloat.
   if (
     typeof cell === "string" &&
@@ -153,9 +160,7 @@ export function parseArnoldTables(tables: ArnoldTableValues): ArnoldDataset {
             message: "Daten außerhalb der definierten Spalten.",
           },
         ]);
-      const formulaColumn = row.findIndex(
-        (cell) => typeof cell === "string" && cell.startsWith("="),
-      );
+      const formulaColumn = row.findIndex(isArnoldFormulaCell);
       if (formulaColumn !== -1)
         fail([
           {
