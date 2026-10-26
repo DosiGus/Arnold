@@ -309,8 +309,13 @@ wurde nur gelesen; notwendige Ergänzungen sind im Write Contract vorgeschlagen.
 - Integrierte Basis: `8723df4`.
 - Implementierungscommit: `32d9d8e4ec39409066b850b156d32283aeb6a505`.
 - Worktree: `/Users/kevingusmao/.codex/worktrees/arnold-workout-logging/Arnold`.
-- Kein Push, kein PR, kein Deployment. Der parallel bearbeitete ursprüngliche
-  Checkout bleibt separat.
+- Veröffentlichung: auf ausdrücklichen Nutzerwunsch am 26.10.2026 nach
+  `origin/feat/arnold-workout-logging` gepusht. Kein Merge nach `main`, kein PR,
+  kein Deployment. Der parallel bearbeitete ursprüngliche Checkout bleibt separat.
+- Der separat veröffentlichte Task-003-QA-Branch `fix/task-003-qa` (`f85fb54`) ist
+  noch nicht in diesen Task-004-Branch integriert. Die Abnahme oben bezieht sich
+  auf die angegebene Basis `8723df4` plus Task 004; diese Integrationslücke muss
+  der unabhängige Prüfer ausdrücklich berücksichtigen.
 
 ## 17. Empfehlung für Task 005
 
