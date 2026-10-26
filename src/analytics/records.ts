@@ -1,6 +1,13 @@
 import type { PreparedInput } from "./eligibility.js";
 import type { SetLoadAnalysis } from "./load.js";
-import { freezeReasons, round } from "./validation.js";
+import {
+  addFinite,
+  compareTuple,
+  freezeReasons,
+  round,
+  safeCount,
+  tupleKey,
+} from "./validation.js";
 import type {
   AnalyticsReason,
   Comparability,
@@ -14,8 +21,8 @@ type Metric = PersonalRecord["metric"];
 type Candidate = Readonly<{
   group: string;
   exercise_id: string;
-  comparability: Comparability | null;
-  load_reference: LoadReference | null;
+  comparability: Comparability;
+  load_reference: LoadReference;
   channel: VolumeChannel | null;
   value: number;
   at_load_kg: number | null;
@@ -89,12 +96,21 @@ function workingCandidates(analyses: readonly SetLoadAnalysis[]) {
 }
 
 /**
+ * Only a completed session can set a record. A cancelled or still running
+ * workout stays out even when a `workout_statuses` filter selected it, because
+ * a record is a claim about work that was actually finished.
+ */
+function completedAnalyses(input: PreparedInput): readonly SetLoadAnalysis[] {
+  return input.completedWorkouts.flatMap((workout) => [...workout.analyses]);
+}
+
+/**
  * Personal records over the analysed selection. With a date filter the previous
  * reference values are taken from that window only; an all-time record needs an
  * unfiltered call.
  */
 export function computeRecords(input: PreparedInput) {
-  const working = workingCandidates(input.analyses);
+  const working = workingCandidates(completedAnalyses(input));
 
   const maxLoad = walk(
     "max_load",
@@ -111,7 +127,7 @@ export function computeRecords(input: PreparedInput) {
               channel: analysis.channel,
               value: analysis.comparable_load_kg,
               at_load_kg: analysis.comparable_load_kg,
-              reps: analysis.one_rm_reps ?? analysis.total_reps,
+              reps: safeCount(analysis.one_rm_reps ?? analysis.total_reps),
               achieved_on: analysis.date,
               workout_id: analysis.set.workout_id,
               set_id: analysis.set.set_id,
@@ -137,19 +153,22 @@ export function computeRecords(input: PreparedInput) {
     "reps",
     working.flatMap((analysis) =>
       analysis.comparable_load_kg === null ||
-      analysis.one_rm_reps === null ||
-      analysis.one_rm_reps < 1
+      safeCount(analysis.one_rm_reps) === null ||
+      analysis.one_rm_reps! < 1
         ? []
         : [
             {
-              group: `${analysis.comparability.key}@${analysis.comparable_load_kg}`,
+              group: tupleKey([
+                analysis.comparability.key,
+                analysis.comparable_load_kg,
+              ]),
               exercise_id: analysis.set.exercise_id,
               comparability: analysis.comparability,
               load_reference: analysis.load_reference,
               channel: analysis.channel,
-              value: analysis.one_rm_reps,
+              value: analysis.one_rm_reps!,
               at_load_kg: analysis.comparable_load_kg,
-              reps: analysis.one_rm_reps,
+              reps: safeCount(analysis.one_rm_reps),
               achieved_on: analysis.date,
               workout_id: analysis.set.workout_id,
               set_id: analysis.set.set_id,
@@ -174,7 +193,7 @@ export function computeRecords(input: PreparedInput) {
               channel: analysis.channel,
               value: analysis.one_rm_kg,
               at_load_kg: analysis.comparable_load_kg,
-              reps: analysis.one_rm_reps,
+              reps: safeCount(analysis.one_rm_reps),
               achieved_on: analysis.date,
               workout_id: analysis.set.workout_id,
               set_id: analysis.set.set_id,
@@ -184,12 +203,19 @@ export function computeRecords(input: PreparedInput) {
     ),
   );
 
-  // Volume per exercise and session, split by channel and excluding warm-up sets.
+  // Volume per session, grouped by the same comparability key as every other
+  // record: a unilateral right-side volume must never count as an improvement
+  // over a bilateral one. Warm-up sets stay out.
   const volumeCandidates: Candidate[] = [];
-  for (const workout of input.workouts) {
+  for (const workout of input.completedWorkouts) {
     const sums = new Map<
       string,
-      { value: number; exercise_id: string; channel: VolumeChannel }
+      {
+        value: number | null;
+        comparability: Comparability;
+        load_reference: LoadReference;
+        channel: VolumeChannel;
+      }
     >();
     for (const analysis of workout.analyses) {
       if (
@@ -198,22 +224,28 @@ export function computeRecords(input: PreparedInput) {
         analysis.nominal_volume_kg === null
       )
         continue;
-      const key = `${analysis.set.exercise_id}|${analysis.channel}`;
+      const key = analysis.comparability.key;
       const entry = sums.get(key);
-      if (entry) entry.value = round(entry.value + analysis.nominal_volume_kg);
-      else
+      if (!entry)
         sums.set(key, {
           value: analysis.nominal_volume_kg,
-          exercise_id: analysis.set.exercise_id,
+          comparability: analysis.comparability,
+          load_reference: analysis.load_reference,
           channel: analysis.channel,
         });
+      else if (entry.value !== null)
+        // A session total that overflows is not reportable as a record.
+        entry.value = addFinite(entry.value, analysis.nominal_volume_kg);
     }
-    for (const [group, entry] of [...sums].sort(([a], [b]) => (a < b ? -1 : 1)))
+    for (const [group, entry] of [...sums].sort(([a], [b]) =>
+      a < b ? -1 : 1,
+    )) {
+      if (entry.value === null) continue;
       volumeCandidates.push({
         group,
-        exercise_id: entry.exercise_id,
-        comparability: null,
-        load_reference: null,
+        exercise_id: entry.comparability.exercise_id,
+        comparability: entry.comparability,
+        load_reference: entry.load_reference,
         channel: entry.channel,
         value: entry.value,
         at_load_kg: null,
@@ -226,14 +258,17 @@ export function computeRecords(input: PreparedInput) {
             ? ["machine_load_not_free_weight_comparable"]
             : entry.channel === "added_external"
               ? ["added_load_total_unavailable"]
-              : [],
+              : entry.load_reference === "per_implement"
+                ? ["value_is_per_implement"]
+                : [],
         ),
       });
+    }
   }
   const volume = walk("exercise_workout_volume", "kg", volumeCandidates);
 
   const reasons: AnalyticsReason[] = [];
-  if (!input.workouts.length) reasons.push("no_eligible_workouts");
+  if (!input.completedWorkouts.length) reasons.push("no_eligible_workouts");
   else if (!working.length) reasons.push("no_eligible_sets");
   else if (
     !maxLoad.records.length &&

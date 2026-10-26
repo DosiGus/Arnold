@@ -13,7 +13,7 @@ import {
   weekStart,
   weekStartsBetween,
 } from "./period.js";
-import { bump } from "./validation.js";
+import { bump, compareTuple, tupleKey } from "./validation.js";
 import type { AnalyticsFilter, AnalyticsReason } from "./types.js";
 
 /** Only a completed workout is a session the user actually performed. */
@@ -23,6 +23,8 @@ export const DEFAULT_WORKOUT_STATUSES = Object.freeze([
 
 export type PreparedWorkout = Readonly<{
   workout: ArnoldWorkout;
+  /** True only for `status = "completed"`, regardless of the status filter. */
+  completed: boolean;
   date: string;
   week_start: string;
   iso_year: number;
@@ -39,8 +41,11 @@ export type PreparedInput = Readonly<{
   /** `plan_version_id|session_id` to the plan items of that session. */
   planItemsBySession: ReadonlyMap<string, readonly ArnoldPlanItem[]>;
   workouts: readonly PreparedWorkout[];
+  /** The completed subset; every metric that claims completion uses this. */
+  completedWorkouts: readonly PreparedWorkout[];
   analyses: readonly SetLoadAnalysis[];
   trainingDates: readonly string[];
+  completedTrainingDates: readonly string[];
   periodFrom: string | null;
   periodTo: string | null;
   referenceDate: string | null;
@@ -67,8 +72,18 @@ function matches(
   return value !== null && allowed.includes(value);
 }
 
-function order(workout: ArnoldWorkout): string {
-  return `${workout.workout_date_local}|${workout.started_at_utc ?? workout.created_at_utc}|${workout.workout_id}`;
+/** Stable chronological order; the started timestamp separates same-day sessions. */
+function workoutOrder(workout: ArnoldWorkout): (string | number)[] {
+  return [
+    workout.workout_date_local,
+    workout.started_at_utc ?? workout.created_at_utc,
+    workout.workout_id,
+  ];
+}
+
+/** Numeric set order, so set 10 follows set 2 instead of preceding it. */
+function setOrder(set: ArnoldSet): (string | number)[] {
+  return [set.exercise_order, set.set_number, set.set_id];
 }
 
 /**
@@ -102,7 +117,7 @@ export function prepareAnalyticsInput(
   for (const item of dataset.planItems) {
     if (!planItemsById.has(item.plan_item_id))
       planItemsById.set(item.plan_item_id, item);
-    const key = `${item.plan_version_id}|${item.session_id}`;
+    const key = tupleKey([item.plan_version_id, item.session_id]);
     const bucket = planItemsBySession.get(key);
     if (bucket) bucket.push(item);
     else planItemsBySession.set(key, [item]);
@@ -155,7 +170,7 @@ export function prepareAnalyticsInput(
   let computableSets = 0;
 
   for (const workout of [...workoutsById.values()].sort((a, b) =>
-    order(a) < order(b) ? -1 : 1,
+    compareTuple(workoutOrder(a), workoutOrder(b)),
   )) {
     const date = workout.workout_date_local;
     if (
@@ -170,11 +185,7 @@ export function prepareAnalyticsInput(
 
     const analyses: SetLoadAnalysis[] = [];
     const raw = [...(setsByWorkout.get(workout.workout_id) ?? [])].sort(
-      (a, b) =>
-        `${a.exercise_order}|${a.set_number}|${a.set_id}` <
-        `${b.exercise_order}|${b.set_number}|${b.set_id}`
-          ? -1
-          : 1,
+      (a, b) => compareTuple(setOrder(a), setOrder(b)),
     );
     for (const set of raw) {
       if (set.status !== "active") {
@@ -217,6 +228,7 @@ export function prepareAnalyticsInput(
     prepared.push(
       Object.freeze({
         workout,
+        completed: workout.status === "completed",
         date,
         week_start: week,
         ...isoWeek(date),
@@ -228,6 +240,10 @@ export function prepareAnalyticsInput(
   const trainingDates = [...new Set(prepared.map((entry) => entry.date))].sort(
     compareDate,
   );
+  const completed = prepared.filter((entry) => entry.completed);
+  const completedTrainingDates = [
+    ...new Set(completed.map((entry) => entry.date)),
+  ].sort(compareDate);
   const periodFrom = filter.from ?? trainingDates[0] ?? null;
   const periodTo = filter.to ?? trainingDates.at(-1) ?? null;
   const referenceDate =
@@ -244,17 +260,19 @@ export function prepareAnalyticsInput(
         key,
         Object.freeze(
           [...items].sort((a, b) =>
-            `${a.exercise_order}|${a.plan_item_id}` <
-            `${b.exercise_order}|${b.plan_item_id}`
-              ? -1
-              : 1,
+            compareTuple(
+              [a.exercise_order, a.plan_item_id],
+              [b.exercise_order, b.plan_item_id],
+            ),
           ),
         ),
       ]),
     ),
     workouts: Object.freeze(prepared),
+    completedWorkouts: Object.freeze(completed),
     analyses: Object.freeze(prepared.flatMap((entry) => [...entry.analyses])),
     trainingDates: Object.freeze(trainingDates),
+    completedTrainingDates: Object.freeze(completedTrainingDates),
     periodFrom,
     periodTo,
     referenceDate,

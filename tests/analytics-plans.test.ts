@@ -121,17 +121,23 @@ describe("plan adherence", () => {
 
   test("planned sessions come from the weekly frequency of the version in force", () => {
     const result = adherence();
-    expect(result.planned_sessions.value).toBe(11);
+    // Four full v1 weeks at two sessions plus one full v2 week at three. The
+    // week of 26 January is shared by both versions, so its target stays
+    // unknown instead of silently picking the version of that Monday.
+    expect(result.planned_sessions.value).toBe(9);
+    expect(result.planned_sessions.status).toBe("partial");
+    expect(result.planned_sessions.reasons).toContain(
+      "plan_changed_within_week",
+    );
     expect(result.planned_sessions.unit).toBe("workouts");
     expect(
       result.plan_windows.map((window) => [
         window.plan_version_id,
         window.applicable_week_starts.length,
-        window.planned_sessions.value,
       ]),
     ).toEqual([
-      ["plan-v1", 4, 8],
-      ["plan-v2", 1, 3],
+      ["plan-v1", 4],
+      ["plan-v2", 2],
     ]);
     expect(result.weeks_without_plan).toEqual([]);
   });
@@ -140,7 +146,8 @@ describe("plan adherence", () => {
     const result = adherence();
     expect(result.completed_attributable_workouts.value).toBe(2);
     expect(result.unattributed_workouts.value).toBe(1);
-    expect(result.session_adherence_rate.value).toBe(0.181818);
+    expect(result.session_adherence_rate.value).toBe(0.222222);
+    expect(result.session_adherence_rate.status).toBe("partial");
     expect(result.session_adherence_rate.unit).toBe("ratio");
   });
 

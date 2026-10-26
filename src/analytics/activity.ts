@@ -137,8 +137,21 @@ export function computeActivity(
   const month =
     input.referenceDate === null ? null : monthKey(input.referenceDate);
   return Object.freeze({
+    // `workouts` follows the selection, which a `workout_statuses` filter can
+    // widen on purpose. The `completed_*` counters never do: they are the
+    // figures that claim a session was actually finished.
     workouts: exact("workouts", input.workouts.length, "workouts"),
+    completed_workouts: exact(
+      "completed_workouts",
+      input.completedWorkouts.length,
+      "workouts",
+    ),
     training_days: exact("training_days", input.trainingDates.length, "days"),
+    completed_training_days: exact(
+      "completed_training_days",
+      input.completedTrainingDates.length,
+      "days",
+    ),
     average_workouts_per_week: weekCount
       ? metric(
           "average_workouts_per_week",

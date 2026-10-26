@@ -1,7 +1,13 @@
 import type { SetLoadAnalysis } from "./load.js";
 import type { PreparedInput } from "./eligibility.js";
 import { isoWeek } from "./period.js";
-import { coveredSum, freezeReasons } from "./validation.js";
+import {
+  addFinite,
+  coveredSum,
+  exact,
+  freezeReasons,
+  metric,
+} from "./validation.js";
 import {
   VolumeChannelSchema,
   SetBucketSchema,
@@ -19,7 +25,7 @@ export type VolumeBreakdown = Readonly<{
   by_channel: Record<VolumeChannel, MetricValue>;
   by_bucket: Record<SetBucket, MetricValue>;
   sets: number;
-  reps: number;
+  reps: MetricValue;
 }>;
 
 function split(analyses: readonly SetLoadAnalysis[]) {
@@ -43,6 +49,28 @@ function sumOf(
     excluded,
     caveats,
   );
+}
+
+/** Repetition total that reports an overflow instead of a non-finite count. */
+function totalReps(analyses: readonly SetLoadAnalysis[]) {
+  let sum: number | null = 0;
+  let missing = false;
+  for (const analysis of analyses) {
+    if (analysis.total_reps === null) {
+      missing = true;
+      continue;
+    }
+    if (sum !== null) sum = addFinite(sum, analysis.total_reps);
+  }
+  if (sum === null)
+    return metric("total_reps", null, "reps", "invalid", [
+      "aggregate_not_finite",
+    ]);
+  return missing
+    ? metric("total_reps", sum, "reps", "partial", [
+        "reps_basis_ambiguous_for_execution_mode",
+      ])
+    : exact("total_reps", sum, "reps");
 }
 
 /**
@@ -77,10 +105,7 @@ export function volumeBreakdown(
     by_channel,
     by_bucket,
     sets: analyses.length,
-    reps: analyses.reduce(
-      (total, analysis) => total + (analysis.total_reps ?? 0),
-      0,
-    ),
+    reps: totalReps(analyses),
   });
 }
 

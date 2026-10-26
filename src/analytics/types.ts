@@ -12,7 +12,7 @@ import {
  * Bump this whenever a formula, an eligibility rule or a status mapping changes,
  * so stored or cached results stay traceable. See docs/ARNOLD-METRICS-SPEC.md.
  */
-export const METRICS_VERSION = "1.0.0";
+export const METRICS_VERSION = "1.1.0";
 
 /**
  * `valid`         result computed from complete, unambiguous data
@@ -63,11 +63,14 @@ export const AnalyticsReasonSchema = z.enum([
   "no_computable_sets",
   "no_previous_reference_value",
   "weekly_goal_not_configured",
+  "aggregate_not_finite",
   // plans
   "plan_days_per_week_not_configured",
   "plan_target_sets_not_configured",
   "no_plan_version_applicable",
   "workout_not_attributable_to_plan",
+  "plan_changed_within_week",
+  "working_set_not_planned",
 ]);
 export type AnalyticsReason = z.infer<typeof AnalyticsReasonSchema>;
 
@@ -209,8 +212,12 @@ export const WeekStreakSchema = z
 
 export const ActivitySchema = z
   .strictObject({
+    /** Workouts in the selection; a `workout_statuses` filter widens this. */
     workouts: MetricValueSchema,
+    /** Workouts that are actually `completed`, whatever the status filter admits. */
+    completed_workouts: MetricValueSchema,
     training_days: MetricValueSchema,
+    completed_training_days: MetricValueSchema,
     average_workouts_per_week: MetricValueSchema,
     average_training_days_per_week: MetricValueSchema,
     training_days_current_month: MetricValueSchema,
@@ -230,7 +237,7 @@ const volumeBreakdown = {
   by_channel: z.record(VolumeChannelSchema, MetricValueSchema),
   by_bucket: z.record(SetBucketSchema, MetricValueSchema),
   sets: count,
-  reps: count,
+  reps: MetricValueSchema,
 } as const;
 
 export const VolumeSchema = z
@@ -281,9 +288,8 @@ export const PersonalRecordSchema = z
       "exercise_workout_volume",
     ]),
     exercise_id: ArnoldIdSchema,
-    /** Null only where a record spans several execution variants of one exercise. */
-    comparability: ComparabilitySchema.nullable(),
-    load_reference: LoadReferenceSchema.nullable(),
+    comparability: ComparabilitySchema,
+    load_reference: LoadReferenceSchema,
     channel: VolumeChannelSchema.nullable(),
     value: finite,
     unit: MetricUnitSchema,
@@ -424,7 +430,10 @@ export const PlanAdherenceSchema = z
     unattributed_workouts: MetricValueSchema,
     session_adherence_rate: MetricValueSchema,
     planned_working_sets: MetricValueSchema,
+    /** Only working sets of an active planned position of that session. */
     completed_attributable_working_sets: MetricValueSchema,
+    /** Working sets inside a planned session that the plan does not ask for. */
+    unplanned_working_sets: MetricValueSchema,
     set_adherence_rate: MetricValueSchema,
     deviations: z.array(PlanDeviationSchema).readonly(),
   })

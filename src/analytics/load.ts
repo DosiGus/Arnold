@@ -1,5 +1,5 @@
 import type { ArnoldSet } from "../shared/arnold-schema-v1.js";
-import { round } from "./validation.js";
+import { round, tupleKey } from "./validation.js";
 import type {
   AnalyticsReason,
   Comparability,
@@ -36,13 +36,13 @@ export function setBucket(setType: ArnoldSet["set_type"]): SetBucket {
 export function comparabilityOf(set: ArnoldSet): Comparability {
   const side = set.execution_mode === "unilateral" ? set.side : null;
   return Object.freeze({
-    key: [
+    key: tupleKey([
       set.exercise_id,
       set.load_basis,
       set.execution_mode,
       set.implement_count,
-      side ?? "-",
-    ].join("|"),
+      side,
+    ]),
     exercise_id: set.exercise_id,
     load_basis: set.load_basis,
     execution_mode: set.execution_mode,

@@ -185,8 +185,9 @@ describe("load and repetition conventions", () => {
     );
     expect(unilateral.side).toBe("left");
     expect(comparabilityOf(ArnoldSetSchema.parse(set())).side).toBeNull();
+    // JSON encoding, so an id containing the separator cannot collide.
     expect(comparabilityOf(ArnoldSetSchema.parse(set())).key).toBe(
-      "ex-bar-press|total|bilateral_simultaneous|1|-",
+      '["ex-bar-press","total","bilateral_simultaneous",1,null]',
     );
   });
 

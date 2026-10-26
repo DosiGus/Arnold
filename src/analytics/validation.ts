@@ -19,6 +19,59 @@ export class AnalyticsFilterError extends Error {
 }
 
 /**
+ * Composite key that cannot collide.
+ *
+ * Joining opaque IDs with a separator is unsafe: `["p|x", "s"]` and
+ * `["p", "x|s"]` would produce the same string, and the contract allows any
+ * character inside an ID. JSON encoding escapes the delimiters instead.
+ */
+export function tupleKey(parts: readonly (string | number | null)[]): string {
+  return JSON.stringify(parts);
+}
+
+/**
+ * Lexicographic comparison of mixed tuples, with numbers compared numerically.
+ *
+ * Concatenating a set number into a sort string puts set 10 before set 2, so
+ * every ordering in the engine goes through this comparator instead.
+ */
+export function compareTuple(
+  a: readonly (string | number)[],
+  b: readonly (string | number)[],
+): number {
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const left = a[i];
+    const right = b[i];
+    if (left === right) continue;
+    if (left === undefined) return -1;
+    if (right === undefined) return 1;
+    if (typeof left === "number" && typeof right === "number")
+      return left - right;
+    const l = String(left);
+    const r = String(right);
+    if (l !== r) return l < r ? -1 : 1;
+  }
+  return 0;
+}
+
+/**
+ * A count the result schema can actually carry. Anything outside the safe
+ * integer range is unknown rather than reportable, so a defective repetition
+ * count cannot fail the validation of the whole result.
+ */
+export function safeCount(value: number | null): number | null {
+  return value !== null && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
+}
+
+/** Addition that reports an overflow instead of yielding a non-finite total. */
+export function addFinite(a: number, b: number): number | null {
+  const sum = a + b;
+  return Number.isFinite(sum) ? round(sum) : null;
+}
+
+/**
  * Trims float noise from kg multiplications without ever producing a non-finite
  * number: scaling an already extreme value would overflow, so such a value is
  * returned unrounded and the finiteness checks downstream decide what to do.

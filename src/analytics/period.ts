@@ -88,3 +88,27 @@ export function weekStartsBetween(from: string, to: string): string[] {
 export function monthKey(date: string): string {
   return date.slice(0, 7);
 }
+
+/**
+ * Every month touched by `from..to`, inclusive. Derived from the period itself,
+ * never from the Monday of its first week: a February selection whose first
+ * week starts on 26 January must not report a January bucket.
+ */
+export function monthsBetween(from: string, to: string): string[] {
+  if (compareDate(from, to) > 0) return [];
+  const months: string[] = [];
+  let year = Number(from.slice(0, 4));
+  let month = Number(from.slice(5, 7));
+  const last = monthKey(to);
+  for (;;) {
+    const key = `${year}-${String(month).padStart(2, "0")}`;
+    months.push(key);
+    if (key >= last) break;
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+  }
+  return months;
+}

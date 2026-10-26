@@ -32,7 +32,7 @@ function series(
   aggregation: Aggregation,
   load_reference: LoadReference | null,
   samples: readonly { date: string; value: number }[],
-  reasons: readonly AnalyticsReason[] = [],
+  excluded: readonly AnalyticsReason[] = [],
 ): Series {
   const byDate = new Map<string, number[]>();
   for (const sample of samples) {
@@ -56,18 +56,36 @@ function series(
         ? [Object.freeze({ date, value: round(value) })]
         : [];
     });
+  // A chart must not look complete when contributions were left out: the
+  // series carries the same status and reasons as the matching aggregate.
+  const reasons = freezeReasons(
+    points.length ? excluded : [...excluded, "no_computable_sets"],
+  );
   return Object.freeze({
     exercise_id,
     metric: name,
     unit,
     load_reference,
     aggregation,
-    status: points.length ? ("valid" as const) : ("not_available" as const),
-    reasons: freezeReasons(
-      points.length ? reasons : [...reasons, "no_computable_sets"],
-    ),
+    status: !points.length
+      ? ("not_available" as const)
+      : excluded.length
+        ? ("partial" as const)
+        : ("valid" as const),
+    reasons,
     points: Object.freeze(points),
   });
+}
+
+/** Reasons of the contributions a series had to drop. */
+function droppedReasons(
+  analyses: readonly SetLoadAnalysis[],
+  usable: (analysis: SetLoadAnalysis) => boolean,
+  of: (analysis: SetLoadAnalysis) => readonly AnalyticsReason[],
+): readonly AnalyticsReason[] {
+  return freezeReasons(
+    analyses.flatMap((analysis) => (usable(analysis) ? [] : [...of(analysis)])),
+  );
 }
 
 type Variant = {
@@ -265,6 +283,11 @@ function progressFor(
                       },
                     ],
               ),
+              droppedReasons(
+                lead?.analyses ?? [],
+                (analysis) => analysis.comparable_load_kg !== null,
+                (analysis) => analysis.volume_reasons,
+              ),
             ),
             series(
               exercise_id,
@@ -279,13 +302,12 @@ function progressFor(
                   : [{ date: analysis.date, value: analysis.one_rm_kg }],
               ),
               // Only sets that were actually skipped explain themselves here.
-              freezeReasons(
-                (lead?.analyses ?? []).flatMap((analysis) =>
-                  analysis.one_rm_kg === null ||
-                  analysis.one_rm_status !== "valid"
-                    ? [...analysis.one_rm_reasons]
-                    : [],
-                ),
+              droppedReasons(
+                lead?.analyses ?? [],
+                (analysis) =>
+                  analysis.one_rm_kg !== null &&
+                  analysis.one_rm_status === "valid",
+                (analysis) => analysis.one_rm_reasons,
               ),
             ),
             series(
@@ -304,6 +326,11 @@ function progressFor(
                       },
                     ],
               ),
+              droppedReasons(
+                analyses,
+                (analysis) => analysis.nominal_volume_kg !== null,
+                (analysis) => analysis.volume_reasons,
+              ),
             ),
             series(
               exercise_id,
@@ -316,6 +343,11 @@ function progressFor(
                   ? []
                   : [{ date: analysis.date, value: analysis.total_reps }],
               ),
+              droppedReasons(
+                working,
+                (analysis) => analysis.total_reps !== null,
+                (analysis) => analysis.volume_reasons,
+              ),
             ),
             series(
               exercise_id,
@@ -327,6 +359,11 @@ function progressFor(
                 analysis.total_reps === null
                   ? []
                   : [{ date: analysis.date, value: analysis.total_reps }],
+              ),
+              droppedReasons(
+                working,
+                (analysis) => analysis.total_reps !== null,
+                (analysis) => analysis.volume_reasons,
               ),
             ),
           ]

@@ -2,7 +2,7 @@
 
 Verbindliche Spezifikation der **Arnold Analytics Engine** in `src/analytics/`.
 
-`metrics_version` ist `1.0.0`. Jede Änderung an einer Formel, an einer Eignungsregel oder an einer Statuszuordnung erfordert eine neue `metrics_version`. Das Rohdatenschema (`arnold.training_raw` / `1.0.0`, siehe [ARNOLD-DATA-CONTRACT.md](ARNOLD-DATA-CONTRACT.md)) wird dadurch nicht berührt.
+`metrics_version` ist `1.1.0`. Jede Änderung an einer Formel, an einer Eignungsregel oder an einer Statuszuordnung erfordert eine neue `metrics_version`. Das Rohdatenschema (`arnold.training_raw` / `1.0.0`, siehe [ARNOLD-DATA-CONTRACT.md](ARNOLD-DATA-CONTRACT.md)) wird dadurch nicht berührt.
 
 > **Für künftige Entwickler und KI-Agents:** Dieses Dokument beschreibt bewusste Entscheidungen, keine Zufälle. Bevor eine Berechnung geändert wird, muss der entsprechende Abschnitt gelesen und die Änderung hier dokumentiert werden. Insbesondere ist `Volumen = Gewicht × Wiederholungen` **keine** allgemein gültige Formel; siehe [Abschnitt 4](#4-gewichtskonventionen) und [Abschnitt 5](#5-ausführungen).
 
@@ -222,16 +222,20 @@ Begründung: Drop-, Fehler- und sonstige Sätze sind echte Arbeit und gehören i
 
 Alle Kalenderzuordnungen verwenden `workout_date_local` wörtlich. UTC-Zeitstempel werden **nie** in Kalendertage umgerechnet.
 
-| Kennzahl                         | Regel                                                                          |
-| -------------------------------- | ------------------------------------------------------------------------------ |
-| `workouts`                       | Anzahl geeigneter Workouts im Zeitraum                                         |
-| `training_days`                  | Anzahl **verschiedener** Kalenderdaten mit mindestens einem geeigneten Workout |
-| `average_workouts_per_week`      | `workouts / Anzahl Montagswochen des Zeitraums`                                |
-| `average_training_days_per_week` | `training_days / Anzahl Montagswochen des Zeitraums`                           |
-| `training_days_current_month`    | Trainingstage im Monat von `reference_date`                                    |
-| `weeks[]`                        | Je Montagswoche: Workouts und Trainingstage                                    |
+| Kennzahl                         | Regel                                                                                |
+| -------------------------------- | ------------------------------------------------------------------------------------ |
+| `workouts`                       | Anzahl geeigneter Workouts im Zeitraum; ein `workout_statuses`-Filter erweitert dies |
+| `completed_workouts`             | Workouts mit `status = "completed"`, **unabhängig** vom Statusfilter                 |
+| `training_days`                  | Anzahl **verschiedener** Kalenderdaten mit mindestens einem geeigneten Workout       |
+| `completed_training_days`        | Kalenderdaten mit mindestens einem abgeschlossenen Workout                           |
+| `average_workouts_per_week`      | `workouts / Anzahl Montagswochen des Zeitraums`                                      |
+| `average_training_days_per_week` | `training_days / Anzahl Montagswochen des Zeitraums`                                 |
+| `training_days_current_month`    | Trainingstage im Monat von `reference_date`                                          |
+| `weeks[]`                        | Je Montagswoche: Workouts und Trainingstage                                          |
 
 Zwei Workouts an einem Datum sind **zwei Einheiten** und **ein Trainingstag**.
+
+`workouts` und `training_days` folgen der Auswahl; wer ausdrücklich nach abgebrochenen Einheiten filtert, bekommt sie gezählt. Die `completed_*`-Kennzahlen tun das nie — sie sind die Zahlen, die einen tatsächlichen Abschluss behaupten. Jede Kennzahl, die Abschluss im Namen trägt, verwendet ausschließlich sie; Rekorde und Planerfüllung ebenso.
 
 ### Wochenlogik
 
@@ -255,8 +259,10 @@ Später kann das Wochenziel aus Nutzereinstellungen oder aus `plans.days_per_wee
 ### Vergleichbarkeitsschlüssel
 
 ```text
-comparability.key = exercise_id | load_basis | execution_mode | implement_count | side?
+comparability.key = JSON([exercise_id, load_basis, execution_mode, implement_count, side])
 ```
+
+Der Schlüssel wird **JSON-kodiert, nicht mit einem Trennzeichen zusammengefügt**. IDs sind laut Vertrag opake Strings und dürfen jedes Zeichen enthalten; ein `|`-Join würde `["ex|total", …]` und `["ex", "total", …]` auf denselben Schlüssel abbilden und die Rekorde zweier verschiedener Übungen vermischen. Dasselbe gilt für jeden zusammengesetzten Schlüssel der Engine, etwa Planversion und Session.
 
 `side` ist nur bei `execution_mode = "unilateral"` Teil des Schlüssels, weil links und rechts dort unterschiedliche Gliedmaßen sind. Bei bilateraler und alternierender Ausführung folgt `side` bereits aus dem Modus.
 
@@ -271,11 +277,13 @@ Ein einarmiger Curl rechts wird dadurch nie mit einem beidarmigen Curl vergliche
 | `max_load`                | Vergleichbarkeitsschlüssel      | `load_kg` wie dokumentiert, nicht umgerechnet | kg      |
 | `max_reps_at_load`        | Schlüssel **und** konkrete Last | Wiederholungen pro Gliedmaße                  | reps    |
 | `estimated_1rm`           | Vergleichbarkeitsschlüssel      | Höchste gültige Epley-Schätzung               | kg      |
-| `exercise_workout_volume` | Übung **und** Volumenkanal      | Höchstes Volumen einer Übung in einer Einheit | kg      |
+| `exercise_workout_volume` | Vergleichbarkeitsschlüssel      | Höchstes Volumen einer Einheit                | kg      |
 
 `max_load` gibt die dokumentierte Last unverändert aus; der Schlüssel fixiert `load_basis` und `implement_count`, und `load_reference` beschriftet den Wert. Eine `per_implement`-Last trägt zusätzlich den Grund `value_is_per_implement`, eine Maschinenlast `value_is_machine_specific`.
 
-`exercise_workout_volume` summiert innerhalb einer Einheit **ohne Aufwärmsätze**, getrennt nach Kanal, damit ein Aufwärmblock keinen Volumenrekord erzeugt und Maschinen- nicht mit Freihantelvolumen vermischt wird. Dieser Rekordtyp hat bewusst keinen Vergleichbarkeitsschlüssel (`comparability: null`), weil eine Einheit mehrere Ausführungsvarianten derselben Übung enthalten kann; `exercise_id` und `channel` beschriften ihn.
+`exercise_workout_volume` summiert innerhalb einer Einheit **ohne Aufwärmsätze** und ist wie jeder andere Rekord an den vollen Vergleichbarkeitsschlüssel gebunden. Eine Einheit mit mehreren Ausführungsvarianten derselben Übung erzeugt daher mehrere Volumenrekorde, einen je Variante — ein einseitiges Satzvolumen darf nie als Verbesserung gegenüber einem beidseitigen gelten. Überschreitet eine Einheitssumme den Zahlenbereich, entsteht für diese Gruppe **kein** Rekord statt eines ungültigen Werts.
+
+**Nur abgeschlossene Einheiten setzen Rekorde.** Ein abgebrochenes oder laufendes Workout bleibt außen vor, auch wenn ein `workout_statuses`-Filter es ausgewählt hat: ein Rekord ist eine Aussage über tatsächlich beendete Arbeit.
 
 Nur `working`-Sätze erzeugen Rekorde. Eigengewichts- und Unterstützungssätze erzeugen keine Last- und keine 1RM-Rekorde.
 
@@ -364,13 +372,15 @@ type Series = {
 
 Die Aggregationsregel ist Teil der Metrikdefinition. Mehrere Workouts am gleichen Datum werden dadurch zusammengefasst und **nie** gegenseitig überschrieben. `aggregation` steht in jeder Serie, damit ein Diagramm die Regel anzeigen kann.
 
+Jede Serie trägt denselben Status und dieselben Gründe wie die zugehörige Gesamtkennzahl. Musste ein Beitrag ausgelassen werden, ist die Serie `partial` und nennt den Grund — ein Diagramm darf nicht vollständig aussehen, wenn die Kennzahl daneben `partial` meldet.
+
 `include_series: false` liefert alle Kennzahlen ohne Punkte, wenn eine schlanke Antwort gewünscht ist.
 
 ## 11 Planerfüllung
 
 ### Planhistorie
 
-Eine Planversion gilt an einem lokalen Kalendertag `D`, wenn `activated_at_utc` gesetzt ist, ihr Datumsanteil `≤ D` liegt, und `retired_at_utc` entweder leer ist oder ihr Datumsanteil `> D` liegt. Eine Version ohne Aktivierung – etwa `status = "draft"` – gilt nie.
+Eine Planversion gilt an einem lokalen Kalendertag `D`, wenn `activated_at_utc` gesetzt ist, ihr Datumsanteil `≤ D` liegt, und `retired_at_utc` entweder leer ist oder ihr Datumsanteil `> D` liegt. Ein Entwurf gilt nie — auch dann nicht, wenn er fehlerhaft ein Aktivierungsdatum trägt. Das Rohschema weist diese Kombination zurück; die Engine darf einen solchen Upstream-Defekt aber nicht dazu führen lassen, dass ein unveröffentlichter Plan den aktiven verdrängt.
 
 `activated_at_utc` und `retired_at_utc` sind UTC-Instanzen, das Trainingsdatum ist lokal. Verglichen wird daher nur der Datumsanteil. Ein Planwechsel genau am Tag eines Workouts wird der **neueren** Version zugerechnet. Das ist eine dokumentierte Näherung; ein zeitzonengenauer Vergleich wäre erst mit einer Instanzsemantik für das lokale Datum möglich.
 
@@ -380,18 +390,23 @@ Bei mehreren passenden Versionen entscheidet die höhere `version_no`, dann das 
 
 | Kennzahl                              | Regel                                                                                         |
 | ------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `planned_sessions`                    | Je Montagswoche des Zeitraums die `days_per_week` der zu Wochenbeginn geltenden Version       |
+| `planned_sessions`                    | Je Montagswoche des Zeitraums die `days_per_week` der in dieser Woche geltenden Version       |
 | `completed_attributable_workouts`     | Geeignete Workouts mit `plan_version_id` **und** existierender `session_id` in dieser Version |
 | `unattributed_workouts`               | Geeignete Workouts ohne diese Zuordnung, etwa spontane Einheiten                              |
 | `session_adherence_rate`              | `completed_attributable_workouts / planned_sessions`                                          |
 | `planned_working_sets`                | Summe der `target_sets` der aktiven Planpositionen der **tatsächlich absolvierten** Sessions  |
-| `completed_attributable_working_sets` | Arbeitssätze in zuordenbaren Workouts                                                         |
+| `completed_attributable_working_sets` | Arbeitssätze **einer aktiven Planposition** dieser Session                                    |
+| `unplanned_working_sets`              | Arbeitssätze in einer geplanten Session, die der Plan nicht vorsieht                          |
 | `set_adherence_rate`                  | `completed_attributable_working_sets / planned_working_sets`                                  |
 | `plan_windows[]`                      | Je Planversion die Wochen, in denen sie galt, und ihre geplanten Einheiten                    |
 | `weeks_without_plan[]`                | Wochen ohne geltende Planversion                                                              |
 | `deviations[]`                        | Abweichungen je zuordenbarem Workout                                                          |
 
 **Keine erfundenen Kalendertage.** Ein Plan nennt nur eine Trainingshäufigkeit, keine verbindlichen Wochentage. Die Engine leitet daraus ausschließlich eine Wochenzahl ab und behauptet nie, an welchem Tag trainiert werden sollte. Wochen ohne geltende Version werden in `weeks_without_plan` gelistet, nicht aufgefüllt.
+
+**Geteilte Wochen.** Geprüft wird **jeder Tag** einer Woche, der im Zeitraum liegt, nicht nur ihr Montag. Gelten in einer Woche zwei Planversionen, ist das Wochenziel nicht zuverlässig bestimmbar: der Beitrag dieser Woche bleibt `null`, der Grund ist `plan_changed_within_week`, und die Gesamtkennzahl wird `partial` oder `not_available`. Die Ziele zweier Versionen auf Tage zu verteilen würde genau die Wochentage erfinden, die der Plan nicht hergibt. Beide Versionen erscheinen in `plan_windows`.
+
+**Zusatzarbeit erfüllt keine ausgefallene Planposition.** In die Erfüllungsquote gehen ausschließlich Arbeitssätze ein, deren Übung eine aktive Planposition dieser Session ist. Drei Sätze einer nicht geplanten Übung ergeben damit null Prozent Erfüllung, wenn die geplante Übung fehlt — und erscheinen als `unplanned_working_sets` sowie als Abweichung.
 
 Erfüllungsquoten werden **nicht** auf 1 begrenzt: mehr Einheiten als geplant ergeben einen Wert über 1.
 
@@ -416,7 +431,7 @@ Eine aus dem aktuellen Plan entfernte Übung (`plan_items.status = "removed"`) b
 
 ## 12 Wochen- und Monatsvergleiche
 
-`weekly_trends.weekly[]` und `weekly_trends.monthly[]` enthalten je Bucket Einheiten, Trainingstage, Arbeitssätze, nominales Volumen und die Differenz zum Vorbucket. Fehlt ein Vorbucket oder ist einer der beiden Werte unbekannt, ist die Differenz `not_available` mit `no_previous_reference_value`. Buckets ohne Training bleiben als Nullbucket erhalten.
+`weekly_trends.weekly[]` und `weekly_trends.monthly[]` enthalten je Bucket Einheiten, Trainingstage, Arbeitssätze, nominales Volumen und die Differenz zum Vorbucket. **Monate werden aus dem Zeitraum selbst gebildet**, nicht aus den Montagen seiner Wochen: eine Februar-Auswahl, deren erste Woche am 26. Januar beginnt, darf keinen Januar-Bucket erzeugen und erst recht keine Verbesserung gegenüber einem Monat behaupten, der nie ausgewertet wurde. Wochen-Buckets dürfen dagegen über die Zeitraumgrenze ragen — eine Montagswoche ist als Teilwoche legitim und enthält nur ihre Tage innerhalb des Zeitraums. Fehlt ein Vorbucket oder ist einer der beiden Werte unbekannt, ist die Differenz `not_available` mit `no_previous_reference_value`. Buckets ohne Training bleiben als Nullbucket erhalten.
 
 ## 13 Filter
 
@@ -591,7 +606,28 @@ Bewusst **nicht** umgesetzt:
 
 Weitere Einschränkung: Drop-, Fehler- und sonstige Sätze zählen ins Volumen, aber nicht in Rekorde und 1RM. Diese konservative Entscheidung kann eine echte Bestleistung aus einem `failure`-Satz übersehen. Eine Änderung erfordert eine neue `metrics_version`.
 
-## 17 Prüfstand
+## 17 Änderungen gegenüber 1.0.0
+
+Die unabhängige QA-Prüfung von Task 002 hat neun Befunde gemeldet; acht waren echte Fehler, sechs davon falsche Fachannahmen dieser Spezifikation. Weil sich dadurch berechnete Ergebnisse ändern, trägt die Engine jetzt `metrics_version` `1.1.0`. Gespeicherte oder zwischengespeicherte Ergebnisse aus `1.0.0` sind nicht vergleichbar.
+
+| Betroffene Regel                 | 1.0.0                                                            | 1.1.0                                                                                  |
+| -------------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Volumenrekorde                   | Gruppiert nach Übung und Kanal, `comparability: null`            | Gruppiert nach vollem Vergleichbarkeitsschlüssel; je Variante ein Rekord               |
+| Zusammengesetzte Schlüssel       | Mit `\|` zusammengefügt, kollisionsanfällig                      | JSON-kodiert, kollisionsfrei                                                           |
+| Abschlusskennzahlen              | Folgten dem Statusfilter                                         | `completed_workouts` und `completed_training_days`; Rekorde und Plan nur abgeschlossen |
+| Erfüllungsquote der Arbeitssätze | Zählte alle Arbeitssätze der Session                             | Nur Arbeitssätze aktiver Planpositionen; Zusatzarbeit separat                          |
+| Geteilte Planwochen              | Version des Montags galt für die ganze Woche, Status `valid`     | Tagesgenaue Prüfung; bei Wechsel `plan_changed_within_week`, Status `partial`          |
+| Entwurfsplanversionen            | Wurden bei fehlerhaftem Aktivierungsdatum wirksam                | Nie wirksam                                                                            |
+| Monatsvergleiche                 | Monate aus den Wochen-Montagen, erzeugten einen Phantom-Vormonat | Monate aus dem Zeitraum                                                                |
+| Verlaufsserien                   | Status `valid` ohne Ausschlussgründe                             | Status und Gründe wie die Gesamtkennzahl                                               |
+| Satzreihenfolge                  | Textvergleich, Satz 10 vor Satz 2                                | Numerischer Vergleich                                                                  |
+| Zahlenüberläufe in Aggregaten    | `Infinity` bzw. Abbruch der ganzen Auswertung                    | `invalid` mit `aggregate_not_finite`; betroffene Rekorde entfallen                     |
+
+Nicht geändert: die sechs Lastbeispiele A–F, die Epley-Grenzen, die Kanaltrennung, die Eignungsregeln für Satztypen und die dokumentierten Grenzen in Abschnitt 16.
+
+Regressionen: `tests/analytics-qa-regressions.test.ts`.
+
+## 18 Prüfstand
 
 ```bash
 npm run typecheck

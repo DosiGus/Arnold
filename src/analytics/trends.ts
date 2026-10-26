@@ -1,6 +1,12 @@
 import type { PreparedWorkout, PreparedInput } from "./eligibility.js";
 import type { SetLoadAnalysis } from "./load.js";
-import { compareDate, isoWeek, monthKey, weekStart } from "./period.js";
+import {
+  compareDate,
+  isoWeek,
+  monthKey,
+  monthsBetween,
+  weekStart,
+} from "./period.js";
 import { coveredSum, metric, round, unavailable } from "./validation.js";
 import type { MetricValue } from "./types.js";
 
@@ -102,9 +108,14 @@ export function computeTrends(input: PreparedInput) {
     });
   }
 
+  // Months come from the period itself. Seeding them from the Monday of the
+  // first week would invent a January bucket for a February selection, and the
+  // next month would then report an improvement against a month nobody analysed.
   const months = [
     ...new Set([
-      ...input.periodWeeks.map(monthKey),
+      ...(input.periodFrom !== null && input.periodTo !== null
+        ? monthsBetween(input.periodFrom, input.periodTo)
+        : []),
       ...input.workouts.map((workout) => monthKey(workout.date)),
     ]),
   ].sort(compareDate);
