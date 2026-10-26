@@ -165,9 +165,12 @@ aber nicht berechenbar sind. Der Leerzustand wird über `state` kommuniziert, ni
 `workouts`, `training_days`, `training_days_per_week`, `workouts_per_week`,
 `working_sets`, `nominal_volume`, `comparable_volume`.
 
-`working_sets` ist eine Anzahl und wird aus
-`volume.by_bucket.working.coverage.included_sets` gelesen, nicht aus einem
-zweiten Lauf über die Satzliste.
+`working_sets` ist eine **Anzahl von Sätzen**, keine Volumensumme. Der Wert kommt
+aus `volume.by_bucket.working.coverage.eligible_sets`, nicht aus
+`included_sets`: `included_sets` zählt die Sätze, die in die Volumensumme
+eingegangen sind, und schließt damit einen völlig gültigen Körpergewichtssatz
+aus, dessen Last unbekannt ist. Lässt sich für einen Teil der Sätze kein Volumen
+berechnen, nennt die Kennzahl das als Hinweis — sie zählt die Sätze trotzdem.
 
 Das Trainingsvolumen trägt immer einen eindeutigen Kennzahlentyp:
 `nominal_volume` (Summe Last × Wiederholungen je Lastdefinition) ist von
@@ -236,6 +239,13 @@ Workouts“. Bei `file_role: MASTER_TEMPLATE` setzt der Presenter
 - `plan_version_ids` akzeptiert auch **archivierte** Versionen, damit alte
   Einheiten auswertbar bleiben.
 - Ein Filter ohne Treffer ist kein Fehler: `notices` enthält `filter_empty`.
+- Die Übersicht hat ihren eigenen Zeitraumfilter, und `recent_workouts` sowie
+  `session_names` werden mit derselben Auswahl gebildet. Eine Auswahl ohne
+  Treffer wird ausdrücklich als solche gemeldet und **nicht** mit dem
+  Willkommensbildschirm eines leeren Trackers verwechselt.
+- Eine ausdrücklich angeforderte Trainingseinheit wird entweder geöffnet oder als
+  „nicht in der Auswahl" gemeldet. Es wird nie stillschweigend eine andere
+  Einheit angezeigt.
 - Statusfilter und Kennzahlen sind getrennt: `get_arnold_workouts_v2` kann
   abgebrochene Einheiten **anzeigen**, die Analytics-Auswertung läuft aber immer
   auf der Standard-Eligibility (`completed`). Jede Zeile trägt
@@ -264,6 +274,18 @@ interpretiert `load_basis`, `reps_basis`, `execution_mode` oder `side` selbst.
 
 Funktionen: `formatLoad`, `formatReps`, `formatSetLine`, `formatExecution`,
 `describeSet` (Screenreader-Satz), `LOAD_BASIS_LABEL`, `SIDE_LABEL`.
+
+Lastbezug an Kennzahlen: `ViewMetric.load_basis` trägt die Lastdefinition einer
+Lastkennzahl mit, und die Fortschrittsansicht liefert zusätzlich
+`max_comparable_load_comparability` und `best_estimated_1rm_comparability`. Die
+Kennzahlenkarte und die Verlaufskurve benennen die Definition direkt am Wert;
+die Variantentabelle weiter unten ist eine Ergänzung, kein Ersatz dafür.
+
+Vorbehalte bei gültigen Werten: Ein korrekt berechneter Wert kann einen
+fachlichen Vorbehalt tragen — ein 1RM aus einer Hantellast ist `valid` und darf
+trotzdem nicht als Gesamtlast gelesen werden. Die Oberfläche zeigt `note` daher
+immer, wenn die Engine eine Begründung angehängt hat, und nicht erst bei
+`status !== "valid"`.
 
 Regeln:
 
@@ -327,8 +349,16 @@ Onboarding-Prozess nicht existiert — der Leerzustand enthält bewusst gar kein
 - Jede Ansicht lädt ihre eigenen Daten über Hooks nach. Ein Filterwechsel
   initialisiert die App **nicht** neu: das vorige Ergebnis bleibt sichtbar,
   während das neue lädt.
-- Jeder Request ist über einen Sequenzzähler abgesichert; eine langsame ältere
-  Antwort kann eine neuere nicht überschreiben.
+- Antworten auf Abfragen, die die Oberfläche selbst stellt, werden **nicht**
+  global publiziert, sondern an ihren Aufrufer zurückgegeben. Nur der Host
+  publiziert Anwendungszustand. Diese Trennung ist der Grund, warum ein
+  Aktualisierungsklick genau eine Anfrage auslöst: als jede Antwort auch
+  publiziert wurde, speiste sie die Abhängigkeiten des Dashboard-Hooks und löste
+  die nächste Anfrage aus.
+- Zwei getrennte Absicherungen gegen veraltete Antworten: die View-Hooks
+  verwerfen über einen Sequenzzähler eine überholte Antwort, und der globale
+  Publish-Pfad verwirft über eine Generation eine Revalidierung, die von einem
+  neueren Host-Payload überholt wurde.
 
 ### Veraltete Tool-Ergebnisse (historischer Fehler)
 
@@ -386,6 +416,9 @@ kein eigenes `postMessage`, `autoResize`, Host-Theme über
 - `ArnoldSheetsDataSource` teilt einen In-flight-Read und hält das Dataset für
   `cacheTtlMs`, sodass das Öffnen des Dashboards Google nicht mehrfach anfragt.
 - Die UI wird bei einem Filterwechsel nicht neu initialisiert.
+- `invalidate()` erhöht eine Cache-Generation. Ein Read, der vor der
+  Invalidierung gestartet wurde, darf den Bestand nicht neu befüllen — sonst
+  würde ein späteres Schreib-Tool veraltete Daten zeigen.
 
 Bekannte Grenzen: Der Presenter läuft bei jedem Aufruf über das gesamte Dataset.
 Für mehrjährige Historien ist der nächste Schritt ein serverseitiger Cache der

@@ -76,6 +76,12 @@ function useAsync<T>(
 /**
  * The overview. `initial` is the payload the host already delivered when the app
  * opened, so the first paint costs no extra round trip.
+ *
+ * `initial` is deliberately **not** a dependency of the request. It used to be,
+ * and because every tool response was also published as a new `initial`, each
+ * response triggered the next request — an unbounded loop on one refresh click.
+ * The payload is read through a ref instead: a newer host payload still reaches
+ * the screen (the app picks whichever is newer), but it never issues a request.
  */
 export function useDashboardData(
   client: ArnoldMcpClient,
@@ -85,16 +91,17 @@ export function useDashboardData(
   const key = JSON.stringify(query);
   const unfiltered = useMemo(() => key === "{}", [key]);
   const first = useRef(true);
-  const state = useAsync<ArnoldDashboardView>(async () => {
+  const initialRef = useRef(initial);
+  initialRef.current = initial;
+  return useAsync<ArnoldDashboardView>(async () => {
     // The initial payload already answers the unfiltered question.
-    if (first.current && unfiltered && initial) {
+    if (first.current && unfiltered && initialRef.current) {
       first.current = false;
-      return initial;
+      return initialRef.current;
     }
     first.current = false;
     return client.dashboard(query);
-  }, [client, key, initial]);
-  return state;
+  }, [client, key]);
 }
 
 export function useWorkoutHistory(

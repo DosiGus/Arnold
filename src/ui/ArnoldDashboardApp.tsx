@@ -6,7 +6,7 @@
  * narrow: which view is on screen, the shared period filter, refreshing, and
  * surfacing whether the data on screen is current.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ChevronRight,
@@ -20,7 +20,12 @@ import {
 import type { ArnoldDashboardView } from "../shared/arnold-view";
 import type { ArnoldMcpClient } from "./client/ArnoldMcpClient";
 import { useDashboardData } from "./hooks";
-import { ErrorState, LoadingState } from "./components";
+import {
+  ErrorState,
+  LoadingState,
+  PeriodFilter,
+  type PeriodValue,
+} from "./components";
 import { OverviewView } from "./views/OverviewView";
 import { WorkoutHistoryView } from "./views/WorkoutHistoryView";
 import { ExerciseProgressView } from "./views/ExerciseProgressView";
@@ -63,10 +68,30 @@ export function ArnoldDashboardApp({
 }) {
   const [screen, setScreen] = useState<Screen>("overview");
   const [workoutId, setWorkoutId] = useState<string>();
-  // The overview is always unfiltered; the views own their own filters, so a
-  // filter change never re-initialises the whole app.
-  const dashboard = useDashboardData(client, {}, initial);
-  const view = dashboard.data ?? initial;
+  const [period, setPeriod] = useState<PeriodValue>({});
+  const dashboard = useDashboardData(client, period, initial);
+  /**
+   * Whichever payload is newer wins. The hook's answer is normally the newest,
+   * but a host push that arrives later must not be hidden behind it — and
+   * comparing timestamps achieves that without issuing another request.
+   */
+  const view = useMemo(() => {
+    const loaded = dashboard.data;
+    if (!loaded) return initial;
+    return initial.source.generated_at > loaded.source.generated_at
+      ? initial
+      : loaded;
+  }, [dashboard.data, initial]);
+
+  /**
+   * The stale marking describes the payload on screen, not the session.
+   *
+   * It applies exactly while the unrevalidated replay is what is displayed. As
+   * soon as the dashboard query's own answer wins, the data has been read from
+   * the server and the warning must disappear — otherwise it would outlive the
+   * problem it describes.
+   */
+  const showStale = stale && view === initial;
 
   const go = useCallback((next: Screen, id?: string) => {
     setScreen(next);
@@ -205,7 +230,7 @@ export function ArnoldDashboardApp({
 
           {/* A replayed result that could not be revalidated is labelled, never
               presented as the current state. */}
-          {stale && (
+          {showStale && (
             <div className="status-notice warning" role="alert">
               <AlertTriangle size={17} aria-hidden="true" />
               <div>
@@ -243,11 +268,23 @@ export function ArnoldDashboardApp({
           ) : (
             <>
               {screen === "overview" && (
-                <OverviewView
-                  view={view}
-                  onOpenWorkout={openWorkout}
-                  onOpenProgress={() => go("progress")}
-                />
+                <>
+                  <div className="filter-bar overview-filters">
+                    <PeriodFilter
+                      value={period}
+                      onChange={setPeriod}
+                      anchor={view.period.to ?? initial.period.to}
+                      idPrefix="overview"
+                      scopeLabel="Übersicht"
+                    />
+                  </div>
+                  <OverviewView
+                    view={view}
+                    loading={dashboard.loading}
+                    onOpenWorkout={openWorkout}
+                    onOpenProgress={() => go("progress")}
+                  />
+                </>
               )}
               {screen === "history" && (
                 <WorkoutHistoryView

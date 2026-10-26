@@ -118,14 +118,35 @@ export class ArnoldSheetsDataSource implements ArnoldDataSource {
   private readonly now: () => number;
   private cached?: { dataset: ArnoldDataset; at: number };
   private pending?: Promise<DatasetSnapshot>;
+  /**
+   * Bumped by every `invalidate()`. A read carries the generation it started in
+   * and may only write the cache while that generation is still current, so a
+   * slow read cannot resurrect data that was explicitly invalidated — which is
+   * exactly what a later write tool will rely on.
+   */
+  private generation = 0;
+  private pendingGeneration = -1;
+  private pendingToken: symbol | undefined;
 
   constructor(options: ArnoldSheetsSourceOptions) {
-    this.adapter = new ArnoldSheetsReadAdapter(options, options.transport);
-    this.ttl = Math.max(options.cacheTtlMs ?? 15_000, 0);
-    this.now = options.now ?? Date.now;
-    this.label = options.label ?? "Arnold · Google Sheets";
+    // The adapter's option schema is strict: it accepts adapter options only.
+    // Source-level concerns (cache, labels, transport, clock) must be split off
+    // here, or constructing the source rejects the documented configuration
+    // before any Google call is attempted.
+    const {
+      cacheTtlMs,
+      label,
+      description,
+      transport,
+      now,
+      ...adapterOptions
+    } = options;
+    this.adapter = new ArnoldSheetsReadAdapter(adapterOptions, transport);
+    this.ttl = Math.max(cacheTtlMs ?? 15_000, 0);
+    this.now = now ?? Date.now;
+    this.label = label ?? "Arnold · Google Sheets";
     this.description =
-      options.description ??
+      description ??
       "Deine Arnold-Trainingsdatei wird ausschließlich lesend über den Server ausgewertet.";
   }
 
@@ -141,25 +162,34 @@ export class ArnoldSheetsDataSource implements ArnoldDataSource {
     const cached = this.cached;
     if (cached && this.now() - cached.at < this.ttl)
       return this.snapshot(cached.dataset, cached.at);
-    if (this.pending) return this.pending;
-    this.pending = (async () => {
+    // A read started before an invalidation is not reused afterwards.
+    if (this.pending && this.pendingGeneration === this.generation)
+      return this.pending;
+    const generation = this.generation;
+    const token = Symbol("read");
+    this.pendingToken = token;
+    const pending = (async () => {
       try {
         const dataset = await this.adapter.getDataset();
         const at = this.now();
-        this.cached = { dataset, at };
+        if (generation === this.generation) this.cached = { dataset, at };
         return this.snapshot(dataset, at);
       } catch (error) {
         // A failed read must not leave a stale dataset looking authoritative.
         throw new ArnoldSourceError(classifyFailure(error));
       } finally {
-        this.pending = undefined;
+        // Only the newest read clears the shared slot.
+        if (this.pendingToken === token) this.pending = undefined;
       }
     })();
-    return this.pending;
+    this.pending = pending;
+    this.pendingGeneration = generation;
+    return pending;
   }
 
   invalidate(): void {
     this.cached = undefined;
+    this.generation += 1;
   }
 }
 

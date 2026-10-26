@@ -193,21 +193,25 @@ export function ProgressChart({
   points,
   label,
   unit,
+  /** Load convention of this series, so "20 kg" cannot read as a total. */
+  loadBasisLabel = null,
 }: {
   points: readonly { date: string; value: number }[];
   label: string;
   unit: string;
+  loadBasisLabel?: string | null;
 }) {
   const data = points.map((point) => ({
     ...point,
     label: dateLabel(point.date),
   }));
+  const qualified = loadBasisLabel ? `${label} (${loadBasisLabel})` : label;
   return (
     <>
       <div
         className="chart"
         role="img"
-        aria-label={`${label} in ${unit}: ${
+        aria-label={`${qualified} in ${unit}: ${
           data
             .map((point) => `${point.label}: ${formatNumber(point.value, 1)}`)
             .join("; ") || "keine Messpunkte"
@@ -243,14 +247,16 @@ export function ProgressChart({
             <Tooltip
               contentStyle={tooltipStyle}
               formatter={(value) => [
-                `${formatNumber(Number(value), 1)} ${unit}`,
+                `${formatNumber(Number(value), 1)} ${unit}${
+                  loadBasisLabel ? ` · ${loadBasisLabel}` : ""
+                }`,
                 label,
               ]}
             />
             <Line
               type="monotone"
               dataKey="value"
-              name={label}
+              name={qualified}
               stroke="#199d7c"
               strokeWidth={2.5}
               // A single logged set must still be visible, so the dot is drawn.
@@ -268,7 +274,7 @@ export function ProgressChart({
         </ResponsiveContainer>
       </div>
       <DataTable
-        caption={`${label} je Trainingstag`}
+        caption={`${qualified} je Trainingstag`}
         unit={unit}
         rows={points.map((point) => ({
           key: point.date,

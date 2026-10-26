@@ -40,9 +40,15 @@ export function WorkoutHistoryView({
   const [period, setPeriod] = useState<PeriodValue>({});
   const [planId, setPlanId] = useState<string>();
   const [sessionName, setSessionName] = useState<string>();
-  const [includeAllStatuses, setIncludeAllStatuses] = useState(false);
+  // Opening a specific session must find it whatever its status is: the
+  // overview also lists cancelled sessions, and the default listing does not.
+  const [includeAllStatuses, setIncludeAllStatuses] = useState(
+    initialWorkoutId !== undefined,
+  );
   const [offset, setOffset] = useState(0);
   const [selectedId, setSelectedId] = useState(initialWorkoutId);
+  /** True while a specific session was asked for and has not been found yet. */
+  const [requestedId, setRequestedId] = useState(initialWorkoutId);
 
   // A narrowed filter must start at the first page again.
   useEffect(() => {
@@ -61,9 +67,16 @@ export function WorkoutHistoryView({
   });
 
   const workouts = history.data?.workouts ?? [];
-  const selected =
-    workouts.find((workout) => workout.workout_id === selectedId) ??
-    workouts[0];
+  const found = workouts.find((workout) => workout.workout_id === selectedId);
+  /**
+   * No silent substitution. Falling back to `workouts[0]` meant that clicking a
+   * cancelled session in the overview opened a *different* session and
+   * presented it as the answer. A session that was explicitly requested is
+   * either shown or reported as not in the current filter.
+   */
+  const selected = found ?? (requestedId ? undefined : workouts[0]);
+  const requestedMissing =
+    requestedId !== undefined && !found && !history.loading && !history.error;
 
   return (
     <>
@@ -101,6 +114,17 @@ export function WorkoutHistoryView({
       {history.error && (
         <ErrorState message={history.error} onRetry={history.reload} />
       )}
+      {requestedMissing && (
+        <StatusNotice
+          notice={{
+            code: "filter_empty",
+            severity: "warning",
+            title: "Angeforderte Trainingseinheit nicht in der Auswahl",
+            message:
+              "Die aufgerufene Einheit liegt außerhalb der aktuellen Filter. Zeitraum, Plan oder Einheit anpassen, um sie zu sehen.",
+          }}
+        />
+      )}
       {history.data?.notices.map((notice) => (
         <StatusNotice key={notice.code} notice={notice} />
       ))}
@@ -126,7 +150,10 @@ export function WorkoutHistoryView({
                   key={workout.workout_id}
                   workout={workout}
                   selected={selected?.workout_id === workout.workout_id}
-                  onSelect={setSelectedId}
+                  onSelect={(id) => {
+                    setSelectedId(id);
+                    setRequestedId(undefined);
+                  }}
                 />
               ))}
               {(offset > 0 || history.data?.has_more) && (

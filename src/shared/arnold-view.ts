@@ -50,10 +50,19 @@ export const ViewMetricSchema = z.object({
   value: z.number().finite().nullable(),
   unit: MetricUnitSchema,
   status: MetricStatusSchema,
-  /** German explanation, present exactly when the value is not fully valid. */
+  /**
+   * German explanation. Present whenever the engine attached a reason — which
+   * includes a correctly computed value that carries a caveat, such as a load
+   * that is per implement rather than a total.
+   */
   note: z.string().nullable(),
   /** Optional secondary line, e.g. what the number is based on. */
   detail: z.string().nullable(),
+  /**
+   * The load convention this number follows, when it is a load at all. Without
+   * it a dumbbell's "20 kg" is indistinguishable from a 20 kg total.
+   */
+  load_basis: ArnoldLoadBasisSchema.nullable().default(null),
 });
 export type ViewMetric = z.infer<typeof ViewMetricSchema>;
 
@@ -384,6 +393,10 @@ export const ArnoldExerciseProgressViewSchema = z.object({
   last_training_date: isoDate.nullable(),
   /** Execution variants kept apart, so incomparable loads stay separate. */
   variants: z.array(ExerciseVariantSchema),
+  /** Comparability class the headline max load belongs to. */
+  max_comparable_load_comparability: ComparabilitySchema.nullable(),
+  /** Comparability class the headline 1RM estimate belongs to. */
+  best_estimated_1rm_comparability: ComparabilitySchema.nullable(),
   kpis: z.array(ViewMetricSchema),
   /** The series the caller asked for; `points` are real measurements only. */
   selected_metric: ProgressMetricKeySchema,

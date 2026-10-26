@@ -10,6 +10,7 @@
 import {
   type ArnoldDataset,
   type ArnoldExercise,
+  type ArnoldLoadBasis,
   type ArnoldPlanVersion,
   type ArnoldSet,
   type ArnoldWorkout,
@@ -118,6 +119,7 @@ export function viewMetric(
   label: string,
   value: MetricValue,
   detail: string | null = null,
+  loadBasis: ArnoldLoadBasis | null = null,
 ): ViewMetric {
   return {
     key,
@@ -127,6 +129,7 @@ export function viewMetric(
     status: value.status,
     note: reasonNote(value),
     detail,
+    load_basis: loadBasis,
   };
 }
 
@@ -174,6 +177,51 @@ function sourceOf(
     metrics_version: analytics.metadata.metrics_version,
     generated_at: context.generatedAt,
   };
+}
+
+/**
+ * Whether a workout falls inside the selected view.
+ *
+ * The overview's lists used to be built from the unfiltered dataset, so a
+ * selection covering January 2030 still listed five sessions from 2026. Status
+ * is deliberately not part of this: the dashboard filter has no status
+ * dimension, and a cancelled session is still something that happened in the
+ * period.
+ */
+function withinSelection(
+  workout: ArnoldWorkout,
+  filter: AnalyticsFilter,
+  setsOf: (id: string) => readonly ArnoldSet[],
+): boolean {
+  const date = workout.workout_date_local;
+  if (filter.from && date < filter.from) return false;
+  if (filter.to && date > filter.to) return false;
+  if (filter.workout_ids && !filter.workout_ids.includes(workout.workout_id))
+    return false;
+  if (
+    filter.plan_version_ids &&
+    (workout.plan_version_id === null ||
+      !filter.plan_version_ids.includes(workout.plan_version_id))
+  )
+    return false;
+  if (
+    filter.session_ids &&
+    (workout.session_id === null ||
+      !filter.session_ids.includes(workout.session_id))
+  )
+    return false;
+  if (filter.exercise_ids) {
+    const sets = setsOf(workout.workout_id);
+    if (
+      !sets.some(
+        (set) =>
+          set.status === "active" &&
+          filter.exercise_ids!.includes(set.exercise_id),
+      )
+    )
+      return false;
+  }
+  return true;
 }
 
 /** Name recorded with the sets, so history survives catalog and plan changes. */
@@ -465,25 +513,32 @@ function exerciseNames(dataset: ArnoldDataset): ReadonlyMap<string, string> {
 }
 
 /**
- * Working sets are a count, not a volume, so the number comes from the engine's
- * own coverage on the working-set bucket rather than from a second pass over the
- * set list. No eligible set at all is a genuine zero; sets that exist but could
- * not be counted stay unknown.
+ * How many working sets were recorded.
+ *
+ * This is a count of sets, not a sum of volume, and the two must not be
+ * conflated: `coverage.included_sets` counts the sets that contributed to the
+ * volume *total*, so a perfectly valid bodyweight set — whose load is unknown —
+ * dropped out of it and the dashboard reported one set fewer than the history.
+ * `eligible_sets` is the count of working sets the engine admitted, which is
+ * the number being asked for here and stays correct when a load is unknown.
  */
 function workingSetKpi(analytics: ArnoldDashboardAnalytics): ViewMetric {
   const bucket = analytics.volume.by_bucket.working;
-  const counted = bucket?.coverage?.included_sets ?? null;
+  const counted = bucket?.coverage?.eligible_sets ?? null;
+  const computable = bucket?.coverage?.included_sets ?? null;
   return {
     key: "working_sets",
     label: "Gültige Arbeitssätze",
     value: counted,
     unit: "sets",
-    status: counted === null ? "not_available" : (bucket?.status ?? "valid"),
+    // The count itself is exact even when no volume could be derived from it.
+    status: counted === null ? "not_available" : "valid",
     note:
-      counted === null
-        ? "Im gewählten Zeitraum liegen keine auswertbaren Arbeitssätze vor."
+      counted !== null && computable !== null && computable < counted
+        ? `Bei ${counted - computable} dieser Sätze ließ sich kein Trainingsvolumen berechnen; gezählt werden sie trotzdem.`
         : null,
     detail: "Sätze, die in die Kennzahlen eingehen",
+    load_basis: null,
   };
 }
 
@@ -576,7 +631,14 @@ export function buildDashboardView(
       nominal_volume: week.nominal_volume.value,
       nominal_volume_status: week.nominal_volume.status,
     })),
-    recent_workouts: [...dataset.workouts]
+    recent_workouts: dataset.workouts
+      .filter((workout) =>
+        withinSelection(
+          workout,
+          analytics.metadata.filter,
+          (id) => setsByWorkout.get(id) ?? [],
+        ),
+      )
       .sort((a, b) =>
         a.workout_date_local === b.workout_date_local
           ? a.workout_id < b.workout_id
@@ -668,15 +730,23 @@ export function buildDashboardView(
     exercises: exerciseOptions(dataset),
     session_names: [
       ...new Set(
-        dataset.workouts.flatMap((workout) => {
-          const title = workoutTitle(
-            workout,
-            (setsByWorkout.get(workout.workout_id) ?? []).filter(
-              (s) => s.status === "active",
+        dataset.workouts
+          .filter((workout) =>
+            withinSelection(
+              workout,
+              analytics.metadata.filter,
+              (id) => setsByWorkout.get(id) ?? [],
             ),
-          );
-          return title ? [title] : [];
-        }),
+          )
+          .flatMap((workout) => {
+            const title = workoutTitle(
+              workout,
+              (setsByWorkout.get(workout.workout_id) ?? []).filter(
+                (s) => s.status === "active",
+              ),
+            );
+            return title ? [title] : [];
+          }),
       ),
     ].sort((a, b) => a.localeCompare(b, "de")),
     data_quality: {
@@ -826,7 +896,18 @@ export function buildWorkoutHistoryView(
   } satisfies ArnoldWorkoutHistoryView);
 }
 
+/**
+ * Progress KPIs, each load-bearing one tagged with the convention it follows.
+ *
+ * Without the tag the interface shows "20 kg" for a dumbbell held in each hand
+ * and for a 20 kg barbell alike, which is the one confusion the whole load
+ * model exists to prevent.
+ */
 function progressKpis(progress: ExerciseProgress): ViewMetric[] {
+  const maxBasis =
+    progress.max_comparable_load_comparability?.load_basis ?? null;
+  const oneRmBasis =
+    progress.best_estimated_1rm_comparability?.load_basis ?? null;
   return [
     viewMetric("workouts", "Einheiten mit dieser Übung", progress.workouts),
     viewMetric("working_sets", "Arbeitssätze", progress.working_sets),
@@ -834,20 +915,37 @@ function progressKpis(progress: ExerciseProgress): ViewMetric[] {
       "max_comparable_load",
       "Maximale vergleichbare Last",
       progress.max_comparable_load,
+      null,
+      maxBasis,
     ),
     viewMetric(
       "best_estimated_1rm",
       "Bestes geschätztes 1RM",
       progress.best_estimated_1rm,
+      null,
+      oneRmBasis,
     ),
     viewMetric(
       "last_working_load",
       "Letzte Arbeitslast",
       progress.last_working_load,
+      null,
+      LOAD_REFERENCE_BASIS[progress.last_working_load_reference ?? "total"] ??
+        null,
     ),
     viewMetric("nominal_volume", "Nominales Volumen", progress.nominal_volume),
   ];
 }
+
+/** The engine's load *reference* mapped onto the schema's load basis. */
+const LOAD_REFERENCE_BASIS: Partial<Record<string, ArnoldLoadBasis>> = {
+  total: "total",
+  per_implement: "per_implement",
+  machine_display: "machine_display",
+  added_external: "added",
+  assistance: "assistance",
+  bodyweight: "bodyweight_only",
+};
 
 /**
  * Builds the progress payload for exactly one exercise.
@@ -924,6 +1022,10 @@ export function buildExerciseProgressView(
     first_training_date: progress?.first_training_date ?? null,
     last_training_date: progress?.last_training_date ?? null,
     variants: progress ? [...progress.variants] : [],
+    max_comparable_load_comparability:
+      progress?.max_comparable_load_comparability ?? null,
+    best_estimated_1rm_comparability:
+      progress?.best_estimated_1rm_comparability ?? null,
     kpis: progress
       ? progressKpis(progress)
       : PROGRESS_METRICS.map((entry) => ({
@@ -934,6 +1036,7 @@ export function buildExerciseProgressView(
           status: "not_available" as const,
           note: "Für diese Übung liegen noch keine Daten vor.",
           detail: null,
+          load_basis: null,
         })),
     selected_metric: metric,
     selected_series: selected,
