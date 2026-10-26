@@ -60,6 +60,12 @@ export function MetricCard({
   icon?: typeof Dumbbell;
 }) {
   const shown = metricDisplay(metric);
+  // A load without its convention is ambiguous, so the basis is shown right at
+  // the number rather than only in a table further down the page.
+  const basis =
+    metric.load_basis && metric.load_basis !== "total"
+      ? LOAD_BASIS_LABEL[metric.load_basis]
+      : null;
   return (
     <Card className={`stat-card ${shown.known ? "" : "metric-unknown"}`}>
       <div className="stat-top">
@@ -74,10 +80,14 @@ export function MetricCard({
         {shown.value}
         {shown.unit && <span>{shown.unit}</span>}
       </div>
+      {basis && shown.known && <div className="stat-basis">{basis}</div>}
       <div className="stat-detail">
         {shown.known ? metric.detail : (metric.note ?? metric.detail)}
       </div>
-      {shown.known && metric.status !== "valid" && metric.note && (
+      {/* A caveat can accompany a correctly computed value — a per-implement
+          load is `valid` and still must not be read as a total — so the note is
+          shown whenever the engine attached one. */}
+      {shown.known && metric.note && (
         <div className="stat-caveat">{metric.note}</div>
       )}
     </Card>

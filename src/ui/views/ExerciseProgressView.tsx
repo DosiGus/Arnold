@@ -31,8 +31,8 @@ import {
   EXECUTION_MODE_LABEL,
   formatNumber,
   LOAD_BASIS_LABEL,
-  metricDisplay,
   SIDE_LABEL,
+  UNKNOWN,
 } from "../format";
 
 export function ExerciseProgressView({
@@ -65,6 +65,20 @@ export function ExerciseProgressView({
   const progress = useExerciseProgress(client, exerciseId, metric, period);
   const view = progress.data;
   const selectedMeta = PROGRESS_METRICS.find((m) => m.key === metric)!;
+  // The engine states which convention the plotted series follows; a total load
+  // needs no label, anything else does.
+  const seriesBasis = (() => {
+    const reference = view?.selected_series?.load_reference ?? null;
+    if (!reference || reference === "total") return null;
+    const map: Record<string, string> = {
+      per_implement: LOAD_BASIS_LABEL.per_implement,
+      machine_display: LOAD_BASIS_LABEL.machine_display,
+      added_external: LOAD_BASIS_LABEL.added,
+      assistance: LOAD_BASIS_LABEL.assistance,
+      bodyweight: LOAD_BASIS_LABEL.bodyweight_only,
+    };
+    return map[reference] ?? null;
+  })();
 
   if (!dashboard.exercises.length)
     return (
@@ -160,10 +174,12 @@ export function ExerciseProgressView({
               points={view.selected_series.points}
               label={selectedMeta.label}
               unit={selectedMeta.unit}
+              loadBasisLabel={seriesBasis}
             />
             <div className="chart-caption">
               <span className="legend-dot" aria-hidden="true" />
               {selectedMeta.label}
+              {seriesBasis ? ` · ${seriesBasis}` : ""}
               <span>
                 {view.selected_series.points.length} Messpunkte ·
                 Zusammenfassung pro Tag:{" "}
@@ -197,56 +213,52 @@ export function ExerciseProgressView({
               <p>Lasten werden nur innerhalb einer Ausführung verglichen</p>
             </div>
           </div>
-          <table className="set-list">
-            <caption className="visually-hidden">
-              Geloggte Ausführungsarten dieser Übung
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col">Ausführung</th>
-                <th scope="col">Gewichtsdefinition</th>
-                <th scope="col">Arbeitssätze</th>
-                <th scope="col">Max. Last</th>
-              </tr>
-            </thead>
-            <tbody>
-              {view.variants.map((variant) => {
-                const max = metricDisplay({
-                  ...variant.max_load,
-                  key: "max",
-                  label: "Max",
-                  note: null,
-                  detail: null,
-                });
-                return (
-                  <tr key={variant.comparability.key}>
-                    <th scope="row">
-                      {variant.comparability.side &&
-                      variant.comparability.execution_mode === "unilateral"
-                        ? SIDE_LABEL[variant.comparability.side]
-                        : EXECUTION_MODE_LABEL[
-                            variant.comparability.execution_mode
-                          ]}
-                      {variant.comparability.implement_count > 1 && (
-                        <small>
-                          {" "}
-                          · {variant.comparability.implement_count} Hanteln
-                        </small>
-                      )}
-                    </th>
-                    <td>
-                      {LOAD_BASIS_LABEL[variant.comparability.load_basis]}
-                    </td>
-                    <td>{formatNumber(variant.working_sets, 0)}</td>
-                    <td>
-                      {max.value}
-                      {max.unit ? ` ${max.unit}` : ""}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="table-scroll">
+            <table className="set-list">
+              <caption className="visually-hidden">
+                Geloggte Ausführungsarten dieser Übung
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Ausführung</th>
+                  <th scope="col">Gewichtsdefinition</th>
+                  <th scope="col">Arbeitssätze</th>
+                  <th scope="col">Max. Last</th>
+                </tr>
+              </thead>
+              <tbody>
+                {view.variants.map((variant) => {
+                  const max =
+                    variant.max_load.value === null
+                      ? UNKNOWN
+                      : `${formatNumber(variant.max_load.value, 1)} kg`;
+                  return (
+                    <tr key={variant.comparability.key}>
+                      <th scope="row">
+                        {variant.comparability.side &&
+                        variant.comparability.execution_mode === "unilateral"
+                          ? SIDE_LABEL[variant.comparability.side]
+                          : EXECUTION_MODE_LABEL[
+                              variant.comparability.execution_mode
+                            ]}
+                        {variant.comparability.implement_count > 1 && (
+                          <small>
+                            {" "}
+                            · {variant.comparability.implement_count} Hanteln
+                          </small>
+                        )}
+                      </th>
+                      <td>
+                        {LOAD_BASIS_LABEL[variant.comparability.load_basis]}
+                      </td>
+                      <td>{formatNumber(variant.working_sets, 0)}</td>
+                      <td>{max}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </Card>
       )}
 

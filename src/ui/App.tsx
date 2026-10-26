@@ -129,7 +129,7 @@ export function ArnoldApp({
     setError("");
     setSuccess("");
     try {
-      await client.call("get_dashboard_data");
+      await client.callAndPublish("get_dashboard_data");
       setSuccess("Trainingsdaten aktualisiert.");
     } catch (e) {
       setError((e as Error).message);
@@ -148,7 +148,9 @@ export function ArnoldApp({
     setPending(true);
     setError("");
     try {
-      await client.call("reset_demo_data", { confirmDemoReset: true });
+      await client.callAndPublish("reset_demo_data", {
+        confirmDemoReset: true,
+      });
       setResetOpen(false);
       setSuccess("Demo zurückgesetzt · 12 Workouts und 108 Sätze.");
     } catch (e) {
@@ -1324,7 +1326,7 @@ function Logger({ client, data }: { client: ArnoldClient; data: Dashboard }) {
     if (attempt.current?.signature !== signature)
       attempt.current = { signature, key: crypto.randomUUID() };
     try {
-      await client.call("log_demo_set", {
+      await client.callAndPublish("log_demo_set", {
         ...input,
         requestId: attempt.current.key,
       });

@@ -146,13 +146,10 @@ describe("replayed tool results on reopening a chat", () => {
     expect(errors.join(" ")).toContain("Aktualisierung fehlgeschlagen");
   });
 
-  it("clears the stale marking once a later refresh succeeds", async () => {
+  it("clears the stale marking when the host delivers fresh data later", async () => {
     const stale = v2Payload("2026-10-01T08:00:00Z");
-    const fresh = v2Payload("2026-10-25T09:00:00Z");
-    let reachable = false;
     fake.responses.set("get_arnold_dashboard_v2", () => {
-      if (!reachable) throw new Error("Google Sheets nicht erreichbar.");
-      return okResult(fresh);
+      throw new Error("Google Sheets nicht erreichbar.");
     });
     const { client, payloads, staleFlags } = await bootClient();
     await client.connect();
@@ -160,14 +157,34 @@ describe("replayed tool results on reopening a chat", () => {
     fake.ontoolresult!(okResult(stale));
     await vi.waitFor(() => expect(staleFlags.at(-1)).toBe(true));
 
-    // The user presses "Aktualisieren" once the source is reachable again; the
-    // banner must disappear rather than outlive the problem it described.
-    reachable = true;
-    await client.call("get_arnold_dashboard_v2");
+    // A later live host result supersedes the replay and clears the marking.
+    fake.ontoolresult!(okResult(v2Payload("2026-10-25T09:00:00Z")));
     expect(staleFlags.at(-1)).toBe(false);
     expect(asV2(payloads.at(-1)!).source.generated_at).toBe(
       "2026-10-25T09:00:00Z",
     );
+  });
+
+  it("does not publish the answer to a call the interface made itself", async () => {
+    // T3-02: publishing call results fed them back into the dashboard hook's
+    // dependencies and produced an unbounded request loop.
+    fake.responses.set("get_arnold_dashboard_v2", () =>
+      okResult(v2Payload("2026-10-25T09:00:00Z")),
+    );
+    const { client, payloads } = await bootClient();
+    await client.connect();
+    const content = await client.call("get_arnold_dashboard_v2");
+    expect(content).toBeTruthy();
+    expect(payloads).toEqual([]);
+  });
+
+  it("still adopts state for the demo screens via callAndPublish", async () => {
+    fake.responses.set("get_dashboard_data", () => okResult(v1Payload));
+    const { client, payloads } = await bootClient();
+    await client.connect();
+    await client.callAndPublish("get_dashboard_data");
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0].contract).toBe("v1");
   });
 
   it("re-asks with the tool that matches the replayed contract", async () => {

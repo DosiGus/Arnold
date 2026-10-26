@@ -48,10 +48,12 @@ const WEEKLY_TABS: { id: WeeklyMetric; label: string }[] = [
 
 export function OverviewView({
   view,
+  loading = false,
   onOpenWorkout,
   onOpenProgress,
 }: {
   view: ArnoldDashboardView;
+  loading?: boolean;
   onOpenWorkout: (workoutId: string) => void;
   onOpenProgress: () => void;
 }) {
@@ -59,6 +61,11 @@ export function OverviewView({
 
   if (view.state === "empty_history" || view.state === "master_template")
     return <FirstRun view={view} />;
+
+  // A tracker with history but no sessions in the selected period is a filter
+  // result, not a new tracker. Showing the welcome screen here would claim the
+  // user has never trained.
+  const emptySelection = view.totals.workouts_in_period === 0;
 
   return (
     <>
@@ -75,11 +82,22 @@ export function OverviewView({
         </span>
       </div>
 
+      {emptySelection && (
+        <StatusNotice
+          notice={{
+            code: "filter_empty",
+            severity: "info",
+            title: "Keine Einheiten im gewählten Zeitraum",
+            message:
+              "Für diesen Zeitraum liegen keine abgeschlossenen Trainingseinheiten vor. Die Kennzahlen beziehen sich deshalb auf eine leere Auswahl.",
+          }}
+        />
+      )}
       {view.notices.map((notice) => (
         <StatusNotice key={notice.code} notice={notice} />
       ))}
 
-      <div className="stats-grid">
+      <div className="stats-grid" aria-busy={loading}>
         {view.kpis.map((metric) => (
           <MetricCard
             key={metric.key}
@@ -184,7 +202,11 @@ export function OverviewView({
           <div className="card-heading">
             <div>
               <h2>Zuletzt auf der Trainingsfläche</h2>
-              <p>Deine letzten Einheiten auf einen Blick</p>
+              <p>
+                {view.period.from || view.period.to
+                  ? "Einheiten im gewählten Zeitraum"
+                  : "Deine letzten Einheiten auf einen Blick"}
+              </p>
             </div>
           </div>
           <div className="workout-list">
@@ -197,7 +219,13 @@ export function OverviewView({
                 />
               ))
             ) : (
-              <EmptyState text="Noch keine Trainingseinheiten erfasst." />
+              <EmptyState
+                text={
+                  view.period.from || view.period.to
+                    ? "Im gewählten Zeitraum liegen keine Einheiten."
+                    : "Noch keine Trainingseinheiten erfasst."
+                }
+              />
             )}
           </div>
         </Card>

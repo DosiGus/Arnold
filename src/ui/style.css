@@ -3328,3 +3328,32 @@ footer > span:first-child {
     flex-direction: column;
   }
 }
+/* The load convention, shown directly under a load figure. */
+.stat-basis {
+  margin-top: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--green);
+  letter-spacing: 0.01em;
+}
+.overview-filters {
+  margin-bottom: 18px;
+}
+
+@media (max-width: 760px) {
+  /* T3-09: every wide table scrolls inside its own card, not the page. The
+     earlier rule covered only the workout history's tables, so the progress
+     view's variant table pushed the page to 440px on a 390px screen. */
+  .card > .set-list,
+  .progress-chart-card .set-list,
+  .card > table.set-list {
+    display: block;
+    overflow-x: auto;
+  }
+}
+
+/* Horizontal scope for any table that can exceed a narrow viewport. */
+.table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
