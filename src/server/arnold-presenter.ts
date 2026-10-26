@@ -91,12 +91,18 @@ export const REASON_TEXT: Record<AnalyticsReason, string> = {
     "Die vorhandenen Sätze lassen keine Berechnung dieser Kennzahl zu.",
   no_previous_reference_value: "Es gibt noch keinen Vergleichswert.",
   weekly_goal_not_configured: "Es ist noch kein Wochenziel hinterlegt.",
+  aggregate_not_finite:
+    "Die Summe liegt außerhalb des darstellbaren Zahlenbereichs.",
   plan_days_per_week_not_configured:
     "Im Trainingsplan sind keine Trainingstage pro Woche hinterlegt.",
   plan_target_sets_not_configured: "Im Trainingsplan fehlen Zielsätze.",
   no_plan_version_applicable: "Für diesen Zeitraum gilt kein Trainingsplan.",
   workout_not_attributable_to_plan:
     "Diese Einheit lässt sich keinem Trainingsplan zuordnen.",
+  plan_changed_within_week:
+    "In dieser Woche galten zwei Trainingspläne, das Wochenziel ist dadurch nicht eindeutig.",
+  working_set_not_planned:
+    "Einzelne Arbeitssätze gehören zu keiner geplanten Übung dieser Einheit.",
 };
 
 /** Joins the reasons behind a metric into one short sentence, or `null`. */

@@ -6,7 +6,7 @@ import {
   REASON_TEXT,
   reasonNote,
 } from "../src/server/arnold-presenter";
-import { AnalyticsReasonSchema } from "../src/analytics/types";
+import { AnalyticsReasonSchema, METRICS_VERSION } from "../src/analytics/types";
 import { ARNOLD_UI_CONTRACT } from "../src/shared/arnold-view";
 import {
   dataset,
@@ -31,7 +31,7 @@ describe("ArnoldDataset to dashboard DTO", () => {
     expect(result.source.synthetic).toBe(false);
     expect(result.source.generated_at).toBe(CONTEXT.generatedAt);
     expect(result.source.schema_id).toBe("arnold.training_raw");
-    expect(result.source.metrics_version).toBe("1.0.0");
+    expect(result.source.metrics_version).toBe(METRICS_VERSION);
   });
 
   it("takes every KPI from the analytics engine rather than recomputing it", () => {
