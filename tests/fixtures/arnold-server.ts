@@ -1,3 +1,4 @@
+import { createFixtureLogging } from "../../src/server/workout/fixture";
 /**
  * Fixture servers for the Arnold v2 browser tests.
  *
@@ -47,3 +48,9 @@ createHttpApp({
     },
   }),
 }).listen(8794, "127.0.0.1");
+
+/** Isolated writable synthetic tracker for Task 004 browser coverage. */
+createHttpApp({ ...common, workoutRuntime: createFixtureLogging() }).listen(
+  8795,
+  "127.0.0.1",
+);

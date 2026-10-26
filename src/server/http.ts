@@ -1,3 +1,5 @@
+import { createFixtureLogging, writeModeFromEnv } from "./workout/fixture.js";
+import type { WorkoutLoggingService } from "./workout/service.js";
 import { createMcpExpressApp } from "@modelcontextprotocol/express";
 import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
 import type { NextFunction, Request, Response } from "express";
@@ -19,6 +21,11 @@ export interface ServerOptions {
   storage?: StorageAdapter;
   /** Arnold schema v1 read source; selects the v2 dashboard mode. */
   arnoldSource?: ArnoldDataSource;
+  workoutRuntime?: {
+    source: ArnoldDataSource;
+    service: WorkoutLoggingService;
+    actorContext?: (request: Request) => Promise<unknown>;
+  };
   root?: string;
   allowedOrigins?: string[];
   allowedHosts?: string[];
@@ -26,9 +33,27 @@ export interface ServerOptions {
 }
 export function createHttpApp(options: ServerOptions = {}) {
   const root = options.root ?? process.cwd();
+  const mode = writeModeFromEnv();
+  const runtime =
+    options.workoutRuntime ??
+    (mode === "fixture" && !options.storage && !options.arnoldSource
+      ? createFixtureLogging()
+      : undefined);
+  if (runtime && (options.storage || options.arnoldSource))
+    throw new Error(
+      "Workout-Runtime muss denselben Lese- und Schreibpfad besitzen.",
+    );
+  if (
+    runtime?.service.mode === "test_sheet" &&
+    !("actorContext" in runtime && runtime.actorContext)
+  )
+    throw new Error(
+      "Test-Sheet benötigt einen geprüften Request-Authentifizierer.",
+    );
   // Exactly one of the two data paths is active per process: the legacy demo /
   // Sheets storage, or the Arnold schema v1 source behind the v2 tools.
   const arnoldSource =
+    runtime?.source ??
     options.arnoldSource ??
     (options.storage === undefined && isArnoldMode()
       ? createArnoldSource(root)
@@ -115,16 +140,23 @@ export function createHttpApp(options: ServerOptions = {}) {
   );
   app.get("/", (_req, res) => res.redirect("/preview"));
   app.get("/preview", (_req, res) =>
-    res.sendFile(resolve(root, "dist/ui/dashboard.html")),
+    res.sendFile(resolve(root, "dist/ui/dashboard.html"), {
+      dotfiles: "allow",
+    }),
   );
   app.get("/host", (_req, res) =>
-    res.sendFile(resolve(root, "dist/host/host.html")),
+    res.sendFile(resolve(root, "dist/host/host.html"), { dotfiles: "allow" }),
   );
   app.all("/mcp", async (req, res) => {
     const server = arnoldSource
       ? createArnoldV2McpServer(
           arnoldSource,
           resolve(root, "dist/ui/dashboard.html"),
+          undefined,
+          runtime?.service,
+          runtime && "actorContext" in runtime
+            ? await runtime.actorContext?.(req)
+            : undefined,
         )
       : createArnoldMcpServer(
           storage!,

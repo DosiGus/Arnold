@@ -1,3 +1,4 @@
+import { WriteResponseSchema } from "../shared/workout-contract";
 import { App } from "@modelcontextprotocol/ext-apps";
 import {
   Client,
@@ -53,7 +54,12 @@ export class ArnoldClient {
    * when a dashboard payload was actually recognised: a workout or progress
    * response says nothing about whether the overview on screen is current.
    */
-  private publish(result: CallToolResult, stale = false) {
+  private publish(result: CallToolResult, stale = false, notify = true) {
+    if (
+      result.isError &&
+      WriteResponseSchema.safeParse(result.structuredContent).success
+    )
+      return result.structuredContent;
     if (result.isError)
       throw new Error(
         result.content
@@ -63,7 +69,7 @@ export class ArnoldClient {
       );
     const content = result.structuredContent;
     const payload = this.interpret(content);
-    if (payload) {
+    if (payload && notify) {
       this.onPayload?.(payload);
       this.onStale?.(stale);
     }
@@ -136,14 +142,18 @@ export class ArnoldClient {
     }
   }
 
-  async call(name: string, args: Record<string, unknown> = {}) {
+  async call(
+    name: string,
+    args: Record<string, unknown> = {},
+    options: { publish?: boolean } = {},
+  ) {
     const result = this.app
       ? await this.app.callServerTool({ name, arguments: args })
       : ((await this.preview!.callTool({
           name,
           arguments: args,
         })) as CallToolResult);
-    return this.publish(result);
+    return this.publish(result, false, options.publish !== false);
   }
 
   async close() {

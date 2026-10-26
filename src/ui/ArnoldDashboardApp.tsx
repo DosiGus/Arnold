@@ -1,3 +1,4 @@
+import { WorkoutLoggerView } from "./views/WorkoutLoggerView";
 /**
  * Shell of the Arnold v2 dashboard.
  *
@@ -6,13 +7,14 @@
  * narrow: which view is on screen, the shared period filter, refreshing, and
  * surfacing whether the data on screen is current.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   AlertTriangle,
   ChevronRight,
   Dumbbell,
   LayoutDashboard,
   Moon,
+  Plus,
   RefreshCw,
   Sun,
   TrendingUp,
@@ -26,15 +28,20 @@ import { WorkoutHistoryView } from "./views/WorkoutHistoryView";
 import { ExerciseProgressView } from "./views/ExerciseProgressView";
 import { dateTimeLabel } from "./format";
 
-type Screen = "overview" | "history" | "progress";
+type Screen = "overview" | "history" | "progress" | "logger";
 
 const NAV = [
   { id: "overview", label: "Übersicht", icon: LayoutDashboard },
   { id: "history", label: "Workouts", icon: Dumbbell },
   { id: "progress", label: "Fortschritt", icon: TrendingUp },
+  { id: "logger", label: "Training eintragen", icon: Plus },
 ] as const;
 
 const HEADINGS: Record<Screen, { title: string; lead: string }> = {
+  logger: {
+    title: "Dein Training festhalten.",
+    lead: "Tatsächliche Sätze. Bestätigte Speicherung.",
+  },
   overview: {
     title: "Dein Training. Dein Fortschritt.",
     lead: "Kleine Schritte. Messbare Ergebnisse. Alles an einem Ort.",
@@ -61,6 +68,19 @@ export function ArnoldDashboardApp({
   /** True when the payload came from a replayed result that could not be revalidated. */
   stale: boolean;
 }) {
+  const [canWrite, setCanWrite] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void client
+      .workout()
+      .then((c) => {
+        if (active) setCanWrite(c.can_write);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [client]);
   const [screen, setScreen] = useState<Screen>("overview");
   const [workoutId, setWorkoutId] = useState<string>();
   // The overview is always unfiltered; the views own their own filters, so a
@@ -108,20 +128,22 @@ export function ArnoldDashboardApp({
         </div>
         <span className="nav-label">TRAINING</span>
         <nav aria-label="Hauptnavigation">
-          {NAV.map((item) => (
-            <button
-              key={item.id}
-              className={`nav-item ${screen === item.id ? "active" : ""}`}
-              onClick={() => go(item.id)}
-              aria-current={screen === item.id ? "page" : undefined}
-            >
-              <item.icon size={19} aria-hidden="true" />
-              <span>{item.label}</span>
-              {screen === item.id && (
-                <span className="nav-dot" aria-hidden="true" />
-              )}
-            </button>
-          ))}
+          {NAV.filter((item) => item.id !== "logger" || canWrite).map(
+            (item) => (
+              <button
+                key={item.id}
+                className={`nav-item ${screen === item.id ? "active" : ""}`}
+                onClick={() => go(item.id)}
+                aria-current={screen === item.id ? "page" : undefined}
+              >
+                <item.icon size={19} aria-hidden="true" />
+                <span>{item.label}</span>
+                {screen === item.id && (
+                  <span className="nav-dot" aria-hidden="true" />
+                )}
+              </button>
+            ),
+          )}
         </nav>
         <div className="sidebar-bottom">
           <div className="demo-card">
@@ -145,7 +167,9 @@ export function ArnoldDashboardApp({
               <small>
                 {view.source.file_role === "MASTER_TEMPLATE"
                   ? "Master-Vorlage · lesend"
-                  : "Arnold-Tracker · lesend"}
+                  : canWrite
+                    ? "Training erfassen"
+                    : "Arnold-Tracker · lesend"}
               </small>
             </span>
           </div>
@@ -254,6 +278,12 @@ export function ArnoldDashboardApp({
                   client={client}
                   dashboard={view}
                   initialWorkoutId={workoutId}
+                />
+              )}
+              {screen === "logger" && (
+                <WorkoutLoggerView
+                  client={client}
+                  onChanged={dashboard.reload}
                 />
               )}
               {screen === "progress" && (

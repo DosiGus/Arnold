@@ -2634,3 +2634,29 @@ footer > span:first-child {
     font-size: 17px;
   }
 }
+
+.workout-logger fieldset {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.workout-logger p {
+  overflow-wrap: anywhere;
+}
+.logger-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+.confirmed-sets {
+  padding-left: 22px;
+}
+.confirmed-sets li {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+.confirmed-sets button {
+  margin: 4px;
+}

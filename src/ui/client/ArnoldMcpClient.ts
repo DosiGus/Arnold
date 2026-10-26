@@ -1,3 +1,8 @@
+import {
+  WorkoutContextSchema,
+  WriteResponseSchema,
+  type WriteOperation,
+} from "../../shared/workout-contract";
 /**
  * Typed access to the Arnold v2 MCP tools.
  *
@@ -58,7 +63,49 @@ function args(query: Record<string, unknown>): Record<string, unknown> {
 }
 
 export class ArnoldMcpClient {
+  private pendingWrites = new Map<string, string>();
   constructor(private readonly client: ArnoldClient) {}
+  getPending(tracker: string) {
+    let saved = this.pendingWrites.get(tracker);
+    try {
+      saved ??=
+        sessionStorage.getItem(`arnold.workout.pending.${tracker}`) ??
+        undefined;
+    } catch {
+      /* opaque MCP App origins have no browser storage */
+    }
+    try {
+      return saved ? JSON.parse(saved) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  putPending(tracker: string, value: unknown) {
+    const saved = JSON.stringify(value);
+    this.pendingWrites.set(tracker, saved);
+    try {
+      sessionStorage.setItem(`arnold.workout.pending.${tracker}`, saved);
+    } catch {
+      /* retain in the shared client across view changes */
+    }
+  }
+  clearPending(tracker: string) {
+    this.pendingWrites.delete(tracker);
+    try {
+      sessionStorage.removeItem(`arnold.workout.pending.${tracker}`);
+    } catch {
+      /* no browser storage */
+    }
+  }
+
+  async workout(workout_id?: string) {
+    return WorkoutContextSchema.parse(
+      await this.client.call("get_workout", workout_id ? { workout_id } : {}),
+    );
+  }
+  async write(operation: WriteOperation, input: Record<string, unknown>) {
+    return WriteResponseSchema.parse(await this.client.call(operation, input));
+  }
 
   get embedded() {
     return this.client.embedded;
@@ -66,7 +113,9 @@ export class ArnoldMcpClient {
 
   async dashboard(query: DashboardQuery = {}): Promise<ArnoldDashboardView> {
     return ArnoldDashboardViewSchema.parse(
-      await this.client.call("get_arnold_dashboard_v2", args(query)),
+      await this.client.call("get_arnold_dashboard_v2", args(query), {
+        publish: false,
+      }),
     );
   }
 

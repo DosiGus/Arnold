@@ -1,3 +1,5 @@
+import { registerWorkoutTools } from "./mcp-workout.js";
+import type { WorkoutLoggingService } from "./workout/service.js";
 /**
  * MCP tools for the Arnold schema v1 dashboard.
  *
@@ -176,6 +178,8 @@ export function createArnoldV2McpServer(
   source: ArnoldDataSource,
   uiFile: string,
   clock: ArnoldServerClock = () => new Date(),
+  logging?: WorkoutLoggingService,
+  actorContext?: unknown,
 ) {
   const server = new McpServer({ name: "arnold", version: "0.5.0" });
   const sourceLabel = source.label;
@@ -367,5 +371,6 @@ export function createArnoldV2McpServer(
     },
   );
 
+  registerWorkoutTools(server, source, logging, actorContext);
   return server;
 }
