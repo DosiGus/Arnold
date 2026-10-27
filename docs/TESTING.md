@@ -41,6 +41,8 @@ Playwright startet eigene synthetische Server auf **8890–8900**, getrennt von 
 | Übernommene unabhängige Gegenproben | `qa-task003*.test.*`, `qa-task004.test.ts`, `e2e/qa-task003*.spec.ts`                                                                                   |
 | Neue S001-Regressionen              | `s001-write-recovery`, `s001-boundaries`, `s001-plan-lifecycle`, `s001-restart`, `s001-runtime`, zusätzliche Host-Race-Fälle und `e2e/s001-integration` |
 
+Bytegenaue Originalbelege unter `docs/qa/s001/inputs` sind über `.gitattributes` ausschließlich von Whitespace-Regeln ausgenommen; ihre ursprünglichen Markdown-Zeilenumbrüche und EOF-Leerzeilen bleiben für die Prüfsummen erhalten. Quellcode, Tests und aktuelle Dokumentation werden normal geprüft.
+
 Die Originalbelege und ihre Prüfsummen liegen unter [qa/s001](qa/s001/INPUT-PROVENANCE.json). API-/Portanpassungen und fachlich strengere Assertions sind im [Abschlussbericht](ARNOLD-STABILIZATION-S001-COMPLETION-REPORT.md) dokumentiert. Die Standardsuite führt die übernommenen Gegenproben mit aus; ihre Ergebnisse dürfen nicht ein zweites Mal zur Gesamtzahl addiert werden.
 
 ## Grenzen

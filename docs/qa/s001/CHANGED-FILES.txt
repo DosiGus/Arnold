@@ -1,3 +1,4 @@
+.gitattributes
 .prettierignore
 README.md
 docs/ARNOLD-METRICS-SPEC.md

@@ -1,0 +1,3 @@
+# Original handover evidence is preserved byte for byte, including Markdown
+# hard line breaks and original blank lines. Source/tests retain normal checks.
+docs/qa/s001/inputs/** -whitespace
