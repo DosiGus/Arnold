@@ -79,6 +79,26 @@ test("T3-04 progress KPI and graph explicitly identify per-dumbbell load", async
     fullPage: true,
   });
   await expect(card).toContainText("pro Hantel", { timeout: 2000 });
+  await expect(card).toContainText("Einseitig · Links · kg pro Hantel");
+  await expect(page.locator(".chart-scope")).toHaveText(
+    "Dargestellte Ausführung: Einseitig · Links · kg pro Hantel",
+  );
+  await page
+    .getByLabel("Kennzahl", { exact: true })
+    .selectOption("estimated_1rm");
+  await expect(page.locator(".chart-scope")).toContainText("Einseitig · Links");
+  await expect(
+    page.locator(".stat-card").filter({ hasText: "Bestes geschätztes 1RM" }),
+  ).toContainText("Einseitig · Links · kg pro Hantel");
+  await page
+    .getByLabel("Kennzahl", { exact: true })
+    .selectOption("nominal_volume");
+  await expect(page.locator(".chart-scope")).toHaveText(
+    "Alle Ausführungsarten",
+  );
+  await expect(page.locator(".progress-chart-card")).not.toContainText(
+    "Dargestellte Ausführung:",
+  );
 });
 
 test("T3-06 overview exposes a period filter for weekly development", async ({

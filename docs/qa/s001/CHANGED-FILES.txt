@@ -46,6 +46,7 @@ src/server/plan/versioning.ts
 src/server/workout/commit.ts
 src/server/workout/infrastructure.ts
 src/server/workout/service.ts
+src/shared/arnold-format.ts
 src/shared/arnold-schema-v1.ts
 src/shared/arnold-view.ts
 src/shared/plan-contract.ts

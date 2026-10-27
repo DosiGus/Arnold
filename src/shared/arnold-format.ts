@@ -127,6 +127,27 @@ export function formatSetLine(
   return `${formatLoad(set)} × ${formatReps(set.reps, set.reps_basis ?? "total")}`;
 }
 
+/** The full comparison class of a plotted load, including its relevant side. */
+export function formatComparability(variant: {
+  readonly execution_mode: ArnoldExecutionMode;
+  readonly side: ArnoldSide | null;
+  readonly implement_count: number;
+  readonly load_basis: ArnoldLoadBasis;
+}): string {
+  const mode = EXECUTION_MODE_LABEL[variant.execution_mode];
+  const side = variant.side ? SIDE_LABEL[variant.side] : null;
+  return [
+    mode,
+    side && side !== mode ? side : null,
+    variant.implement_count > 1
+      ? `${variant.implement_count} ${variant.load_basis === "per_implement" ? "Hanteln" : "Geräte"}`
+      : null,
+    LOAD_BASIS_LABEL[variant.load_basis],
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 /**
  * How a set was performed, as a short label, or `null` when it carries no
  * information beyond the plain two-sided default. Only the stored values are

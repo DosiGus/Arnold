@@ -29,6 +29,7 @@ import { ProgressChart } from "../components/TrendChart";
 import {
   dateLabel,
   EXECUTION_MODE_LABEL,
+  formatComparability,
   formatNumber,
   LOAD_BASIS_LABEL,
   SIDE_LABEL,
@@ -64,7 +65,8 @@ export function ExerciseProgressView({
 
   const progress = useExerciseProgress(client, exerciseId, metric, period);
   const view = progress.data;
-  const selectedMeta = PROGRESS_METRICS.find((m) => m.key === metric)!;
+  const plottedMetric = view?.selected_metric ?? metric;
+  const selectedMeta = PROGRESS_METRICS.find((m) => m.key === plottedMetric)!;
   // The engine states which convention the plotted series follows; a total load
   // needs no label, anything else does.
   const seriesBasis = (() => {
@@ -79,6 +81,20 @@ export function ExerciseProgressView({
     };
     return map[reference] ?? null;
   })();
+
+  // Only load/1RM series use the engine's dominant comparison class. Volume
+  // and repetition series aggregate all variants; never label them with one side.
+  const chartComparability =
+    plottedMetric === "max_load"
+      ? view?.max_comparable_load_comparability
+      : plottedMetric === "estimated_1rm"
+        ? view?.best_estimated_1rm_comparability
+        : null;
+  const chartScope = chartComparability
+    ? `Dargestellte Ausführung: ${formatComparability(chartComparability)}`
+    : plottedMetric === "max_load" || plottedMetric === "estimated_1rm"
+      ? null
+      : "Alle Ausführungsarten";
 
   if (!dashboard.exercises.length)
     return (
@@ -139,9 +155,29 @@ export function ExerciseProgressView({
 
       {view && (
         <div className="stats-grid" aria-busy={progress.loading}>
-          {view.kpis.slice(0, 4).map((kpi) => (
-            <MetricCard key={kpi.key} metric={kpi} />
-          ))}
+          {view.kpis.slice(0, 4).map((kpi) => {
+            const comparison =
+              kpi.key === "max_comparable_load"
+                ? view.max_comparable_load_comparability
+                : kpi.key === "best_estimated_1rm"
+                  ? view.best_estimated_1rm_comparability
+                  : null;
+            const scope = comparison
+              ? formatComparability(comparison)
+              : kpi.key === "workouts" || kpi.key === "working_sets"
+                ? "Alle Ausführungsarten"
+                : null;
+            return (
+              <MetricCard
+                key={kpi.key}
+                metric={{
+                  ...kpi,
+                  detail:
+                    [kpi.detail, scope].filter(Boolean).join(" · ") || null,
+                }}
+              />
+            );
+          })}
         </div>
       )}
 
@@ -170,9 +206,10 @@ export function ExerciseProgressView({
           />
         ) : view && !view.empty && view.selected_series ? (
           <>
+            {chartScope && <p className="chart-scope">{chartScope}</p>}
             <ProgressChart
               points={view.selected_series.points}
-              label={selectedMeta.label}
+              label={`${selectedMeta.label}${chartScope ? ` · ${chartScope}` : ""}`}
               unit={selectedMeta.unit}
               loadBasisLabel={seriesBasis}
             />

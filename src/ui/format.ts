@@ -15,6 +15,7 @@ import type { ViewMetric } from "../shared/arnold-view";
 export {
   describeSet,
   EXECUTION_MODE_LABEL,
+  formatComparability,
   formatExecution,
   formatLoad,
   formatNumber,
