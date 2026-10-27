@@ -1,0 +1,349 @@
+/**
+ * The authenticated MCP endpoint, over real HTTP.
+ *
+ * The unit tests prove the verifier refuses bad tokens. This file proves the
+ * refusals actually reach the wire the way a client needs them to: a `401`
+ * carrying a `WWW-Authenticate` challenge that points at a discoverable
+ * protected-resource document, and an `/mcp` route that cannot be reached
+ * without a token.
+ *
+ * It runs against a real `createHttpApp` and a real (if tiny) authorization
+ * server on loopback, so the JWKS fetch, the discovery validation and the
+ * bearer middleware are all genuinely exercised. Nothing here is stubbed
+ * except the issuer itself.
+ */
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createServer, type Server } from "node:http";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  Client,
+  StreamableHTTPClientTransport,
+} from "@modelcontextprotocol/client";
+import { createHttpApp } from "../src/server/http.js";
+import { JsonStorageAdapter } from "../src/server/storage.js";
+import { loadAuthConfig } from "../src/server/auth/config.js";
+import { buildAuthSurface } from "../src/server/auth/router.js";
+import { fetchAuthorizationServerMetadata } from "../src/server/auth/discovery.js";
+import { InMemoryIdentityRepository } from "../src/server/identity/repository.js";
+import type { GuardEvent } from "../src/server/auth/tool-guard.js";
+import {
+  jwksDocument,
+  makeRsaKey,
+  signJwt,
+  validClaims,
+} from "./fixtures/arnold-auth.js";
+
+const key = makeRsaKey("http-rsa-1");
+
+let issuerServer: Server;
+let issuer: string;
+let arnold: Server;
+let base: string;
+let resource: string;
+let directory: string;
+let jwksRequests = 0;
+const guardEvents: GuardEvent[] = [];
+
+/** A minimal authorization server: metadata plus a JWKS, nothing else. */
+function startIssuer(): Promise<Server> {
+  const server = createServer((req, res) => {
+    const url = req.url ?? "";
+    if (url.startsWith("/.well-known/jwks.json")) {
+      jwksRequests += 1;
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(jwksDocument(key)));
+      return;
+    }
+    if (url.startsWith("/.well-known/oauth-authorization-server")) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          issuer,
+          authorization_endpoint: `${issuer}authorize`,
+          token_endpoint: `${issuer}token`,
+          registration_endpoint: `${issuer}register`,
+          response_types_supported: ["code"],
+          grant_types_supported: ["authorization_code", "refresh_token"],
+          code_challenge_methods_supported: ["S256"],
+        }),
+      );
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  return new Promise((resolve, reject) => {
+    server.listen(0, "127.0.0.1", () => resolve(server));
+    server.once("error", reject);
+  });
+}
+
+const listen = (server: Server) =>
+  new Promise<void>((resolve, reject) => {
+    server.once("listening", () => resolve());
+    server.once("error", reject);
+  });
+
+const portOf = (server: Server) => (server.address() as { port: number }).port;
+
+beforeAll(async () => {
+  issuerServer = await startIssuer();
+  issuer = `http://127.0.0.1:${portOf(issuerServer)}/`;
+
+  directory = await mkdtemp(join(tmpdir(), "arnold-auth-http-"));
+
+  // A real app, configured as a protected resource. The port is not known
+  // until Arnold listens, so the resource identifier is pinned first and the
+  // listener bound to the same port afterwards.
+  const probe = createServer();
+  probe.listen(0, "127.0.0.1");
+  await listen(probe);
+  const port = portOf(probe);
+  await new Promise<void>((resolve) => probe.close(() => resolve()));
+
+  base = `http://127.0.0.1:${port}`;
+  resource = `${base}/mcp`;
+
+  const config = loadAuthConfig({
+    ARNOLD_ENV: "development",
+    AUTH_MODE: "oidc",
+    ARNOLD_PUBLIC_BASE_URL: base,
+    AUTH_ISSUER: issuer,
+    AUTH_JWKS_URI: `${issuer}.well-known/jwks.json`,
+  } as NodeJS.ProcessEnv);
+
+  const metadata = await fetchAuthorizationServerMetadata({ issuer });
+
+  const auth = buildAuthSurface({
+    config,
+    authorizationServerMetadata: metadata,
+    repository: new InMemoryIdentityRepository(),
+    onGuardEvent: (event) => guardEvents.push(event),
+  });
+
+  arnold = createHttpApp({
+    storage: new JsonStorageAdapter(join(directory, "demo.json")),
+    auth,
+  }).listen(port, "127.0.0.1");
+  await listen(arnold);
+});
+
+afterAll(async () => {
+  await new Promise<void>((resolve) => {
+    arnold?.close(() => resolve());
+    arnold?.closeAllConnections();
+  });
+  await new Promise<void>((resolve) => {
+    issuerServer?.close(() => resolve());
+    issuerServer?.closeAllConnections();
+  });
+  await rm(directory, { recursive: true, force: true });
+});
+
+const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
+
+/**
+ * Claims aimed at *this* deployment.
+ *
+ * The shared fixture defaults to its own synthetic issuer and audience, which
+ * are not the ones this suite boots. Pinning both here means each test below
+ * fails for the reason it names rather than incidentally on `iss`.
+ */
+const claimsFor = (overrides: Record<string, unknown> = {}) =>
+  validClaims({ iss: issuer, aud: resource, ...overrides });
+
+describe("protected resource discovery", () => {
+  it("serves RFC 9728 protected resource metadata", async () => {
+    const response = await fetch(
+      `${base}/.well-known/oauth-protected-resource/mcp`,
+    );
+    expect(response.status).toBe(200);
+    const document = (await response.json()) as {
+      resource: string;
+      authorization_servers?: string[];
+      scopes_supported?: string[];
+    };
+    expect(document.resource).toBe(resource);
+    expect(document.authorization_servers).toContain(issuer);
+    expect(document.scopes_supported).toContain("arnold.read");
+    expect(document.scopes_supported).toContain("arnold.account");
+  });
+
+  it("serves RFC 8414 authorization server metadata for legacy probes", async () => {
+    const response = await fetch(
+      `${base}/.well-known/oauth-authorization-server`,
+    );
+    expect(response.status).toBe(200);
+    const document = (await response.json()) as {
+      issuer: string;
+      code_challenge_methods_supported?: string[];
+    };
+    expect(document.issuer).toBe(issuer);
+    expect(document.code_challenge_methods_supported).toContain("S256");
+  });
+
+  it("reports the authentication mode on /health without naming the issuer", async () => {
+    const response = await fetch(`${base}/health`);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body.auth).toBe("oidc");
+    expect(JSON.stringify(body)).not.toContain("jwks");
+  });
+});
+
+describe("the /mcp gate", () => {
+  it("refuses an unauthenticated request with a discoverable challenge", async () => {
+    const response = await fetch(`${resource}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
+
+    expect(response.status).toBe(401);
+    const challenge = response.headers.get("www-authenticate") ?? "";
+    expect(challenge).toMatch(/^Bearer/);
+    // Without the pointer a client cannot find out how to authenticate.
+    expect(challenge).toContain("resource_metadata=");
+    expect(challenge).toContain("/.well-known/oauth-protected-resource");
+  });
+
+  it("refuses a garbage bearer token", async () => {
+    const response = await fetch(`${resource}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...bearer("not-a-jwt") },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
+    expect(response.status).toBe(401);
+    expect(response.headers.get("www-authenticate")).toContain("invalid_token");
+  });
+
+  it("refuses a token minted for a different resource", async () => {
+    // Same issuer, same signing key, different resource — the cross-resource
+    // replay that RFC 8707 exists to stop.
+    const token = signJwt(
+      key,
+      claimsFor({ aud: "https://someone-elses-mcp.test/mcp" }),
+    );
+    const response = await fetch(`${resource}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...bearer(token) },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
+    expect(response.status).toBe(401);
+  });
+
+  it("refuses a token from a different issuer", async () => {
+    const token = signJwt(key, claimsFor({ iss: "https://evil.test/" }));
+    const response = await fetch(`${resource}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...bearer(token) },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
+    expect(response.status).toBe(401);
+  });
+
+  it("refuses an expired token", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const token = signJwt(
+      key,
+      claimsFor({ iat: nowSec - 7200, exp: nowSec - 3600 }),
+    );
+    const response = await fetch(`${resource}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...bearer(token) },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
+    expect(response.status).toBe(401);
+  });
+
+  it("admits a valid token and completes an MCP session", async () => {
+    const token = signJwt(
+      key,
+      claimsFor({ scope: "arnold.profile arnold.read" }),
+    );
+    const client = new Client({ name: "arnold-auth-tests", version: "1.0.0" });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(resource), {
+        requestInit: { headers: bearer(token) },
+      }),
+    );
+
+    const { tools } = await client.listTools();
+    expect(tools.length).toBeGreaterThan(0);
+
+    await client.close();
+  });
+
+  it("fetched the issuer's JWKS rather than trusting configuration", () => {
+    // Proof the key material came from the issuer over the network, which is
+    // what makes rotation possible at all.
+    expect(jwksRequests).toBeGreaterThan(0);
+  });
+
+  it("does not yet run individual tools through the per-call guard", () => {
+    // Records a real, deliberate gap rather than leaving it implicit. The
+    // transport gate above is live: /mcp is unreachable without a valid
+    // token. But Arnold's tools still carry the Task 001-003 registrations,
+    // which name no access class, so nothing reaches ArnoldToolGuard and no
+    // guard event is emitted by an MCP call.
+    //
+    // Tool-level classes are applied in mcp-arnold.ts / mcp-plan.ts /
+    // mcp-workout.ts, which Tasks 004-006 are editing concurrently; that
+    // wiring lands at the merge. Until then the guard's behaviour is proven
+    // only by auth-isolation.test.ts, and this assertion fails the moment
+    // that stops being true — so the gap cannot close silently.
+    expect(guardEvents).toHaveLength(0);
+  });
+});
+
+describe("open mode keeps the pre-Task-007 profiles working", () => {
+  let openServer: Server;
+  let openBase: string;
+
+  beforeAll(async () => {
+    const config = loadAuthConfig({
+      ARNOLD_ENV: "development",
+    } as NodeJS.ProcessEnv);
+    const auth = buildAuthSurface({
+      config,
+      repository: new InMemoryIdentityRepository(),
+    });
+    openServer = createHttpApp({
+      storage: new JsonStorageAdapter(join(directory, "open.json")),
+      auth,
+    }).listen(0, "127.0.0.1");
+    await listen(openServer);
+    openBase = `http://127.0.0.1:${portOf(openServer)}`;
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => {
+      openServer?.close(() => resolve());
+      openServer?.closeAllConnections();
+    });
+  });
+
+  it("serves /mcp with no token at all", async () => {
+    const client = new Client({ name: "arnold-open-tests", version: "1.0.0" });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(`${openBase}/mcp`)),
+    );
+    const { tools } = await client.listTools();
+    expect(tools.length).toBeGreaterThan(0);
+    await client.close();
+  });
+
+  it("advertises no protected resource document, because it protects nothing", async () => {
+    const response = await fetch(
+      `${openBase}/.well-known/oauth-protected-resource/mcp`,
+    );
+    expect(response.status).toBe(404);
+  });
+
+  it("reports open mode on /health", async () => {
+    const body = (await (await fetch(`${openBase}/health`)).json()) as {
+      auth: string;
+    };
+    expect(body.auth).toBe("open");
+  });
+});

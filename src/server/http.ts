@@ -14,6 +14,8 @@ import {
   requireLoopbackOnly,
   requirePrivateBinding,
 } from "./storage-config.js";
+import { loadAuthConfig } from "./auth/config.js";
+import { buildAuthSurface, type AuthSurface } from "./auth/router.js";
 
 export interface ServerOptions {
   storage?: StorageAdapter;
@@ -23,6 +25,13 @@ export interface ServerOptions {
   allowedOrigins?: string[];
   allowedHosts?: string[];
   host?: string;
+  /**
+   * Task 007 identity surface. Built from the environment when omitted, which
+   * in development means `AUTH_MODE=open` — no bearer validation and no
+   * protected-resource advertisement, so the demo and read-only profiles of
+   * Tasks 001–003 behave exactly as before.
+   */
+  auth?: AuthSurface;
 }
 export function createHttpApp(options: ServerOptions = {}) {
   const root = options.root ?? process.cwd();
@@ -49,6 +58,8 @@ export function createHttpApp(options: ServerOptions = {}) {
     [];
   if (arnoldSource) requireLoopbackOnly(host, allowedHosts, allowedOrigins);
   else requirePrivateBinding(storage!, host, allowedHosts, allowedOrigins);
+  const auth =
+    options.auth ?? buildAuthSurface({ config: loadAuthConfig(process.env) });
   const app = createMcpExpressApp({
     host,
     allowedHosts,
@@ -99,10 +110,14 @@ export function createHttpApp(options: ServerOptions = {}) {
     }
     next();
   });
+  // Discovery first: an unauthenticated client must be able to read the
+  // protected-resource document in order to learn how to authenticate.
+  if (auth.metadataRouter) app.use(auth.metadataRouter);
   app.get("/health", (_req, res) =>
     res.json({
       status: "ok",
       app: "arnold",
+      auth: auth.summary.mode,
       synthetic: storage?.mode === "demo",
       source: arnoldSource
         ? "arnold_sheets"
@@ -120,7 +135,7 @@ export function createHttpApp(options: ServerOptions = {}) {
   app.get("/host", (_req, res) =>
     res.sendFile(resolve(root, "dist/host/host.html")),
   );
-  app.all("/mcp", async (req, res) => {
+  app.all("/mcp", auth.bearerGate, async (req, res) => {
     const server = arnoldSource
       ? createArnoldV2McpServer(
           arnoldSource,
