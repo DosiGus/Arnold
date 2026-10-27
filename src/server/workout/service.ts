@@ -20,6 +20,7 @@ import {
   WriteError,
   canonical,
   changedDataset,
+  createdAt,
   entityId,
   fingerprint,
   inspectChanges,
@@ -179,7 +180,7 @@ export class WorkoutLoggingService {
               );
               if (
                 !current ||
-                current.created_at_utc !== change.after.created_at_utc ||
+                createdAt(current) !== createdAt(change.after) ||
                 current.row_revision < change.after.row_revision ||
                 (current.row_revision === change.after.row_revision &&
                   canonical(current) !== canonical(change.after))

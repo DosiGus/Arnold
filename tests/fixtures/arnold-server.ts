@@ -1,4 +1,8 @@
 import { createFixtureLogging } from "../../src/server/workout/fixture";
+import {
+  createFixturePlanning,
+  planFixtureDataset,
+} from "../../src/server/plan/fixture";
 /**
  * Fixture servers for the Arnold v2 browser tests.
  *
@@ -52,5 +56,29 @@ createHttpApp({
 /** Isolated writable synthetic tracker for Task 004 browser coverage. */
 createHttpApp({ ...common, workoutRuntime: createFixtureLogging() }).listen(
   8795,
+  "127.0.0.1",
+);
+
+/** Isolated writable synthetic tracker for Task 005 plan-editor coverage. */
+createHttpApp({ ...common, workoutRuntime: createFixturePlanning() }).listen(
+  8796,
+  "127.0.0.1",
+);
+
+/** The first-run case for the plan editor: catalog present, no plan yet. */
+createHttpApp({
+  ...common,
+  workoutRuntime: createFixturePlanning(planFixtureDataset("empty")),
+}).listen(8797, "127.0.0.1");
+
+/** Dedicated tracker for the destructive activation flow. */
+createHttpApp({ ...common, workoutRuntime: createFixturePlanning() }).listen(
+  8798,
+  "127.0.0.1",
+);
+
+/** Dedicated tracker for the concurrent-edit conflict case. */
+createHttpApp({ ...common, workoutRuntime: createFixturePlanning() }).listen(
+  8799,
   "127.0.0.1",
 );

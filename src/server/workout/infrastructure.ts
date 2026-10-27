@@ -5,10 +5,14 @@ import { z } from "zod";
 import {
   ArnoldDatasetSchema,
   ArnoldExerciseSchema,
+  ArnoldPlanItemSchema,
+  ArnoldPlanVersionSchema,
   ArnoldSetSchema,
   ArnoldWorkoutSchema,
   type ArnoldDataset,
   type ArnoldExercise,
+  type ArnoldPlanItem,
+  type ArnoldPlanVersion,
   type ArnoldSet,
   type ArnoldWorkout,
 } from "../../shared/arnold-schema-v1.js";
@@ -17,6 +21,7 @@ import {
   type WriteResult,
   type WriteErrorCode,
 } from "../../shared/workout-contract.js";
+import { PlanWriteResultSchema } from "../../shared/plan-contract.js";
 
 export class WriteError extends Error {
   constructor(
@@ -106,15 +111,35 @@ const ChangeSchema = z.discriminatedUnion("table", [
     before: ArnoldExerciseSchema.nullable(),
     after: ArnoldExerciseSchema,
   }),
+  z.object({
+    table: z.literal("plans"),
+    before: ArnoldPlanVersionSchema.nullable(),
+    after: ArnoldPlanVersionSchema,
+  }),
+  z.object({
+    table: z.literal("planItems"),
+    before: ArnoldPlanItemSchema.nullable(),
+    after: ArnoldPlanItemSchema,
+  }),
 ]);
 export type EntityChange = z.infer<typeof ChangeSchema>;
-export type Entity = ArnoldWorkout | ArnoldSet | ArnoldExercise;
+export type Entity =
+  | ArnoldWorkout
+  | ArnoldSet
+  | ArnoldExercise
+  | ArnoldPlanVersion
+  | ArnoldPlanItem;
+/** Order matters: a set also carries workout_id and plan_item_id, a plan item a plan_version_id. */
 export const entityId = (row: Entity): string =>
   "set_id" in row
     ? row.set_id
     : "workout_id" in row
       ? row.workout_id
-      : row.exercise_id;
+      : "plan_item_id" in row
+        ? row.plan_item_id
+        : "plan_version_id" in row
+          ? row.plan_version_id
+          : row.exercise_id;
 /** Stable canonical encoding; property order cannot change an operation fingerprint. */
 export function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
@@ -150,6 +175,20 @@ export const AuditEventSchema = z.object({
     "SET_UPDATED",
     "SET_VOIDED",
     "EXERCISE_CREATED",
+    // Task 005 plan lifecycle. Business-readable, with no personal data beyond the acting subject.
+    "PLAN_CREATED",
+    "PLAN_DRAFT_CREATED",
+    "PLAN_DRAFT_UPDATED",
+    "PLAN_DRAFT_ARCHIVED",
+    "PLAN_VALIDATED",
+    "PLAN_ACTIVATED",
+    "PLAN_ARCHIVED",
+    "SESSION_ADDED",
+    "SESSION_UPDATED",
+    "SESSION_REMOVED",
+    "PLAN_EXERCISE_ADDED",
+    "PLAN_EXERCISE_REPLACED",
+    "PLAN_EXERCISE_REMOVED",
   ]),
   entity_id: z.string(),
   at: z.string(),
@@ -186,7 +225,9 @@ const EntrySchema = z.object({
   state: z.enum(["prepared", "dispatching", "committed"]),
   changes: z.array(ChangeSchema),
   audit: z.array(AuditEventSchema),
-  result: WriteResultSchema,
+  // One ledger serves workout and plan writes, so a replay is deduplicated
+  // across both domains by (tracker, request_id) rather than per service.
+  result: z.union([WriteResultSchema, PlanWriteResultSchema]),
 });
 export type LedgerEntry = z.infer<typeof EntrySchema>;
 export interface OperationLedger {
@@ -272,6 +313,48 @@ export interface ArnoldWriteRepository {
   /** One logical atomic batch. Unknown outcomes must throw COMMIT_STATUS_UNKNOWN. */
   apply(changes: readonly EntityChange[]): Promise<void>;
 }
+/** Stable columns per table: an update may never move a row's identity or its history references. */
+const STABLE_COLUMNS = {
+  workouts: [
+    "workout_id",
+    "workout_date_local",
+    "timezone",
+    "plan_version_id",
+    "session_id",
+    "session_name_snapshot",
+    "source",
+  ],
+  sets: [
+    "set_id",
+    "workout_id",
+    "exercise_id",
+    "plan_item_id",
+    "exercise_name_snapshot",
+    "exercise_order",
+    "set_number",
+    "source",
+  ],
+  // A version keeps its family and number for life; only its lifecycle and
+  // draft content may move.
+  plans: ["plan_version_id", "plan_family_id", "version_no"],
+  // A position never migrates to another version or session. Moving an exercise
+  // between sessions is a new row plus a tombstone, never an in-place edit.
+  planItems: ["plan_item_id", "plan_version_id", "session_id"],
+  exercises: [],
+} as const satisfies Record<EntityChange["table"], readonly string[]>;
+/** Fields of PLANS that describe the training content rather than the lifecycle. */
+const PLAN_CONTENT_COLUMNS = [
+  "name",
+  "split_key",
+  "goal_key",
+  "days_per_week",
+] as const;
+const field = (row: object | null, key: string) =>
+  canonical((row as Record<string, unknown> | null)?.[key]);
+/** PLAN_ITEMS carries no timestamps, so a creation time is not available for every entity. */
+export const createdAt = (row: Entity): string | undefined =>
+  "created_at_utc" in row ? row.created_at_utc : undefined;
+
 export function changedDataset(
   dataset: ArnoldDataset,
   changes: readonly EntityChange[],
@@ -279,6 +362,19 @@ export function changedDataset(
   const next = structuredClone(dataset) as {
     -readonly [K in keyof ArnoldDataset]: ArnoldDataset[K];
   };
+  // Which versions may carry position edits: judged against the pre-batch state
+  // plus the drafts this batch creates, so the verdict cannot depend on the
+  // order of changes inside one batch.
+  const draftVersions = new Set([
+    ...dataset.plans
+      .filter((plan) => plan.status === "draft")
+      .map((plan) => plan.plan_version_id),
+    ...changes.flatMap((c) =>
+      c.table === "plans" && !c.before && c.after.status === "draft"
+        ? [c.after.plan_version_id]
+        : [],
+    ),
+  ]);
   for (const change of changes) {
     const rows = [...next[change.table]] as Entity[];
     const index = rows.findIndex((r) => entityId(r) === entityId(change.after));
@@ -292,11 +388,35 @@ export function changedDataset(
       change.before &&
       (entityId(change.before) !== entityId(change.after) ||
         change.after.row_revision !== change.before.row_revision + 1 ||
-        change.after.created_at_utc !== change.before.created_at_utc)
+        field(change.before, "created_at_utc") !==
+          field(change.after, "created_at_utc"))
     )
       throw new WriteError(
         "VALIDATION_ERROR",
         "Stabile ID, Erstellungszeit oder Revision verletzt.",
+      );
+    // Plan content lives only in drafts. An activated or archived version is a
+    // historical record: its positions are frozen and only its own lifecycle
+    // columns may still change (active -> archived).
+    if (
+      change.table === "planItems" &&
+      !draftVersions.has(change.after.plan_version_id)
+    )
+      throw new WriteError(
+        "PERMISSION_DENIED",
+        "Planpositionen aktiver oder archivierter Versionen sind unveränderlich. Änderungen laufen über eine neue Draft-Version.",
+      );
+    if (
+      change.table === "plans" &&
+      change.before &&
+      change.before.status !== "draft" &&
+      PLAN_CONTENT_COLUMNS.some(
+        (key) => field(change.before, key) !== field(change.after, key),
+      )
+    )
+      throw new WriteError(
+        "PERMISSION_DENIED",
+        "Der Inhalt einer aktivierten oder archivierten Planversion ist unveränderlich.",
       );
     if (change.before) {
       if (change.table === "exercises")
@@ -304,34 +424,8 @@ export function changedDataset(
           "PERMISSION_DENIED",
           "Task 004 erlaubt keine Änderung bestehender Katalog-IDs.",
         );
-      const stable =
-        change.table === "workouts"
-          ? [
-              "workout_id",
-              "workout_date_local",
-              "timezone",
-              "plan_version_id",
-              "session_id",
-              "session_name_snapshot",
-              "source",
-            ]
-          : [
-              "set_id",
-              "workout_id",
-              "exercise_id",
-              "plan_item_id",
-              "exercise_name_snapshot",
-              "exercise_order",
-              "set_number",
-              "source",
-            ];
-      for (const key of stable)
-        if (
-          canonical(
-            (change.before as unknown as Record<string, unknown>)[key],
-          ) !==
-          canonical((change.after as unknown as Record<string, unknown>)[key])
-        )
+      for (const key of STABLE_COLUMNS[change.table])
+        if (field(change.before, key) !== field(change.after, key))
           throw new WriteError(
             "PERMISSION_DENIED",
             "Historische Identitäten und Referenzen sind unveränderlich.",

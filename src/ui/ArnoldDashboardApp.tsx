@@ -1,4 +1,5 @@
 import { WorkoutLoggerView } from "./views/WorkoutLoggerView";
+import { TrainingPlanEditorView } from "./views/TrainingPlanEditorView";
 /**
  * Shell of the Arnold v2 dashboard.
  *
@@ -11,6 +12,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   AlertTriangle,
   ChevronRight,
+  ClipboardList,
   Dumbbell,
   LayoutDashboard,
   Moon,
@@ -28,13 +30,14 @@ import { WorkoutHistoryView } from "./views/WorkoutHistoryView";
 import { ExerciseProgressView } from "./views/ExerciseProgressView";
 import { dateTimeLabel } from "./format";
 
-type Screen = "overview" | "history" | "progress" | "logger";
+type Screen = "overview" | "history" | "progress" | "logger" | "plan";
 
 const NAV = [
   { id: "overview", label: "Übersicht", icon: LayoutDashboard },
   { id: "history", label: "Workouts", icon: Dumbbell },
   { id: "progress", label: "Fortschritt", icon: TrendingUp },
   { id: "logger", label: "Training eintragen", icon: Plus },
+  { id: "plan", label: "Trainingsplan", icon: ClipboardList },
 ] as const;
 
 const HEADINGS: Record<Screen, { title: string; lead: string }> = {
@@ -54,6 +57,10 @@ const HEADINGS: Record<Screen, { title: string; lead: string }> = {
     title: "Fortschritt wird sichtbar.",
     lead: "Verstehe deine Entwicklung – Übung für Übung.",
   },
+  plan: {
+    title: "Dein Trainingsplan.",
+    lead: "Jede Struktur ist möglich. Änderungen behalten deine Historie.",
+  },
 };
 
 export function ArnoldDashboardApp({
@@ -69,12 +76,21 @@ export function ArnoldDashboardApp({
   stale: boolean;
 }) {
   const [canWrite, setCanWrite] = useState(false);
+  // Plan management is a separate capability: a deployment may publish the
+  // plan tools read-only, or not at all. Both probes fail closed.
+  const [hasPlans, setHasPlans] = useState(false);
   useEffect(() => {
     let active = true;
     void client
       .workout()
       .then((c) => {
         if (active) setCanWrite(c.can_write);
+      })
+      .catch(() => {});
+    void client
+      .planContext()
+      .then(() => {
+        if (active) setHasPlans(true);
       })
       .catch(() => {});
     return () => {
@@ -128,22 +144,24 @@ export function ArnoldDashboardApp({
         </div>
         <span className="nav-label">TRAINING</span>
         <nav aria-label="Hauptnavigation">
-          {NAV.filter((item) => item.id !== "logger" || canWrite).map(
-            (item) => (
-              <button
-                key={item.id}
-                className={`nav-item ${screen === item.id ? "active" : ""}`}
-                onClick={() => go(item.id)}
-                aria-current={screen === item.id ? "page" : undefined}
-              >
-                <item.icon size={19} aria-hidden="true" />
-                <span>{item.label}</span>
-                {screen === item.id && (
-                  <span className="nav-dot" aria-hidden="true" />
-                )}
-              </button>
-            ),
-          )}
+          {NAV.filter(
+            (item) =>
+              (item.id !== "logger" || canWrite) &&
+              (item.id !== "plan" || hasPlans),
+          ).map((item) => (
+            <button
+              key={item.id}
+              className={`nav-item ${screen === item.id ? "active" : ""}`}
+              onClick={() => go(item.id)}
+              aria-current={screen === item.id ? "page" : undefined}
+            >
+              <item.icon size={19} aria-hidden="true" />
+              <span>{item.label}</span>
+              {screen === item.id && (
+                <span className="nav-dot" aria-hidden="true" />
+              )}
+            </button>
+          ))}
         </nav>
         <div className="sidebar-bottom">
           <div className="demo-card">
@@ -288,6 +306,12 @@ export function ArnoldDashboardApp({
               )}
               {screen === "progress" && (
                 <ExerciseProgressView client={client} dashboard={view} />
+              )}
+              {screen === "plan" && (
+                <TrainingPlanEditorView
+                  client={client}
+                  onChanged={dashboard.reload}
+                />
               )}
             </>
           )}

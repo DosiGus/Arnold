@@ -2660,3 +2660,671 @@ footer > span:first-child {
 .confirmed-sets button {
   margin: 4px;
 }
+
+/* ------------------------------------------------------------------------- */
+/* Training plan editor (Task 005)                                           */
+/*                                                                           */
+/* Built from the existing tokens only, so the editor inherits the light and  */
+/* dark themes without defining a colour of its own.                         */
+/* ------------------------------------------------------------------------- */
+.plan-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 1060px;
+}
+.plan-statusbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 17px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  box-shadow: var(--shadow);
+}
+.plan-state-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: var(--green-bg);
+  color: var(--green);
+}
+.plan-state-chip.draft_invalid,
+.plan-state-chip.conflict,
+.plan-state-chip.error {
+  background: #fdf0ea;
+  color: #a2502a;
+}
+:root[data-theme="dark"] .plan-state-chip.draft_invalid,
+:root[data-theme="dark"] .plan-state-chip.conflict,
+:root[data-theme="dark"] .plan-state-chip.error {
+  background: #3a2a20;
+  color: #f0b48d;
+}
+.plan-statusbar > .plan-hint {
+  flex: 1;
+  margin: 0;
+}
+.plan-statusbar button {
+  margin-left: auto;
+}
+.plan-hint {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+}
+.plan-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 14px 17px;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  font-size: 12px;
+  line-height: 1.65;
+  margin: 0;
+}
+.plan-notice > svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.plan-notice p {
+  margin: 5px 0 0;
+  color: var(--muted);
+}
+.plan-notice.info {
+  background: var(--green-bg);
+  border-color: transparent;
+  color: var(--text);
+}
+.plan-notice.info > svg {
+  color: var(--green);
+}
+.plan-notice.success {
+  background: var(--green-bg);
+  border-color: transparent;
+}
+.plan-notice.success > svg {
+  color: var(--green);
+}
+.plan-notice.warning {
+  background: #fdf0ea;
+  border-color: transparent;
+  color: #6c3518;
+}
+.plan-notice.warning p {
+  color: #8a512f;
+}
+:root[data-theme="dark"] .plan-notice.warning {
+  background: #33241c;
+  color: #f3c5a6;
+}
+:root[data-theme="dark"] .plan-notice.warning p {
+  color: #d7a689;
+}
+.plan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+.plan-notice .plan-actions {
+  margin-top: 12px;
+}
+
+/* ---------------------------------------------------------------- overview */
+.plan-summary {
+  padding: 25px 28px;
+}
+.plan-summary-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.plan-summary-head h2 {
+  font-size: 20px;
+  margin: 0;
+}
+.plan-summary-head p {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+.plan-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 16px;
+  margin: 22px 0 0;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+.plan-facts dt {
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 650;
+}
+.plan-facts dd {
+  margin: 7px 0 0;
+  font-size: 19px;
+  font-weight: 600;
+}
+.plan-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--hover);
+  color: var(--muted);
+  margin-left: 7px;
+}
+.plan-tag.active {
+  background: var(--green-bg);
+  color: var(--green);
+}
+.plan-tag.draft {
+  background: #eef2fb;
+  color: #3c5a9a;
+}
+:root[data-theme="dark"] .plan-tag.draft {
+  background: #22304a;
+  color: #9db6e6;
+}
+.plan-tag.warning {
+  background: #fdf0ea;
+  color: #a2502a;
+}
+:root[data-theme="dark"] .plan-tag.warning {
+  background: #3a2a20;
+  color: #f0b48d;
+}
+
+/* ---------------------------------------------------------------- sessions */
+.plan-sessions {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.plan-session {
+  padding: 22px 25px;
+}
+.plan-session-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.plan-session-title {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-width: 0;
+  flex: 1;
+}
+.plan-session-title h2 {
+  font-size: 16px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.plan-session-title h3 {
+  font-size: 15px;
+  margin: 0;
+}
+.plan-session-title p {
+  margin: 5px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.plan-session-index,
+.plan-exercise-index {
+  display: grid;
+  place-items: center;
+  height: 29px;
+  width: 29px;
+  border-radius: 9px;
+  background: var(--green-bg);
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.plan-exercise-index {
+  height: 25px;
+  width: 25px;
+  border-radius: 8px;
+  font-size: 11px;
+  background: var(--hover);
+  color: var(--muted);
+}
+.plan-session-actions,
+.plan-exercise-actions {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.plan-icon-button {
+  height: 31px;
+  width: 31px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--muted);
+}
+.plan-icon-button:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+.plan-icon-button.danger:hover:not(:disabled) {
+  background: #fdf0ea;
+  color: #a2502a;
+}
+.plan-rename {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 9px;
+  flex: 1;
+}
+.plan-rename label {
+  flex: 1;
+  min-width: 160px;
+  margin: 0;
+}
+.plan-rename input {
+  margin-top: 0;
+}
+
+/* --------------------------------------------------------------- exercises */
+.plan-exercise-list {
+  list-style: none;
+  padding: 0;
+  margin: 18px 0 0;
+}
+.plan-exercise {
+  border-top: 1px solid var(--border);
+  padding: 13px 0;
+}
+.plan-exercise:first-child {
+  border-top: 0;
+}
+.plan-exercise.has-error {
+  border-left: 2px solid #d2733f;
+  padding-left: 12px;
+  margin-left: -14px;
+}
+.plan-exercise-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.plan-exercise-text {
+  flex: 1;
+  min-width: 0;
+}
+.plan-exercise-text strong {
+  font-size: 13px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  overflow-wrap: anywhere;
+}
+.plan-exercise-text small {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 5px;
+  line-height: 1.6;
+}
+.plan-issue {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+}
+.plan-issue.error {
+  color: #a2502a;
+}
+:root[data-theme="dark"] .plan-issue.error {
+  color: #f0b48d;
+}
+.plan-quick-edit {
+  margin: 14px 0 4px 37px;
+  padding: 16px 18px;
+  border-radius: 10px;
+  background: var(--hover);
+}
+.plan-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 14px;
+}
+.plan-quick-grid label {
+  margin: 0;
+}
+.plan-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+.plan-add-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 10px 15px;
+  border-radius: 9px;
+  border: 1px dashed var(--border);
+  background: none;
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 600;
+}
+.plan-add-button:hover:not(:disabled) {
+  background: var(--green-bg);
+}
+.plan-add-session {
+  justify-content: center;
+  width: 100%;
+  margin-top: 0;
+  padding: 16px;
+}
+.plan-empty {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 18px 0 0;
+}
+
+/* ----------------------------------------------------------------- dialogs */
+.plan-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: #0f1a1659;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  z-index: 40;
+}
+.plan-dialog {
+  background: var(--card);
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  width: min(560px, 100%);
+  max-height: min(84vh, 760px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 14px 44px #1324200f;
+}
+.plan-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 21px 23px 15px;
+  border-bottom: 1px solid var(--border);
+}
+.plan-dialog-head h3 {
+  margin: 0;
+  font-size: 16px;
+}
+.plan-dialog-head p {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.65;
+}
+.plan-dialog-body {
+  padding: 20px 23px;
+  overflow-y: auto;
+}
+.plan-dialog-body label {
+  display: block;
+  margin-bottom: 18px;
+}
+.plan-dialog-body .form-row label {
+  margin-bottom: 0;
+}
+.plan-dialog-body .form-row {
+  margin-bottom: 18px;
+}
+.plan-dialog-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 15px 23px 19px;
+  border-top: 1px solid var(--border);
+}
+.plan-picker-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.plan-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 12px 13px;
+  border-radius: 9px;
+  color: var(--text);
+}
+.plan-picker-item:hover:not(:disabled) {
+  background: var(--hover);
+}
+.plan-picker-name strong {
+  display: block;
+  font-size: 13px;
+}
+.plan-picker-name small {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.plan-confirm-list {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0;
+}
+.plan-confirm-list li {
+  padding: 11px 0;
+  border-top: 1px solid var(--border);
+}
+.plan-confirm-list strong {
+  font-size: 12px;
+}
+.plan-confirm-list small {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+  line-height: 1.6;
+}
+
+/* ------------------------------------------------- validation and changes */
+.plan-validation,
+.plan-changes,
+.plan-history {
+  padding: 22px 25px;
+}
+.plan-validation-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.plan-validation-head h3,
+.plan-changes h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.plan-validation-head p,
+.plan-changes p {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.65;
+}
+.plan-valid-icon {
+  color: var(--green);
+}
+.plan-headline {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text) !important;
+  margin-top: 12px !important;
+}
+.plan-issue-group {
+  margin-top: 20px;
+}
+.plan-issue-group h4 {
+  margin: 0 0 9px;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.plan-issue-group ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.75;
+}
+.plan-issue-group li {
+  padding: 3px 0;
+  overflow-wrap: anywhere;
+}
+.plan-issue-group li.warning {
+  color: #8a512f;
+}
+:root[data-theme="dark"] .plan-issue-group li.warning {
+  color: #e0a985;
+}
+.plan-issue-code {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--hover);
+  color: var(--muted);
+  margin-right: 8px;
+}
+
+/* ---------------------------------------------------------------- history */
+.plan-family {
+  margin-top: 20px;
+}
+.plan-family h4 {
+  margin: 0 0 10px;
+  font-size: 12px;
+}
+.plan-version-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.plan-version-list li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 13px 0;
+  border-top: 1px solid var(--border);
+}
+.plan-version-list li.is-current {
+  border-left: 2px solid var(--green);
+  padding-left: 12px;
+  margin-left: -14px;
+}
+.plan-version-text {
+  min-width: 0;
+  flex: 1;
+}
+.plan-version-text strong {
+  font-size: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+.plan-version-text small {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.plan-version-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 760px) {
+  .plan-session,
+  .plan-summary,
+  .plan-validation,
+  .plan-changes,
+  .plan-history {
+    padding: 19px 17px;
+  }
+  .plan-session-head {
+    flex-direction: column;
+  }
+  .plan-session-actions,
+  .plan-exercise-actions {
+    width: 100%;
+  }
+  .plan-exercise-main {
+    flex-wrap: wrap;
+  }
+  .plan-exercise-actions {
+    padding-left: 37px;
+  }
+  .plan-quick-edit {
+    margin-left: 0;
+  }
+  .plan-icon-button {
+    height: 37px;
+    width: 37px;
+  }
+  .plan-statusbar button {
+    margin-left: 0;
+  }
+  .plan-dialog {
+    max-height: 90vh;
+  }
+  .plan-version-list li {
+    flex-direction: column;
+  }
+}

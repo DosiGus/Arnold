@@ -1,4 +1,5 @@
 import { WriteResponseSchema } from "../shared/workout-contract";
+import { PlanWriteResponseSchema } from "../shared/plan-contract";
 import { App } from "@modelcontextprotocol/ext-apps";
 import {
   Client,
@@ -55,9 +56,14 @@ export class ArnoldClient {
    * response says nothing about whether the overview on screen is current.
    */
   private publish(result: CallToolResult, stale = false, notify = true) {
+    // A structured write failure is an *answer*, not a transport problem: the
+    // server definitively rejected the operation and said why. Passing it
+    // through lets the caller show the reason and carry on, instead of leaving
+    // the operation in an unclear state that must be reconciled.
     if (
       result.isError &&
-      WriteResponseSchema.safeParse(result.structuredContent).success
+      (WriteResponseSchema.safeParse(result.structuredContent).success ||
+        PlanWriteResponseSchema.safeParse(result.structuredContent).success)
     )
       return result.structuredContent;
     if (result.isError)

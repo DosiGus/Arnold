@@ -1,5 +1,6 @@
 import { createFixtureLogging, writeModeFromEnv } from "./workout/fixture.js";
 import type { WorkoutLoggingService } from "./workout/service.js";
+import type { TrainingPlanService } from "./plan/service.js";
 import { createMcpExpressApp } from "@modelcontextprotocol/express";
 import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
 import type { NextFunction, Request, Response } from "express";
@@ -24,6 +25,8 @@ export interface ServerOptions {
   workoutRuntime?: {
     source: ArnoldDataSource;
     service: WorkoutLoggingService;
+    /** Task 005 plan management over the same source; omitted leaves plans read-only. */
+    plans?: TrainingPlanService;
     actorContext?: (request: Request) => Promise<unknown>;
   };
   root?: string;
@@ -34,7 +37,7 @@ export interface ServerOptions {
 export function createHttpApp(options: ServerOptions = {}) {
   const root = options.root ?? process.cwd();
   const mode = writeModeFromEnv();
-  const runtime =
+  const runtime: NonNullable<ServerOptions["workoutRuntime"]> | undefined =
     options.workoutRuntime ??
     (mode === "fixture" && !options.storage && !options.arnoldSource
       ? createFixtureLogging()
@@ -140,9 +143,7 @@ export function createHttpApp(options: ServerOptions = {}) {
   );
   app.get("/", (_req, res) => res.redirect("/preview"));
   app.get("/preview", (_req, res) =>
-    res.sendFile(resolve(root, "dist/ui/dashboard.html"), {
-      dotfiles: "allow",
-    }),
+    res.sendFile(resolve(root, "dist/ui/dashboard.html"), { dotfiles: "allow" }),
   );
   app.get("/host", (_req, res) =>
     res.sendFile(resolve(root, "dist/host/host.html"), { dotfiles: "allow" }),
@@ -157,6 +158,7 @@ export function createHttpApp(options: ServerOptions = {}) {
           runtime && "actorContext" in runtime
             ? await runtime.actorContext?.(req)
             : undefined,
+          runtime?.plans,
         )
       : createArnoldMcpServer(
           storage!,
