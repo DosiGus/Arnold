@@ -21,7 +21,10 @@ test("T3-09 mobile progress variants do not overflow the page", async ({
     page.getByRole("heading", { name: "Ausführungsarten", exact: true }),
   ).toBeVisible();
   const sizes = await page.evaluate(() => ({
-    page: document.body.scrollWidth,
+    page: Math.max(
+      document.body.scrollWidth,
+      document.documentElement.scrollWidth,
+    ),
     viewport: innerWidth,
   }));
   await test.info().attach("mobile-width", {

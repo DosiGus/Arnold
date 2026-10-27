@@ -153,7 +153,7 @@ test("T3-09: the progress view fits a 390px screen with variants", async ({
   ).toBeVisible();
 
   const overflow = await page.locator("body").evaluate((el) => ({
-    scrollWidth: el.scrollWidth,
+    scrollWidth: Math.max(el.scrollWidth, document.documentElement.scrollWidth),
     innerWidth: window.innerWidth,
   }));
   expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.innerWidth + 1);

@@ -59,27 +59,29 @@ function DataTable({
   rows: readonly { key: string; label: string; value: number | null }[];
 }) {
   return (
-    <table className="visually-hidden">
-      <caption>{caption}</caption>
-      <thead>
-        <tr>
-          <th scope="col">Zeitpunkt</th>
-          <th scope="col">{unit}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => (
-          <tr key={row.key}>
-            <th scope="row">{row.label}</th>
-            <td>
-              {row.value === null
-                ? "nicht verfügbar"
-                : formatNumber(row.value, 1)}
-            </td>
+    <div className="visually-hidden">
+      <table>
+        <caption>{caption}</caption>
+        <thead>
+          <tr>
+            <th scope="col">Zeitpunkt</th>
+            <th scope="col">{unit}</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.key}>
+              <th scope="row">{row.label}</th>
+              <td>
+                {row.value === null
+                  ? "nicht verfügbar"
+                  : formatNumber(row.value, 1)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
