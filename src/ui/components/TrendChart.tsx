@@ -195,11 +195,14 @@ export function ProgressChart({
   unit,
   /** Load convention of this series, so "20 kg" cannot read as a total. */
   loadBasisLabel = null,
+  scopeLabel = null,
 }: {
   points: readonly { date: string; value: number }[];
   label: string;
   unit: string;
   loadBasisLabel?: string | null;
+  /** Comparison class or explicit all-variant scope of these points. */
+  scopeLabel?: string | null;
 }) {
   const data = points.map((point) => ({
     ...point,
@@ -211,7 +214,7 @@ export function ProgressChart({
       <div
         className="chart"
         role="img"
-        aria-label={`${qualified} in ${unit}: ${
+        aria-label={`${qualified} in ${unit}${scopeLabel ? ` · ${scopeLabel}` : ""}: ${
           data
             .map((point) => `${point.label}: ${formatNumber(point.value, 1)}`)
             .join("; ") || "keine Messpunkte"
@@ -274,7 +277,7 @@ export function ProgressChart({
         </ResponsiveContainer>
       </div>
       <DataTable
-        caption={`${qualified} je Trainingstag`}
+        caption={`${qualified} je Trainingstag${scopeLabel ? ` · ${scopeLabel}` : ""}`}
         unit={unit}
         rows={points.map((point) => ({
           key: point.date,

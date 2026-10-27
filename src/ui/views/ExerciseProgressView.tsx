@@ -209,7 +209,8 @@ export function ExerciseProgressView({
             {chartScope && <p className="chart-scope">{chartScope}</p>}
             <ProgressChart
               points={view.selected_series.points}
-              label={`${selectedMeta.label}${chartScope ? ` · ${chartScope}` : ""}`}
+              label={selectedMeta.label}
+              scopeLabel={chartScope}
               unit={selectedMeta.unit}
               loadBasisLabel={seriesBasis}
             />
