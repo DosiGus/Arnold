@@ -1,3 +1,5 @@
+import { PlanWriteResultSchema } from "../../shared/plan-contract.js";
+import { writeRecovery } from "../workout/commit.js";
 /**
  * `TrainingPlanService` — the one place that changes a training plan.
  *
@@ -402,6 +404,7 @@ export class TrainingPlanService {
       const actor = await this.actor(context);
       const input = PlanWriteInputs[operation].parse(raw);
       const outcome = await commitWrite<PlanWriteResult>({
+        resultSchema: PlanWriteResultSchema,
         trackerId: this.options.trackerId,
         repository: this.options.repository,
         ledger: this.options.ledger,
@@ -436,6 +439,14 @@ export class TrainingPlanService {
           message: failure.message,
           retryable: failure.retryable,
           details: failure.details,
+          recovery:
+            failure.code === "DUPLICATE_OPERATION"
+              ? "none"
+              : await writeRecovery(
+                  this.options.ledger,
+                  this.options.trackerId,
+                  requestId,
+                ),
         },
       };
     }
@@ -596,7 +607,10 @@ export class TrainingPlanService {
       );
     const target =
       operation === "activate_training_plan" ? "active" : "archived";
-    if (!canTransition(plan.status, target))
+    if (
+      (operation === "archive_plan_draft" && plan.status !== "draft") ||
+      !canTransition(plan.status, target)
+    )
       throw planError(
         "INVALID_STATUS_TRANSITION",
         `Der Übergang von "${plan.status}" nach "${target}" ist nicht zulässig.`,
@@ -641,7 +655,7 @@ export class TrainingPlanService {
         changes,
         result: {
           plan: {
-            version: { ...projected, status: "archived", editable: false },
+            version: projectVersion(dataset, after),
             based_on_plan_version_id: null,
             schema_limits: this.limitsFor(projected),
           },
@@ -684,6 +698,11 @@ export class TrainingPlanService {
     // The previously active version is archived in the same batch, so there is
     // no instant in which two versions are active, and none in which none is.
     const previous = activePlan(dataset);
+    if (previous && Date.parse(now) <= Date.parse(previous.activated_at_utc!))
+      throw planError(
+        "REVISION_CONFLICT",
+        "Der neue Aktivierungszeitpunkt muss nach dem bisherigen liegen. Den aktuellen Stand laden und erneut bestätigen.",
+      );
     let archivedAt: string | null = null;
     if (previous && previous.plan_version_id !== plan.plan_version_id) {
       const retired = {

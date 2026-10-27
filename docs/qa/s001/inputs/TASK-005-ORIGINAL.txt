@@ -1,0 +1,1549 @@
+# ARNOLD – DEVELOPMENT TASK 005
+## Training Plan Management, Versioning Engine & Interactive MCP Plan Editor
+
+Du arbeitest als Senior Full-Stack Engineer, Domain Architect und MCP Apps Developer am Projekt **Arnold**.
+
+Arnold ist eine KI-gestützte Fitness-Anwendung innerhalb von ChatGPT. Das Produkt soll Nutzern ermöglichen, individuelle Trainingspläne zu erstellen, Trainingsleistungen zu erfassen und Fortschritte über eine interaktive Anwendung auszuwerten.
+
+**Dieser Auftrag entwickelt das vollständige fachliche Fundament unserer Trainingsplanverwaltung sowie einen wiederverwendbaren visuellen Planeditor.**
+
+Die Umsetzung soll langfristig produktionsfähig sein. Sicherheitskritische Funktionen dürfen jedoch ohne abgeschlossene Authentifizierung und Schreibkoordination nicht für echte Nutzer freigeschaltet werden.
+
+Implementiere ausschließlich den beschriebenen Entwicklungsumfang und stoppe nach dem Abschlussbericht.
+
+---
+
+## 1. Projektinformationen
+
+**GitHub-Repository**
+
+`DosiGus/Arnold`
+
+**Arnold Master – Google Sheets**
+
+https://docs.google.com/spreadsheets/d/1KMhPGrJSTZYRY5zKpVF3-Zc0tRdCZBV5zez46cJBzcc/edit
+
+**Agent-Dokumentation**
+
+https://drive.google.com/file/d/1BdzmwyoCQMEhLpp6hjeD9NT5FvkHfK6G/view
+
+**Verbindliches Datenschema**
+
+`arnold.training_raw`
+
+Version `1.0.0`
+
+**Technologiestack**
+
+- Node.js
+- TypeScript
+- Zod
+- MCP Streamable HTTP
+- MCP Apps
+- React
+- Google Sheets API
+- Vitest
+- Playwright
+
+### Abhängigkeiten
+
+Task 001: Data Foundation
+
+Task 002: Analytics Engine
+
+Task 003: Dashboard Integration
+
+Task 004: Secure Workout Logging Engine
+
+Prüfe vor Entwicklungsbeginn, dass die relevanten Funktionen integriert sind und die Tests bestehen.
+
+Falls vorherige Tasks unvollständig sind, dokumentiere die Abhängigkeiten. Implementiere keine konkurrierenden Domain-Modelle.
+
+Erstelle den Feature-Branch:
+
+`feat/arnold-plan-management`
+
+Arbeite auf dem aktuellen, integrierten Entwicklungsstand.
+
+Bestehende, nicht committete Nutzeränderungen dürfen nicht überschrieben werden.
+
+---
+
+## 2. Produktvision und UX-Grundsätze
+
+Arnold soll einen Trainingsplan nicht als starre Liste behandeln.
+
+Ein Nutzer muss seinen Plan jederzeit verändern können.
+
+Typische Nutzerwünsche:
+
+- „Erstelle mir einen Push/Pull/Legs-Plan.“
+- „Tausche Bankdrücken gegen Kurzhantel-Bankdrücken aus.“
+- „Ich möchte vier statt drei Tage trainieren.“
+- „Füge Bulgarian Split Squats zum Leg Day hinzu.“
+- „Verschiebe Seitheben an das Ende meines Push Days.“
+- „Ändere bei Klimmzügen drei Sätze auf vier.“
+- „Ich möchte wieder nach meinem alten Trainingsplan trainieren.“
+- „Erstelle zusätzlich einen Oberkörper/Unterkörper-Plan.“
+- „Benenne Push A in Oberkörper A um.“
+- „Ich möchte meine gesamte Trainingsroutine neu gestalten.“
+
+Der Nutzer muss diese Aktionen sowohl über ChatGPT als auch über die interaktive MCP-App auslösen können.
+
+**Verbindliche Regeln:**
+
+1. Trainingspläne müssen beliebige Trainingssplits unterstützen.
+2. Keine feste Begrenzung auf Push/Pull/Legs.
+3. Keine technische Abhängigkeit von Übungsnamen.
+4. Historische Trainingsdaten bleiben erhalten.
+5. Bereits aktivierte Planversionen bleiben unveränderlich.
+6. Eine Planänderung muss vor der Aktivierung überprüfbar sein.
+7. Der Nutzer darf eigene Übungen und eigene Trainingsstrukturen verwenden.
+8. Die Bedienung soll möglichst wenig technisches Wissen voraussetzen.
+9. Alle Änderungen laufen durch dieselbe Backend-Logik.
+10. Kein UI-Element darf allein eine fachlich ungültige Änderung ermöglichen.
+
+---
+
+## 3. Verbindliche Architektur
+
+Entwickle eine eigenständige Trainingsplanverwaltung.
+
+Empfohlene Architektur:
+
+```text
+ChatGPT Conversation
+         |
+         v
+Arnold MCP Tools
+         |
+         v
+Plan Application Service
+         |
+         +--> Domain Validation
+         |
+         +--> Plan Versioning
+         |
+         +--> Exercise Reference Validation
+         |
+         +--> Revision / Conflict Check
+         |
+         +--> Authorization Guard
+         |
+         +--> Idempotency Ledger
+         |
+         v
+Plan Repository Interface
+         |
+         +--> Fixture Adapter
+         |
+         +--> Google Sheets Adapter
+         |
+         v
+ArnoldDataset
+         |
+         +--> Analytics Engine
+         |
+         +--> Dashboard
+         |
+         +--> Interactive Plan Editor
+```
+
+### Architekturvorgaben
+
+- Fachliche Planregeln liegen im Backend.
+- MCP-Tools sind schlanke Schnittstellen.
+- Die UI enthält keine eigene Planversionierungslogik.
+- Der Planservice ist unabhängig von Google Sheets.
+- Speicherzugriffe erfolgen über bestehende Repository-Schnittstellen.
+- Auditierung und Idempotenz aus Task 004 wiederverwenden.
+- Keine zweite konkurrierende Authentifizierungsschicht implementieren.
+- Keine separaten Planberechnungen in React implementieren.
+
+Empfohlener zentraler Service:
+
+`TrainingPlanService`
+
+---
+
+## 4. Bestehendes Google-Sheets-Schema
+
+Die Planverwaltung basiert auf den bestehenden sechs Tabellen.
+
+Besonders relevant sind:
+
+### PLANS
+
+```text
+plan_version_id
+plan_family_id
+version_no
+name
+split_key
+status
+goal_key
+days_per_week
+activated_at_utc
+retired_at_utc
+created_at_utc
+updated_at_utc
+row_revision
+```
+
+### PLAN_ITEMS
+
+```text
+plan_item_id
+plan_version_id
+session_id
+session_order
+session_name
+exercise_id
+exercise_order
+target_sets
+rep_min
+rep_max
+target_load_kg
+target_load_basis
+target_execution_mode
+target_implement_count
+rest_seconds
+notes
+status
+row_revision
+```
+
+### EXERCISES
+
+Die Exercise-IDs und Übungsvarianten stammen aus dem bereits bestehenden Übungskatalog.
+
+### WORKOUTS und SETS
+
+Tatsächlich absolvierte Trainingseinheiten müssen ihre historischen Plan- und Übungsreferenzen behalten.
+
+### Wichtige Designgrenze
+
+Die Tabelle `PLAN_ITEMS` enthält momentan sowohl die Zuordnung einer Übung zu einer Session als auch Metadaten der Session.
+
+Es existiert keine separate `SESSIONS`-Tabelle.
+
+Baue deshalb keine ungeprüften zusätzlichen Tabellen.
+
+Prüfe ausdrücklich, welche Anforderungen mit dem bestehenden Schema vollständig unterstützt werden.
+
+Beispielsweise lassen sich leere Trainingstage ohne Übungen nicht sauber als dauerhaft vorhandene Sessions speichern.
+
+Für V1 ist folgende Produktentscheidung zulässig:
+
+**Ein aktivierbarer Trainingsplan muss mindestens eine Trainingseinheit mit mindestens einer gültigen aktiven Übung enthalten.**
+
+Ein Entwurf darf während der Bearbeitung vorübergehend leere Einheiten im Editor besitzen. Diese dürfen jedoch nicht stillschweigend als dauerhaft gespeicherte Sessions ausgegeben werden, wenn das Datenschema sie nicht unterstützt.
+
+Dokumentiere solche Grenzen und schlage notwendige spätere Schema-Migrationen separat vor.
+
+Die aktuelle Master-Datei darf nicht verändert werden.
+
+---
+
+## 5. Arbeitsauftrag A – Trainingsplan-Domain-Modell
+
+Definiere klar getrennte Domain-Objekte.
+
+Mindestens:
+
+```text
+TrainingPlan
+TrainingPlanVersion
+TrainingSession
+PlannedExercise
+PlanDraft
+PlanChange
+PlanValidationResult
+PlanVersionComparison
+PlanActivationResult
+```
+
+Diese Objekte müssen sich auf das bestehende Arnold-Dataset abbilden lassen.
+
+### TrainingPlan
+
+Beschreibt die logische Planfamilie.
+
+Beispiel:
+
+`Push Pull Legs`
+
+### TrainingPlanVersion
+
+Beschreibt einen konkreten, unveränderlichen Stand eines Plans.
+
+Beispiel:
+
+```text
+Plan Family: plan_family_001
+
+Version 1:
+Push Pull Legs
+Status: archived
+
+Version 2:
+Push Pull Legs angepasst
+Status: active
+```
+
+### TrainingSession
+
+Beschreibt einen geplanten Trainingstag beziehungsweise Einheitentyp.
+
+Beispiele:
+
+- Push
+- Pull
+- Legs
+- Oberkörper A
+- Oberkörper B
+- Ganzkörper
+- Training A
+
+Session-Namen sind frei definierbar.
+
+### PlannedExercise
+
+Beschreibt eine Übung innerhalb einer Trainingseinheit.
+
+Enthält unter anderem:
+
+- Exercise-ID
+- Reihenfolge
+- Zielsätze
+- Zielwiederholungen
+- Optionales Zielgewicht
+- Ausführung
+- Gewichtsdefinition
+- Pausenzeit
+- Notizen
+
+### PlanDraft
+
+Beschreibt einen bearbeitbaren Trainingsplan, der noch nicht aktiviert wurde.
+
+### PlanChange
+
+Beschreibt eine nachvollziehbare Änderung zwischen zwei Planständen.
+
+---
+
+## 6. Arbeitsauftrag B – Lebenszyklus der Trainingspläne
+
+Definiere eine verbindliche State Machine.
+
+Bestehende Statuswerte:
+
+```text
+draft
+active
+archived
+```
+
+### Erlaubte Übergänge
+
+```text
+draft -> active
+
+active -> archived
+
+draft -> archived
+```
+
+Die letzte Variante kann verwendet werden, um einen nicht mehr benötigten Entwurf zu verwerfen.
+
+Eine archivierte oder aktive Version darf nicht wieder als bearbeitbarer Draft verwendet werden.
+
+### Verbindliche Regeln
+
+1. Ein aktivierter Plan wird nicht mehr inhaltlich verändert.
+2. Änderungen an einem aktiven Plan erzeugen eine neue Draft-Version.
+3. Bereits abgeschlossene Workouts bleiben an ihrer historischen Planversion.
+4. Ein Planwechsel darf keine vorhandenen Trainingsdaten überschreiben.
+5. Eine archivierte Version bleibt lesbar.
+6. Alte Pläne können als Grundlage einer neuen Draft-Version wiederverwendet werden.
+7. Das Zurückkehren zu einem früheren Plan erstellt eine neue aktivierbare Version beziehungsweise einen neuen Aktivierungsstand.
+8. Der ursprüngliche archivierte Datensatz bleibt unverändert.
+
+### Entscheidungsregel für V1
+
+Innerhalb eines persönlichen Arnold-Trackers darf es maximal **eine aktive Trainingsplanversion** gleichzeitig geben.
+
+Es dürfen jedoch beliebig viele archivierte Versionen und mehrere Entwürfe existieren.
+
+Ein späteres Produktupdate kann mehrere parallele aktive Pläne unterstützen.
+
+Implementiere dafür keine unnötigen Sonderwege im MVP.
+
+---
+
+## 7. Arbeitsauftrag C – Versionierungsengine
+
+Implementiere eine sichere Versionierung.
+
+Empfohlener Service:
+
+`PlanVersioningService`
+
+### Beispiel
+
+Der Nutzer hat folgenden Plan:
+
+```text
+Plan Family: PF_001
+Plan Version: PV_001
+Version Number: 1
+Status: active
+```
+
+Er möchte Bankdrücken durch Kurzhantel-Bankdrücken ersetzen.
+
+Arnold erstellt:
+
+```text
+Plan Family: PF_001
+Plan Version: PV_002
+Version Number: 2
+Status: draft
+```
+
+Die neue Version basiert auf der alten Version, ist aber unabhängig bearbeitbar.
+
+### Regeln
+
+- Neue `plan_version_id` erzeugen.
+- Die `plan_family_id` bei einer Änderung derselben Routine beibehalten.
+- Versionsnummer eindeutig innerhalb einer Planfamilie vergeben.
+- Alle Planpositionen für die neue Version mit neuen `plan_item_id`-Werten erstellen.
+- Historische Planpositionen nicht überschreiben.
+- Exercise-IDs unverändert referenzieren.
+- Session-Identitäten bewusst behandeln.
+
+### Session-ID-Strategie
+
+Für V1 gilt:
+
+- Bei einer unverändert fortgeführten Trainingseinheit darf `session_id` innerhalb derselben Planfamilie stabil bleiben.
+- Eine neu hinzugefügte Trainingseinheit erhält eine neue ID.
+- Das Duplizieren einer Trainingseinheit erzeugt eine neue Session-ID.
+- Eine neue, unabhängige Planfamilie erhält eigene Session-IDs.
+
+Änderungen am Session-Namen dürfen bestehende historische Anzeigen nicht rückwirkend verändern.
+
+Die `session_name_snapshot`-Information in WORKOUTS bleibt erhalten.
+
+### Versionskonflikte
+
+Falls zwei Änderungen parallel versuchen, dieselbe Versionsnummer oder denselben Draft zu verändern, muss die Engine den Konflikt erkennen.
+
+Keine doppelten Versionsnummern innerhalb einer Planfamilie zulassen.
+
+Nutze Idempotenz und Schreibkoordination aus Task 004.
+
+---
+
+## 8. Arbeitsauftrag D – Neuen Trainingsplan erstellen
+
+Implementiere:
+
+`create_training_plan`
+
+### Eingaben
+
+Mindestens:
+
+- `request_id`
+- Planname
+- Optionaler Split-Schlüssel
+- Wochenziel beziehungsweise Trainingstage pro Woche
+- Optionales Trainingsziel
+- Definition der Trainingseinheiten
+- Definition der Übungen pro Einheit
+
+### Unterstützte Modelle
+
+Beispiele:
+
+**Ganzkörper**
+
+```text
+Ganzkörper A
+Ganzkörper B
+Ganzkörper C
+```
+
+**Push/Pull/Legs**
+
+```text
+Push
+Pull
+Legs
+```
+
+**Oberkörper/Unterkörper**
+
+```text
+Oberkörper A
+Unterkörper A
+Oberkörper B
+Unterkörper B
+```
+
+**Individuell**
+
+```text
+Brust + Rücken
+Arme + Schultern
+Beine
+Kondition + Core
+```
+
+Auch ein Plan mit nur einem wiederkehrenden Trainingstyp muss unterstützt werden.
+
+### Regeln
+
+- Keine fest einprogrammierten Split-Namen.
+- Keine Begrenzung auf drei Trainingstage.
+- Übungsreihenfolge explizit speichern.
+- Gültige Übungsreferenzen sicherstellen.
+- Wiederholungsbereiche validieren.
+- Satzanzahlen validieren.
+- Zeit- und Pausenangaben validieren.
+- Ausführung und Gewichtsdefinitionen validieren.
+- Neue Pläne standardmäßig als Draft erstellen.
+- Keine automatische Aktivierung.
+
+### Planfamilie
+
+Wird ein neuer, eigenständiger Trainingsplan erstellt, erzeuge eine neue `plan_family_id`.
+
+Wird ein vorhandener Plan angepasst, verwende dessen Planfamilie.
+
+---
+
+## 9. Arbeitsauftrag E – Trainingseinheiten bearbeiten
+
+Implementiere Operationen für:
+
+```text
+add_session
+rename_session
+reorder_sessions
+duplicate_session
+remove_session
+```
+
+### Hinzufügen
+
+Neue Session-ID erzeugen.
+
+Der Nutzer kann beispielsweise einen vierten Trainingstag ergänzen.
+
+### Umbenennen
+
+Alle zur Session gehörenden Planpositionen innerhalb des Drafts konsistent aktualisieren.
+
+Keine historischen Workouts verändern.
+
+### Reihenfolge
+
+Session-Reihenfolge eindeutig speichern.
+
+Keine doppelten oder widersprüchlichen Reihenfolgewerte zulassen.
+
+### Duplizieren
+
+Beim Duplizieren einer Einheit:
+
+- Neue Session-ID erzeugen.
+- Neue Planposition-IDs erzeugen.
+- Vorhandene Exercise-IDs referenzieren.
+- Ziele und Ausführungen übernehmen.
+- Originaleinheit unverändert lassen.
+
+### Entfernen
+
+Eine Session aus dem aktuellen Draft entfernen beziehungsweise fachlich deaktivieren.
+
+Für bereits aktive oder archivierte Planversionen dürfen keine Planpositionsdaten gelöscht werden.
+
+Wenn das vorhandene Datenmodell eine Änderung nicht dauerhaft darstellen kann, muss dies ausdrücklich als nicht unterstützt gekennzeichnet werden.
+
+---
+
+## 10. Arbeitsauftrag F – Übungen innerhalb eines Plans bearbeiten
+
+Implementiere folgende Operationen:
+
+```text
+add_plan_exercise
+replace_plan_exercise
+remove_plan_exercise
+reorder_plan_exercises
+update_plan_exercise_targets
+update_plan_exercise_execution
+```
+
+### A – Neue Übung hinzufügen
+
+Beispiel:
+
+„Füge Seitheben zu meinem Push Day hinzu.“
+
+Verhalten:
+
+1. Session identifizieren.
+2. Exercise-ID ermitteln.
+3. Bei Mehrdeutigkeit keine willkürliche Übung auswählen.
+4. Planposition erstellen.
+5. Standardausführung aus dem Übungskatalog übernehmen.
+6. Bearbeitung innerhalb des Drafts speichern.
+7. Planrevision erhöhen.
+
+### B – Übung austauschen
+
+Beispiel:
+
+„Ersetze Langhantel-Bankdrücken durch Kurzhantel-Bankdrücken.“
+
+Die neue Übung bekommt eine neue Planposition-ID, sofern die bisherige Planposition bereits eine andere Bewegungsvariante bezeichnet.
+
+Die alte Position der historischen Planversion bleibt erhalten.
+
+Nicht allein den Textnamen überschreiben.
+
+### C – Übung entfernen
+
+Eine Übung wird aus dem neuen Draft entfernt beziehungsweise deaktiviert.
+
+Der Übungskatalog und historische Workouts bleiben erhalten.
+
+### D – Reihenfolge ändern
+
+Beispiel:
+
+„Mach Seitheben zur letzten Übung.“
+
+Die Reihenfolge muss deterministisch gespeichert werden.
+
+### E – Trainingsziele ändern
+
+Unterstütze:
+
+- Zielsätze
+- Wiederholungsminimum
+- Wiederholungsmaximum
+- Zielgewicht
+- Gewichtsdefinition
+- Ausführung
+- Anzahl der Hanteln beziehungsweise Geräte
+- Pause
+- Notiz
+
+### Validierung
+
+- `rep_min <= rep_max`.
+- Satzanzahl ist eine gültige positive Ganzzahl.
+- Reihenfolgewerte sind gültig.
+- Negative Gewichte nicht ohne fachliche Begründung zulassen.
+- Zielgewicht darf bei bestimmten Übungsarten fehlen.
+- Belastungsdefinition muss zur Übungsvariante passen.
+- Unterschiedliche Ausführungen müssen ausdrücklich gespeichert werden.
+
+### Pflichtregel
+
+Alle Änderungen an aktivierten Planversionen müssen über eine neue Draft-Version laufen.
+
+---
+
+## 11. Arbeitsauftrag G – Planentwürfe bearbeiten
+
+Implementiere:
+
+`update_plan_draft`
+
+Ein Draft kann über mehrere UI-Interaktionen verändert werden.
+
+### Anforderungen
+
+- Draft-ID beziehungsweise Planversions-ID erforderlich.
+- Erwartete `row_revision` erforderlich.
+- Konflikterkennung bei parallelen Änderungen.
+- Strukturierte Validierung.
+- Aktualisierungszeitpunkt speichern.
+- Revision erhöhen.
+- Kein Schreiben in aktive oder archivierte Versionen.
+- Audit-Ereignis speichern.
+- Idempotente Wiederholungen unterstützen.
+
+### Bearbeitungsstrategie
+
+Bevorzuge typisierte Änderungsoperationen gegenüber dem ungeprüften Überschreiben eines gesamten Tabellenbereichs.
+
+Für komplexe Änderungen darf ein vollständiger neuer Draft-Zustand übertragen werden, sofern:
+
+- Die vorherige Revision geprüft wurde.
+- Alle Referenzen validiert wurden.
+- Die Änderung vollständig als zusammengehörige Operation behandelt wird.
+- Kein historischer Datensatz überschrieben wird.
+
+### Wichtig
+
+Google Sheets besitzt keine transaktionalen Datenbankconstraints.
+
+Die Anwendung muss Schreibkonflikte durch die vorhandene serverseitige Koordination behandeln.
+
+Die verbleibenden Risiken durch externe manuelle Änderungen müssen dokumentiert werden.
+
+---
+
+## 12. Arbeitsauftrag H – Planvalidierung
+
+Implementiere:
+
+`validate_training_plan`
+
+Diese Funktion muss vor einer Aktivierung ausgeführt werden.
+
+### Prüfungen
+
+1. Existiert die Planversion?
+2. Ist die Version ein Draft?
+3. Existiert mindestens eine gültige Einheit?
+4. Existiert mindestens eine aktive Übung im gesamten Plan?
+5. Sind alle referenzierten Übungen gültig?
+6. Sind alle Session-IDs konsistent?
+7. Sind die Reihenfolgen konsistent?
+8. Sind alle Satzanzahlen gültig?
+9. Sind Wiederholungsbereiche gültig?
+10. Sind Zielgewichte und Gewichtskonventionen gültig?
+11. Sind Ausführungen valide?
+12. Gibt es unzulässige doppelte Planposition-IDs?
+13. Gibt es nicht darstellbare Strukturen?
+14. Passt der Plan zur bestehenden Schema-Version?
+
+### Ergebnis
+
+Liefere strukturierte Ergebnisse.
+
+Beispiel:
+
+```json
+{
+  "valid": false,
+  "errors": [
+    {
+      "code": "INVALID_REP_RANGE",
+      "plan_item_id": "item_004",
+      "message": "Das Wiederholungsminimum darf nicht größer als das Maximum sein."
+    }
+  ],
+  "warnings": []
+}
+```
+
+Unterscheide zwischen:
+
+- Blockierenden Fehlern.
+- Fachlichen Hinweisen.
+- Optionalen Empfehlungen.
+
+Eine niedrige oder hohe Anzahl von Trainingstagen ist nicht automatisch ein technischer Fehler.
+
+Trainingswissenschaftliche Empfehlungen sind nicht Teil der Speicherungsgarantie.
+
+---
+
+## 13. Arbeitsauftrag I – Planaktivierung
+
+Implementiere:
+
+`activate_training_plan`
+
+Das ist eine besonders kritische Operation.
+
+### Ziel
+
+Ein bestätigter Draft wird zur aktiven Trainingsplanversion.
+
+Die bisher aktive Planversion wird archiviert.
+
+### Voraussetzungen
+
+- Nutzeridentität ist in produktivem Betrieb geprüft.
+- Der Draft existiert.
+- Der Draft ist gültig.
+- Die erwartete Revision stimmt.
+- Eine ausdrückliche Bestätigung der konkret angezeigten Draft-Version liegt vor.
+- Kein konkurrierender Aktivierungsvorgang ist offen.
+- Die Operation ist idempotent.
+
+### Aktivierungsschritte
+
+1. Aktuelle aktive Planversion identifizieren.
+2. Draft anhand der aktuellen Revision validieren.
+3. Bestätigung gegen dieselbe Planversion und Revision prüfen.
+4. Bisherige aktive Version archivieren.
+5. `retired_at_utc` setzen.
+6. Neuen Draft aktivieren.
+7. `activated_at_utc` setzen.
+8. Revisionsnummern aktualisieren.
+9. Ergebnis verifizieren.
+10. Audit-Ereignis speichern.
+
+### Konsistenz
+
+Es darf nicht dauerhaft zu zwei aktiven Plänen kommen.
+
+Wenn die Aktivierung nicht sicher abgeschlossen werden kann, muss Arnold den Zustand prüfen und gegebenenfalls in einen kontrollierten Fehlerzustand wechseln.
+
+Keine positive Erfolgsmeldung bei unbestätigter Speicherung.
+
+### Bereits laufende Workouts
+
+Ein vor der Planaktivierung begonnenes Workout bleibt mit seiner ursprünglich ausgewählten Planversion verbunden.
+
+Eine spätere Planänderung darf nicht die Übungen eines bereits laufenden Workouts unbemerkt ersetzen.
+
+### Bestätigung
+
+Eine erfolgreiche technische Draft-Validierung ist keine Nutzerbestätigung.
+
+Die Bestätigung muss sich auf eine konkrete Planversion und Revision beziehen.
+
+Im Testbetrieb dürfen explizite simulierte Bestätigungsereignisse verwendet werden.
+
+Die endgültige Identitätsbindung erfolgt mit der produktiven Authentifizierung.
+
+---
+
+## 14. Arbeitsauftrag J – Historische Pläne und Wiederherstellung
+
+Implementiere lesende und erzeugende Funktionen für die Planhistorie.
+
+Mindestens:
+
+```text
+get_training_plan
+list_training_plans
+get_plan_history
+compare_plan_versions
+clone_plan_version
+```
+
+### Planhistorie
+
+Der Nutzer soll sehen können:
+
+- Aktueller Plan.
+- Frühere Planversionen.
+- Zeitpunkt der Aktivierung.
+- Zeitpunkt der Archivierung.
+- Unterschiede zur aktuellen Version.
+
+### Beispiel
+
+```text
+Version 1:
+Push / Pull / Legs
+
+Version 2:
+Push / Pull / Legs angepasst
+
+Version 3:
+Oberkörper / Unterkörper
+```
+
+### Vergleich
+
+Eine Vergleichsfunktion soll Änderungen erkennen:
+
+- Übungen hinzugefügt.
+- Übungen entfernt.
+- Übungen ersetzt.
+- Reihenfolge geändert.
+- Zielsätze verändert.
+- Wiederholungsbereiche verändert.
+- Gewichtsziele verändert.
+- Ausführungen geändert.
+- Trainingseinheiten hinzugefügt oder entfernt.
+- Trainingseinheiten umbenannt.
+
+Die Ausgabe soll sowohl maschinenlesbar als auch für eine übersichtliche UI geeignet sein.
+
+### Alte Version erneut verwenden
+
+Wenn ein Nutzer eine alte Version wiederverwenden möchte:
+
+1. Archivierte Version lesen.
+2. Neuen Draft auf ihrer Grundlage erstellen.
+3. Neue IDs für die Draft-Version und ihre Planpositionen vergeben.
+4. Nutzer kann Anpassungen vornehmen.
+5. Draft bestätigen und aktivieren.
+6. Historische Originalversion unverändert erhalten.
+
+---
+
+## 15. Arbeitsauftrag K – MCP-Tools
+
+Registriere passende MCP-Tools.
+
+Empfohlene API:
+
+| Tool | Funktion |
+|---|---|
+| `create_training_plan` | Neuen Planentwurf anlegen |
+| `get_training_plan` | Planversion laden |
+| `list_training_plans` | Pläne und Versionen auflisten |
+| `create_plan_version` | Neue Version eines bestehenden Plans erstellen |
+| `update_plan_draft` | Typisierte Änderungen am Draft |
+| `validate_training_plan` | Planentwurf prüfen |
+| `compare_plan_versions` | Planänderungen vergleichen |
+| `activate_training_plan` | Bestätigten Draft aktivieren |
+| `archive_plan_draft` | Nicht benötigten Draft verwerfen |
+| `get_plan_history` | Historische Versionen abrufen |
+
+### Anforderungen
+
+- Zod-Input-Schemas.
+- Zod-Output-Schemas.
+- `structuredContent`.
+- Präzise Toolbeschreibungen.
+- Eindeutige IDs.
+- Eindeutige Revisionsfelder.
+- Sinnvolle MCP-Tool-Annotationen.
+- Fehlercodes.
+- Idempotenz bei schreibenden Operationen.
+- Benutzerbezogene Autorisierung im späteren Produktbetrieb.
+
+### API-Design
+
+Vermeide unnötig viele einzelne Tools für jede kleine Planänderung.
+
+Die Funktionen zum Hinzufügen, Verschieben oder Ersetzen von Übungen können als typisierte Operationen innerhalb von `update_plan_draft` implementiert werden.
+
+Beispielhafte Änderungsobjekte:
+
+```json
+{
+  "type": "replace_exercise",
+  "session_id": "session_push",
+  "plan_item_id": "item_001",
+  "new_exercise_id": "ex_incline_db_press"
+}
+```
+
+Die genaue API muss konsistent und eindeutig sein.
+
+### Schreibschutz
+
+Die Tools dürfen keine produktiven Google-Sheets-Schreibzugriffe ermöglichen, solange Task 004 und die spätere Nutzerautorisierung nicht vollständig abgesichert sind.
+
+---
+
+## 16. Arbeitsauftrag L – Interaktiver Planeditor
+
+Entwickle einen visuellen Trainingsplan-Editor innerhalb der vorhandenen React-MCP-App.
+
+**Das ist der zentrale UI-Bestandteil dieses Tasks.**
+
+Die Oberfläche soll später unverändert oder mit kleinen Anpassungen im Onboarding verwendet werden können.
+
+### Zielbild
+
+```text
+ARNOLD – DEIN TRAININGSPLAN
+
+Push / Pull / Legs
+
+3 Trainingstage pro Woche
+
+--------------------------------
+
+PUSH
+
+1. Bankdrücken
+   3 Sätze · 8–10 Wdh. · 70 kg
+
+2. Schrägbank Kurzhantel
+   3 Sätze · 10–12 Wdh. · 20 kg/Hantel
+
+3. Seitheben
+   3 Sätze · 12–15 Wdh. · 10 kg/Hantel
+
+[+ Übung hinzufügen]
+
+--------------------------------
+
+PULL
+
+1. Klimmzüge
+2. Latzug
+3. Rudern
+4. Bizepscurls
+
+[+ Übung hinzufügen]
+
+--------------------------------
+
+LEGS
+
+1. Kniebeugen
+2. Beinpresse
+3. Beinbeuger
+
+[+ Übung hinzufügen]
+
+--------------------------------
+
+[+ Trainingstag hinzufügen]
+
+[Änderungen prüfen]
+[Entwurf speichern]
+```
+
+Das ist eine konzeptionelle Darstellung, keine fertige Designspezifikation.
+
+Verwende das vorhandene Arnold-Designsystem.
+
+### Pflichtfunktionen
+
+Der Nutzer kann:
+
+1. Trainingseinheiten auswählen.
+2. Eine neue Trainingseinheit hinzufügen.
+3. Eine Trainingseinheit umbenennen.
+4. Trainingseinheiten neu anordnen.
+5. Eine Trainingseinheit duplizieren.
+6. Trainingseinheiten aus einem Draft entfernen.
+7. Übungen hinzufügen.
+8. Übungen entfernen.
+9. Übungen austauschen.
+10. Übungen neu anordnen.
+11. Zielsätze bearbeiten.
+12. Wiederholungsbereiche bearbeiten.
+13. Zielgewichte bearbeiten.
+14. Ausführungen verändern.
+15. Einen Entwurf speichern.
+16. Änderungen überprüfen.
+17. Einen gültigen Plan bestätigen und aktivieren.
+18. Frühere Versionen anzeigen.
+
+### UI-Komponenten
+
+Empfohlene wiederverwendbare Komponenten:
+
+```text
+TrainingPlanEditor
+TrainingSessionCard
+PlannedExerciseRow
+ExercisePicker
+ExerciseSettingsPanel
+PlanOverview
+PlanVersionHistory
+PlanChangeSummary
+PlanValidationPanel
+PlanActivationDialog
+```
+
+### UX-Regeln
+
+- Möglichst wenige Eingabefelder gleichzeitig.
+- Häufig verwendete Aktionen sofort erreichbar.
+- Technische IDs niemals als primäre UI-Beschriftung.
+- Sinnvolle Standardwerte aus dem Übungskatalog.
+- Klar erkennbarer Unterschied zwischen geplantem und tatsächlichem Gewicht.
+- Änderungen vor Aktivierung überprüfbar.
+- Keine versehentliche Aktivierung durch Navigation.
+- Eingaben bei einem Netzwerkfehler erhalten.
+- Mobile Bedienbarkeit.
+- Tastaturbedienbarkeit.
+- Screenreader-Beschriftungen.
+- Passendes Hell-/Dunkel-Theme.
+
+### Bedienung
+
+Kleine Aktionen sollen direkt innerhalb der jeweiligen Übungskarte möglich sein.
+
+Komplexere Einstellungen dürfen in einem Dialog beziehungsweise Detailpanel erscheinen.
+
+Der Nutzer soll nicht ständig zwischen verschiedenen Seiten wechseln müssen.
+
+---
+
+## 17. Arbeitsauftrag M – Entwurfs- und UI-Zustände
+
+Implementiere eindeutige UI-Zustände:
+
+```text
+NO_PLAN
+VIEWING_ACTIVE
+EDITING_DRAFT
+SAVING_DRAFT
+DRAFT_SAVED
+VALIDATING_DRAFT
+DRAFT_INVALID
+READY_FOR_CONFIRMATION
+ACTIVATING
+ACTIVATION_CONFIRMED
+CONFLICT
+ERROR
+```
+
+### Regeln
+
+- Ein aktiver Plan darf nicht direkt bearbeitet werden.
+- Der Bearbeiten-Button erstellt beziehungsweise öffnet einen Draft.
+- Ungespeicherte Änderungen müssen erkennbar sein.
+- Bei Konflikten keine fremden Änderungen überschreiben.
+- Bei Fehlern Eingaben möglichst behalten.
+- Nach erfolgreicher Aktivierung den aktualisierten aktiven Plan laden.
+- UI-Erfolg nur nach bestätigtem Backend-Ergebnis.
+- Veraltete Planrevisionen nicht unbemerkt aktivieren.
+
+### Besondere UX-Entscheidung
+
+Wenn der Nutzer den aktiven Plan bearbeiten möchte, soll die UI klar anzeigen:
+
+„Du bearbeitest eine neue Version deines Trainingsplans. Deine bisherigen Trainingsdaten bleiben erhalten.“
+
+Diese Erklärung ist besonders beim ersten Bearbeiten sinnvoll.
+
+---
+
+## 18. Arbeitsauftrag N – Planverwaltung und Workout-Logging integrieren
+
+Die Planverwaltung muss mit Task 004 zusammenarbeiten.
+
+### Beispiel
+
+Ein Nutzer trainiert nach:
+
+```text
+Plan V1:
+Push / Pull / Legs
+```
+
+Er absolviert ein Push-Workout.
+
+Anschließend ersetzt er Bankdrücken durch Kurzhantel-Bankdrücken.
+
+Arnold erzeugt:
+
+```text
+Plan V2:
+Push / Pull / Legs
+```
+
+### Ergebnis
+
+Das alte Workout referenziert weiterhin Plan V1.
+
+Neue Workouts können Plan V2 verwenden.
+
+Die alten Bankdrücken-Sätze bleiben unverändert erhalten.
+
+Die neue Übung bekommt eine eigene Exercise-ID beziehungsweise bestehende eindeutige Übungsreferenz.
+
+### Anforderungen
+
+1. Workout-Erstellung nutzt die aktuell aktivierte Planversion.
+2. Spontane Workouts bleiben möglich.
+3. Planänderungen erzeugen keine Veränderungen an vergangenen Workout-Datensätzen.
+4. Laufende Workouts behalten ihre ursprüngliche Planreferenz.
+5. Änderungen an Zielgewichten überschreiben keine tatsächlich geloggten Gewichte.
+6. Workout-Logger kann neue Planinformationen laden.
+7. Analytics über mehrere Planversionen hinweg bleibt funktionsfähig.
+
+### Optionaler Komfort
+
+Beim Start eines Workouts können geplante Übungen als Vorschläge angezeigt werden.
+
+Diese Vorschläge sind noch keine tatsächlich absolvierten Sätze.
+
+Erst nach ausdrücklicher Erfassung dürfen sie als Workout-Sets gespeichert werden.
+
+---
+
+## 19. Arbeitsauftrag O – Vorbereitungen für das Onboarding
+
+Task 006 implementiert später das eigentliche Onboarding.
+
+Task 005 soll die dafür nötigen Planfunktionen vorbereiten.
+
+### Zukünftiger Ablauf
+
+```text
+Neuer Nutzer
+     |
+     v
+Onboarding-Fragen
+     |
+     v
+Trainingsprofil
+     |
+     v
+KI-generierter Planvorschlag
+     |
+     v
+TrainingPlanEditor
+     |
+     v
+Nutzer überprüft und bearbeitet
+     |
+     v
+Plan bestätigen
+     |
+     v
+Google OAuth / Tracker erstellen
+     |
+     v
+Plan aktivieren
+     |
+     v
+Arnold Dashboard
+```
+
+### Verbindliche Vorbereitungen
+
+Der Planservice soll vollständige, strukturierte Planvorschläge entgegennehmen können.
+
+Er darf jedoch nicht voraussetzen, dass diese Vorschläge ausschließlich von einer KI erzeugt werden.
+
+Unterstützte Quellen:
+
+- Manuelle Erstellung.
+- Vorhandener Nutzerplan.
+- Strukturierter KI-Vorschlag.
+- Kopie einer bisherigen Planversion.
+
+### Wichtige Regel
+
+Die KI-generierte Planstruktur ist zunächst nur ein Vorschlag.
+
+Sie darf nicht ohne ausdrückliche Nutzerbestätigung als aktiver Plan gespeichert werden.
+
+### Aufgabengrenze
+
+Noch keine Onboarding-State-Machine implementieren.
+
+Noch keine eigenständige KI-Plan-Generierung implementieren.
+
+Noch kein Google OAuth.
+
+Noch keine automatische Erstellung persönlicher Tracker-Dateien.
+
+Der fertige Planeditor muss jedoch aus dem künftigen Onboarding heraus aufgerufen werden können.
+
+---
+
+## 20. Arbeitsauftrag P – Datenqualität und Schutzmechanismen
+
+Implementiere Schutzmechanismen gegen:
+
+- Unbekannte Exercise-IDs.
+- Doppelte Planversions-IDs.
+- Doppelte Planposition-IDs.
+- Doppelte Session-Reihenfolgen.
+- Ungültige Satzanzahlen.
+- Ungültige Wiederholungsbereiche.
+- Ungültige Ausführungsarten.
+- Fehlende Referenzen.
+- Änderungen an archivierten Versionen.
+- Direkte Änderungen an aktiven Versionen.
+- Veraltete Draft-Revisionen.
+- Doppelte Aktivierungsversuche.
+- Parallele Planänderungen.
+- Widersprüchliche aktive Planversionen.
+- Unbekannte Tracker-IDs.
+- Schreibversuche auf die Master-Vorlage.
+
+### Auditierung
+
+Erweitere die Audit-Struktur aus Task 004.
+
+Ereignisse:
+
+```text
+PLAN_CREATED
+PLAN_DRAFT_CREATED
+PLAN_DRAFT_UPDATED
+PLAN_DRAFT_ARCHIVED
+PLAN_VALIDATED
+PLAN_ACTIVATED
+PLAN_ARCHIVED
+SESSION_ADDED
+SESSION_UPDATED
+SESSION_REMOVED
+PLAN_EXERCISE_ADDED
+PLAN_EXERCISE_REPLACED
+PLAN_EXERCISE_REMOVED
+```
+
+Die Events sollen fachlich nachvollziehbar sein.
+
+Nicht unnötig viele personenbezogene Daten protokollieren.
+
+---
+
+## 21. Arbeitsauftrag Q – Automatisierte Tests
+
+Erstelle umfassende Unit-, Integrations-, MCP- und UI-Tests.
+
+### Planerstellung
+
+- Neuen Plan erstellen.
+- Beliebigen Split erstellen.
+- Plan mit einer Einheit erstellen.
+- Plan mit fünf Einheiten erstellen.
+- Plan ohne Übungen als Draft behandeln.
+- Ungültige Übungsreferenz ablehnen.
+
+### Versionierung
+
+- Aktiven Plan kopieren.
+- Neue Version erstellen.
+- Alte Version unverändert erhalten.
+- Versionsnummer korrekt erhöhen.
+- Parallele Erstellung derselben Versionsnummer kontrollieren.
+- Archivierte Version nicht direkt ändern.
+- Alte Version erneut als Draft übernehmen.
+
+### Trainingseinheiten
+
+- Session hinzufügen.
+- Session umbenennen.
+- Session entfernen.
+- Session duplizieren.
+- Sessions neu sortieren.
+- Neue Session-ID korrekt vergeben.
+
+### Übungen
+
+- Übung hinzufügen.
+- Übung austauschen.
+- Übung entfernen.
+- Übungsreihenfolge ändern.
+- Zielgewicht ändern.
+- Wiederholungsbereich ändern.
+- Ausführung ändern.
+- Referenzen korrekt erhalten.
+
+### Aktivierung
+
+- Gültigen Draft aktivieren.
+- Ungültigen Draft ablehnen.
+- Ohne Bestätigung nicht aktivieren.
+- Veraltete Bestätigung ablehnen.
+- Bisherigen Plan archivieren.
+- Maximal einen aktiven Plan zulassen.
+- Wiederholte Aktivierung idempotent behandeln.
+- Unklaren Commit-Status korrekt behandeln.
+
+### Historische Daten
+
+- Workout mit alter Planversion erhalten.
+- Übung nach Planwechsel weiter historisch auswerten.
+- Neue Workouts nutzen neue Planversion.
+- Bereits laufende Workouts behalten ihre bisherige Planreferenz.
+- Historische Session-Namen bleiben nachvollziehbar.
+- Kein rückwirkendes Überschreiben von Zielgewichten.
+
+### UI
+
+- Planeditor öffnen.
+- Draft erstellen.
+- Übung hinzufügen.
+- Übung austauschen.
+- Session hinzufügen.
+- Reihenfolge verändern.
+- Ziele bearbeiten.
+- Änderungen überprüfen.
+- Ungültigen Plan anzeigen.
+- Gültigen Plan bestätigen.
+- Planhistorie anzeigen.
+- Mobile Darstellung prüfen.
+- Tastaturbedienung prüfen.
+- Fehlerzustände prüfen.
+
+### Sicherheit
+
+- Master-Template verweigert Schreiboperation.
+- Unberechtigte Zugriffe verweigern.
+- Revisionskonflikte erkennen.
+- Doppelte Requests behandeln.
+- Keine produktiven Schreibzugriffe aktivieren.
+- Keine echten Nutzerdaten verändern.
+
+Verwende synthetische Fixtures.
+
+---
+
+## 22. Arbeitsauftrag R – Dokumentation
+
+Erstelle:
+
+`docs/ARNOLD-PLAN-CONTRACT.md`
+
+Die Dokumentation muss enthalten:
+
+1. Fachliches Trainingsplan-Domain-Modell.
+2. Planfamilien und Planversionen.
+3. Lebenszyklus der Pläne.
+4. Unveränderlichkeit aktiver Versionen.
+5. Session-ID-Strategie.
+6. Planposition-ID-Strategie.
+7. Erstellung neuer Pläne.
+8. Erstellung neuer Versionen.
+9. Bearbeitungsoperationen.
+10. Planvalidierung.
+11. Planaktivierung.
+12. Historische Trainingsplanverwaltung.
+13. Workout-Referenzen.
+14. MCP-Tools.
+15. Input- und Output-Schemas.
+16. Idempotenz.
+17. Nebenläufigkeit.
+18. Audit-Ereignisse.
+19. Sicherheitsregeln.
+20. Planeditor-Komponenten.
+21. UI-Zustände.
+22. Integration mit Task 004.
+23. Vorbereitung für Task 006.
+24. Grenzen des aktuellen Google-Sheets-Schemas.
+25. Bekannte technische Risiken.
+
+Wenn für eine Funktion eine spätere Schemaänderung erforderlich wäre, dokumentiere dafür einen konkreten Migrationsvorschlag.
+
+Ändere die Arnold-Masterdatei nicht eigenmächtig.
+
+---
+
+## 23. Sicherheits- und Änderungsgrenzen
+
+Verbindlich:
+
+- Keine Änderung an der Arnold-Masterdatei.
+- Keine Änderung an alten Fitness-Tracker-Dateien.
+- Keine echten Nutzer-Workouts verändern.
+- Keine aktiven oder archivierten Planversionen inhaltlich überschreiben.
+- Kein produktives Google-Sheets-Schreiben ohne authentifizierten Nutzer.
+- Keine Google-OAuth-Implementierung.
+- Keine Änderung an ChatGPT-Plugin-Konfigurationen.
+- Keine Tunnel-Änderungen.
+- Kein Deployment.
+- Keine externen Datenbankdienste einrichten.
+- Keine echten Trainingsdaten für Tests verwenden.
+- Keine Zugangsdaten committen.
+- Keine produktiven KI-Planvorschläge automatisch aktivieren.
+
+### Betriebsmodus
+
+Für diesen Auftrag sind schreibende Planoperationen ausschließlich in einem sicheren Fixture-Modus beziehungsweise einem bereits aus Task 004 autorisierten Testmodus erlaubt.
+
+Alle produktiven Schreibaktionen bleiben deaktiviert, solange die nötige Authentifizierung und Koordination nicht implementiert sind.
+
+---
+
+## 24. Definition of Done
+
+Task 005 gilt als abgeschlossen, wenn:
+
+- [ ] Ein eigenständiger TrainingPlanService existiert.
+- [ ] Neue Trainingsplanentwürfe erstellt werden können.
+- [ ] Beliebige Trainingssplits unterstützt werden.
+- [ ] Neue Planversionen erstellt werden können.
+- [ ] Aktive Planversionen unveränderlich sind.
+- [ ] Historische Planversionen erhalten bleiben.
+- [ ] Trainingseinheiten hinzugefügt werden können.
+- [ ] Trainingseinheiten umbenannt werden können.
+- [ ] Trainingseinheiten dupliziert werden können.
+- [ ] Übungen hinzugefügt werden können.
+- [ ] Übungen ersetzt werden können.
+- [ ] Übungen entfernt werden können.
+- [ ] Übungsreihenfolgen geändert werden können.
+- [ ] Zielwerte und Ausführungen geändert werden können.
+- [ ] Planentwürfe validiert werden können.
+- [ ] Pläne nur nach gültiger Bestätigung aktiviert werden können.
+- [ ] Zu jedem Zeitpunkt maximal eine aktive Planversion existiert.
+- [ ] Vorherige Planversionen archiviert werden.
+- [ ] Historische Workouts unverändert bleiben.
+- [ ] Workout-Logging weiterhin funktioniert.
+- [ ] Analytics über Planversionen hinweg funktionieren.
+- [ ] Ein interaktiver Trainingsplan-Editor existiert.
+- [ ] Der Planeditor für das spätere Onboarding wiederverwendbar ist.
+- [ ] MCP-Tools mit Zod-Schemas vorhanden sind.
+- [ ] Idempotenz und Konfliktbehandlung getestet sind.
+- [ ] Die Master-Datei geschützt bleibt.
+- [ ] Keine produktiven Schreibzugriffe freigeschaltet wurden.
+- [ ] Dokumentation vollständig ist.
+- [ ] Automatisierte Tests bestehen.
+
+### Abschlussprüfungen
+
+Führe aus:
+
+```bash
+npm run typecheck
+npm test
+npm run build
+npm run test:e2e
+npm run format:check
+```
+
+Dokumentiere die tatsächlichen Ergebnisse.
+
+---
+
+## 25. Abschlussbericht
+
+Nach der Umsetzung stoppe und erstelle:
+
+**ARNOLD TASK 005 – COMPLETION REPORT**
+
+Gliedere den Bericht wie folgt:
+
+1. **Status:** Completed / Partial / Blocked
+2. **Implementierte Domain Services**
+3. **Trainingsplan-State-Machine**
+4. **Planversionierungsstrategie**
+5. **Neue MCP-Tools**
+6. **Neue und veränderte Dateien**
+7. **Funktionen des visuellen Planeditors**
+8. **Historische Daten und Referenzintegrität**
+9. **Integration mit Workout Logging**
+10. **Integration mit Analytics Engine**
+11. **Idempotenz und Nebenläufigkeit**
+12. **Sicherheitsmechanismen**
+13. **Testresultate**
+14. **Einschränkungen des Google-Sheets-Schemas**
+15. **Offene technische Risiken**
+16. **Abweichungen vom ursprünglichen Auftrag**
+17. **Git-Branch und Commit-SHA**, sofern vorhanden
+18. **Empfehlung für Task 006**
+
+### Verbindliche Abnahmefragen
+
+Beantworte ausdrücklich:
+
+- Können beliebige Trainingspläne erstellt werden?
+- Können vorhandene Pläne geändert werden, ohne die historische Version zu verändern?
+- Bleiben alte Workout-Referenzen gültig?
+- Können Übungen und Trainingseinheiten hinzugefügt, entfernt und ersetzt werden?
+- Werden Planänderungen versioniert?
+- Wird ein neuer Plan erst nach ausdrücklicher Bestätigung aktiviert?
+- Kann niemals versehentlich eine aktive Version direkt verändert werden?
+- Ist das Aktivieren mehrerer Pläne gleichzeitig ausgeschlossen?
+- Funktioniert die bestehende Arnold-UI weiterhin?
+- Funktioniert der neue Trainingsplan-Editor innerhalb des MCP-App-Hosts?
+- Sind die Funktionen für das zukünftige Onboarding wiederverwendbar?
+- Wurden sämtliche Tests erfolgreich ausgeführt?
+- Welche Funktionen sind bereits implementiert und welche benötigen noch produktive Authentifizierung?
+- Wurde die Arnold-Masterdatei unverändert gelassen?
+
+**Beginne mit Task 005 erst, wenn Tasks 001–004 erfolgreich integriert sind.**

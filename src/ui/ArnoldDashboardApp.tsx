@@ -24,12 +24,7 @@ import {
 import type { ArnoldDashboardView } from "../shared/arnold-view";
 import type { ArnoldMcpClient } from "./client/ArnoldMcpClient";
 import { useDashboardData } from "./hooks";
-import {
-  ErrorState,
-  LoadingState,
-  PeriodFilter,
-  type PeriodValue,
-} from "./components";
+import { ErrorState, LoadingState, type PeriodValue } from "./components";
 import { OverviewView } from "./views/OverviewView";
 import { WorkoutHistoryView } from "./views/WorkoutHistoryView";
 import { ExerciseProgressView } from "./views/ExerciseProgressView";
@@ -311,17 +306,10 @@ export function ArnoldDashboardApp({
             <>
               {screen === "overview" && (
                 <>
-                  <div className="filter-bar overview-filters">
-                    <PeriodFilter
-                      value={period}
-                      onChange={setPeriod}
-                      anchor={view.period.to ?? initial.period.to}
-                      idPrefix="overview"
-                      scopeLabel="Übersicht"
-                    />
-                  </div>
                   <OverviewView
                     view={view}
+                    period={period}
+                    onPeriodChange={setPeriod}
                     loading={dashboard.loading}
                     onOpenWorkout={openWorkout}
                     onOpenProgress={() => go("progress")}

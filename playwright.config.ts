@@ -6,7 +6,7 @@ export default defineConfig({
   reporter: "list",
   timeout: 30000,
   use: {
-    baseURL: "http://127.0.0.1:8790",
+    baseURL: "http://127.0.0.1:8890",
     headless: true,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
@@ -14,10 +14,10 @@ export default defineConfig({
   webServer: [
     {
       command: "node dist/server/main.js",
-      url: "http://127.0.0.1:8790/health",
+      url: "http://127.0.0.1:8890/health",
       reuseExistingServer: false,
       env: {
-        PORT: "8790",
+        PORT: "8890",
         DEMO_DATA_FILE: "test-results/e2e-demo.json",
         STORAGE_MODE: "demo",
         ALLOWED_HOSTS: "localhost,127.0.0.1,[::1]",
@@ -26,14 +26,14 @@ export default defineConfig({
     },
     {
       command: "npx tsx tests/fixtures/sheets-server.ts",
-      url: "http://127.0.0.1:8791/health",
+      url: "http://127.0.0.1:8891/health",
       reuseExistingServer: false,
     },
     {
-      // Arnold schema v1 mode: 8792 with history, 8793 empty, 8794 failing,
-      // 8795 writable workout logger, 8796 plan editor, 8797 plan first run.
+      // Arnold schema v1 mode: 8892 with history, 8893 empty, 8894 failing,
+      // 8895 writable workout logger, 8896 plan editor, 8897 plan first run.
       command: "npx tsx tests/fixtures/arnold-server.ts",
-      url: "http://127.0.0.1:8792/health",
+      url: "http://127.0.0.1:8892/health",
       reuseExistingServer: false,
     },
   ],

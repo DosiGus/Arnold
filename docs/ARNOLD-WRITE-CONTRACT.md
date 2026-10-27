@@ -1,6 +1,6 @@
 # Arnold Write Contract — Task 004
 
-Stand: 26.10.2026. Rohdatenschema **arnold.training_raw / 1.0.0** bleibt unverändert.
+Stand: S001, 27.10.2026. Rohdatenschema **arnold.training_raw / 1.0.0** bleibt unverändert.
 Die sechs Tabellen und ihre Spalten entsprechen dem
 [Data Contract](ARNOLD-DATA-CONTRACT.md), die Auswertung dem
 [Metrics Spec](ARNOLD-METRICS-SPEC.md). Der Agent-Vertrag wurde aus dem verlinkten
@@ -27,8 +27,8 @@ flowchart TD
 ```
 
 - `src/shared/workout-contract.ts`: ausführbare Input-, Output- und Leseschemas.
-- `src/server/workout/service.ts`: Fachregeln, Autorisierung, Status, Revisionen,
-  Koordination, Journal und Verifikation. Keine React-Abhängigkeit.
+- `src/server/workout/service.ts`: Fachregeln, Autorisierung, Status und Revisionen.
+  `workout/commit.ts` ist der gemeinsame Commit-Runner für Logger und Planverwaltung: Koordination, Journal und Verifikation. Keine React-Abhängigkeit.
 - `src/server/workout/infrastructure.ts`: austauschbare Repositories, Ledger,
   Audit und Koordinator. PostgreSQL kann diese Schnittstellen später implementieren.
 - `src/server/arnold-sheets-write-adapter.ts`: begrenzte Sheets-Batches, keine
@@ -89,7 +89,7 @@ abgeleitet; deren Quelle ist die vollständige verbindliche Definition.
 `source` ist `chat` oder `ui`, Standard `chat`. Andere Import-/Sync-Quellen
 gehören nicht zu diesen Tools. Datumswerte sind echte ISO-Kalenderdaten;
 Zeitzonen werden mit `Intl.DateTimeFormat` validiert. Bekannte Startzeiten müssen
-zum lokalen Trainingsdatum passen. Historische Tage sind erlaubt; Start- und
+zum lokalen Trainingsdatum passen. Bekannte Endzeiten dürfen in der gespeicherten Zeitzone nicht vor dem lokalen Trainingstag liegen und bleiben zusätzlich gegen einen bekannten Start geprüft. Ein Ende am Folgetag und historische Trainings sind erlaubt; explizites `null` und weggelassene Zeitpunkte bleiben unbekannt. Historische Tage sind erlaubt; Start- und
 Endzeiten werden nicht für vergangene Tage erfunden.
 
 Ein `sets[]`-Element enthält:
@@ -123,7 +123,7 @@ Jede Antwort enthält im `structuredContent`:
     workout: ArnoldWorkout | null, sets: ArnoldSet[],
     exercise: ArnoldExercise | null, warnings: string[]
   },
-  error: null | { code: WriteErrorCode, message: string, retryable: boolean, details: string[] }
+  error: null | { code: WriteErrorCode, message: string, retryable: boolean, recovery?: "none" | "retry_same_request" | "retry_or_new_request", details: string[] }
 }
 ```
 
@@ -232,14 +232,27 @@ zurückgesetzt; aktuelle Werte sind separat mit `get_workout` lesbar.
 Gleiche ID/anderer Payload oder Akteur: `DUPLICATE_OPERATION`. Neue ID: eigenständige
 fachliche Operation, sofern weiterhin gültig.
 
-Journalzustände:
+Journalzustände im bestehenden JSON-Array-Format (additive S001-Erweiterung):
 
-1. `prepared`: IDs, vollständige Änderungen, Ergebnis und Audit-Absicht gesichert;
-   noch kein Dispatch.
-2. `dispatching`: vor dem Storage-Aufruf persistiert. Ein Absturz ab hier kann
-   einen unklaren Commit hinterlassen.
-3. `committed`: vollständiger Readback, Audit und abschließender Ledger-Eintrag
-   bestätigt. Erst jetzt wird Erfolg gemeldet.
+1. `prepared`: Änderungen, Ergebnis und Audit-Absicht vorbereitet; noch kein Dispatch.
+2. `dispatching`: vor Kontakt mit dem Repository dauerhaft gespeichert. Ein unklarer Ausgang bleibt gesperrt.
+3. `committed`: Readback, Audit und abschließender Ledger-Eintrag bestätigt.
+4. `rejected`: Das Repository hat mit `RejectedWriteError` ausdrücklich bewiesen, dass der Batch nicht dispatcht oder vollständig abgelehnt wurde. Normale Fehlercodes allein sind kein solcher Beweis. Dieser Zustand blockiert keine unabhängigen Aufträge. Derselbe Akteur kann denselben Request wieder aufnehmen; der originale Payload wird gegen die inzwischen aktuellen Revisionen neu validiert. Da noch nichts geschrieben wurde, dürfen dabei neue Entity-IDs entstehen. Unklare Dispatches behalten dagegen ihre ursprünglichen IDs und Änderungen.
+5. `abandoned`: Der nachweislich abgelehnte Auftrag wurde unter derselben Tracker-Sperre endgültig geschlossen. Seine Request-ID bleibt an Akteur und Fingerprint gebunden und darf nicht für einen Write wiederverwendet werden.
+
+`abandon_rejected_write({request_id})` ist ein eng begrenztes Journal-Tool, kein Sheets-Write. Nur der ursprüngliche geprüfte Akteur darf einen aktuell `rejected`-Eintrag schließen. Ein paralleler Retry und ein Abbruch serialisieren gegeneinander. Hat der Retry schon wieder dispatcht, wird der Abbruch abgelehnt. Wiederholter bestätigter Abbruch ist idempotent. Die UI löscht erst nach dieser Serverbestätigung ihre Recovery-Daten; ein lokales Verwerfen eines ungeklärten Requests wird nicht angeboten.
+
+Jede aktuelle Service-Fehlerantwort liefert zusätzlich `error.recovery`:
+
+| Wert                   | Bedeutung                                                                                                                                                           |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `none`                 | Für diesen Request ist keine offene Mutation entstanden oder der Auftrag wurde endgültig geschlossen. Eingaben können korrigiert werden.                            |
+| `retry_same_request`   | Payload und ID unverändert behalten und den ursprünglichen Vorgang prüfen. Keine Ersatzmutation erzeugen.                                                           |
+| `retry_or_new_request` | Die Ablehnung ist dauerhaft belegt. Derselbe Auftrag kann nach Behebung der Ursache erneut versucht oder mit `abandon_rejected_write` endgültig geschlossen werden. |
+
+`retryable` beschreibt die Fehlerursache, ersetzt dieses Recovery-Signal aber nicht. Historische Payloads ohne das additive Feld werden vom Client vorsichtig als ungeklärt behandelt. Auch ein Auth-/Berechtigungsfehler vor dem erneuten Service-Einstieg erhält `retry_same_request`, wenn ein früherer Intent existiert. Ein bewiesener 401-/403-Reject bleibt durch den Journalzustand wiederaufnehmbar, selbst wenn der unmittelbare Google-Readback wegen derselben Berechtigung scheitert.
+
+Alte Workout- und Plan-Journale werden anhand derselben Zeilen- und Result-Schemas kontrolliert gelesen; sie werden weder verworfen noch als leer ersetzt. Ergebnisse werden zusätzlich mit dem konkreten Domänen-Result-Schema geprüft. Neue Zustände sind für alte Serverversionen unbekannt: keinen alten Server auf ein bereits mit S001 erweitertes Journal zurückrollen. `pending()` umfasst ausschließlich `prepared` und `dispatching`. Ein anderer Akteur darf keinen fremden Pending-Auftrag automatisch abschließen.
 
 Wenn Google bereits geschrieben hat, aber die Ledger-Bestätigung scheitert,
 bleibt die vorbereitete Absicht erhalten. Ein Retry liest zuerst dieselben
@@ -285,6 +298,8 @@ aktuell per ID ermittelter Zeile und exakt erlaubter Spaltenbreite. Sämtliche
 Text wird über `ExtendedValue.stringValue`, Zahlen über `numberValue`
 geschrieben. Führende `=`, `+`, `-`, `@` werden nicht als Formel ausgewertet.
 Nach dem Batch werden die Daten erneut gelesen und die betroffenen IDs/Werte gezielt geprüft. Dafür wird derzeit das vollständige begrenzte Dataset gelesen; dies verursacht zusätzliche Google-Lesezugriffe und ist vor größeren Tracker-Historien zu optimieren.
+
+Die zentralen Standardgrenzen stehen in `src/shared/sheets-limits.ts`: 10.000 physische Grid-Zeilen inklusive Header, 64 Spalten, 1.000.000 Zellen pro Tabelle. Vor jedem Dispatch werden WORKOUTS-, SETS- und EXERCISES-Appends vollständig auf ihre resultierende Größe geprüft. Maßgeblich sind die letzte physische Datenzeile einschließlich interner Lücken, alle Appends des Batches und die vorhandene Grid-Größe. Freie Grid-Zeilen werden berücksichtigt. Ein übergroßer Batch scheitert vollständig mit `VALIDATION_ERROR` und null Write-Batches; historische Zeilen werden nicht gelöscht und Reads nicht abgeschnitten. Der synthetische Transport bildet die Grid-Erweiterung durch Append nach.
 
 Google beschreibt die Batch-Anwendung als atomar, weist aber auf konkurrierende
 Änderungen durch andere Bearbeiter hin. Dies umfasst kein externes Ledger oder

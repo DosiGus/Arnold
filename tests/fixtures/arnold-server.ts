@@ -1,3 +1,4 @@
+import "./s001-server";
 import { createFixtureLogging } from "../../src/server/workout/fixture";
 import {
   createFixturePlanning,
@@ -28,7 +29,7 @@ createHttpApp({
     description:
       "Synthetische Arnold-Testdaten; ausschließlich lesend ausgewertet.",
   }),
-}).listen(8792, "127.0.0.1");
+}).listen(8892, "127.0.0.1");
 
 /** The first-run case: catalog present, no workouts yet. */
 createHttpApp({
@@ -38,7 +39,7 @@ createHttpApp({
     description:
       "Die Trainingsdatenbasis ist bereit, es sind noch keine Trainings erfasst.",
   }),
-}).listen(8793, "127.0.0.1");
+}).listen(8893, "127.0.0.1");
 
 /** An unreachable data source, for the error state. */
 createHttpApp({
@@ -51,17 +52,17 @@ createHttpApp({
       retryable: true,
     },
   }),
-}).listen(8794, "127.0.0.1");
+}).listen(8894, "127.0.0.1");
 
 /** Isolated writable synthetic tracker for Task 004 browser coverage. */
 createHttpApp({ ...common, workoutRuntime: createFixtureLogging() }).listen(
-  8795,
+  8895,
   "127.0.0.1",
 );
 
 /** Isolated writable synthetic tracker for Task 005 plan-editor coverage. */
 createHttpApp({ ...common, workoutRuntime: createFixturePlanning() }).listen(
-  8796,
+  8896,
   "127.0.0.1",
 );
 
@@ -69,16 +70,16 @@ createHttpApp({ ...common, workoutRuntime: createFixturePlanning() }).listen(
 createHttpApp({
   ...common,
   workoutRuntime: createFixturePlanning(planFixtureDataset("empty")),
-}).listen(8797, "127.0.0.1");
+}).listen(8897, "127.0.0.1");
 
 /** Dedicated tracker for the destructive activation flow. */
 createHttpApp({ ...common, workoutRuntime: createFixturePlanning() }).listen(
-  8798,
+  8898,
   "127.0.0.1",
 );
 
 /** Dedicated tracker for the concurrent-edit conflict case. */
 createHttpApp({ ...common, workoutRuntime: createFixturePlanning() }).listen(
-  8799,
+  8899,
   "127.0.0.1",
 );

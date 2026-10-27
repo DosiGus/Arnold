@@ -18,8 +18,8 @@
  *      input is never discarded on a network error.
  *   4. Activation needs a confirmation naming one version *and* one revision.
  *      Editing after opening the dialog invalidates the confirmation, which is
- *      why `confirmation` is derived from the current revision rather than
- *      stored when the dialog opened.
+ *      why `confirmation` is pinned to the version and revision the user
+ *      actually saw when opening the dialog.
  *
  * Sessions the user has added but not yet filled are held here, not on the
  * server: the schema cannot store a session without a position, so pretending
@@ -42,6 +42,7 @@ import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
 type Pending = {
   operation: PlanWriteOperation;
   input: Record<string, unknown>;
+  canDismiss?: boolean;
 };
 
 /** A session the user created locally that has no storable position yet. */
@@ -71,6 +72,14 @@ export function usePlanEditor(client: ArnoldMcpClient, onChanged: () => void) {
 
   const busyGuard = useRef(false);
   const generation = useRef(0);
+  const loadingRef = useRef(false);
+  const [selecting, setSelecting] = useState(false);
+  const localsByPlan = useRef(new Map<string, LocalSession[]>());
+  const localRef = useRef(localSessions);
+  localRef.current = localSessions;
+  const confirmation = useRef<
+    { plan_version_id: string; row_revision: number } | undefined
+  >(undefined);
   const contextRef = useRef<PlanContext | undefined>(undefined);
   contextRef.current = context;
 
@@ -91,11 +100,32 @@ export function usePlanEditor(client: ArnoldMcpClient, onChanged: () => void) {
   const load = useCallback(
     async (planVersionId?: string) => {
       const token = ++generation.current;
-      const next = await client.planContext(planVersionId);
-      if (token !== generation.current) return undefined;
-      setContext(next);
-      contextRef.current = next;
-      return next;
+      loadingRef.current = true;
+      setSelecting(true);
+      try {
+        const next = await client.planContext(planVersionId);
+        if (token !== generation.current) return undefined;
+        const previousId = contextRef.current?.plan?.plan_version_id;
+        const nextId = next.plan?.plan_version_id;
+        if (previousId !== nextId) {
+          if (previousId)
+            localsByPlan.current.set(previousId, localRef.current);
+          const locals = nextId ? (localsByPlan.current.get(nextId) ?? []) : [];
+          localRef.current = locals;
+          setLocalSessions(locals);
+          setComparison(undefined);
+          setConfirming(false);
+          confirmation.current = undefined;
+        }
+        setContext(next);
+        contextRef.current = next;
+        return next;
+      } finally {
+        if (token === generation.current) {
+          loadingRef.current = false;
+          setSelecting(false);
+        }
+      }
     },
     [client],
   );
@@ -141,7 +171,7 @@ export function usePlanEditor(client: ArnoldMcpClient, onChanged: () => void) {
       request: Pending,
       options: { busyState: PlanEditorState; retry?: boolean },
     ): Promise<PlanWriteResponse | undefined> => {
-      if (busyGuard.current) return undefined;
+      if (busyGuard.current || loadingRef.current) return undefined;
       if (pending && !options.retry) {
         setState("CONFLICT");
         setError(
@@ -162,10 +192,21 @@ export function usePlanEditor(client: ArnoldMcpClient, onChanged: () => void) {
           request.input,
         );
         if (!response.ok) {
+          setConfirming(false);
           const code = response.error?.code;
-          const unclear =
-            code === "COMMIT_STATUS_UNKNOWN" || code === "STORAGE_UNAVAILABLE";
-          if (unclear) throw new Error(`${code}: ${response.error?.message}`);
+          if (response.error?.recovery !== "none") {
+            const recoverable = {
+              ...request,
+              canDismiss: response.error?.recovery === "retry_or_new_request",
+            };
+            setPending(recoverable);
+            if (tracker) client.putPendingPlan(tracker, recoverable);
+            setState("CONFLICT");
+            setError(
+              `${code}: ${response.error?.message} ${recoverable.canDismiss ? "Abgelehnt; denselben Vorgang erneut versuchen oder schließen." : "Vorgang mit derselben Operations-ID prüfen."}`,
+            );
+            return response;
+          }
           setPending(undefined);
           if (tracker) client.clearPendingPlan(tracker);
           setError(
@@ -202,12 +243,19 @@ export function usePlanEditor(client: ArnoldMcpClient, onChanged: () => void) {
         if (activated) setLocalSessions([]);
         // Reload from the server rather than trusting the response alone, so
         // the screen always shows stored state.
-        const next = await load(
-          activated ? undefined : (produced?.plan_version_id ?? undefined),
-        );
-        if (next) {
-          if (activated) setState("ACTIVATION_CONFIRMED");
-          else settle(next);
+        try {
+          const next = await load(
+            activated ? undefined : (produced?.plan_version_id ?? undefined),
+          );
+          if (next) {
+            if (activated) setState("ACTIVATION_CONFIRMED");
+            else settle(next);
+          }
+        } catch {
+          setState("ERROR");
+          setError(
+            "Änderung bestätigt; die angezeigte Version konnte noch nicht aktualisiert werden. Vor weiterer Bearbeitung neu laden.",
+          );
         }
         setConfirming(false);
         onChanged();
@@ -283,17 +331,31 @@ export function usePlanEditor(client: ArnoldMcpClient, onChanged: () => void) {
   const review = useCallback(async () => {
     const current = contextRef.current;
     const draft = current?.plan;
-    if (!draft || draft.status !== "draft") return;
+    if (
+      !draft ||
+      draft.status !== "draft" ||
+      busyGuard.current ||
+      loadingRef.current ||
+      pending
+    )
+      return;
+    busyGuard.current = true;
+    const token = ++generation.current;
     setState("VALIDATING_DRAFT");
     setError("");
     try {
       const validation = await client.validatePlan(draft.plan_version_id);
       const base = current!.active_plan_version_id;
-      setComparison(
+      const compared =
         base && base !== draft.plan_version_id
           ? await client.comparePlans(base, draft.plan_version_id)
-          : undefined,
-      );
+          : undefined;
+      if (
+        token !== generation.current ||
+        contextRef.current?.plan?.plan_version_id !== draft.plan_version_id
+      )
+        return;
+      setComparison(compared);
       setContext((previous) =>
         previous ? { ...previous, validation } : previous,
       );
@@ -305,21 +367,37 @@ export function usePlanEditor(client: ArnoldMcpClient, onChanged: () => void) {
             : "EDITING_DRAFT",
       );
     } catch (e) {
-      setState("ERROR");
-      setError((e as Error).message);
+      if (token === generation.current) {
+        setState("ERROR");
+        setError((e as Error).message);
+      }
+    } finally {
+      busyGuard.current = false;
     }
-  }, [client]);
+  }, [client, pending]);
 
   /**
    * Activates the draft.
    *
-   * The confirmation is built from the revision as it is *now*, so a draft that
-   * changed since the dialog opened is refused by the server rather than
-   * activated from a stale review.
+   * Confirmation is pinned when the dialog opens. Neither a local refresh nor
+   * a changed server revision can silently broaden what the user confirmed.
    */
   const activate = useCallback(async () => {
     const draft = contextRef.current?.plan;
     if (!draft || draft.status !== "draft") return undefined;
+    const target = confirmation.current;
+    if (
+      !target ||
+      target.plan_version_id !== draft.plan_version_id ||
+      target.row_revision !== draft.row_revision ||
+      localRef.current.length
+    ) {
+      setError(
+        "Die angezeigte Version hat sich geändert. Änderungen erneut prüfen und bestätigen.",
+      );
+      setConfirming(false);
+      return undefined;
+    }
     return dispatch(
       {
         operation: "activate_training_plan",
@@ -414,13 +492,14 @@ export function usePlanEditor(client: ArnoldMcpClient, onChanged: () => void) {
   /** Shows a stored version without entering edit mode. */
   const select = useCallback(
     async (planVersionId?: string) => {
+      if (busyGuard.current || pending) return;
       setError("");
       setMessage("");
       setComparison(undefined);
       const next = await load(planVersionId);
       if (next) settle(next);
     },
-    [load, settle],
+    [load, settle, pending],
   );
 
   const retry = useCallback(
@@ -431,15 +510,35 @@ export function usePlanEditor(client: ArnoldMcpClient, onChanged: () => void) {
     [dispatch, pending],
   );
 
-  /** Abandons an unconfirmed operation without sending anything. */
-  const dismissPending = useCallback(() => {
-    const tracker = contextRef.current?.tracker_id;
-    setPending(undefined);
-    if (tracker) client.clearPendingPlan(tracker);
-    setError("");
-    const next = contextRef.current;
-    if (next) settle(next);
-  }, [client, settle]);
+  /** Atomically closes a proven rejection; local storage is cleared only afterwards. */
+  const dismissPending = useCallback(async () => {
+    if (busyGuard.current || !pending?.canDismiss) return;
+    busyGuard.current = true;
+    setState("SAVING_DRAFT");
+    try {
+      const response = await client.abandonRejected(
+        String(pending.input.request_id),
+      );
+      if (!response.ok) throw new Error(response.error?.message);
+      const tracker = contextRef.current?.tracker_id;
+      setPending(undefined);
+      if (tracker) client.clearPendingPlan(tracker);
+      setError("");
+      const next = contextRef.current;
+      if (next) settle(next);
+    } catch (e) {
+      const retained = { ...pending, canDismiss: false };
+      setPending(retained);
+      const tracker = contextRef.current?.tracker_id;
+      if (tracker) client.putPendingPlan(tracker, retained);
+      setState("CONFLICT");
+      setError(
+        `${(e as Error).message} Originalauftrag bleibt erhalten; Vorgang prüfen.`,
+      );
+    } finally {
+      busyGuard.current = false;
+    }
+  }, [client, settle, pending]);
 
   /* ----------------------------------------------- locally added sessions */
 
@@ -515,13 +614,29 @@ export function usePlanEditor(client: ArnoldMcpClient, onChanged: () => void) {
     explained,
     editing,
     busy:
+      selecting ||
       state === "SAVING_DRAFT" ||
       state === "ACTIVATING" ||
       state === "VALIDATING_DRAFT",
     /** True while unsaved local sessions exist, so the UI can mark the draft dirty. */
     hasUnsavedLocal: localSessions.length > 0,
     canWrite: context?.can_write ?? false,
-    openConfirmation: () => setConfirming(true),
+    openConfirmation: () => {
+      const current = contextRef.current;
+      if (
+        !current?.plan ||
+        !current.validation?.activatable ||
+        busyGuard.current ||
+        pending ||
+        localRef.current.length
+      )
+        return;
+      confirmation.current = {
+        plan_version_id: current.plan.plan_version_id,
+        row_revision: current.plan.row_revision,
+      };
+      setConfirming(true);
+    },
     closeConfirmation: () => setConfirming(false),
     dismissExplanation: () => setExplained(true),
     beginEditing,

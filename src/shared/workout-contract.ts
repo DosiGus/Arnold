@@ -1,3 +1,4 @@
+import { WriteRecoverySchema } from "./write-recovery.js";
 import { z } from "zod";
 import {
   ArnoldExerciseSchema,
@@ -48,6 +49,7 @@ export const WriteInputs = {
     started_at_utc: z.iso
       .datetime()
       .refine((v) => v.endsWith("Z"))
+      .nullable()
       .optional(),
     source,
   }),
@@ -80,6 +82,7 @@ export const WriteInputs = {
     ended_at_utc: z.iso
       .datetime()
       .refine((v) => v.endsWith("Z"))
+      .nullable()
       .optional(),
   }),
   cancel_workout: z.strictObject({
@@ -143,6 +146,7 @@ export const WriteResponseSchema = z
         code: WriteErrorCodeSchema,
         message: z.string(),
         retryable: z.boolean(),
+        recovery: WriteRecoverySchema.optional(),
         details: z.array(z.string()),
       })
       .nullable(),

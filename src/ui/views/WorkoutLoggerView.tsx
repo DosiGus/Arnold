@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { ArnoldSet } from "../../shared/arnold-schema-v1";
 import { LOAD_BASIS_LABEL, formatSetLine } from "../../shared/arnold-format";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
@@ -34,7 +34,7 @@ export function WorkoutLoggerView({
   const data = logger.data,
     workout = data?.workout;
   const closed = workout?.status === "completed";
-  const disabled = logger.busy || !!logger.pending;
+  const disabled = logger.busy || logger.selecting || !!logger.pending;
   const items =
     data?.plan_items.filter(
       (i) =>
@@ -67,8 +67,16 @@ export function WorkoutLoggerView({
     if (item?.target_load_kg !== null && item?.target_load_kg !== undefined)
       setKg(String(item.target_load_kg));
   }
+  const previousWorkout = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (data && !exerciseId && data.exercises[0])
+    const changedWorkout = previousWorkout.current !== workout?.workout_id;
+    previousWorkout.current = workout?.workout_id;
+    if (changedWorkout && !logger.pending) resetEdit();
+    if (
+      data?.exercises[0] &&
+      !logger.pending &&
+      (changedWorkout || !exerciseId)
+    )
       choose(data.exercises[0].exercise_id);
   }, [data]);
   useEffect(() => {
@@ -106,6 +114,14 @@ export function WorkoutLoggerView({
   }
   async function save(event: FormEvent) {
     event.preventDefault();
+    if (
+      disabled ||
+      !workout ||
+      (edit && edit.workout_id !== workout.workout_id) ||
+      (logger.selectedWorkoutId &&
+        logger.selectedWorkoutId !== workout.workout_id)
+    )
+      return;
     const fields = {
       set_type: type,
       reps: Number(reps),
@@ -144,7 +160,18 @@ export function WorkoutLoggerView({
       setReps("");
     }
   }
+  function resetEdit() {
+    setEdit(undefined);
+    setReason("");
+    setReps("");
+    setKg("");
+    setRpe("");
+    setRir("");
+    setType("working");
+    setExerciseId("");
+  }
   function correct(set: ArnoldSet) {
+    if (disabled || set.workout_id !== workout?.workout_id) return;
     setEdit(set);
     setExerciseId(set.exercise_id);
     setKg(set.load_kg === null ? "" : String(set.load_kg));
@@ -168,10 +195,19 @@ export function WorkoutLoggerView({
         {logger.pending && (
           <button
             className="secondary"
-            disabled={logger.busy}
+            disabled={logger.busy || logger.selecting}
             onClick={() => void logger.retry()}
           >
             Vorgang prüfen / erneut versuchen
+          </button>
+        )}
+        {logger.pending?.canDismiss && (
+          <button
+            className="secondary"
+            disabled={logger.busy}
+            onClick={logger.dismissPending}
+          >
+            Abgelehnten Vorgang schließen
           </button>
         )}
         {!data ? (
@@ -185,8 +221,11 @@ export function WorkoutLoggerView({
                 Offenes Workout
                 <select
                   disabled={disabled}
-                  value={workout?.workout_id ?? ""}
-                  onChange={(e) => void logger.select(e.target.value)}
+                  value={logger.selectedWorkoutId ?? workout?.workout_id ?? ""}
+                  onChange={(e) => {
+                    resetEdit();
+                    void logger.select(e.target.value);
+                  }}
                 >
                   <option value="" disabled>
                     Workout auswählen

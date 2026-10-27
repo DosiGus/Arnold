@@ -235,12 +235,14 @@ export function ExercisePicker({
   onPick,
   onClose,
   busy,
+  feedback,
 }: {
   exercises: readonly PlanExerciseOption[];
   title: string;
   onPick: (exercise: PlanExerciseOption) => void;
   onClose: () => void;
   busy?: boolean;
+  feedback?: ReactNode;
 }) {
   const [query, setQuery] = useState("");
   const normalized = query
@@ -273,6 +275,7 @@ export function ExercisePicker({
       description="Such nach Name, Gerät oder Muskelgruppe. Die Ausführung wird aus dem Übungskatalog übernommen."
       onClose={onClose}
     >
+      {feedback}
       <label>
         Übung suchen
         <input
@@ -376,11 +379,13 @@ export function targetsFromDraft(draft: TargetDraft) {
 export function ExerciseSettingsPanel({
   exercise,
   busy,
+  feedback,
   onSave,
   onClose,
 }: {
   exercise: PlannedExercise;
   busy?: boolean;
+  feedback?: ReactNode;
   onSave: (draft: TargetDraft) => void;
   onClose: () => void;
 }) {
@@ -412,6 +417,7 @@ export function ExerciseSettingsPanel({
         </>
       }
     >
+      {feedback}
       <div className="form-row">
         <label>
           Zielsätze
@@ -978,7 +984,9 @@ export function PlanOverview({
             <h2>{plan.name}</h2>
             <p>
               <span className={`plan-tag ${plan.status}`}>
-                {PLAN_STATUS_LABEL[plan.status]}
+                {plan.discarded
+                  ? "Verworfener Entwurf"
+                  : PLAN_STATUS_LABEL[plan.status]}
               </span>
               {` Version ${plan.version_no}`}
               {plan.split_key ? ` · ${plan.split_key}` : ""}
@@ -1216,7 +1224,9 @@ export function PlanVersionHistory({
                   <strong>
                     Version {version.version_no}
                     <span className={`plan-tag ${version.status}`}>
-                      {PLAN_STATUS_LABEL[version.status]}
+                      {version.discarded
+                        ? "Verworfener Entwurf"
+                        : PLAN_STATUS_LABEL[version.status]}
                     </span>
                   </strong>
                   <small>
@@ -1228,10 +1238,12 @@ export function PlanVersionHistory({
                       : ""}
                   </small>
                   <small>
-                    {version.activated_at_utc
-                      ? `Aktiv ab ${dateLabel(version.activated_at_utc.slice(0, 10))}`
-                      : `Entwurf vom ${dateLabel(version.created_at_utc.slice(0, 10))}`}
-                    {version.retired_at_utc
+                    {version.discarded
+                      ? "Nie aktiviert"
+                      : version.activated_at_utc
+                        ? `Aktiv ab ${dateLabel(version.activated_at_utc.slice(0, 10))}`
+                        : `Entwurf vom ${dateLabel(version.created_at_utc.slice(0, 10))}`}
+                    {version.retired_at_utc && !version.discarded
                       ? ` · archiviert am ${dateLabel(version.retired_at_utc.slice(0, 10))}`
                       : ""}
                   </small>

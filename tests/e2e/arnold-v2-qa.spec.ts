@@ -8,7 +8,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { EXERCISES } from "../fixtures/arnold-dashboard";
 
-const WITH_HISTORY = "http://127.0.0.1:8792";
+const WITH_HISTORY = "http://127.0.0.1:8892";
 
 function nav(page: Page, label: string) {
   return page

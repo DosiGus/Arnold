@@ -18,7 +18,6 @@ import {
 } from "../../shared/arnold-schema-v1.js";
 import {
   WriteResultSchema,
-  type WriteResult,
   type WriteErrorCode,
 } from "../../shared/workout-contract.js";
 import { PlanWriteResultSchema } from "../../shared/plan-contract.js";
@@ -33,6 +32,12 @@ export class WriteError extends Error {
     super(message);
   }
 }
+/** Repository proof: this batch was never dispatched or definitively rejected. */
+export class RejectedWriteError extends WriteError {}
+export const StoredWriteResultSchema = z.union([
+  WriteResultSchema,
+  PlanWriteResultSchema,
+]);
 export type WriteMode = "disabled" | "fixture" | "test_sheet" | "production";
 export type Permission = "write" | "correct_completed";
 export interface Actor {
@@ -222,12 +227,18 @@ const EntrySchema = z.object({
   requestId: z.string(),
   fingerprint: z.string(),
   actor: z.string(),
-  state: z.enum(["prepared", "dispatching", "committed"]),
+  state: z.enum([
+    "prepared",
+    "dispatching",
+    "committed",
+    "rejected",
+    "abandoned",
+  ]),
   changes: z.array(ChangeSchema),
   audit: z.array(AuditEventSchema),
   // One ledger serves workout and plan writes, so a replay is deduplicated
   // across both domains by (tracker, request_id) rather than per service.
-  result: z.union([WriteResultSchema, PlanWriteResultSchema]),
+  result: StoredWriteResultSchema,
 });
 export type LedgerEntry = z.infer<typeof EntrySchema>;
 export interface OperationLedger {
@@ -247,7 +258,11 @@ export class InMemoryOperationLedger implements OperationLedger {
   }
   async pending(tracker: string) {
     return [...this.entries.values()]
-      .filter((e) => e.trackerId === tracker && e.state !== "committed")
+      .filter(
+        (e) =>
+          e.trackerId === tracker &&
+          (e.state === "prepared" || e.state === "dispatching"),
+      )
       .map((e) => structuredClone(e));
   }
   async save(entry: LedgerEntry) {
@@ -287,7 +302,9 @@ export class FileOperationLedger implements OperationLedger {
   }
   async pending(tracker: string) {
     return (await this.read()).filter(
-      (e) => e.trackerId === tracker && e.state !== "committed",
+      (e) =>
+        e.trackerId === tracker &&
+        (e.state === "prepared" || e.state === "dispatching"),
     );
   }
   async save(entry: LedgerEntry) {
@@ -310,7 +327,7 @@ export class FileOperationLedger implements OperationLedger {
 export interface ArnoldWriteRepository {
   readonly kind: "fixture" | "test_sheet";
   read(): Promise<ArnoldDataset>;
-  /** One logical atomic batch. Unknown outcomes must throw COMMIT_STATUS_UNKNOWN. */
+  /** Atomic batch. Only RejectedWriteError proves no dispatch/definite rejection; all other exceptions are uncertain. */
   apply(changes: readonly EntityChange[]): Promise<void>;
 }
 /** Stable columns per table: an update may never move a row's identity or its history references. */
@@ -394,6 +411,20 @@ export function changedDataset(
       throw new WriteError(
         "VALIDATION_ERROR",
         "Stabile ID, Erstellungszeit oder Revision verletzt.",
+      );
+    if (
+      change.table === "plans" &&
+      change.before &&
+      change.before.status !== "draft" &&
+      !(
+        change.before.status === "active" &&
+        change.after.status === "archived" &&
+        change.after.activated_at_utc === change.before.activated_at_utc
+      )
+    )
+      throw new WriteError(
+        "PERMISSION_DENIED",
+        "Aktivierte Versionen dürfen nur archiviert werden; archivierte Versionen bleiben unveränderlich.",
       );
     // Plan content lives only in drafts. An activated or archived version is a
     // historical record: its positions are frozen and only its own lifecycle
@@ -481,6 +512,17 @@ export class InMemoryArnoldWriteRepository implements ArnoldWriteRepository {
     return ArnoldDatasetSchema.parse(structuredClone(this.dataset));
   }
   async apply(changes: readonly EntityChange[]) {
-    this.dataset = changedDataset(this.dataset, changes);
+    try {
+      this.dataset = changedDataset(this.dataset, changes);
+    } catch (error) {
+      if (error instanceof WriteError)
+        throw new RejectedWriteError(
+          error.code,
+          error.message,
+          error.retryable,
+          error.details,
+        );
+      throw error;
+    }
   }
 }

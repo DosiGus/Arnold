@@ -1,4 +1,7 @@
-import type { ArnoldPlanVersion } from "../shared/arnold-schema-v1.js";
+import {
+  isDiscardedPlan,
+  type ArnoldPlanVersion,
+} from "../shared/arnold-schema-v1.js";
 import type { PreparedInput, PreparedWorkout } from "./eligibility.js";
 import { addDays, compareDate } from "./period.js";
 import {
@@ -126,7 +129,7 @@ function rate(
  * position count towards adherence. Extra work is reported separately.
  */
 export function computePlanAdherence(input: PreparedInput) {
-  const plans = input.dataset.plans;
+  const plans = input.dataset.plans.filter((plan) => !isDiscardedPlan(plan));
   const sessionKey = (workout: PreparedWorkout) =>
     workout.workout.plan_version_id !== null &&
     workout.workout.session_id !== null
@@ -134,7 +137,14 @@ export function computePlanAdherence(input: PreparedInput) {
       : null;
   const attributable = input.completedWorkouts.filter((workout) => {
     const key = sessionKey(workout);
-    return key !== null && input.planItemsBySession.has(key);
+    const plan = input.plansById.get(workout.workout.plan_version_id ?? "");
+    return (
+      key !== null &&
+      !!plan &&
+      !isDiscardedPlan(plan) &&
+      plan.status !== "draft" &&
+      input.planItemsBySession.has(key)
+    );
   });
   const attributableIds = new Set(
     attributable.map((workout) => workout.workout.workout_id),

@@ -1,0 +1,30 @@
+import {test, expect, type Page} from "@playwright/test";
+const URL="http://127.0.0.1:8795";
+const nav=(page:Page,name:string)=>page.getByRole("navigation",{name:"Hauptnavigation"}).getByRole("button",{name,exact:true});
+async function openLogger(page:Page){await nav(page,"Training eintragen").click();await expect(page.getByRole("button",{name:"Workout starten",exact:true})).toBeVisible();}
+async function start(page:Page,name:string){await page.getByLabel("Trainingseinheit",{exact:true}).fill(name);await page.getByRole("button",{name:"Workout starten",exact:true}).click();await expect(page.getByRole("status")).toContainText("Gespeichert");}
+async function save(page:Page, kg:string){await page.getByLabel("Gewicht (kg)",{exact:true}).fill(kg);await page.getByLabel("Wiederholungen",{exact:true}).fill("10");await page.getByRole("button",{name:"Satz speichern",exact:true}).click();await expect(page.locator(".confirmed-sets li")).toHaveCount(1);}
+
+test("Q4-05 switching workouts cannot apply the previous workout's active correction",async({page},testInfo)=>{
+ const calls:any[]=[];
+ page.on("request",request=>{if(request.method()==="POST"&&request.url().endsWith("/mcp")){const b=request.postDataJSON();if(b?.method==="tools/call")calls.push(b.params);}});
+ await page.goto(`${URL}/preview`);
+ await openLogger(page);await start(page,"QA Workout A");await save(page,"30");
+ const firstSetCall=calls.find(c=>c.name==="log_workout_sets");
+ const firstWorkout=firstSetCall.arguments.workout_id;
+ await nav(page,"Übersicht").click();await openLogger(page);await start(page,"QA Workout B");await save(page,"40");
+ const secondWorkout=calls.filter(c=>c.name==="log_workout_sets").at(-1).arguments.workout_id;
+ await page.getByRole("combobox",{name:"Offenes Workout",exact:true}).selectOption(firstWorkout);
+ await expect(page.locator(".confirmed-sets li")).toContainText("30 kg");
+ await page.getByRole("button",{name:"Satz 1 korrigieren",exact:true}).click();
+ await page.getByRole("combobox",{name:"Offenes Workout",exact:true}).selectOption(secondWorkout);
+ await expect(page.locator(".confirmed-sets li")).toContainText("40 kg");
+ await page.screenshot({path:testInfo.outputPath("selected-b-editing-a.png"),fullPage:true});
+ await page.getByLabel("Gewicht (kg)",{exact:true}).fill("99");
+ // Record the concrete mutation before the assertion: the form still edits A.
+ await page.getByRole("button",{name:"Korrektur speichern",exact:true}).click();
+ await expect(page.locator(".confirmed-sets li")).toContainText("99 kg");
+ await testInfo.attach("mutation-evidence",{body:JSON.stringify({selectedWorkout:secondWorkout,wronglyUpdatedWorkout:firstWorkout,calls},null,2),contentType:"application/json"});
+ await expect(page.getByRole("combobox",{name:"Offenes Workout",exact:true})).toHaveValue(secondWorkout);
+});
+

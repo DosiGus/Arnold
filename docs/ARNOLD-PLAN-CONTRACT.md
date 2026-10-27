@@ -121,7 +121,7 @@ TrainingPlan (plan_family_id = PF_001)
                                    (Endzustand)
 ```
 
-Genau drei Übergänge existieren:
+Genau drei Übergänge existieren. `archive_plan_draft` darf ausschließlich einen Entwurf verwerfen; eine aktive Version wird nur bei Aktivierung ihres Nachfolgers archiviert:
 
 | Von      | Nach       | Ausgelöst durch                                      |
 | -------- | ---------- | ---------------------------------------------------- |
@@ -523,6 +523,8 @@ Tool: `activate_training_plan`
 7. Readback: beide Zeilen müssen genau so vorliegen.
 8. Audit-Ereignisse schreiben, Journal auf `committed` setzen.
 
+Der neue Aktivierungszeitpunkt muss strikt nach dem bisherigen liegen. Bei gleicher oder rückwärts laufender Serveruhr wird vor Mutation mit `REVISION_CONFLICT` abgelehnt; nach erneutem Laden kann neu bestätigt werden. Es werden keine Zeitstempel erfunden. Das verhindert, dass eine tatsächlich aktive Version durch ein Null-Zeitfenster fälschlich wie ein verworfener Entwurf aussieht.
+
 Schritte 4 und 5 liegen im **selben** Batch. Es gibt keinen Zeitpunkt mit zwei
 aktiven Plänen und keinen mit null aktiven Plänen.
 
@@ -533,8 +535,7 @@ Eine erfolgreiche technische Prüfung ist **keine** Nutzerbestätigung. Die
 angezeigte Planversion und Revision nennen. Wird der Entwurf nach dem
 Prüfschritt noch geändert, steigt seine Revision und die alte Bestätigung wird
 mit `STALE_CONFIRMATION` abgelehnt. Im Editor ist das abgedeckt: die Bestätigung
-wird aus der **aktuellen** Revision gebildet, nicht aus der beim Öffnen des
-Dialogs gespeicherten.
+wird an die beim Öffnen des Dialogs angezeigte Version und Revision gebunden. Ein Refresh darf keine neue Revision stillschweigend mitbestätigen.
 
 Die endgültige Identitätsbindung erfolgt mit der produktiven Authentifizierung.
 
@@ -967,12 +968,7 @@ Zusagen im Zusammenspiel:
 | `workout/service.ts`             | eine Zeile: `createdAt(...)` statt direktem Feldzugriff                                                                                                                                                 |
 | `ui/client.ts`                   | strukturierte Plan-Schreibfehler werden wie Workout-Fehler durchgereicht statt als Transportfehler geworfen                                                                                             |
 
-**Offener Punkt:** Das Commit-Protokoll liegt nun zweimal vor – als
-parametrisierter `commitWrite` in `plan/commit.ts` und als Inline-Variante in
-`WorkoutLoggingService.execute`. Beide halten dieselbe Reihenfolge und
-dieselben Garantien. Das Zusammenführen des Workout-Service auf `commitWrite`
-ist eine empfohlene Folgeaufgabe; sie wurde hier bewusst nicht durchgeführt, um
-nicht committete Arbeit an `workout/service.ts` nicht zu überschreiben.
+**S001:** Plan- und Workout-Service verwenden denselben Commit-Runner in `workout/commit.ts`; `plan/commit.ts` ist lediglich ein Kompatibilitäts-Reexport. Ergebnisdaten werden vor Vorbereitung und bei Replay gegen das jeweilige Domänen-Schema geprüft. Beide Dienste teilen Repository, Coordinator, Ledger und Audit. Der Recovery- und serverseitige Abbruchvertrag ist im [Write Contract](ARNOLD-WRITE-CONTRACT.md) verbindlich beschrieben.
 
 ---
 
@@ -1053,7 +1049,7 @@ beziehen; `WORKOUTS` erbt den Track über `plan_version_id`.
 
 **Umgang in V1:** `archive_plan_draft` setzt `activated_at_utc` und
 `retired_at_utc` auf **denselben** Zeitpunkt. Dieses Paar ist das dokumentierte
-Kennzeichen für „verworfener Entwurf, nie aktiv gewesen". Das Fenster hat Länge
+Kennzeichen für „verworfener Entwurf, nie aktiv gewesen". Die Domain-Projektion liefert zusätzlich `discarded: true`; Editor und Historie zeigen „Verworfener Entwurf · Nie aktiviert“. Das Dashboard führt ihn nicht als frühere aktive Version. Der Workout-Service lehnt explizite Referenzen darauf ab; Analytics schließt ihn auch bei expliziten Workout-Referenzen aus der Planerfüllung aus. Das Fenster hat Länge
 null, weshalb `planVersionAt()` diese Version zu **keinem** Datum auswählen
 kann – belegt durch einen Test, der mehrere Daten prüft. Die Schreibantwort
 weist ausdrücklich darauf hin, und das Audit-Ereignis
@@ -1067,16 +1063,16 @@ weist ausdrücklich darauf hin, und das Audit-Ereignis
 
 ## 25. Bekannte technische Risiken
 
-| Risiko                               | Auswirkung                                                        | Minderung / Status                                                                 |
-| ------------------------------------ | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Prozesslokale Schreibkoordination    | Zwei Serverinstanzen auf demselben Tracker könnten verschränken   | Nur eine Instanz je Tracker betreiben; verteilte Sperre offen                      |
-| Journal `memory`/`local`             | Idempotenz übersteht keinen Instanzwechsel                        | `FileOperationLedger` übersteht einen Neustart; verteiltes Journal offen           |
-| Externe manuelle Tabellenänderung    | Gleichzeitige Fremdänderung ist nicht durch Constraints abgedeckt | Fingerprint-Erkennung im Google-Adapter sperrt den Tracker bis zur Klärung         |
-| Verworfener Entwurf als „archiviert" | Rohdatenleser könnte das Paar `activated == retired` fehldeuten   | Dokumentiertes Kennzeichen, Analytics-Test, Migrationsvorschlag in §24             |
-| Doppeltes Commit-Protokoll           | Zwei Implementierungen könnten auseinanderlaufen                  | Gleiche Reihenfolge und Garantien; Zusammenführung als Folgeaufgabe (§22)          |
-| Entwürfe sammeln sich an             | Viele verworfene Versionen in der Historie                        | Historie filtert nach Status; Aufräumen offen                                      |
-| Massenupdate bei Umbenennung         | Eine Umbenennung schreibt alle Positionen der Einheit             | Durch Modell-Diff auf das Nötige begrenzt; echte Lösung ist die `SESSIONS`-Tabelle |
-| Keine produktive Autorisierung       | Planänderungen sind nur im Fixture-Modus möglich                  | Beabsichtigt; produktive Freigabe erst mit abgeschlossener Authentifizierung       |
+| Risiko                               | Auswirkung                                                        | Minderung / Status                                                         |
+| ------------------------------------ | ----------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Prozesslokale Schreibkoordination    | Zwei Serverinstanzen auf demselben Tracker könnten verschränken   | Nur eine Instanz je Tracker betreiben; verteilte Sperre offen              |
+| Journal `memory`/`local`             | Idempotenz übersteht keinen Instanzwechsel                        | `FileOperationLedger` übersteht einen Neustart; verteiltes Journal offen   |
+| Externe manuelle Tabellenänderung    | Gleichzeitige Fremdänderung ist nicht durch Constraints abgedeckt | Fingerprint-Erkennung im Google-Adapter sperrt den Tracker bis zur Klärung |
+| Verworfener Entwurf als „archiviert" | Rohdatenleser könnte das Paar `activated == retired` fehldeuten   | Dokumentiertes Kennzeichen, Analytics-Test, Migrationsvorschlag in §24     |
+
+| Entwürfe sammeln sich an | Viele verworfene Versionen in der Historie | Historie filtert nach Status; Aufräumen offen |
+| Massenupdate bei Umbenennung | Eine Umbenennung schreibt alle Positionen der Einheit | Durch Modell-Diff auf das Nötige begrenzt; echte Lösung ist die `SESSIONS`-Tabelle |
+| Keine produktive Autorisierung | Planänderungen sind nur im Fixture-Modus möglich | Beabsichtigt; produktive Freigabe erst mit abgeschlossener Authentifizierung |
 
 Die Arnold-Masterdatei wurde nicht verändert.
 
@@ -1118,3 +1114,11 @@ src/ui/style.css                       Editor-Styles auf bestehenden Tokens
 playwright.config.ts                   Kommentar zu den Fixture-Ports
 tests/fixtures/arnold-server.ts        Fixture-Server 8796–8799
 ```
+
+## S001: Editor und Schema-Grenzen
+
+Lokale leere Einheiten bleiben an ihrer konkreten Planversion gebunden und werden beim Wechsel auf eine andere Version nicht als deren Einheiten ausgegeben. Beim Zurückwechseln stehen sie in derselben Editor-Sitzung wieder zur Verfügung. Sie blockieren die Aktivierung. Plan- und Workout-Auswahlantworten sind durch Generationen gesichert; während eines Writes wird kein neues Ziel übernommen. Satzkorrekturen prüfen zusätzlich die Workout-ID beim Submit.
+
+Abgelehnte Einstellungen bleiben im Dialog sichtbar; Recovery ist dort auch per Tastatur erreichbar. Unklare Aufträge bleiben über Ansichtswechsel und, soweit verfügbar, Session Storage erhalten. Ein vollständig neuer opaker Host ohne lokalen Speicher kann die Request-Daten nicht wiederherstellen; das Serverjournal verhindert dennoch Ersatzmutationen. Ein bestätigter Write mit fehlgeschlagenem anschließendem View-Read wird als „bestätigt, Ansicht noch nicht aktualisiert“ behandelt.
+
+Das Schema v1 enthält weiterhin keine eindeutige zusätzliche Discard-Spalte. Bei importierten Altbeständen kann ein historisch tatsächlich nur null Millisekunden aktiver Plan ohne Audit nicht vom dokumentierten Sentinel unterschieden werden. Neue S001-Aktivierungen verhindern solche Fenster. Eine verlustfreie Migration benötigt einen expliziten `discarded`-Status oder separate Lebenszyklusmetadaten und bleibt separat zu entscheiden; keine siebte Tabelle wurde angelegt.

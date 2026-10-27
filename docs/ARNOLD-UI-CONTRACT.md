@@ -1,7 +1,7 @@
 # Arnold UI-Vertrag
 
 Technischer Vertrag zwischen Arnold-Datenbasis, Analytics Engine, MCP-Server und
-React-Oberfläche. Stand: Task 003, Vertrag `arnold.dashboard/2`.
+React-Oberfläche. Stand: S001 (Tasks 001–005), Vertrag `arnold.dashboard/2`.
 
 Zugehörige Dokumente: [ARNOLD-DATA-CONTRACT.md](ARNOLD-DATA-CONTRACT.md) (Rohdatenschema v1),
 [ARNOLD-METRICS-SPEC.md](ARNOLD-METRICS-SPEC.md) (Berechnungskonventionen),
@@ -498,3 +498,13 @@ publiziert. So führt eine bestätigte Mutation zu einem gezielten Workout-Read
 und einer kompakten Dashboard-Aktualisierung, ohne eine Refresh-Schleife.
 
 Details: [ARNOLD-WRITE-CONTRACT](ARNOLD-WRITE-CONTRACT.md).
+
+## S001: verbindliche Recovery- und Integrationsregeln
+
+Planverwaltung und Workout-Logger laufen im dokumentierten Fixture-Start gemeinsam. Die Read-only-Modi und die alte Demo bleiben erhalten. Produktive Writes und Google-Plan-Writes bleiben gesperrt.
+
+`error.recovery` wird unabhängig vom Fehlercode beachtet; siehe [Write Contract](ARNOLD-WRITE-CONTRACT.md). Der Originalrequest bleibt bei einer Unklarheit erhalten. „Abgelehnten Vorgang schließen“ ist nur nach einer belegten Ablehnung sichtbar und ruft `abandon_rejected_write` auf. Erst nach dessen atomarer Journalbestätigung wird lokal gelöscht. Unklare Requests bieten keinen Verwerfungsweg. Serverfehler und Revisionskonflikte erhalten Formwerte; UI-Erfolg setzt die vollständige Commit-Bestätigung voraus.
+
+Workout-Edits sind an die ausgewählte Workout-ID gebunden und werden beim Wechsel zurückgesetzt. Ein Submit prüft die Bindung erneut. Während eines Writes kann das Ziel nicht gewechselt werden. Lokale leere Planeinheiten gehören zur jeweiligen Planversion. Bestätigt wird exakt die Revision, die beim Öffnen des Aktivierungsdialogs angezeigt wurde.
+
+Wesentliche Lastbezüge werden auch bei gültigen Kennzahlen angezeigt. Die Übersicht filtert Zeitraum und zugehörige Listen konsistent; Workout-Details fallen bei ausdrücklich angeforderter fehlender ID nicht auf eine fremde Einheit zurück. Host-Revalidierung und ihr Fehlerfallback dürfen bei überholter Generation nichts publizieren. Die Variantenansicht bleibt bei 390 × 844 px innerhalb der Seitenbreite.

@@ -22,6 +22,8 @@ import {
   Card,
   EmptyState,
   MetricCard,
+  PeriodFilter,
+  type PeriodValue,
   RecordRow,
   StatusNotice,
   WorkoutCard,
@@ -49,11 +51,15 @@ const WEEKLY_TABS: { id: WeeklyMetric; label: string }[] = [
 export function OverviewView({
   view,
   loading = false,
+  period = {},
+  onPeriodChange = () => {},
   onOpenWorkout,
   onOpenProgress,
 }: {
   view: ArnoldDashboardView;
   loading?: boolean;
+  period?: PeriodValue;
+  onPeriodChange?: (value: PeriodValue) => void;
   onOpenWorkout: (workoutId: string) => void;
   onOpenProgress: () => void;
 }) {
@@ -69,6 +75,15 @@ export function OverviewView({
 
   return (
     <>
+      <div className="filter-bar overview-filters">
+        <PeriodFilter
+          value={period}
+          onChange={onPeriodChange}
+          anchor={view.period.to}
+          idPrefix="overview"
+          scopeLabel="Übersicht"
+        />
+      </div>
       <div className="overview-meta">
         <span className="section-kicker">
           <span className="live-dot" aria-hidden="true" />

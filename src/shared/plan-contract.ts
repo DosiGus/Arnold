@@ -1,3 +1,4 @@
+import { WriteRecoverySchema } from "./write-recovery.js";
 /**
  * The training plan contract: domain objects, typed edit operations and the
  * input/output schemas of every plan MCP tool.
@@ -133,6 +134,8 @@ export const TrainingPlanVersionSchema = z.strictObject({
   name: z.string(),
   split_key: planRow.split_key,
   status: planRow.status,
+  /** Derived from the zero-duration v1 sentinel; never a new raw status. */
+  discarded: z.boolean().optional(),
   goal_key: planRow.goal_key,
   days_per_week: planRow.days_per_week,
   activated_at_utc: planRow.activated_at_utc,
@@ -158,6 +161,8 @@ export const TrainingPlanVersionSummarySchema = z.strictObject({
   name: z.string(),
   split_key: planRow.split_key,
   status: planRow.status,
+  /** Derived from the zero-duration v1 sentinel; never a new raw status. */
+  discarded: z.boolean().optional(),
   goal_key: planRow.goal_key,
   days_per_week: planRow.days_per_week,
   activated_at_utc: planRow.activated_at_utc,
@@ -315,6 +320,8 @@ export const PlanValidationResultSchema = z.strictObject({
   plan_version_id: id,
   row_revision: positiveInt,
   status: planRow.status,
+  /** Derived from the zero-duration v1 sentinel; never a new raw status. */
+  discarded: z.boolean().optional(),
   schema_id: z.literal(ARNOLD_SCHEMA_ID),
   schema_version: z.literal(ARNOLD_SCHEMA_VERSION),
   errors: z.array(PlanValidationIssueSchema),
@@ -575,6 +582,7 @@ export const PlanWriteResponseSchema = z.strictObject({
       code: PlanErrorCodeSchema,
       message: z.string(),
       retryable: z.boolean(),
+      recovery: WriteRecoverySchema.optional(),
       details: z.array(z.string()),
     })
     .nullable(),

@@ -1,0 +1,799 @@
+# ARNOLD – DEVELOPMENT TASK 002
+## Training Analytics Engine v1 – Metrics, Progress, Personal Records
+
+Du arbeitest als Senior Backend Engineer und Data Engineer am Projekt **Arnold**.
+
+Arnold ist eine KI-gestützte Fitness-Anwendung innerhalb von ChatGPT mit einem MCP-Server, einer interaktiven React-Oberfläche und Google Sheets als anfänglicher Rohdatenquelle.
+
+Deine Aufgabe ist die Implementierung einer robusten, testbaren und langfristig erweiterbaren Trainingsberechnungsengine.
+
+**Projektsteuerung:** Setze nur das folgende Arbeitspaket um. Starte keine weiteren Entwicklungsphasen ohne Freigabe.
+
+---
+
+## 1. Projektinformationen
+
+**Repository:**
+
+`DosiGus/Arnold`
+
+**Google-Sheets-Datenbasis:**
+
+https://docs.google.com/spreadsheets/d/1KMhPGrJSTZYRY5zKpVF3-Zc0tRdCZBV5zez46cJBzcc/edit
+
+**Arnold Schema:**
+
+`arnold.training_raw` – Version `1.0.0`
+
+**Technische Dokumentation:**
+
+https://drive.google.com/file/d/1BdzmwyoCQMEhLpp6hjeD9NT5FvkHfK6G/view
+
+**Relevante Technologien:**
+
+- TypeScript
+- Node.js
+- Zod
+- Vitest
+- MCP Streamable HTTP
+- React / Recharts
+
+### Voraussetzung
+
+Task 001 muss abgeschlossen sein.
+
+Prüfe zunächst, ob folgende Bestandteile vorhanden und funktionsfähig sind:
+
+- Das neue `ArnoldDataset`-Domain-Modell.
+- Die sechs Tabellen des Arnold-Schemas.
+- Ein lesender Google-Sheets-Adapter.
+- Validierung der Rohdaten.
+- Erfolgreiche Tests des neuen Datenmodells.
+
+Falls Task 001 noch nicht vollständig umgesetzt wurde, überprüfe den aktuellen Entwicklungsstand und dokumentiere fehlende Voraussetzungen.
+
+Erfinde keine Ersatzstruktur, die dem verbindlichen Schema widerspricht.
+
+Arbeite auf einem neuen Feature-Branch, beispielsweise:
+
+`feat/arnold-analytics-engine`
+
+Dieser Branch muss vom abgeschlossenen Stand von Task 001 ausgehen.
+
+---
+
+## 2. Ziel des Arbeitspakets
+
+Entwickle eine eigenständige Analytics Engine, die aus den Rohdaten folgende Informationen berechnet:
+
+1. Trainingsaktivität.
+2. Trainingsvolumen.
+3. Entwicklung einzelner Übungen.
+4. Persönliche Bestleistungen.
+5. Geschätzte Maximalkraft.
+6. Trainingshäufigkeit.
+7. Wochen- und Monatsvergleiche.
+8. Trainingsplan-Erfüllung.
+9. Datenqualität und Auswertbarkeit.
+
+Die Engine muss unabhängig von Google Sheets, HTTP, MCP und React funktionieren.
+
+**Architekturgrundsatz:**
+
+Die Analytics Engine bekommt bereits validierte Domain-Daten und liefert standardisierte, serialisierbare Analyseergebnisse.
+
+Sie darf niemals direkt auf Google Sheets zugreifen oder Daten verändern.
+
+### Technische Architektur
+
+```text
+Google Sheets
+    |
+    v
+ArnoldSheetsReadAdapter
+    |
+    v
+ArnoldDataset
+    |
+    v
+Arnold Analytics Engine
+    |
+    v
+AnalyticsResult / DashboardData
+    |
+    v
+MCP Tools
+    |
+    v
+Arnold UI + ChatGPT Coach
+```
+
+Der MCP-Server und die UI dürfen später dieselben Ergebnisse verwenden.
+
+---
+
+## 3. Arbeitsauftrag A – Analytics Domain Layer
+
+Erstelle eine separate Berechnungsschicht.
+
+Vorgeschlagene Struktur:
+
+```text
+src/
+  analytics/
+    index.ts
+    types.ts
+    eligibility.ts
+    load.ts
+    volume.ts
+    activity.ts
+    progress.ts
+    records.ts
+    plans.ts
+    dashboard.ts
+    validation.ts
+```
+
+Du darfst eine besser geeignete Struktur wählen, wenn sie gut begründet und dokumentiert ist.
+
+### Anforderungen
+
+- Pure Functions bevorzugen.
+- Keine Google-API-Abhängigkeiten.
+- Keine Netzwerkzugriffe.
+- Keine Dateisystemzugriffe.
+- Keine Mutation der Eingabedaten.
+- Deterministische Ergebnisse.
+- Keine von React abhängige Logik.
+- Zod-Schemas für öffentliche Ergebnisstrukturen.
+- Keine unnötig mehrfachen Iterationen über große Satzhistorien.
+
+Die bisherige `src/shared/calculations.ts` darf für den Demo-Modus erhalten bleiben.
+
+Wenn eine Migration sinnvoll ist, stelle sicher, dass bestehende Demo-Funktionen und Tests nicht beschädigt werden.
+
+---
+
+## 4. Arbeitsauftrag B – Verbindliche Berechnungskonventionen
+
+Dieser Teil ist besonders wichtig.
+
+Arnold unterstützt unterschiedliche Übungen und Ausführungsarten.
+
+Die Berechnungen dürfen nicht grundsätzlich davon ausgehen, dass:
+
+`Trainingsvolumen = Gewicht × Wiederholungen`
+
+Diese Formel gilt nur unter bestimmten Voraussetzungen.
+
+### 4.1 Gewichtsdefinitionen
+
+Das Domain-Modell unterstützt folgende `load_basis`-Werte:
+
+| Wert | Bedeutung |
+|---|---|
+| `total` | Gesamtes externes Gewicht |
+| `per_implement` | Gewicht pro Hantel oder Gerät |
+| `machine_display` | Angezeigte Maschinenlast |
+| `added` | Zusätzliches Gewicht bei Körpergewichtsübungen |
+| `assistance` | Unterstützungsgewicht |
+| `bodyweight_only` | Bewegung mit dem eigenen Körpergewicht |
+
+### 4.2 Ausführungsdefinitionen
+
+Unterstützte Werte:
+
+- `bilateral_simultaneous`
+- `unilateral`
+- `alternating`
+
+Zusätzlich müssen berücksichtigt werden:
+
+- `implement_count`
+- `side`
+- `reps_basis`
+
+Die tatsächliche Ausführung eines Satzes ist entscheidend, nicht ausschließlich der Default-Wert aus dem Übungskatalog.
+
+### 4.3 Beispiele für korrekte Berechnungen
+
+**Beispiel A: Langhantel-Bankdrücken**
+
+70 kg, 10 Wiederholungen.
+
+Ergebnis:
+
+`700 kg nominales Satzvolumen`
+
+**Beispiel B: Kurzhantel-Schrägbankdrücken**
+
+20 kg pro Hantel, zwei Hanteln, 10 Wiederholungen.
+
+Ergebnis:
+
+`400 kg nominales Satzvolumen`
+
+**Beispiel C: Einarmiges Rudern**
+
+Rechts: 20 kg × 10 Wiederholungen.
+
+Links: 20 kg × 10 Wiederholungen.
+
+Zwei separate Satzdatensätze.
+
+Ergebnis:
+
+`200 kg pro Seite`
+
+`400 kg zusammen`
+
+**Beispiel D: Alternierende Kurzhantel-Curls**
+
+12 kg, 10 Wiederholungen insgesamt.
+
+Ergebnis:
+
+`120 kg nominales Satzvolumen`
+
+Wenn ausdrücklich 10 Wiederholungen pro Seite erfasst werden, ergibt sich bei zwei trainierten Seiten:
+
+`240 kg nominales Satzvolumen`
+
+Daher darf `reps_basis` nicht ignoriert werden.
+
+**Beispiel E: Maschinenübung**
+
+Butterfly-Maschine: 60 kg × 10 Wiederholungen.
+
+Ergebnis:
+
+`600 kg nominales Maschinenvolumen`
+
+Maschinenvolumen ist keine physikalisch direkt vergleichbare Last zu freien Gewichten.
+
+**Beispiel F: Klimmzüge mit Zusatzgewicht**
+
+8 Wiederholungen mit 10 kg Zusatzgewicht.
+
+Das zusätzliche externe Lastvolumen beträgt:
+
+`80 kg`
+
+Das tatsächlich bewegte Gesamtgewicht lässt sich ohne eine passende Körpergewichtsmessung nicht korrekt bestimmen.
+
+Die Engine darf hier nicht einfach 10 kg als vollständige bewegte Last ausgeben.
+
+### 4.4 Fehlende und uneindeutige Daten
+
+Wenn eine Berechnung aufgrund fehlender Angaben nicht zuverlässig möglich ist, verwende einen expliziten Status wie:
+
+- `valid`
+- `partial`
+- `not_available`
+- `invalid`
+
+Gib nach Möglichkeit einen maschinenlesbaren Grund zurück.
+
+Keine künstlichen Nullwerte verwenden, wenn der tatsächliche Wert unbekannt ist.
+
+**Wichtig:** `0` und `null` haben unterschiedliche Bedeutungen.
+
+Wenn für eine Körpergewichtsübung keine verwertbare Körpergewichtsmessung vorliegt, ist die vollständige bewegte Last unbekannt, nicht null.
+
+Definiere die unterschiedlichen Lastmetriken ausdrücklich. Vermische externe Last, Zusatzgewicht, Maschinenanzeige und geschätzte Gesamtlast nicht unbeschriftet.
+
+Wenn eine Ausführung bezüglich Seitenzahl oder Wiederholungsbasis mehrdeutig ist, soll die Engine keine willkürliche Annahme treffen.
+
+---
+
+## 5. Arbeitsauftrag C – Trainingsaktivität
+
+Implementiere folgende Kennzahlen:
+
+### 5.1 Gesamte Trainingseinheiten
+
+Anzahl tatsächlich abgeschlossener Workouts.
+
+Nur Workouts mit:
+
+`status = completed`
+
+zählen als vollständig absolvierte Trainingseinheiten.
+
+### 5.2 Trainingstage
+
+Anzahl unterschiedlicher lokaler Kalenderdaten, an denen mindestens ein gültiges abgeschlossenes Workout vorliegt.
+
+Zwei Workouts am selben Tag zählen als:
+
+- Zwei Trainingseinheiten.
+- Ein Trainingstag.
+
+### 5.3 Trainingsfrequenz
+
+Berechne:
+
+- Workouts je Woche.
+- Trainingstage je Woche.
+- Durchschnittliche Workouts je Woche.
+- Trainingstage im aktuellen Monat.
+- Workouts im ausgewählten Zeitraum.
+
+Der Wochenbeginn ist Montag.
+
+Kalenderdaten basieren auf `workout_date_local`, nicht unkontrolliert auf UTC-Zeitstempeln.
+
+### 5.4 Wochenstreak
+
+Definiere eine nachvollziehbare Wochenstreak-Logik.
+
+Ein Wochenziel kann später aus den Nutzereinstellungen kommen.
+
+Für die aktuelle Version:
+
+- Optionales Wochenziel als Parameter.
+- Keine fest eingebaute Annahme von drei Trainingstagen.
+- Unterschied zwischen abgeschlossenen Wochen und laufender Woche.
+- Laufende Woche darf nicht automatisch einen abgeschlossenen Streak zerstören.
+
+---
+
+## 6. Arbeitsauftrag D – Trainingsvolumen
+
+Berechne:
+
+- Nominales Satzvolumen.
+- Trainingsvolumen pro Übung.
+- Trainingsvolumen pro Workout.
+- Trainingsvolumen je Kalenderwoche.
+- Trainingsvolumen im gewählten Zeitraum.
+
+### Regeln
+
+- Ungültige Sätze ausschließen.
+- Stornierte Sätze ausschließen.
+- Abgebrochene Workouts nicht automatisch als abgeschlossen zählen.
+- Aufwärmsätze separat ausweisen.
+- Arbeitssätze separat ausweisen.
+- Satztyp und Gewichtsdefinition berücksichtigen.
+- Fehlende Werte niemals als sichere Nullwerte interpretieren.
+
+Eine Gesamtvolumen-Kennzahl muss transparent ausweisen, ob sie vollständig ist oder einzelne nicht vergleichbare beziehungsweise nicht berechenbare Beiträge ausschließt.
+
+Implementiere nach Möglichkeit eine Coverage-Information, beispielsweise:
+
+```json
+{
+  "metric": "nominal_volume",
+  "value": 4200,
+  "unit": "kg",
+  "status": "partial",
+  "eligible_sets": 18,
+  "excluded_sets": 2,
+  "excluded_reasons": [
+    "bodyweight_total_load_unavailable"
+  ]
+}
+```
+
+Dies ist ein Beispiel des gewünschten Ergebnisprinzips, kein zwingender bereits bestehender Typ.
+
+### Definition
+
+Nominales Trainingsvolumen ist eine konventionelle Dokumentationskennzahl, kein direkter physiologischer Messwert.
+
+Unterschiedliche Maschinen, Übungen und Ausführungen sind nicht zwangsläufig direkt vergleichbar.
+
+---
+
+## 7. Arbeitsauftrag E – Persönliche Bestleistungen
+
+Entwickle eine eigenständige PR-Engine.
+
+### Unterstützte Rekordtypen
+
+**1. Maximal verwendetes Gewicht**
+
+Höchste dokumentierte Last innerhalb einer vergleichbaren Übungs- und Ausführungskategorie.
+
+**2. Wiederholungsrekord**
+
+Höchste Wiederholungszahl bei einer definierten vergleichbaren Last.
+
+**3. Geschätztes 1RM**
+
+Höchste gültige geschätzte Maximalkraft.
+
+**4. Workout-Volumenrekord**
+
+Höchstes auswertbares Volumen einer Übung innerhalb einer einzelnen Trainingseinheit.
+
+### Vergleichbarkeit
+
+PRs dürfen nicht unkontrolliert zwischen unterschiedlichen Übungen oder Ausführungsformen vermischt werden.
+
+Berücksichtige mindestens:
+
+- `exercise_id`
+- `load_basis`
+- `execution_mode`
+- `implement_count`
+- `side`, soweit relevant
+
+Wenn die Datenbasis keine sichere Vergleichbarkeit erlaubt, gib getrennte Rekorde oder einen nicht verfügbaren Wert zurück.
+
+Beispielsweise darf ein einarmiger Curl rechts nicht automatisch mit einem beidarmigen Curl verglichen werden.
+
+### PR-Regel
+
+Ein neuer PR wird nur gemeldet, wenn ein vorheriger gültiger Referenzwert tatsächlich übertroffen wurde.
+
+Das bloße Wiederholen eines bereits bestehenden Rekords ist kein neuer PR.
+
+Definiere und dokumentiere Tie-Breaker für gleiche Werte und gleiche Kalenderdaten.
+
+---
+
+## 8. Arbeitsauftrag F – Geschätzte Maximalkraft
+
+Implementiere die Epley-Formel:
+
+```text
+estimated_1rm = weight * (1 + reps / 30)
+```
+
+Für genau eine Wiederholung gilt:
+
+```text
+estimated_1rm = weight
+```
+
+### Verbindliche Regeln
+
+- Die Kennzahl muss als Schätzung gekennzeichnet sein.
+- Nur passende, vergleichbare Arbeitssätze verwenden.
+- Repetition Range für V1: 1 bis 10.
+- Keine Berechnung für null oder negative Last.
+- Kein 1RM aus einer unklaren Gewichtsdefinition berechnen.
+- Keine Vermischung von Gewicht pro Hantel und Gesamtgewicht.
+- Bei `per_implement` die geschätzte Maximalkraft als Wert pro Implement kennzeichnen, nicht ungeprüft verdoppeln.
+- Bei Körpergewichtsübungen ohne vollständige effektive Last keine vermeintlich exakte 1RM berechnen.
+- Maschinenwerte, sofern überhaupt berechnet, klar als gerätespezifische Schätzungen kennzeichnen.
+
+Bei höheren Wiederholungszahlen soll die Engine für diese Version `not_available` oder einen fachlich begründeten Nicht-Auswertungsstatus liefern.
+
+Keine medizinischen oder sportwissenschaftlichen Erfolgsversprechen aus 1RM-Schätzungen ableiten.
+
+---
+
+## 9. Arbeitsauftrag G – Übungsfortschritt
+
+Implementiere Auswertungen pro Übung.
+
+Die Analyse muss unabhängig davon funktionieren, in welchem Trainingssplit eine Übung verwendet wurde.
+
+Beispiel:
+
+Ein Nutzer trainiert im Januar Bankdrücken am Push Day und im April Bankdrücken im Oberkörpertraining.
+
+Beide Trainingsperioden gehören zur Historie derselben Übung, sofern die tatsächliche Ausführung vergleichbar ist.
+
+### Kennzahlen
+
+- Erstes gültiges Trainingsdatum.
+- Letztes gültiges Trainingsdatum.
+- Anzahl durchgeführter Workouts mit dieser Übung.
+- Anzahl der Arbeitssätze.
+- Letzte dokumentierte Arbeitslast.
+- Maximale vergleichbare Last.
+- Bestes geschätztes 1RM.
+- Nominales Volumen je Trainingseinheit.
+- Verlauf von Wiederholungen.
+- Anzahl Trainingseinheiten innerhalb eines Zeitraums.
+
+### Progress API
+
+Bereite einen standardisierten Verlauf vor, den Recharts direkt verwenden kann.
+
+Beispiel:
+
+```json
+{
+  "exercise_id": "ex_bench_barbell",
+  "metric": "estimated_1rm",
+  "unit": "kg",
+  "points": [
+    {
+      "date": "2026-10-01",
+      "value": 80.5
+    },
+    {
+      "date": "2026-10-15",
+      "value": 84.2
+    }
+  ]
+}
+```
+
+Dies ist nur ein Strukturbeispiel.
+
+Die echten Werte müssen ausschließlich aus den entsprechenden Datensätzen berechnet werden.
+
+Bei mehreren Workouts am selben Datum muss die Aggregationsregel definiert sein. Vermeide zufälliges Überschreiben von Messpunkten.
+
+---
+
+## 10. Arbeitsauftrag H – Trainingsplan-Erfüllung
+
+Die Engine soll später auswerten können, ob Nutzer ihren geplanten Trainingsumfang erfüllen.
+
+Implementiere eine erste regelbasierte Analyse.
+
+Berücksichtige:
+
+- Aktive beziehungsweise historisch gültige Planversion.
+- Vorgesehene Trainingstage pro Woche.
+- Abgeschlossene Workouts.
+- Zugeordnete `session_id`.
+- Vorgesehene Übungen und Sätze.
+- Tatsächlich dokumentierte Übungen und Sätze.
+
+### Kennzahlen
+
+- Geplante Trainingseinheiten im betrachteten Zeitraum.
+- Abgeschlossene zuordenbare Einheiten.
+- Erfüllungsquote.
+- Geplante Arbeitssätze.
+- Tatsächlich absolvierte zuordenbare Arbeitssätze.
+- Abweichungen vom Plan.
+
+**Wichtige Einschränkung:**
+
+Wenn keine verbindlichen Trainingstage hinterlegt wurden, darf die Engine keine exakten Kalendertage erfinden.
+
+Die Wochenziel-Erfüllung kann anhand der vorgesehenen Trainingshäufigkeit bewertet werden.
+
+Bei Planwechseln innerhalb des betrachteten Zeitraums müssen historische Planversionen beachtet werden.
+
+Falls das aktuelle Schema keine belastbare Berechnung bestimmter Erfüllungskennzahlen ermöglicht, liefere `not_available` mit einer Erklärung, statt eine unzutreffende Kennzahl zu erfinden.
+
+---
+
+## 11. Arbeitsauftrag I – Dashboard Analytics DTO
+
+Erstelle eine standardisierte Ausgabe für zukünftige MCP-Tools und die React-Oberfläche.
+
+Vorgeschlagener öffentlicher Typ:
+
+`ArnoldDashboardAnalytics`
+
+Er soll mindestens folgende Bereiche besitzen:
+
+```text
+metadata
+activity
+volume
+records
+exercise_progress
+weekly_trends
+plan_adherence
+data_quality
+```
+
+### Anforderungen
+
+- JSON-serialisierbar.
+- Zod-validiert.
+- Keine `NaN`- oder `Infinity`-Werte.
+- Explizite Einheiten.
+- Explizite Berechnungsstatus.
+- Einheitliche Zeiträume.
+- Klare Unterscheidung zwischen echten Nullwerten und fehlenden Werten.
+- Keine internen Zugangsdaten.
+- Keine unnötige Übertragung sämtlicher Rohdaten.
+
+Füge eine `metrics_version` hinzu, damit spätere Änderungen der Berechnungslogik nachvollziehbar bleiben.
+
+**Wichtig:** Das Ziel ist zunächst ein berechnetes Datenobjekt. Noch keine vollständige Überarbeitung der visuellen UI.
+
+---
+
+## 12. Arbeitsauftrag J – Filterfunktionen
+
+Unterstütze folgende Filter:
+
+- Zeitraum von/bis.
+- Einzelne Übung.
+- Trainingsplan.
+- Trainingseinheit.
+- Satztyp.
+- Trainingsstatus.
+
+Die Zeitgrenzen sollen inklusiv sein.
+
+Verwende stabile IDs statt Namen als technische Filter.
+
+Der Nutzer darf Einheiten oder Übungen später umbenennen, ohne dadurch die historische Auswertung zu beschädigen.
+
+Bei ungültigen Filtern muss ein kontrollierter Fehler zurückgegeben werden.
+
+Bei gültigen Filtern ohne Ergebnisse müssen gültige leere Ergebnisobjekte entstehen.
+
+---
+
+## 13. Arbeitsauftrag K – Unit-Tests
+
+Entwickle umfassende Tests mit synthetischen Fixtures.
+
+### Verbindliche Testfälle
+
+**Trainingsaktivität**
+
+- Ein Workout an einem Tag.
+- Zwei Workouts am selben Tag.
+- Training über eine Kalenderwochen-Grenze.
+- Training über einen Jahreswechsel.
+- Unvollständige und stornierte Workouts.
+
+**Trainingsvolumen**
+
+- Langhantel mit Gesamtgewicht.
+- Zwei Kurzhanteln mit Gewicht pro Hantel.
+- Einarmige Übung rechts.
+- Einarmige Übung links.
+- Alternierende Übungen mit Wiederholungen insgesamt.
+- Alternierende Übungen mit Wiederholungen pro Seite.
+- Maschinenübung.
+- Klimmzüge mit Zusatzgewicht.
+- Körpergewichtsübung ohne bekannte Körpermasse.
+- Fehlende oder unklare Gewichtsinformationen.
+- Aufwärmsätze und Arbeitssätze.
+
+**Rekorde**
+
+- Erster gültiger PR.
+- Neuer höherer PR.
+- Gleichen PR erneut erreichen.
+- Unterschiedliche Ausführungsarten.
+- Übung in verschiedenen Trainingsplänen.
+- Archivierte historische Planversionen.
+
+**1RM**
+
+- Eine Wiederholung.
+- Acht Wiederholungen.
+- Mehr als zehn Wiederholungen.
+- Gewicht pro Kurzhantel.
+- Ungültige Last.
+- Nicht verfügbare effektive Last.
+
+**Datenqualität**
+
+- Keine Workouts.
+- Keine Sätze.
+- Ungültige Referenzen.
+- Stornierte Datensätze.
+- Doppelte IDs.
+- Fehlende optionale Angaben.
+- Ungültige Datumsgrenzen.
+- Extremwerte und numerische Überläufe.
+- Keine `NaN`- oder `Infinity`-Werte.
+
+**Planwechsel**
+
+- Ein aktiver Plan.
+- Mehrere historische Planversionen.
+- Übung aus aktuellem Plan entfernt, historisch weiterhin vorhanden.
+- Spontanes Workout ohne Planzuordnung.
+- Planwechsel während eines Auswertungszeitraums.
+
+Teste sowohl einzelne Berechnungsfunktionen als auch die aggregierte Dashboard-Ausgabe.
+
+---
+
+## 14. Arbeitsauftrag L – Dokumentation
+
+Erstelle:
+
+`docs/ARNOLD-METRICS-SPEC.md`
+
+Die Dokumentation muss enthalten:
+
+1. Alle implementierten Metriken.
+2. Mathematische Berechnungsregeln.
+3. Bedingungen für gültige Berechnungen.
+4. Umgang mit unterschiedlichen Ausführungen.
+5. Bedeutung der Gewichtskonventionen.
+6. Vergleichbarkeit von PRs.
+7. Epley-Einschränkungen.
+8. Zeiträume und Wochenlogik.
+9. Behandlung fehlender Informationen.
+10. Umgang mit historisch veränderten Trainingsplänen.
+11. Einheitliche API-Ausgabeformate.
+12. Beispielergebnisse.
+13. Bekannte Grenzen und bewusst nicht unterstützte Berechnungen.
+
+Die Dokumentation muss verständlich genug sein, damit künftige Entwickler und KI-Agents die Berechnungslogik nicht unabsichtlich verändern.
+
+---
+
+## 15. Sicherheits- und Änderungsgrenzen
+
+Für diesen Auftrag gelten folgende Regeln:
+
+- Keine Schreibzugriffe auf Google Sheets.
+- Keine Änderung an der Arnold-Masterdatei.
+- Keine Änderung an echten Trainingslogs.
+- Kein Google-OAuth.
+- Keine Änderungen an der bestehenden ChatGPT-Plugin-Verbindung.
+- Kein Deployment.
+- Keine Tunnel-Änderungen.
+- Keine neuen externen Datenbankdienste.
+- Keine komplette Neuentwicklung der UI.
+- Keine unnötige Änderung der vorhandenen MCP-Tools.
+- Keine ungeprüften zusätzlichen Dependencies.
+- Keine realen Trainingsdaten für Test-Fixtures verwenden.
+
+Verändere bestehende Schnittstellen nur, wenn dies technisch notwendig ist. Dokumentiere solche Änderungen ausdrücklich.
+
+---
+
+## 16. Definition of Done
+
+Der Auftrag gilt als abgeschlossen, wenn:
+
+- [ ] Eine eigenständige Arnold Analytics Engine existiert.
+- [ ] Alle Funktionen mit dem neuen `ArnoldDataset` arbeiten.
+- [ ] Die Berechnungen sind unabhängig von Google Sheets und MCP.
+- [ ] Unterschiedliche Gewichtsdefinitionen werden korrekt behandelt.
+- [ ] Einseitige, beidseitige und alternierende Ausführungen werden korrekt interpretiert.
+- [ ] Trainingsaktivität wird korrekt berechnet.
+- [ ] Trainingsvolumen wird korrekt berechnet beziehungsweise fehlende Berechenbarkeit ausgewiesen.
+- [ ] PRs werden korrekt ermittelt.
+- [ ] Geschätztes 1RM berücksichtigt die definierten Einschränkungen.
+- [ ] Übungsfortschritte sind auswertbar.
+- [ ] Historische Planänderungen beschädigen keine Analysen.
+- [ ] Ein standardisiertes Dashboard-Analytics-DTO existiert.
+- [ ] Alle Ergebnisstrukturen sind mit Zod validiert.
+- [ ] Die Tests decken die aufgeführten Sonderfälle ab.
+- [ ] Bestehende Demo-Funktionen bleiben funktionsfähig.
+- [ ] Typecheck, Build und alle ausführbaren Tests bestehen.
+- [ ] `ARNOLD-METRICS-SPEC.md` ist vollständig dokumentiert.
+
+Führe abschließend folgende Prüfungen aus:
+
+```bash
+npm run typecheck
+npm test
+npm run build
+npm run test:e2e
+npm run format:check
+```
+
+---
+
+## 17. Abschlussbericht
+
+Stoppe nach Abschluss dieses Arbeitspakets.
+
+Erstelle einen strukturierten Bericht mit exakt folgendem Titel:
+
+**ARNOLD TASK 002 – COMPLETION REPORT**
+
+Berichte über:
+
+1. **Status:** Completed / Partial / Blocked
+2. **Implementierte Berechnungsfunktionen**
+3. **Neue und geänderte Dateien**
+4. **Technische Architekturentscheidungen**
+5. **Definierte Metriken und Berechnungskonventionen**
+6. **Ergebnisse der automatisierten Tests**
+7. **Umgang mit unvollständigen oder nicht vergleichbaren Daten**
+8. **Bekannte Einschränkungen**
+9. **Abweichungen vom ursprünglichen Auftrag**
+10. **Branch und Commit-SHA**, sofern vorhanden
+11. **Empfehlung für Task 003**
+
+Stelle besonders heraus, welche Metriken vollständig produktionsreif berechnet werden können und welche noch zusätzliche Rohdaten oder Entscheidungen benötigen.
+
+**Beginne mit Task 002 erst, wenn die Voraussetzungen aus Task 001 geprüft sind.**

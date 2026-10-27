@@ -13,11 +13,12 @@
  * agreement; here we read it back and surface a disagreement as a finding
  * rather than silently picking one row's opinion.
  */
-import type {
-  ArnoldDataset,
-  ArnoldExercise,
-  ArnoldPlanItem,
-  ArnoldPlanVersion,
+import {
+  isDiscardedPlan,
+  type ArnoldDataset,
+  type ArnoldExercise,
+  type ArnoldPlanItem,
+  type ArnoldPlanVersion,
 } from "../../shared/arnold-schema-v1.js";
 import {
   PLAN_SCHEMA_LIMITS,
@@ -143,6 +144,7 @@ export function projectVersion(
     name: plan.name,
     split_key: plan.split_key,
     status: plan.status,
+    discarded: isDiscardedPlan(plan),
     goal_key: plan.goal_key,
     days_per_week: plan.days_per_week,
     activated_at_utc: plan.activated_at_utc,
@@ -178,6 +180,7 @@ export function summarizeVersion(
     name: plan.name,
     split_key: plan.split_key,
     status: plan.status,
+    discarded: isDiscardedPlan(plan),
     goal_key: plan.goal_key,
     days_per_week: plan.days_per_week,
     activated_at_utc: plan.activated_at_utc,

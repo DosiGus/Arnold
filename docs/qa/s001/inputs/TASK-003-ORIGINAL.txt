@@ -1,0 +1,845 @@
+# ARNOLD – DEVELOPMENT TASK 003
+## Dashboard Integration, Analytics API & MCP UI Modernization
+
+Du arbeitest als Senior Full-Stack Engineer, MCP Apps Developer und Frontend Architect am Projekt **Arnold**.
+
+Arnold ist eine KI-gestützte Fitness-Anwendung innerhalb von ChatGPT. Das Produkt kombiniert einen MCP-Server, eine interaktive React-Oberfläche, eine eigene Analytics Engine und Google Sheets als anfängliche Rohdatenquelle.
+
+**Projektsteuerung:** Dieser Auftrag ist Teil einer übergeordneten Produktentwicklung. Implementiere ausschließlich den definierten Umfang und liefere anschließend einen vollständigen technischen Abschlussbericht.
+
+---
+
+## 1. Projektkontext
+
+**GitHub-Repository:**
+
+`DosiGus/Arnold`
+
+**Arnold Master Google Sheet:**
+
+https://docs.google.com/spreadsheets/d/1KMhPGrJSTZYRY5zKpVF3-Zc0tRdCZBV5zez46cJBzcc/edit
+
+**Technische Datenanleitung:**
+
+https://drive.google.com/file/d/1BdzmwyoCQMEhLpp6hjeD9NT5FvkHfK6G/view
+
+**Technologiestack:**
+- Node.js
+- TypeScript
+- Zod
+- MCP Streamable HTTP
+- MCP Apps
+- React
+- Recharts
+- Google Sheets API
+- Vitest
+- Playwright
+
+### Voraussetzungen
+
+Die folgenden Aufträge müssen abgeschlossen sein:
+
+**Task 001 – Arnold Data Foundation**
+
+Ergebnis: Neues Domain-Modell, Datenvalidierung und lesender Google-Sheets-Adapter für das sechsteilige Arnold-Schema.
+
+**Task 002 – Arnold Analytics Engine**
+
+Ergebnis: Unabhängige Berechnungsengine für Trainingsaktivität, Volumen, Fortschritt, PRs, geschätztes 1RM und Trainingsplan-Erfüllung.
+
+Prüfe zu Beginn, ob beide Implementierungen tatsächlich im aktuellen Branch beziehungsweise im gemeinsamen Entwicklungsstand vorhanden sind.
+
+Falls die Ergebnisse unvollständig sind, dokumentiere die fehlenden Voraussetzungen und implementiere keine widersprüchlichen provisorischen Datenmodelle.
+
+Erstelle einen Feature-Branch, beispielsweise:
+
+`feat/arnold-dashboard-v2`
+
+Baue auf dem abgeschlossenen und integrierten Stand der Tasks 001 und 002 auf.
+
+---
+
+## 2. Ziel des Arbeitspakets
+
+Die bestehende Arnold-MCP-App soll künftig das neue Datenmodell und die Ergebnisse der Analytics Engine verwenden können.
+
+**Verbindliche Produktanforderung:**
+
+Arnold muss zwischen synthetischen Demo-Daten und echten Arnold-Trainingsdaten unterscheiden können.
+
+Die bestehenden Demo-Funktionen müssen weiterhin vollständig funktionieren.
+
+Für die neue Arnold-Sheets-Struktur soll eine zusätzliche, stabile Dashboard-Anbindung entstehen.
+
+Dieses Arbeitspaket umfasst:
+
+1. Integration des neuen Storage Adapters.
+2. Integration der Analytics Engine.
+3. Standardisierte MCP-Ausgaben für das Dashboard.
+4. Anpassung der bestehenden React-Oberfläche.
+5. Integration der Plan- und Übungsfilter.
+6. Korrekte Darstellung unterschiedlicher Gewichtsdefinitionen.
+7. Lade-, Fehler- und Leerzustände.
+8. Performance, Barrierefreiheit und mobile Darstellung.
+9. Automatisierte Integrationstests.
+
+**Nicht Bestandteil dieses Auftrags:**
+
+- Vollständiges Onboarding
+- Google OAuth
+- Automatische Tracker-Erstellung
+- Schreibende Google-Sheets-Tools
+- Trainingsplan-Editor
+- Produktives Multiuser-System
+- Öffentliches Deployment
+
+---
+
+## 3. Arbeitsauftrag A – Bestehende Architektur untersuchen
+
+Analysiere die aktuelle Implementierung.
+
+Besonders relevant:
+
+- `src/ui/App.tsx`
+- `src/ui/client.ts`
+- `src/ui/main.tsx`
+- `src/ui/style.css`
+- `src/server/mcp.ts`
+- `src/server/storage-config.ts`
+- `src/server/http.ts`
+- `src/shared/schemas.ts`
+- Neue Domain-Modelle aus Task 001
+- Neue Analytics Services aus Task 002
+
+Prüfe insbesondere:
+
+- Welche UI-Komponenten wiederverwendbar sind.
+- Welche Komponenten direkt vom alten Snapshot-Modell abhängen.
+- Welche Kennzahlen bisher im Frontend berechnet werden.
+- Welche Daten über MCP-Tools übertragen werden.
+- Welche Filter ausschließlich Push/Pull/Legs unterstützen.
+- Wie die UI nach einem Tool-Aufruf aktualisiert wird.
+- Wie der aktuelle Datenstand beim erneuten Öffnen eines Chats geladen wird.
+
+Dokumentiere kurz die notwendige Migration.
+
+**Wichtig:** Die bestehende Architektur darf verbessert, aber nicht grundlos vollständig ersetzt werden.
+
+---
+
+## 4. Arbeitsauftrag B – Neue Dashboard-Datenpipeline
+
+Implementiere die folgende Datenpipeline:
+
+```text
+Arnold Google Sheets
+        |
+        v
+ArnoldSheetsReadAdapter
+        |
+        v
+ArnoldDataset
+        |
+        v
+Arnold Analytics Engine
+        |
+        v
+ArnoldDashboardAnalytics
+        |
+        v
+MCP Tools
+        |
+        v
+Arnold React UI
+```
+
+### Anforderungen
+
+1. Google Sheets wird ausschließlich serverseitig gelesen.
+2. Die UI bekommt keine Google-Zugangsdaten.
+3. Die UI greift nicht direkt auf Google Sheets zu.
+4. Alle Berechnungen erfolgen über die Analytics Engine.
+5. Das Frontend führt keine eigene widersprüchliche Metrikberechnung durch.
+6. Alle API-Ergebnisse werden mit Zod validiert.
+7. Keine synthetischen Demo-Daten als Ersatz für fehlende echte Daten verwenden.
+8. Ungültige oder fehlende Kennzahlen werden transparent dargestellt.
+9. Die UI muss mit einer vollständig leeren Trainingshistorie funktionieren.
+
+### Architekturentscheidung
+
+Verwende die fertiggestellten Ergebnisstrukturen aus Task 002 als Grundlage.
+
+Falls deren konkrete Feldnamen vom ursprünglichen Planungsvorschlag abweichen, übernehme den tatsächlich implementierten und getesteten Vertrag.
+
+Erfinde nicht parallel ein zweites Analytics-Modell.
+
+Falls nötig, implementiere eine kleine Presenter- oder ViewModel-Schicht für die UI.
+
+---
+
+## 5. Arbeitsauftrag C – MCP-Tools für das Dashboard
+
+Die bisherigen MCP-Tools sind:
+
+- `show_arnold_dashboard`
+- `get_dashboard_data`
+- `get_workouts`
+- `get_exercise_progress`
+
+Außerdem existieren Demo-spezifische Schreib- und Reset-Tools.
+
+### Ziel
+
+Die bestehenden lesenden Tools sollen künftig auch die neue Arnold-Datenstruktur unterstützen.
+
+### `show_arnold_dashboard`
+
+Soll weiterhin das interaktive Arnold-Dashboard innerhalb von ChatGPT öffnen.
+
+Anforderungen:
+
+- Korrekten MCP-App-Ressourcenverweis liefern.
+- Aktuelle Datenquelle erkennen.
+- UI mit gültigem initialem Zustand öffnen.
+- Kein Onboarding simulieren.
+- Bei leerem Tracker eine sinnvolle leere Oberfläche anzeigen.
+
+### `get_dashboard_data`
+
+Soll standardisierte Kennzahlen liefern.
+
+Mindestens:
+
+- Anzahl Workouts
+- Trainingstage
+- Trainingshäufigkeit
+- Satzanzahl
+- Trainingsvolumen
+- Wochenentwicklung
+- Persönliche Bestleistungen
+- Informationen zum aktiven Trainingsplan
+- Datenqualitätsstatus
+
+Die Ergebnisse stammen aus der Analytics Engine.
+
+### `get_workouts`
+
+Soll Trainingshistorien abrufen.
+
+Unterstütze Filter nach:
+
+- Zeitraum
+- Plan-ID beziehungsweise Planversion
+- Trainingseinheit
+- Status
+
+Keine zwingende Beschränkung auf Push/Pull/Legs.
+
+Unterstütze eine begrenzte Ergebnismenge beziehungsweise Pagination, wenn die Datenmenge dies erfordert.
+
+### `get_exercise_progress`
+
+Soll den Fortschritt einer Übung abrufen.
+
+Unterstütze:
+
+- `exercise_id`
+- Zeitraum
+- Auswertungsmetrik
+- Vergleichbare Ausführungsvariante, falls erforderlich
+
+Metriken dürfen nicht zwischen inkompatiblen Ausführungen vermischt werden.
+
+### Kompatibilität
+
+Behalte bestehende Tool-Namen bei, soweit das ohne widersprüchliche Output-Schemas möglich ist.
+
+Wenn ein inkompatibler Output-Vertrag erforderlich wird, verwende eine ausdrücklich versionierte neue Schnittstelle.
+
+Vermeide stillschweigende Änderungen, die bestehende Clients beschädigen.
+
+Die alten Demo-Tools müssen weiterhin im Demo-Modus funktionieren.
+
+---
+
+## 6. Arbeitsauftrag D – UI-Struktur modernisieren
+
+Die bestehende React-Oberfläche hat bereits mehrere Funktionsbereiche.
+
+Erhalte die grundlegende Navigation und das aktuelle visuelle Design.
+
+Strukturiere die Oberfläche bei Bedarf in wiederverwendbare Komponenten.
+
+Empfohlene Struktur:
+
+```text
+src/ui/
+  components/
+    MetricCard
+    ExerciseSelector
+    WorkoutCard
+    StatusNotice
+    EmptyState
+    LoadingState
+    ErrorState
+    PeriodFilter
+    PlanSelector
+
+  views/
+    OverviewView
+    WorkoutHistoryView
+    ExerciseProgressView
+
+  client/
+    ArnoldMcpClient
+
+  hooks/
+    useDashboardData
+    useWorkoutHistory
+    useExerciseProgress
+```
+
+Dies ist eine Empfehlung und keine Verpflichtung zur vollständigen Umstrukturierung.
+
+### Verbindliche Regel
+
+Trenne möglichst:
+
+- UI-Komponenten
+- MCP-Kommunikation
+- UI-Zustände
+- Datenformatierung
+
+Die React-Komponenten sollen nicht selbst entscheiden müssen, wie Google-Sheets-Zeilen gelesen oder Trainingskennzahlen berechnet werden.
+
+---
+
+## 7. Arbeitsauftrag E – Dashboard-Übersicht
+
+Modernisiere die vorhandene Übersichtsseite.
+
+### 7.1 KPI-Bereich
+
+Zeige mindestens:
+
+- Trainingseinheiten gesamt
+- Trainingstage im ausgewählten Zeitraum
+- Trainingstage beziehungsweise Workouts pro Woche
+- Anzahl gültiger Arbeitssätze
+- Trainingsvolumen mit eindeutigem Kennzahlentyp
+- Aktiver Trainingsplan
+
+Wenn Kennzahlen aufgrund fehlender Daten nicht berechenbar sind, zeige nicht einfach `0`.
+
+Verwende stattdessen beispielsweise einen neutralen Platzhalter und eine kurze Erklärung.
+
+### 7.2 Wochenentwicklung
+
+Zeige einen interaktiven Verlauf mit:
+
+- Workouts pro Woche
+- Trainingstagen pro Woche
+- Optional nominalem Trainingsvolumen
+
+Unterstütze geeignete Zeitraumfilter.
+
+### 7.3 Letzte Trainingseinheiten
+
+Zeige:
+
+- Datum
+- Name der Trainingseinheit
+- Anzahl Übungen
+- Anzahl Sätze
+- Optional Trainingsvolumen
+
+Ein Klick auf eine Einheit soll ihre Details öffnen.
+
+### 7.4 Persönliche Bestleistungen
+
+Zeige eine Auswahl relevanter PRs.
+
+Kennzeichne eindeutig:
+
+- Übung
+- Gewicht
+- Ausführung, soweit nötig
+- Wiederholungen
+- Datum
+- PR-Typ
+
+Mische keine inkompatiblen Lastdefinitionen.
+
+### 7.5 Datenquelle
+
+Zeige einen kleinen, verständlichen Datenquellenhinweis.
+
+Beispiele:
+
+- „Demo-Daten“
+- „Arnold · Google Sheets“
+- „Master-Vorlage · Noch keine Workouts“
+
+Wenn der Server im Master-Template-Modus arbeitet, darf die Anwendung diesen Zustand nicht als vollständig eingerichtetes persönliches Nutzerkonto darstellen.
+
+---
+
+## 8. Arbeitsauftrag F – Workout-Historie
+
+Implementiere die Anzeige einer beliebigen Trainingshistorie.
+
+### Anforderungen
+
+- Keine festen Splits voraussetzen.
+- Namen von Trainingseinheiten dynamisch übernehmen.
+- Spontane Workouts ohne Planreferenz unterstützen.
+- Historische Planversionen berücksichtigen.
+- Unvollständige oder stornierte Workouts klar unterscheiden.
+- Sätze in einer nachvollziehbaren Reihenfolge anzeigen.
+- Die tatsächlichen Eingaben unverändert darstellen.
+
+### Beispiel
+
+Ein Workout kann aus folgenden Daten bestehen:
+
+```text
+Workout:
+  20.10.2026
+  Oberkörper A
+
+Übung:
+  Bankdrücken
+
+  Satz 1: 60 kg × 10
+  Satz 2: 70 kg × 8
+  Satz 3: 70 kg × 7
+
+Übung:
+  Rudern einarmig
+
+  Rechts: 20 kg × 10
+  Links: 20 kg × 10
+```
+
+Die Darstellung darf aus mehreren Satzdatensätzen eine verständliche Übungskarte bilden.
+
+Dabei müssen Links/Rechts-Informationen, Gewichtsdefinitionen und Ausführungsarten erhalten bleiben.
+
+### Historische Daten
+
+Wenn der Nutzer eine Übung später aus seinem Trainingsplan entfernt, muss sie weiterhin in alten Workouts erscheinen.
+
+Die UI darf historische Übungsdaten nicht ausschließlich aus dem aktuell aktiven Plan rekonstruieren.
+
+---
+
+## 9. Arbeitsauftrag G – Trainingsfortschritt
+
+Die bestehende Fortschrittsansicht verwendet Recharts.
+
+Behalte Recharts bei.
+
+### Anforderungen
+
+Der Nutzer kann:
+
+1. Eine Übung auswählen.
+2. Einen Zeitraum auswählen.
+3. Eine Kennzahl auswählen.
+4. Die Entwicklung betrachten.
+
+### Unterstützte Kennzahlen
+
+Soweit durch Task 002 verfügbar:
+
+- Maximale vergleichbare Trainingslast
+- Wiederholungen
+- Nominales Trainingsvolumen
+- Geschätztes 1RM
+- Trainingshäufigkeit pro Übung
+
+### Visualisierung
+
+Für Verlaufskurven:
+
+- Echte Messpunkte verwenden.
+- Keine erfundenen Daten ergänzen.
+- Fehlende Werte nicht als null darstellen, wenn sie unbekannt sind.
+- Datumswerte chronologisch sortieren.
+- Bei mehreren Workouts am selben Tag die definierte Aggregationsregel berücksichtigen.
+- Vergleichbarkeit von Ausführungen respektieren.
+
+### Beispiel
+
+Bankdrücken:
+
+```text
+01.10.2026: 70 kg × 8
+08.10.2026: 70 kg × 10
+15.10.2026: 75 kg × 8
+```
+
+Das Dashboard soll daraus eine sinnvolle Entwicklung darstellen.
+
+Die eigentliche Berechnung findet vollständig im Backend statt.
+
+### Besondere Fälle
+
+Wenn eine Übung bisher nur einmal geloggt wurde, muss die UI auch einen einzelnen Messpunkt korrekt darstellen.
+
+Wenn eine Übung noch nie geloggt wurde, zeige einen passenden Leerzustand.
+
+---
+
+## 10. Arbeitsauftrag H – Ausführungsarten verständlich darstellen
+
+Arnold unterstützt:
+
+- Beidarmige beziehungsweise beidseitige Übungen
+- Einarmige Übungen
+- Einbeinige Übungen
+- Alternierende Übungen
+- Gewicht pro Hantel
+- Gesamtgewicht
+- Maschinengewicht
+- Zusatzgewicht
+- Unterstützte Körpergewichtsübungen
+
+### UX-Regeln
+
+Ein Nutzer soll nicht mit internen Datenbankbegriffen wie `per_implement` konfrontiert werden.
+
+Verwende verständliche Beschriftungen.
+
+Beispiele:
+
+| Technischer Wert | UI-Anzeige |
+|---|---|
+| `per_implement` | kg pro Hantel |
+| `total` | Gesamtgewicht |
+| `machine_display` | Maschinenanzeige |
+| `added` | Zusatzgewicht |
+| `assistance` | Unterstützung |
+| `unilateral` | Einseitig |
+| `alternating` | Abwechselnd |
+| `left` | Links |
+| `right` | Rechts |
+
+Die UI muss die tatsächlich gespeicherte Ausführung anzeigen können, auch wenn sie vom Standard der Übung abweicht.
+
+### Technische Regel
+
+Erzeuge eine zentrale Formatierungsfunktion für Gewichtsangaben.
+
+Nicht in unterschiedlichen Komponenten jeweils eigene Interpretationslogik implementieren.
+
+---
+
+## 11. Arbeitsauftrag I – Datenzustände und Fehlerbehandlung
+
+Implementiere klare Zustände für:
+
+1. Daten werden geladen.
+2. Erfolgreich geladen.
+3. Keine Workouts vorhanden.
+4. Keine Übungen vorhanden.
+5. Datenquelle nicht erreichbar.
+6. Google-Autorisierung fehlt.
+7. Datenstruktur inkompatibel.
+8. Teilweise ungültige Daten.
+9. Ein veralteter Snapshot liegt vor.
+
+### Leerer Tracker
+
+Unsere neue Arnold-Masterdatei enthält aktuell:
+
+- Sechs Tabellen.
+- Einen Übungskatalog.
+- Noch keine individuellen Workouts.
+
+Deshalb soll der neue Dashboard-Modus beim erstmaligen Öffnen ungefähr folgende Inhalte zeigen:
+
+**„Willkommen bei Arnold“**
+
+„Deine Trainingsdatenbasis ist bereit. Sobald du dein erstes Training erfasst, siehst du hier deine Fortschritte.“
+
+Diese Meldung ist nur ein vorläufiger Leerzustand.
+
+Keine künstlichen Beispiel-Workouts anzeigen.
+
+Keinen vermeintlich funktionierenden Onboarding-Button einbauen, solange der Onboarding-Prozess noch nicht existiert.
+
+### Fehlerbehandlung
+
+Wenn Google Sheets nicht erreichbar ist:
+
+- Keine Demo-Daten als Ersatz anzeigen.
+- Keine veralteten Werte als frisch deklarieren.
+- Verständliche Fehlermeldung anzeigen.
+- Gegebenenfalls eine Aktion zum erneuten Laden anbieten.
+
+Wenn alte zwischengespeicherte Werte angezeigt werden, müssen sie ausdrücklich als veraltet gekennzeichnet sein.
+
+---
+
+## 12. Arbeitsauftrag J – Aktualisierung der MCP-App
+
+Die Arnold-UI läuft innerhalb von ChatGPT.
+
+Berücksichtige deshalb den bestehenden MCP-Apps-Lifecycle.
+
+### Anforderungen
+
+- Weiterhin die offizielle MCP-App-Bridge verwenden.
+- Keine eigene unsichere postMessage-Implementierung.
+- Tool-Ergebnisse über die vorhandene Bridge empfangen.
+- Neue Daten nach erfolgreichem Abruf aktualisieren.
+- Alte Tool-Ergebnisse aus dem Chatverlauf nicht ungeprüft als aktuellen Zustand verwenden.
+- Host-Theme und responsive Größenänderungen berücksichtigen.
+- UI nach erneutem Öffnen korrekt initialisieren.
+- Keine direkten Google-API-Aufrufe aus dem iframe.
+- Keine Zugangsdaten an die UI weitergeben.
+
+### Historischer Fehler
+
+Im bisherigen Projekt wurde bereits ein Problem mit veralteten Tool-Ergebnissen beim erneuten Öffnen einer ChatGPT-Unterhaltung behoben.
+
+Diese bestehende Absicherung muss unbedingt erhalten bleiben.
+
+Ergänze einen Regressionstest für diesen Fall.
+
+---
+
+## 13. Arbeitsauftrag K – Performance
+
+Arnold soll langfristig auch mit mehreren Jahren Trainingshistorie funktionieren.
+
+Vermeide deshalb unnötige Vollabfragen bei jeder Interaktion.
+
+### Grundregeln
+
+- Dashboard-Kennzahlen aggregiert übertragen.
+- Workout-Details bei Bedarf laden.
+- Fortschrittsdaten nach Übung und Zeitraum filtern.
+- Datumsfilter serverseitig berücksichtigen.
+- Große Arrays nicht unnötig vervielfachen.
+- Wiederholte Requests sinnvoll zusammenfassen.
+- Die UI nicht bei jedem Filterwechsel vollständig neu initialisieren.
+
+Für diesen Auftrag sind keine komplexen Caching-Dienste notwendig.
+
+Baue jedoch eine Architektur, in der später serverseitiges Caching ergänzt werden kann.
+
+### Wichtig
+
+Ein neues Cache darf nicht dazu führen, dass nach einem erfolgreichen Schreibvorgang veraltete Daten angezeigt werden.
+
+Schreibvorgänge gehören zwar nicht zum aktuellen Auftrag, die spätere Integration muss aber architektonisch berücksichtigt werden.
+
+---
+
+## 14. Arbeitsauftrag L – UX, Mobile und Accessibility
+
+Erhalte das bisherige visuelle Design.
+
+Verbessere die Benutzerführung dort, wo das neue Datenmodell zusätzliche Komplexität erzeugt.
+
+### UX-Anforderungen
+
+- Klar verständliche Kennzahlen.
+- Große, gut bedienbare Auswahlfelder.
+- Mobile Navigation.
+- Einheitliche Filter.
+- Sinnvolle Diagrammbeschriftungen.
+- Klare Ladezustände.
+- Verständliche Fehlermeldungen.
+- Keine überladenen technischen Informationen.
+- Unterstützung des hellen und dunklen Host-Themes.
+
+### Accessibility
+
+- Buttons mit verständlichen Namen.
+- Tastaturbedienbarkeit.
+- Sichtbarer Fokus.
+- Ausreichende Kontraste.
+- Screenreader-Beschriftungen.
+- Tooltips nicht als einzige Informationsquelle.
+- Kennzahlen auch außerhalb von Diagrammen zugänglich machen.
+
+Neue UI-Komponenten müssen dem bestehenden Designsystem folgen.
+
+---
+
+## 15. Arbeitsauftrag M – Automatisierte Tests
+
+Erweitere die vorhandenen Tests.
+
+### Integrationstests
+
+Teste:
+
+1. ArnoldDataset → Analytics Engine → Dashboard DTO.
+2. Dashboard DTO → MCP-Tool-Ergebnis.
+3. MCP-Tool-Ergebnis → React-UI.
+4. Demo-Modus weiterhin funktionsfähig.
+5. Neuer Google-Sheets-Modus mit synthetischer Fixture.
+6. Leerer Tracker ohne Workouts.
+7. Mehrere historische Trainingspläne.
+8. Übungen ohne aktiven Trainingsplan.
+9. Einseitige Übungen.
+10. Kurzhanteln mit Gewicht pro Hantel.
+11. Fehlende Berechnungswerte.
+12. Google-API-Fehler.
+13. Inkompatible Schema-Version.
+14. Filter ohne Ergebnisse.
+15. Wiederöffnen mit veraltetem Tool-Ergebnis.
+
+### Browser-Tests
+
+Erweitere Playwright-Tests für:
+
+- Dashboard öffnen.
+- Zwischen Ansichten wechseln.
+- Trainingshistorie filtern.
+- Eine Einheit öffnen.
+- Fortschrittsdiagramm anzeigen.
+- Eine Übung ohne Trainingshistorie auswählen.
+- Leeren Tracker anzeigen.
+- Fehlermeldungen darstellen.
+- Mobile Darstellung.
+- Helles und dunkles Theme.
+- MCP-App-Bridge-Interaktion.
+
+Tests dürfen keine echten Trainingsdaten verändern.
+
+### Qualität
+
+Führe abschließend aus:
+
+```bash
+npm run typecheck
+npm test
+npm run build
+npm run test:e2e
+npm run format:check
+```
+
+Dokumentiere Ergebnisse einschließlich fehlgeschlagener oder nicht ausführbarer Tests.
+
+---
+
+## 16. Arbeitsauftrag N – Technische Dokumentation
+
+Erstelle:
+
+`docs/ARNOLD-UI-CONTRACT.md`
+
+Dokumentiere:
+
+1. Datenfluss vom Storage bis zur UI.
+2. Verwendete MCP-Tools.
+3. Input- und Output-Schemas.
+4. Dashboard-Datenformat.
+5. Verantwortlichkeiten von Backend und Frontend.
+6. Datenquellen und Betriebsmodi.
+7. Filterlogik.
+8. Darstellung von Gewichten und Ausführungsarten.
+9. Fehler- und Leerzustände.
+10. Aktualisierung des UI-Zustands.
+11. Auswirkungen historischer Trainingsplanänderungen.
+12. Performance-Überlegungen.
+13. Vorbereitung für spätere schreibende Tools.
+14. Vorbereitung für das Onboarding.
+
+Aktualisiere vorhandene Dokumentation nur dort, wo sie nachweislich veraltet ist.
+
+---
+
+## 17. Sicherheits- und Änderungsgrenzen
+
+Folgende Regeln sind verbindlich:
+
+- Keine Veränderung der Arnold-Masterdatei.
+- Keine Veränderung echter Trainingslogs.
+- Keine Google-Sheets-Schreiboperationen.
+- Kein Google OAuth.
+- Keine produktive Nutzerverwaltung implementieren.
+- Keine ChatGPT-Plugin-Konfiguration verändern.
+- Keine Tunnel-Konfiguration verändern.
+- Kein Deployment.
+- Keine neuen externen Datenbankdienste.
+- Keine synthetischen Daten mit echten Daten vermischen.
+- Keine vollständige Neuentwicklung der UI.
+- Bestehende MCP-Tools möglichst kompatibel halten.
+- Bestehende Demo-Funktionen und Tests erhalten.
+
+### Umgang mit dem Master-Template
+
+Die Arnold-Masterdatei ist eine Vorlage.
+
+Sie darf für die Strukturprüfung und einen lesenden Verbindungstest verwendet werden.
+
+Sie darf nicht als dauerhaftes persönliches Nutzerkonto behandelt werden.
+
+Wenn für Tests Trainingsdaten erforderlich sind, verwende ausschließlich synthetische lokale Fixtures.
+
+---
+
+## 18. Definition of Done
+
+Task 003 ist abgeschlossen, wenn:
+
+- [ ] Die neue Arnold Analytics Engine ist an den MCP-Server angebunden.
+- [ ] Das Dashboard kann das neue Arnold-Datenmodell verwenden.
+- [ ] Der alte Demo-Modus funktioniert unverändert.
+- [ ] Die React-Oberfläche unterstützt beliebige Trainingssplits.
+- [ ] Workout-Historie basiert auf stabilen IDs.
+- [ ] Trainingsfortschritt wird korrekt angezeigt.
+- [ ] Unterschiedliche Ausführungen werden verständlich dargestellt.
+- [ ] Kennzahlen stammen aus der Analytics Engine.
+- [ ] Ungültige oder fehlende Berechnungen werden nicht als sichere Zahlen ausgegeben.
+- [ ] Leere Tracker werden korrekt angezeigt.
+- [ ] Historische Trainingspläne bleiben auswertbar.
+- [ ] MCP-App-Bridge funktioniert weiterhin.
+- [ ] Veraltete Tool-Ergebnisse werden erkannt beziehungsweise sichtbar gekennzeichnet.
+- [ ] Keine echten Trainingsdaten wurden verändert.
+- [ ] Build und Typecheck erfolgreich sind.
+- [ ] Automatisierte Tests bestehen.
+- [ ] Technische Dokumentation vollständig ist.
+
+---
+
+## 19. Abschlussbericht
+
+Stoppe nach Abschluss dieses Arbeitspakets.
+
+Erstelle einen Bericht mit dem Titel:
+
+**ARNOLD TASK 003 – COMPLETION REPORT**
+
+Berichte über:
+
+1. **Status:** Completed / Partial / Blocked
+2. **Implementierte UI- und Backend-Komponenten**
+3. **Neue und geänderte Dateien**
+4. **Änderungen an MCP-Tools und API-Verträgen**
+5. **Integration der Analytics Engine**
+6. **Umgang mit Demo- und Google-Sheets-Modus**
+7. **Neue UI-Funktionen**
+8. **Ergebnisse sämtlicher Tests**
+9. **Performance und bekannte Grenzen**
+10. **Offene technische Probleme**
+11. **Abweichungen vom Auftrag**
+12. **Branch und Commit-SHA**, sofern vorhanden
+13. **Empfehlung für Task 004**
+
+Bestätige ausdrücklich:
+
+- Funktioniert der Demo-Modus weiterhin?
+- Funktioniert das neue Dashboard mit synthetischen Arnold-Fixtures?
+- Wurde die echte Master-Datei ausschließlich lesend verwendet?
+- Wurde die MCP-App tatsächlich in einem Browser-/Host-Test geprüft?
+- Wurden alle Tests erfolgreich ausgeführt?
+
+**Wichtig: Implementiere Task 003 erst nach erfolgreicher Integration von Task 001 und Task 002.**

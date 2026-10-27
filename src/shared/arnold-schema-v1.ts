@@ -611,3 +611,18 @@ export type ArnoldRepsBasis = ArnoldSet["reps_basis"];
 export type ArnoldSide = ArnoldSet["side"];
 export type ArnoldSetType = ArnoldSet["set_type"];
 export type ArnoldWorkoutStatus = ArnoldWorkout["status"];
+
+/** Schema-v1 sentinel: a discarded draft had no activation interval. */
+export function isDiscardedPlan(
+  plan: Pick<
+    ArnoldPlanVersion,
+    "status" | "activated_at_utc" | "retired_at_utc"
+  >,
+): boolean {
+  return (
+    plan.status === "archived" &&
+    plan.activated_at_utc !== null &&
+    plan.retired_at_utc !== null &&
+    Date.parse(plan.activated_at_utc) === Date.parse(plan.retired_at_utc)
+  );
+}

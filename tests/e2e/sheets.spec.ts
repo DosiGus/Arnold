@@ -10,7 +10,7 @@ test("Sheets mode renders source, dynamic records and refresh without demo mutat
       if (body.method === "tools/call") calls.push(body.params.name);
     }
   });
-  await page.goto("http://127.0.0.1:8791/host");
+  await page.goto("http://127.0.0.1:8891/host");
   const app = page.frameLocator("iframe");
   await expect(
     app.getByRole("heading", { name: "Dein Training. Dein Fortschritt." }),

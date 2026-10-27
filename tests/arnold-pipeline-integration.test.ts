@@ -292,8 +292,10 @@ describe("caching behaviour of the real source", () => {
     source.invalidate();
     release!();
     await inFlight;
-    const before = transport.calls.length;
+    // Task 004 strengthens this contract: the original caller already waits
+    // for the fresh read, so the following load can reuse that fresh cache.
+    expect(transport.calls).toHaveLength(14);
     await source.load();
-    expect(transport.calls.length).toBeGreaterThan(before);
+    expect(transport.calls).toHaveLength(14);
   });
 });

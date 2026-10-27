@@ -1,3 +1,4 @@
+import { AbandonWriteResponseSchema } from "../shared/write-recovery";
 import { WriteResponseSchema } from "../shared/workout-contract";
 import { PlanWriteResponseSchema } from "../shared/plan-contract";
 import { App } from "@modelcontextprotocol/ext-apps";
@@ -70,7 +71,13 @@ export class ArnoldClient {
   /** Throws a readable error for a failed tool result, else yields its content. */
   private unwrap(result: CallToolResult): unknown {
     // A structured failure carries the server's recovery instructions.
-    if (result.isError && (WriteResponseSchema.safeParse(result.structuredContent).success || PlanWriteResponseSchema.safeParse(result.structuredContent).success)) return result.structuredContent;
+    if (
+      result.isError &&
+      (WriteResponseSchema.safeParse(result.structuredContent).success ||
+        PlanWriteResponseSchema.safeParse(result.structuredContent).success ||
+        AbandonWriteResponseSchema.safeParse(result.structuredContent).success)
+    )
+      return result.structuredContent;
     if (result.isError)
       throw new Error(
         result.content
@@ -193,7 +200,11 @@ export class ArnoldClient {
    * Calls a server tool and returns its structured content to the caller.
    * Deliberately does not publish: see the class comment.
    */
-  async call(name: string, args: Record<string, unknown> = {}, _options: { publish?: boolean } = {}) {
+  async call(
+    name: string,
+    args: Record<string, unknown> = {},
+    _options: { publish?: boolean } = {},
+  ) {
     const result = this.app
       ? await this.app.callServerTool({ name, arguments: args })
       : ((await this.preview!.callTool({

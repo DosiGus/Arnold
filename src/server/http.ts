@@ -1,6 +1,7 @@
-import { createFixtureLogging, writeModeFromEnv } from "./workout/fixture.js";
+import { writeModeFromEnv } from "./workout/fixture.js";
 import type { WorkoutLoggingService } from "./workout/service.js";
 import type { TrainingPlanService } from "./plan/service.js";
+import { createFixturePlanning } from "./plan/fixture.js";
 import { createMcpExpressApp } from "@modelcontextprotocol/express";
 import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
 import type { NextFunction, Request, Response } from "express";
@@ -40,7 +41,7 @@ export function createHttpApp(options: ServerOptions = {}) {
   const runtime: NonNullable<ServerOptions["workoutRuntime"]> | undefined =
     options.workoutRuntime ??
     (mode === "fixture" && !options.storage && !options.arnoldSource
-      ? createFixtureLogging()
+      ? createFixturePlanning()
       : undefined);
   if (runtime && (options.storage || options.arnoldSource))
     throw new Error(
@@ -143,7 +144,9 @@ export function createHttpApp(options: ServerOptions = {}) {
   );
   app.get("/", (_req, res) => res.redirect("/preview"));
   app.get("/preview", (_req, res) =>
-    res.sendFile(resolve(root, "dist/ui/dashboard.html"), { dotfiles: "allow" }),
+    res.sendFile(resolve(root, "dist/ui/dashboard.html"), {
+      dotfiles: "allow",
+    }),
   );
   app.get("/host", (_req, res) =>
     res.sendFile(resolve(root, "dist/host/host.html"), { dotfiles: "allow" }),

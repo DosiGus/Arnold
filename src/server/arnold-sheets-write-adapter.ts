@@ -1,3 +1,4 @@
+import { ARNOLD_SHEETS_LIMITS } from "../shared/sheets-limits.js";
 import { GoogleAuth } from "google-auth-library";
 import {
   ARNOLD_TABLE_HEADERS,
@@ -16,6 +17,7 @@ import {
 } from "./arnold-sheet-parser.js";
 import {
   WriteError,
+  RejectedWriteError,
   changedDataset,
   fingerprint,
   entityId,
@@ -129,11 +131,15 @@ function apiFailure(error: unknown, writing: boolean): WriteError {
       "Die sechs Tabellen, Header oder Rohdaten passen nicht zu Schema v1.",
     );
   const status = statusOf(error);
+  const Failure =
+    writing && [400, 401, 403, 404, 429].includes(status ?? 0)
+      ? RejectedWriteError
+      : WriteError;
   if (
     status === 401 ||
     (error instanceof ArnoldSheetsReadError && error.code === "AUTH")
   )
-    return new WriteError(
+    return new Failure(
       "AUTH_REQUIRED",
       "Google-Anmeldung fehlt oder ist abgelaufen.",
     );
@@ -141,27 +147,27 @@ function apiFailure(error: unknown, writing: boolean): WriteError {
     status === 403 ||
     (error instanceof ArnoldSheetsReadError && error.code === "PERMISSION")
   )
-    return new WriteError("PERMISSION_DENIED", "Google-Berechtigung fehlt.");
+    return new Failure("PERMISSION_DENIED", "Google-Berechtigung fehlt.");
   if (
     status === 404 ||
     (error instanceof ArnoldSheetsReadError && error.code === "NOT_FOUND")
   )
-    return new WriteError("STORAGE_UNAVAILABLE", "Testdatei nicht gefunden.");
+    return new Failure("STORAGE_UNAVAILABLE", "Testdatei nicht gefunden.");
   if (
     status === 429 ||
     (error instanceof ArnoldSheetsReadError && error.code === "RATE_LIMIT")
   )
-    return new WriteError(
+    return new Failure(
       "STORAGE_UNAVAILABLE",
       "Google-Schreibquote erreicht. Später mit derselben Operations-ID versuchen.",
       true,
     );
   if (status === 400)
-    return new WriteError(
+    return new Failure(
       "SCHEMA_MISMATCH",
       "Google hat das gesamte Batch wegen ungültiger Struktur abgelehnt.",
     );
-  return new WriteError(
+  return new Failure(
     writing ? "COMMIT_STATUS_UNKNOWN" : "STORAGE_UNAVAILABLE",
     writing
       ? "Google-Schreibstatus unklar; zuerst anhand stabiler IDs prüfen."
@@ -283,6 +289,33 @@ export class ArnoldSheetsWriteAdapter implements ArnoldWriteRepository {
     });
   }
   async apply(changes: readonly EntityChange[]): Promise<void> {
+    let dispatched = false;
+    try {
+      await this.applyBatch(changes, () => {
+        dispatched = true;
+      });
+    } catch (error) {
+      if (
+        error instanceof RejectedWriteError ||
+        (!dispatched &&
+          error instanceof WriteError &&
+          error.code !== "COMMIT_STATUS_UNKNOWN")
+      ) {
+        this.allowedNext = undefined;
+        throw new RejectedWriteError(
+          error.code,
+          error.message,
+          error.retryable,
+          error.details,
+        );
+      }
+      throw error;
+    }
+  }
+  private async applyBatch(
+    changes: readonly EntityChange[],
+    dispatch: () => void,
+  ): Promise<void> {
     // A configuration flag is not authentication. Require a checked principal
     // from the trusted backend on each dispatch, in addition to the service guard.
     let actor: Actor;
@@ -374,16 +407,48 @@ export class ArnoldSheetsWriteAdapter implements ArnoldWriteRepository {
         appends.set(table, rows);
       }
     }
-    for (const [table, rows] of appends)
+    for (const [table, rows] of appends) {
+      const properties = this.metadata!.sheets.find(
+        (s) => s.properties.title === table,
+      )!.properties;
+      // AppendCells follows the last physical row containing data, including
+      // gaps; existing spare grid rows can be reused without grid expansion.
+      const physical = this.rows(table);
+      const usedRows = physical.reduce(
+        (last, row, index) =>
+          row.some((cell) => cell !== null && cell !== undefined && cell !== "")
+            ? index + 1
+            : last,
+        0,
+      );
+      const rowCount = Math.max(
+        properties.gridProperties.rowCount,
+        usedRows + rows.length,
+      );
+      if (
+        rowCount > ARNOLD_SHEETS_LIMITS.rows ||
+        rowCount * properties.gridProperties.columnCount >
+          ARNOLD_SHEETS_LIMITS.cells
+      )
+        throw new RejectedWriteError(
+          "VALIDATION_ERROR",
+          "Batch überschreitet die unterstützte Tabellengröße. Es wurde nichts geschrieben.",
+          false,
+          [
+            table,
+            `resulting_rows=${rowCount}`,
+            `max_rows=${ARNOLD_SHEETS_LIMITS.rows}`,
+          ],
+        );
       requests.push({
         appendCells: {
-          sheetId: this.metadata!.sheets.find(
-            (s) => s.properties.title === table,
-          )!.properties.sheetId,
+          sheetId: properties.sheetId,
           rows,
           fields: "userEnteredValue",
         },
       });
+    }
+    dispatch();
     try {
       for (let attempt = 0; ; attempt++) {
         try {

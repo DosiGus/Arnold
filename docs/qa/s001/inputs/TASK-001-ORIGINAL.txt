@@ -1,0 +1,281 @@
+# ARNOLD – DEVELOPMENT TASK 001
+## Data Foundation: Schema v1 + Read-only Google Sheets Adapter
+
+Du arbeitest als Senior TypeScript/MCP Developer am Projekt **Arnold**, einer interaktiven Fitness-Anwendung innerhalb von ChatGPT.
+
+**Projektsteuerung:** Die Produktarchitektur wird extern geplant. Setze ausschließlich das folgende Arbeitspaket um und liefere danach einen strukturierten Bericht. Starte noch keine weiteren Entwicklungsphasen.
+
+### 1. Ausgangssituation
+
+Das bestehende GitHub-Repository ist:
+
+`DosiGus/Arnold`
+
+Technologien:
+- Node.js / TypeScript
+- MCP Streamable HTTP
+- MCP Apps
+- React
+- Zod
+- Google Sheets API
+- Vitest / Playwright
+
+Das Repository enthält bereits einen funktionsfähigen MCP-Apps-Prototyp mit Dashboard, Trainingshistorie, Fortschrittsanalysen, synthetischen Daten und einem alten, ausschließlich lesenden Google-Sheets-Adapter.
+
+Die bisherige Google-Sheets-Anbindung verwendet eine ältere Tabellenstruktur und muss langfristig ersetzt werden.
+
+### 2. Neue verbindliche Datenbasis
+
+Google-Sheets-Datei:
+
+https://docs.google.com/spreadsheets/d/1KMhPGrJSTZYRY5zKpVF3-Zc0tRdCZBV5zez46cJBzcc/edit
+
+Technische Dokumentation:
+
+https://drive.google.com/file/d/1BdzmwyoCQMEhLpp6hjeD9NT5FvkHfK6G/view
+
+Der neue Datenstandard heißt `arnold.training_raw`, Schema-Version `1.0.0`.
+
+Die Datei besitzt genau sechs Tabellen:
+
+1. `CONFIG`
+2. `EXERCISES`
+3. `PLANS`
+4. `PLAN_ITEMS`
+5. `WORKOUTS`
+6. `SETS`
+
+Die erste Zeile jeder Tabelle enthält die Spaltenüberschriften.
+
+Die Master-Datei enthält Übungsdefinitionen, aber bewusst keine echten Trainingslogs.
+
+**Unbedingt beachten:** Die Master-Datei ist eine Vorlage (`MASTER_TEMPLATE`). Schreibe niemals Testdaten, Workouts oder Konfigurationsänderungen direkt in diese Datei.
+
+### 3. Arbeitsauftrag A – Bestandsaufnahme
+
+Untersuche zunächst die bestehende Architektur.
+
+Relevant sind insbesondere:
+
+- `src/shared/schemas.ts`
+- `src/shared/calculations.ts`
+- `src/server/storage.ts`
+- `src/server/google-sheets-storage.ts`
+- `src/server/sheet-parser.ts`
+- `src/server/storage-config.ts`
+- `src/server/mcp.ts`
+- `src/ui/client.ts`
+
+Prüfe den Git-Status und führe die vorhandenen Tests aus.
+
+Dokumentiere die tatsächlichen Testergebnisse. Nimm keine bestehenden Testerfolge ungeprüft an.
+
+Sichere bestehende lokale Änderungen. Überschreibe keine uncommitteten Arbeiten.
+
+Arbeite auf einem separaten Feature-Branch, beispielsweise:
+
+`feat/arnold-data-foundation`
+
+### 4. Arbeitsauftrag B – Neues Domain-Modell
+
+Implementiere ein typisiertes Domain-Modell für Arnold Schema v1.
+
+Verwende TypeScript und Zod.
+
+Die bestehenden sechs Tabellen müssen vollständig abbildbar sein.
+
+#### CONFIG
+
+Enthält Schema-Version, Vorlagenversion, Tracker-ID, Dateityp und technische Einstellungen.
+
+#### EXERCISES
+
+Enthält den Übungskatalog mit stabilen Exercise-IDs, Geräten, Übungsvarianten, Standardausführungen und Gewichtsdefinitionen.
+
+#### PLANS
+
+Enthält Trainingspläne mit stabilen Planversions-IDs, Status und Versionsnummer.
+
+#### PLAN_ITEMS
+
+Verknüpft Übungen mit geplanten Trainingseinheiten.
+
+Enthält Session-ID, Reihenfolge, Zielsätze, Wiederholungsbereich, Zielgewicht, Ausführungsdefinition und weitere Planungsparameter.
+
+#### WORKOUTS
+
+Enthält tatsächliche Trainingseinheiten.
+
+Jedes Workout besitzt eine eigenständige Workout-ID und einen Status.
+
+Ein Workout kann auch ohne aktiven Trainingsplan existieren.
+
+#### SETS
+
+Enthält die tatsächlichen Trainingssätze.
+
+Jeder Satz besitzt eine eindeutige Set-ID und einen Verweis auf Workout und Übung.
+
+Gewichte und Ausführungen müssen korrekt unterschieden werden können.
+
+Unterstützte Gewichtsdefinitionen:
+
+- `total`
+- `per_implement`
+- `machine_display`
+- `added`
+- `assistance`
+- `bodyweight_only`
+
+Unterstützte Ausführungsarten:
+
+- `bilateral_simultaneous`
+- `unilateral`
+- `alternating`
+
+Die tatsächlichen Eingaben müssen erhalten bleiben. Effektive Gewichte und Trainingsvolumen dürfen nicht beim Einlesen durch vereinfachte Annahmen ersetzt werden.
+
+Verwende die tatsächlichen Spaltennamen aus der Master-Datei als verbindlichen Vertrag.
+
+### 5. Arbeitsauftrag C – Read-only Storage Adapter
+
+Implementiere einen neuen `ArnoldSheetsReadAdapter`.
+
+Anforderungen:
+
+1. Alle sechs Tabellen lesen.
+2. Tabellenstruktur und Spaltenüberschriften prüfen.
+3. `schema_id` und `schema_version` prüfen.
+4. Stabile IDs unverändert übernehmen.
+5. Zeilen über Referenz-IDs miteinander verknüpfen.
+6. Optionale Felder korrekt behandeln.
+7. Zahlen, Datumswerte, Status und Enums validieren.
+8. Ungültige Daten mit nachvollziehbaren Fehlermeldungen behandeln.
+9. Eine leere Workout-Historie ausdrücklich als gültigen Zustand akzeptieren.
+10. Keine synthetischen Daten ergänzen.
+11. Keine Schreiboperationen anbieten.
+
+Der Adapter soll ein normalisiertes, typisiertes `ArnoldDataset` liefern.
+
+Es darf keine zwingende Abhängigkeit von den bisherigen Push/Pull/Legs-Enums geben.
+
+Trainingspläne sind frei definierbar. Übungs-IDs dürfen nicht fest an einen Split gebunden sein.
+
+### 6. Arbeitsauftrag D – Kompatibilität
+
+**Die bisherige Demo muss weiterhin funktionieren.**
+
+Bitte:
+
+- Bestehende MCP-Tools nicht ohne Not verändern.
+- Bisherigen Demo-Storage erhalten.
+- Bestehenden Dashboard-Code nicht großflächig umbauen.
+- Neue Domain-Modelle zunächst sauber vom bisherigen Demo-Modell trennen.
+- Keine provisorischen Fake-Splits erzeugen, nur damit Daten in das alte Modell passen.
+- Keine Live-Schreibzugriffe aktivieren.
+
+Das Ziel dieses Arbeitspakets ist die **Datenzugriffsschicht**, noch nicht die vollständige Migration des Dashboards.
+
+### 7. Arbeitsauftrag E – Automatisierte Tests
+
+Erstelle Tests mit realistischen, synthetischen Fixtures für alle sechs Tabellen.
+
+Teste mindestens:
+
+- Gültiger vollständiger Datensatz
+- Leere Workouts und Sets
+- Fehlende Pflichtspalten
+- Falsche Schema-Version
+- Doppelte IDs
+- Unbekannte Exercise-IDs
+- Ungültige Workout-Referenzen
+- Planversionen und archivierte Pläne
+- Workout ohne zugeordneten Trainingsplan
+- Unilaterale und bilaterale Ausführungen
+- Gewicht pro Hantel und Gesamtgewicht
+- Fehlende optionale Werte
+- Ungültige Zahlen und Statuswerte
+- Google-API-Fehler
+- Nachweis, dass keine Schreiboperation erfolgt
+
+Bei fehlenden Google-Zugangsdaten müssen die automatisierten Tests vollständig mit Mock-Transport beziehungsweise Fixtures funktionieren.
+
+### 8. Dokumentation
+
+Erstelle:
+
+`docs/ARNOLD-DATA-CONTRACT.md`
+
+Dokumentiere:
+
+- Das vollständige Schema
+- TypeScript-Datenobjekte
+- Beziehungen zwischen Tabellen
+- Pflichtfelder und optionale Felder
+- Behandlung historischer Planversionen
+- Umgang mit unbekannten IDs
+- Fehlerverhalten
+- Unveränderlichkeit historischer Daten
+- Grenzen des lesenden Adapters
+- Noch fehlende Schritte für produktive Schreibzugriffe
+
+### 9. Sicherheitsregeln
+
+- Keine Änderung an der echten Arnold-Masterdatei.
+- Keine Änderung an der alten Fitness-Tracker-Datei.
+- Keine echten Trainingsdaten in synthetische Fixtures kopieren.
+- Keine Zugangsdaten, Tokens oder Schlüssel committen.
+- Keine Testdateien in Google Drive anlegen.
+- Keine echten Google-OAuth-Zugangsdaten erzeugen.
+- Keine Änderungen an der produktiven ChatGPT-Verbindung.
+- Kein Deployment und keine Veränderung der Tunnel-Konfiguration.
+- Keine zusätzlichen Datenbankdienste einrichten.
+
+Falls Zugriffe oder Informationen fehlen: Verwende lokale Fixtures, dokumentiere die Einschränkung und arbeite an den unabhängig umsetzbaren Aufgaben weiter.
+
+### 10. Definition of Done
+
+Der Auftrag ist abgeschlossen, wenn:
+
+- Das neue Arnold-Domain-Modell existiert.
+- Alle sechs Tabellen durch einen lesenden Adapter unterstützt werden.
+- Das neue Schema automatisch validiert wird.
+- Der Adapter mit synthetischen Beispieldaten getestet ist.
+- Alle bisherigen Tests weiterhin funktionieren.
+- Build und Typecheck erfolgreich sind.
+- Die technische Dokumentation vorhanden ist.
+- Keine echten Trainingsdaten verändert wurden.
+
+Führe nach Möglichkeit folgende Prüfungen aus:
+
+```bash
+npm run typecheck
+npm test
+npm run build
+npm run test:e2e
+npm run format:check
+```
+
+Wenn ein Test nicht ausgeführt werden kann, begründe das konkret.
+
+### 11. Abschlussbericht
+
+Stoppe nach diesem Arbeitspaket.
+
+Antworte mit folgendem Bericht:
+
+**ARNOLD TASK 001 – COMPLETION REPORT**
+
+1. Status: Completed / Partial / Blocked
+2. Implementierte Komponenten
+3. Neue und geänderte Dateien
+4. Architekturentscheidungen
+5. Ergebnisse aller Tests
+6. Offene Probleme oder technische Risiken
+7. Abweichungen vom Auftrag
+8. Git-Branch und Commit-SHA, sofern ein Commit erstellt wurde
+9. Empfehlung für den nächsten technischen Schritt
+
+Nenne insbesondere, ob der neue Adapter mit dem tatsächlichen Google-Sheets-Schema kompatibel ist oder bisher nur anhand von Fixtures geprüft wurde.
+
+**Beginne jetzt mit der Umsetzung von Task 001.**

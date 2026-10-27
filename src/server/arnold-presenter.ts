@@ -8,6 +8,7 @@
  * dashboard and a direct engine call impossible to disagree.
  */
 import {
+  isDiscardedPlan,
   type ArnoldDataset,
   type ArnoldExercise,
   type ArnoldLoadBasis,
@@ -718,7 +719,8 @@ export function buildDashboardView(
             .sort((a, b) => a.session_order - b.session_order),
         }
       : null,
-    plan_history: [...dataset.plans]
+    plan_history: dataset.plans
+      .filter((plan) => !isDiscardedPlan(plan))
       .sort(
         (a, b) =>
           a.plan_family_id.localeCompare(b.plan_family_id) ||

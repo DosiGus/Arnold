@@ -1,3 +1,4 @@
+import { AbandonWriteResponseSchema } from "../../shared/write-recovery";
 import {
   WorkoutContextSchema,
   WriteResponseSchema,
@@ -145,6 +146,11 @@ export class ArnoldMcpClient {
     }
   }
 
+  async abandonRejected(request_id: string) {
+    return AbandonWriteResponseSchema.parse(
+      await this.client.call("abandon_rejected_write", { request_id }),
+    );
+  }
   async workout(workout_id?: string) {
     return WorkoutContextSchema.parse(
       await this.client.call("get_workout", workout_id ? { workout_id } : {}),

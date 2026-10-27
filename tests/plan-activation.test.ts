@@ -433,8 +433,8 @@ describe("discarding a draft", () => {
     });
     // active -> archived is a legal transition, but only through activation of
     // a successor; discarding is reserved for drafts.
-    if (result.ok) expect(result.result!.plan!.version.status).toBe("archived");
-    else expect(result.error!.code).toBe("INVALID_STATUS_TRANSITION");
+    expect(result.ok).toBe(false);
+    expect(result.error!.code).toBe("INVALID_STATUS_TRANSITION");
   });
 
   it("refuses to discard an already archived version", async () => {

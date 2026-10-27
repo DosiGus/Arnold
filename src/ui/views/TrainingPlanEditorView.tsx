@@ -16,7 +16,7 @@
  * `update_plan_draft`; the server decides what is legal, and the screen shows
  * what the server stored.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -91,12 +91,16 @@ export function TrainingPlanEditorView({
   const { context, plan, sessions, state, busy, canWrite } = editor;
   const validation = context?.validation ?? null;
   const editable = plan?.status === "draft";
+  useEffect(() => {
+    setPanel(undefined);
+    setNewSessionName("");
+  }, [plan?.plan_version_id]);
   const close = () => setPanel(undefined);
 
   /** Sends one edit and closes whatever panel triggered it. */
   async function send(edit: Record<string, unknown>) {
-    close();
-    await editor.applyEdits([edit]);
+    const response = await editor.applyEdits([edit]);
+    if (response?.ok) close();
   }
 
   const sessionActions = (
@@ -173,6 +177,34 @@ export function TrainingPlanEditorView({
       : {}),
   });
 
+  const closeOnSuccess = (response: { ok: boolean } | undefined) => {
+    if (response?.ok) close();
+  };
+  const feedback = (
+    <>
+      {editor.error && <p role="alert">{editor.error}</p>}
+      {editor.pending && (
+        <div className="plan-actions">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void editor.retry().then(closeOnSuccess)}
+          >
+            Vorgang prüfen
+          </button>
+          {editor.pending.canDismiss && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={editor.dismissPending}
+            >
+              Abgelehnten Vorgang schließen
+            </button>
+          )}
+        </div>
+      )}
+    </>
+  );
   if (!context && !editor.error)
     return <LoadingState text="Trainingsplan wird geladen …" />;
 
@@ -220,13 +252,13 @@ export function TrainingPlanEditorView({
           <span>{editor.message}</span>
         </p>
       )}
-      {editor.error && (
+      {editor.error && !panel && (
         <p className="plan-notice warning" role="alert">
           <AlertTriangle size={15} aria-hidden="true" />
           <span>{editor.error}</span>
         </p>
       )}
-      {editor.pending && (
+      {editor.pending && !panel && (
         <div className="plan-notice warning" role="alert">
           <AlertTriangle size={15} aria-hidden="true" />
           <div>
@@ -244,13 +276,16 @@ export function TrainingPlanEditorView({
               >
                 Vorgang prüfen
               </button>
-              <button
-                type="button"
-                className="secondary"
-                onClick={editor.dismissPending}
-              >
-                Verwerfen
-              </button>
+              {editor.pending.canDismiss && (
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={busy}
+                  onClick={editor.dismissPending}
+                >
+                  Abgelehnten Vorgang schließen
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -552,16 +587,18 @@ export function TrainingPlanEditorView({
         <ExercisePicker
           exercises={context.exercises}
           title={`Erste Übung für „${panel.session_name}"`}
-          busy={busy}
+          busy={busy || !!editor.pending}
+          feedback={feedback}
           onClose={close}
           onPick={(option) => {
             const target = panel;
-            close();
-            void editor.createPlan({
-              name: target.name,
-              session_name: target.session_name,
-              exercise: pickedExercise(option),
-            });
+            void editor
+              .createPlan({
+                name: target.name,
+                session_name: target.session_name,
+                exercise: pickedExercise(option),
+              })
+              .then(closeOnSuccess);
           }}
         />
       )}
@@ -570,25 +607,27 @@ export function TrainingPlanEditorView({
         <ExercisePicker
           exercises={context.exercises}
           title="Übung hinzufügen"
-          busy={busy}
+          busy={busy || !!editor.pending}
+          feedback={feedback}
           onClose={close}
           onPick={(option) => {
             const target = panel;
-            close();
             // A local session becomes real with its first exercise; an existing
             // one just gains a position.
-            void (target.localName
-              ? editor.persistLocalSession(
-                  target.sessionId,
-                  pickedExercise(option),
-                )
-              : editor.applyEdits([
-                  {
-                    type: "add_plan_exercise",
-                    session_id: target.sessionId,
-                    ...pickedExercise(option),
-                  },
-                ]));
+            void (
+              target.localName
+                ? editor.persistLocalSession(
+                    target.sessionId,
+                    pickedExercise(option),
+                  )
+                : editor.applyEdits([
+                    {
+                      type: "add_plan_exercise",
+                      session_id: target.sessionId,
+                      ...pickedExercise(option),
+                    },
+                  ])
+            ).then(closeOnSuccess);
           }}
         />
       )}
@@ -599,22 +638,24 @@ export function TrainingPlanEditorView({
             (option) => option.exercise_id !== panel.exercise.exercise_id,
           )}
           title={`„${panel.exercise.exercise_name}" austauschen`}
-          busy={busy}
+          busy={busy || !!editor.pending}
+          feedback={feedback}
           onClose={close}
           onPick={(option) => {
             const replaced = panel.exercise;
-            close();
-            void editor.applyEdits([
-              {
-                type: "replace_plan_exercise",
-                plan_item_id: replaced.plan_item_id,
-                new_exercise_id: option.exercise_id,
-                target_sets: replaced.target_sets,
-                rep_min: replaced.rep_min,
-                rep_max: replaced.rep_max,
-                rest_seconds: replaced.rest_seconds,
-              },
-            ]);
+            void editor
+              .applyEdits([
+                {
+                  type: "replace_plan_exercise",
+                  plan_item_id: replaced.plan_item_id,
+                  new_exercise_id: option.exercise_id,
+                  target_sets: replaced.target_sets,
+                  rep_min: replaced.rep_min,
+                  rep_max: replaced.rep_max,
+                  rest_seconds: replaced.rest_seconds,
+                },
+              ])
+              .then(closeOnSuccess);
           }}
         />
       )}
@@ -622,18 +663,20 @@ export function TrainingPlanEditorView({
       {panel?.kind === "settings" && (
         <ExerciseSettingsPanel
           exercise={panel.exercise}
-          busy={busy}
+          busy={busy || !!editor.pending}
+          feedback={feedback}
           onClose={close}
           onSave={(draft) => {
             const item = panel.exercise;
-            close();
-            void editor.applyEdits([
-              {
-                type: "update_plan_exercise_targets",
-                plan_item_id: item.plan_item_id,
-                targets: targetsFromDraft(draft),
-              },
-            ]);
+            void editor
+              .applyEdits([
+                {
+                  type: "update_plan_exercise_targets",
+                  plan_item_id: item.plan_item_id,
+                  targets: targetsFromDraft(draft),
+                },
+              ])
+              .then(closeOnSuccess);
           }}
         />
       )}

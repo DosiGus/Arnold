@@ -1,0 +1,50 @@
+{
+  "TASK-001-ORIGINAL.txt": {
+    "origin": "/Users/kevingusmao/.codex/attachments/49756314-1aa2-48fa-ad04-20128a3b7151/Eingefügter Text.txt",
+    "sha256": "38c2ab1bbb31ec50efb3626e8e48a1e80f3f212fe5c58d206f17b2e0657b6201",
+    "bytes": 8878
+  },
+  "TASK-002-ORIGINAL.txt": {
+    "origin": "/Users/kevingusmao/.codex/attachments/a537f9b0-a8ac-4c0b-9f6e-39096cf0b2ac/Eingefügter Text.txt",
+    "sha256": "dfee3ed4fb93c4b9938064e8557fbbc781b4accf68f811d130f40dc39864216c",
+    "bytes": 21941
+  },
+  "TASK-003-ORIGINAL.txt": {
+    "origin": "/Users/kevingusmao/.codex/attachments/65388975-f8c3-409d-b840-f161e0b7a557/Eingefügter Text.txt",
+    "sha256": "e3ddcdaabe369c5ad55dc16325ea32c19bf8544c8ccb079355b88043eab81066",
+    "bytes": 23099
+  },
+  "TASK-004-ORIGINAL.txt": {
+    "origin": "/Users/kevingusmao/.codex/attachments/6b06ed3d-099c-47b8-8191-4651f3903bbb/Eingefügter Text.txt",
+    "sha256": "2e0ed1583d907b8f2b6c7fb5a67634a1222cc38da0e5703cf1d5f73cf92925ad",
+    "bytes": 36742
+  },
+  "TASK-005-ORIGINAL.txt": {
+    "origin": "/private/tmp/arnold-s001-preservation-20261027/TASK-005-ORIGINAL.txt",
+    "sha256": "f413ee84f7303602969df86e5e3d6b078884723c6e0d7b6a5e7d904a65bdfb7b",
+    "bytes": 39412,
+    "original_origin": "/Users/kevingusmao/.claude/projects/-Users-kevingusmao-Desktop-Arnold/a3e4d7dc-e5a5-4770-9973-d552b94517ec.jsonl",
+    "user_message_uuid": "3dc89391-bff2-42bf-9bc6-bb575962fcef",
+    "user_message_utc": "2026-10-26T21:09:02.557Z"
+  },
+  "S001-FULL-BRIEFING.md": {
+    "origin": "/Users/kevingusmao/.codex/visualizations/2026/10/25/01a1744f-9d58-75f1-854d-61b15b7dc7bb/arnold-stabilization-s001/ARNOLD-STABILIZATION-S001-LEAD-DEVELOPER-BRIEFING.md",
+    "sha256": "3c6a567711b2655c42bf42b41956e8ea7447309059b1f018586bf34c7534daad",
+    "bytes": 34263
+  },
+  "TASK-003-INDEPENDENT-QA.md": {
+    "origin": "/Users/kevingusmao/.codex/visualizations/2026/10/25/01a1744f-9d58-75f1-854d-61b15b7dc7bb/arnold-task-003-qa/ARNOLD-INDEPENDENT-QA-REPORT-TASK-003.md",
+    "sha256": "f0bed40230401650a956501b099f866b43cc8b2185f8e4c2116cf6a02cc02614",
+    "bytes": 30858
+  },
+  "TASK-004-INDEPENDENT-QA.md": {
+    "origin": "/Users/kevingusmao/.codex/visualizations/2026/10/25/01a1744f-9d58-75f1-854d-61b15b7dc7bb/arnold-task-004-qa/ARNOLD-INDEPENDENT-QA-REPORT-TASK-004.md",
+    "sha256": "8c168c43204ab418dc6b09e3ebc1ca8c3c2167dfc1d58f4c94c69cb512f20b60",
+    "bytes": 36628
+  },
+  "TASK-004-Q4-05-ORIGINAL.spec.ts.txt": {
+    "origin": "/Users/kevingusmao/.codex/visualizations/2026/10/25/01a1744f-9d58-75f1-854d-61b15b7dc7bb/arnold-task-004-qa/repros/tests/e2e/qa-task004.spec.ts",
+    "sha256": "6556249a704f87c43a93b8f103845b4043a56dee35ced1e7d417d03c0bdfd2ad",
+    "bytes": 2821
+  }
+}

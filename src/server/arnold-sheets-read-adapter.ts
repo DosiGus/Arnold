@@ -1,3 +1,4 @@
+import { ARNOLD_SHEETS_LIMITS } from "../shared/sheets-limits.js";
 import { GoogleAuth } from "google-auth-library";
 import { z } from "zod";
 import {
@@ -130,8 +131,18 @@ const optionsSchema = z.strictObject({
   keyFile: z.string().min(1).optional(),
   expectedTrackerId: z.string().min(1).optional(),
   expectedFileRole: z.enum(["MASTER_TEMPLATE", "USER_TRACKER"]).optional(),
-  maxRowsPerTable: z.number().int().min(1).max(100000).default(10000),
-  maxColumnsPerTable: z.number().int().min(23).max(64).default(64),
+  maxRowsPerTable: z
+    .number()
+    .int()
+    .min(1)
+    .max(100000)
+    .default(ARNOLD_SHEETS_LIMITS.rows),
+  maxColumnsPerTable: z
+    .number()
+    .int()
+    .min(23)
+    .max(ARNOLD_SHEETS_LIMITS.columns)
+    .default(ARNOLD_SHEETS_LIMITS.columns),
 });
 
 /** Separate data-access API; does not implement the legacy demo StorageAdapter or publish MCP tools. */
@@ -207,7 +218,7 @@ export class ArnoldSheetsReadAdapter {
       if (
         rowCount > maxRowsPerTable ||
         columnCount > maxColumnsPerTable ||
-        rowCount * columnCount > 1000000 ||
+        rowCount * columnCount > ARNOLD_SHEETS_LIMITS.cells ||
         columnCount < ARNOLD_TABLE_HEADERS[ARNOLD_TABLES[i]].length
       )
         throw new ArnoldDataError([

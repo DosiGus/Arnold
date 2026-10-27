@@ -2,16 +2,16 @@
  * Browser tests for the Arnold v2 dashboard.
  *
  * All three fixture servers serve synthetic in-memory data, so nothing here can
- * read or change real training data. 8792 has history, 8793 is an empty
- * tracker, 8794 has an unreachable source.
+ * read or change real training data. 8892 has history, 8893 is an empty
+ * tracker, 8894 has an unreachable source.
  */
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { EXERCISES } from "../fixtures/arnold-dashboard";
 
-const WITH_HISTORY = "http://127.0.0.1:8792";
-const EMPTY_TRACKER = "http://127.0.0.1:8793";
-const UNAVAILABLE = "http://127.0.0.1:8794";
+const WITH_HISTORY = "http://127.0.0.1:8892";
+const EMPTY_TRACKER = "http://127.0.0.1:8893";
+const UNAVAILABLE = "http://127.0.0.1:8894";
 
 /** Fails the test on any uncaught page error, so a broken render is not missed. */
 /** Addresses the main navigation, never a same-named control inside a view. */

@@ -2,7 +2,7 @@
 
 Verbindliche Spezifikation der **Arnold Analytics Engine** in `src/analytics/`.
 
-`metrics_version` ist `1.1.0`. Jede Änderung an einer Formel, an einer Eignungsregel oder an einer Statuszuordnung erfordert eine neue `metrics_version`. Das Rohdatenschema (`arnold.training_raw` / `1.0.0`, siehe [ARNOLD-DATA-CONTRACT.md](ARNOLD-DATA-CONTRACT.md)) wird dadurch nicht berührt.
+`metrics_version` ist `1.2.0`. Jede Änderung an einer Formel, an einer Eignungsregel oder an einer Statuszuordnung erfordert eine neue `metrics_version`. Das Rohdatenschema (`arnold.training_raw` / `1.0.0`, siehe [ARNOLD-DATA-CONTRACT.md](ARNOLD-DATA-CONTRACT.md)) wird dadurch nicht berührt.
 
 > **Für künftige Entwickler und KI-Agents:** Dieses Dokument beschreibt bewusste Entscheidungen, keine Zufälle. Bevor eine Berechnung geändert wird, muss der entsprechende Abschnitt gelesen und die Änderung hier dokumentiert werden. Insbesondere ist `Volumen = Gewicht × Wiederholungen` **keine** allgemein gültige Formel; siehe [Abschnitt 4](#4-gewichtskonventionen) und [Abschnitt 5](#5-ausführungen).
 
@@ -652,3 +652,9 @@ Testdateien der Engine:
 | `tests/fixtures/arnold-analytics.ts`   | Vollständig synthetische Datensatz-Bauteile                         |
 
 Alle Fixtures sind erfunden. Es werden keine echten Trainingsdaten und keine Einträge aus der Masterdatei verwendet.
+
+## 19 S001: Metrics 1.2.0
+
+Verworfene Entwürfe (`archived` mit demselben Aktivierungs- und Archivierungszeitpunkt) sowie Entwürfe werden auch bei einer expliziten Session-/Workout-Referenz nicht als absolvierte Planvorgabe gezählt. Verworfene Entwürfe liefern keine Planfenster. Die Rohdaten und die bestehenden Lastformeln bleiben unverändert. Regressionen: `tests/s001-boundaries.test.tsx` an Tages-, Wochen- und Sommerzeitgrenzen sowie `tests/s001-plan-lifecycle.test.ts`.
+
+Der Dashboard-KPI für Arbeitssätze zählt die von der Engine zugelassenen Arbeitssätze über `volume.by_bucket.working.coverage.eligible_sets`. `included_sets` beschreibt ausschließlich berechenbare Volumenbeiträge und darf dafür nicht verwendet werden. Körpergewichts- und Unterstützungssätze bleiben gezählt, auch wenn ihr Volumen unbekannt ist. Task-002-Korrekturen und sämtliche vorhandenen Reason-Texte bleiben erhalten.

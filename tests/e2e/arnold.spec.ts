@@ -8,7 +8,7 @@ import AxeBuilder from "@axe-core/playwright";
 test.beforeEach(async () => {
   const client = new Client({ name: "e2e-reset", version: "1" });
   await client.connect(
-    new StreamableHTTPClientTransport(new URL("http://127.0.0.1:8790/mcp")),
+    new StreamableHTTPClientTransport(new URL("http://127.0.0.1:8890/mcp")),
   );
   const result = await client.callTool({
     name: "reset_demo_data",
@@ -223,7 +223,7 @@ test("replayed host snapshots are reconciled with persisted backend data", async
   ).toBeVisible();
   const client = new Client({ name: "external-demo-writer", version: "1" });
   await client.connect(
-    new StreamableHTTPClientTransport(new URL("http://127.0.0.1:8790/mcp")),
+    new StreamableHTTPClientTransport(new URL("http://127.0.0.1:8890/mcp")),
   );
   try {
     await client.callTool({

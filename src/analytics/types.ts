@@ -12,7 +12,7 @@ import {
  * Bump this whenever a formula, an eligibility rule or a status mapping changes,
  * so stored or cached results stay traceable. See docs/ARNOLD-METRICS-SPEC.md.
  */
-export const METRICS_VERSION = "1.1.0";
+export const METRICS_VERSION = "1.2.0";
 
 /**
  * `valid`         result computed from complete, unambiguous data

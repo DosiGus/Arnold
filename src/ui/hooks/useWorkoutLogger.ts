@@ -6,11 +6,19 @@ import type {
 } from "../../shared/workout-contract";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
 
-type Pending = { operation: WriteOperation; input: Record<string, unknown> };
+type Pending = {
+  operation: WriteOperation;
+  input: Record<string, unknown>;
+  canDismiss?: boolean;
+  workoutId?: string;
+};
 /** A pending request is immutable until confirmed. Reloads and retries keep its ID. */
 export function useWorkoutLogger(client: ArnoldMcpClient, changed: () => void) {
   const [data, setData] = useState<WorkoutContext>();
   const [busy, setBusy] = useState(false);
+  const [selecting, setSelecting] = useState(false);
+  const [selectedWorkoutId, setSelectedWorkoutId] = useState<string>();
+  const selectingRef = useRef(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState<Pending>();
@@ -21,27 +29,38 @@ export function useWorkoutLogger(client: ArnoldMcpClient, changed: () => void) {
 
   async function load(id?: string) {
     const token = ++generation.current;
+    selectingRef.current = true;
+    setSelecting(true);
+    if (id) setSelectedWorkoutId(id);
     try {
       const next = await client.workout(id);
       if (token === generation.current) {
         setData(next);
         dataRef.current = next;
+        setSelectedWorkoutId(next.workout?.workout_id);
       }
-      return next;
+      return token === generation.current ? next : undefined;
     } catch (e) {
       if (token === generation.current) setError((e as Error).message);
       throw e;
+    } finally {
+      if (token === generation.current) {
+        selectingRef.current = false;
+        setSelecting(false);
+      }
     }
   }
   useEffect(() => {
     let active = true;
     void load()
       .then((next) => {
-        if (!active) return;
+        if (!active || !next) return;
         try {
           const saved = client.getPending(next.tracker_id);
           if (saved) {
             setPending(saved);
+            if (saved.workoutId && saved.workoutId !== next.workout?.workout_id)
+              void load(saved.workoutId).catch(() => {});
             setError(
               "Ein unbestätigter Vorgang ist vorhanden. Mit derselben Operations-ID prüfen.",
             );
@@ -60,7 +79,7 @@ export function useWorkoutLogger(client: ArnoldMcpClient, changed: () => void) {
     request: Pending,
     retry = false,
   ): Promise<WriteResponse | undefined> {
-    if (guard.current || (pending && !retry)) return;
+    if (guard.current || selectingRef.current || (pending && !retry)) return;
     guard.current = true;
     setBusy(true);
     setError("");
@@ -71,11 +90,18 @@ export function useWorkoutLogger(client: ArnoldMcpClient, changed: () => void) {
       if (tracker) client.putPending(tracker, request);
       const response = await client.write(request.operation, request.input);
       if (!response.ok) {
-        if (
-          response.error?.code === "COMMIT_STATUS_UNKNOWN" ||
-          response.error?.code === "STORAGE_UNAVAILABLE"
-        )
-          throw new Error(`${response.error.code}: ${response.error.message}`);
+        if (response.error?.recovery !== "none") {
+          const recoverable = {
+            ...request,
+            canDismiss: response.error?.recovery === "retry_or_new_request",
+          };
+          setPending(recoverable);
+          if (tracker) client.putPending(tracker, recoverable);
+          setError(
+            `${response.error?.code}: ${response.error?.message} ${recoverable.canDismiss ? "Abgelehnt; denselben Vorgang erneut versuchen oder schließen." : "Vorgang mit derselben Operations-ID prüfen."}`,
+          );
+          return response;
+        }
         setPending(undefined);
         if (tracker) client.clearPending(tracker);
         setError(
@@ -121,16 +147,50 @@ export function useWorkoutLogger(client: ArnoldMcpClient, changed: () => void) {
   function write(operation: WriteOperation, input: Record<string, unknown>) {
     return dispatch({
       operation,
+      workoutId: dataRef.current?.workout?.workout_id,
       input: { ...input, request_id: crypto.randomUUID() },
     });
   }
   return {
     data,
     busy,
+    selecting,
+    selectedWorkoutId,
     error,
     message,
     pending,
-    select: (id: string) => load(id).catch(() => {}),
+    select: (id: string) => {
+      if (guard.current || pending) return;
+      setMessage("");
+      setError("");
+      return load(id).catch(() => {});
+    },
+    dismissPending: async () => {
+      if (guard.current || !pending?.canDismiss) return;
+      guard.current = true;
+      setBusy(true);
+      try {
+        const response = await client.abandonRejected(
+          String(pending.input.request_id),
+        );
+        if (!response.ok) throw new Error(response.error?.message);
+        const tracker = dataRef.current?.tracker_id;
+        setPending(undefined);
+        if (tracker) client.clearPending(tracker);
+        setError("");
+      } catch (e) {
+        const retained = { ...pending, canDismiss: false };
+        setPending(retained);
+        const tracker = dataRef.current?.tracker_id;
+        if (tracker) client.putPending(tracker, retained);
+        setError(
+          `${(e as Error).message} Originalauftrag bleibt erhalten; Vorgang prüfen.`,
+        );
+      } finally {
+        guard.current = false;
+        setBusy(false);
+      }
+    },
     write,
     retry: () =>
       pending ? dispatch(pending, true) : Promise.resolve(undefined),

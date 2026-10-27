@@ -1,0 +1,1383 @@
+# ARNOLD – DEVELOPMENT TASK 004
+## Secure Workout Logging Engine & Google Sheets Write Infrastructure
+
+Du arbeitest als Senior Backend Engineer, MCP Developer und Data Integrity Architect am Projekt **Arnold**.
+
+Arnold ist eine KI-gestützte Fitness-Anwendung innerhalb von ChatGPT. Das Produkt besteht aus einem MCP-Server, einer interaktiven React-App, einer Analytics Engine und einer Google-Sheets-basierten Rohdatenstruktur.
+
+**Dieser Auftrag ist ein besonders sicherheitskritischer Entwicklungsschritt.**
+
+Implementiere eine zuverlässige Infrastruktur zum Erstellen, Speichern, Bearbeiten und Korrigieren von Trainingsdaten.
+
+Arbeite ausschließlich innerhalb des definierten Auftrags. Nach Abschluss erstelle einen vollständigen technischen Bericht und stoppe.
+
+---
+
+## 1. Projektinformationen
+
+**GitHub-Repository**
+
+`DosiGus/Arnold`
+
+**Arnold Master – Google Sheets**
+
+https://docs.google.com/spreadsheets/d/1KMhPGrJSTZYRY5zKpVF3-Zc0tRdCZBV5zez46cJBzcc/edit
+
+**Arnold SKILL.md**
+
+https://drive.google.com/file/d/1BdzmwyoCQMEhLpp6hjeD9NT5FvkHfK6G/view
+
+**Schema**
+
+`arnold.training_raw`
+
+Version: `1.0.0`
+
+**Technologien**
+
+- TypeScript
+- Node.js
+- Zod
+- MCP Streamable HTTP
+- MCP Apps
+- Google Sheets API
+- React
+- Vitest
+- Playwright
+
+### Voraussetzungen
+
+Task 001:
+- Neues Arnold-Domain-Modell.
+- Read-only Google Sheets Adapter.
+- Schema-Validierung.
+
+Task 002:
+- Analytics Engine.
+- Trainingsvolumen.
+- Rekorde und Fortschrittsmetriken.
+
+Task 003:
+- Dashboard-Integration.
+- Neue MCP-Datenausgaben.
+- React-UI mit Arnold-Domain-Modell.
+
+Prüfe diese Komponenten vor der Implementierung.
+
+Arbeite auf einem neuen Feature-Branch:
+
+`feat/arnold-workout-logging`
+
+Erzeuge ihn auf Basis des abgeschlossenen und integrierten Entwicklungsstands.
+
+Wenn Voraussetzungen fehlen, dokumentiere die Lücke und implementiere keine widersprüchlichen Ersatzlösungen.
+
+---
+
+## 2. Ziel des Arbeitspakets
+
+Nach diesem Entwicklungsschritt soll Arnold technisch dazu in der Lage sein:
+
+1. Neue Trainingseinheiten anzulegen.
+2. Einzelne Trainingssätze zu speichern.
+3. Mehrere Sätze in einem Vorgang zu speichern.
+4. Bestehende Sätze zu korrigieren.
+5. Falsch eingetragene Sätze kontrolliert zu stornieren.
+6. Trainingseinheiten abzuschließen.
+7. Trainingseinheiten abzubrechen.
+8. Neue Übungen zum Übungskatalog hinzuzufügen.
+9. Gespeicherte Daten unmittelbar wieder auszulesen.
+10. Dashboard-Kennzahlen nach Änderungen zu aktualisieren.
+11. Doppelte oder widersprüchliche Schreibversuche zu erkennen.
+12. Datenintegrität auch bei API-Fehlern zu schützen.
+
+Die Infrastruktur muss anhand synthetischer Fixtures vollständig getestet werden.
+
+Ein optionaler echter Schreibtest darf ausschließlich mit einer ausdrücklich dafür vorgesehenen separaten Testdatei stattfinden.
+
+**Produktive Schreibzugriffe bleiben deaktiviert, bis eine verlässliche Nutzeridentität, Berechtigungsprüfung und ein dauerhaftes Schreibkoordinationssystem existieren.**
+
+Diese späteren Voraussetzungen werden insbesondere in Task 007 behandelt.
+
+---
+
+## 3. Architektur
+
+Implementiere eine eigenständige Workout-Logging-Schicht.
+
+Empfohlene Architektur:
+
+```text
+ChatGPT / Arnold UI
+        |
+        v
+MCP Tool Layer
+        |
+        v
+Workout Application Service
+        |
+        +--> Authorization Guard
+        |
+        +--> Input Validation
+        |
+        +--> Domain Rules
+        |
+        +--> Idempotency / Operation Ledger
+        |
+        +--> Concurrency Coordination
+        |
+        v
+ArnoldWriteRepository
+        |
+        +--> In-Memory Test Adapter
+        |
+        +--> Google Sheets Write Adapter
+        |
+        v
+Arnold Raw Data
+        |
+        v
+Analytics Engine
+        |
+        v
+Updated Dashboard
+```
+
+### Architekturvorgaben
+
+- MCP-Tools enthalten keine komplexe Geschäftslogik.
+- Schreibregeln gehören in Application Services.
+- Domain-Validierung erfolgt unabhängig von Google Sheets.
+- Der Storage Adapter ist austauschbar.
+- Die Analytics Engine bleibt weiterhin read-only.
+- Das Frontend enthält keine direkte Google-API-Anbindung.
+- Alle Änderungen erfolgen über definierte Domain-Operationen.
+- Keine beliebigen Zellbereich-Schreiboperationen über öffentliche MCP-Tools anbieten.
+
+Die neue Schreibinfrastruktur muss später auch mit PostgreSQL oder einem anderen Storage funktionieren können, ohne die fachlichen MCP-Tools neu zu entwickeln.
+
+---
+
+## 4. Verbindliches Datenmodell
+
+Verwende ausschließlich das tatsächlich implementierte Arnold-Schema.
+
+Die bestehende Datei besitzt sechs Tabellen:
+
+1. `CONFIG`
+2. `EXERCISES`
+3. `PLANS`
+4. `PLAN_ITEMS`
+5. `WORKOUTS`
+6. `SETS`
+
+Die ersten vier Tabellen liefern technische Einstellungen, den Übungskatalog und die Trainingsplanstruktur.
+
+Für Task 004 konzentrieren wir uns primär auf:
+
+- `WORKOUTS`
+- `SETS`
+- `EXERCISES`
+
+### WORKOUTS
+
+Das bestehende Schema enthält:
+
+```text
+workout_id
+workout_date_local
+timezone
+started_at_utc
+ended_at_utc
+plan_version_id
+session_id
+session_name_snapshot
+status
+source
+notes
+created_at_utc
+updated_at_utc
+row_revision
+```
+
+### SETS
+
+Das bestehende Schema enthält:
+
+```text
+set_id
+workout_id
+exercise_id
+plan_item_id
+exercise_name_snapshot
+exercise_order
+set_number
+set_type
+reps
+reps_basis
+load_kg
+load_basis
+implement_count
+execution_mode
+side
+rpe
+rir
+notes
+status
+source
+created_at_utc
+updated_at_utc
+row_revision
+```
+
+### EXERCISES
+
+Das bestehende Schema enthält:
+
+```text
+exercise_id
+name_de
+name_en
+family_key
+variant_key
+equipment
+primary_muscle
+default_load_basis
+default_execution_mode
+default_implement_count
+status
+created_at_utc
+updated_at_utc
+row_revision
+```
+
+Die vorhandenen Spaltennamen sind verbindlich.
+
+Keine zweite inkompatible Datenstruktur anlegen.
+
+Wenn eine zusätzliche technische Information erforderlich ist, prüfe zuerst, ob sie in den Backend-Metadaten gespeichert werden kann.
+
+Änderungen am Google-Sheets-Schema dürfen nur als ausdrücklich dokumentierte Schema-Migration vorgeschlagen werden.
+
+Für Task 004 gilt weiterhin Schema v1.0.0.
+
+---
+
+## 5. Arbeitsauftrag A – Workout Logging Service
+
+Implementiere einen zentralen Service:
+
+`WorkoutLoggingService`
+
+Dieser Service soll die fachliche Verantwortung für sämtliche Trainingsänderungen übernehmen.
+
+Empfohlene Methoden:
+
+```typescript
+startWorkout()
+logWorkoutSets()
+updateSet()
+voidSet()
+completeWorkout()
+cancelWorkout()
+createExercise()
+```
+
+Die Namen dürfen an die bereits vorhandene Architektur angepasst werden.
+
+### Verantwortlichkeiten
+
+Der Service muss:
+
+1. Eingaben validieren.
+2. Nutzerberechtigungen prüfen beziehungsweise ohne Authentifizierung geschlossen bleiben.
+3. Existierende Referenzen überprüfen.
+4. Eindeutige IDs erzeugen beziehungsweise prüfen.
+5. Erlaubte Statuswechsel durchsetzen.
+6. Schreibkonflikte erkennen.
+7. Idempotente Ausführung ermöglichen.
+8. Änderungen über den Storage Adapter durchführen.
+9. Ergebnisse anschließend verifizieren.
+10. Einen eindeutigen Erfolg oder Fehler zurückgeben.
+
+Die Methoden dürfen nicht direkt von UI-Komponenten abhängen.
+
+---
+
+## 6. Arbeitsauftrag B – Trainingseinheit erstellen
+
+Implementiere:
+
+`start_workout`
+
+### Eingaben
+
+Mindestens:
+
+- `request_id`
+- `workout_date_local`
+- `timezone`
+- `session_name`
+- Optional `plan_version_id`
+- Optional `session_id`
+- Optional `notes`
+
+### Regeln
+
+1. Jede Trainingseinheit erhält eine eindeutige `workout_id`.
+2. Standardstatus ist `in_progress`.
+3. Ein Workout darf ohne Trainingsplan existieren.
+4. Bei vorhandener Planreferenz muss diese existieren.
+5. Eine angegebene Session muss zum referenzierten Plan gehören.
+6. Der Workout-Name wird als Snapshot gespeichert.
+7. Die originale Planversion wird nicht verändert.
+8. Ein wiederholter Aufruf mit derselben Operations-ID darf keine zweite Einheit erzeugen.
+9. Datumswerte und Zeitzonen müssen gültig sein.
+10. Historische Workouts dürfen erfasst werden.
+
+### Beispiel
+
+Ein Nutzer sagt:
+
+„Ich starte jetzt mein Push-Training.“
+
+Arnold soll den entsprechenden aktiven Trainingsplan finden, sofern verfügbar.
+
+Bei eindeutiger Zuordnung wird die geplante Einheit referenziert.
+
+Falls keine eindeutige Planreferenz vorhanden ist, darf Arnold eine freie Trainingseinheit anlegen, sofern die Nutzereingaben dafür ausreichen.
+
+### Erfolg
+
+Der Server liefert:
+
+- Workout-ID
+- Status
+- Datum
+- Session-Name
+- Referenz auf den Plan, sofern vorhanden
+- Revisionsnummer
+
+Keine Erfolgsmeldung, bevor der Speicherungsvorgang bestätigt wurde.
+
+---
+
+## 7. Arbeitsauftrag C – Trainingssätze speichern
+
+Implementiere:
+
+`log_workout_sets`
+
+Dieser Vorgang kann einen oder mehrere Sätze entgegennehmen.
+
+### Beispiel
+
+Ein Nutzer sagt:
+
+„Ich habe beim Bankdrücken drei Sätze gemacht: 60 mal 10, 70 mal 8 und 70 mal 7.“
+
+Arnold soll daraus drei einzelne Satzdatensätze erstellen.
+
+### Eingaben
+
+- `request_id`
+- `workout_id`
+- `sets[]`
+
+Ein Satz enthält mindestens:
+
+- `exercise_id`
+- `set_type`
+- `reps`
+- `reps_basis`
+- `load_kg`
+- `load_basis`
+- `implement_count`
+- `execution_mode`
+- `side`
+
+Optional:
+
+- `plan_item_id`
+- `set_number`
+- `exercise_order`
+- `rpe`
+- `rir`
+- `notes`
+
+### Regeln
+
+1. Die Workout-ID muss existieren.
+2. Das Workout muss sich in einem zulässigen Bearbeitungszustand befinden.
+3. Die Exercise-ID muss bekannt und aktiv sein.
+4. `plan_item_id` darf fehlen, beispielsweise bei spontanen Übungen.
+5. Bei vorhandener Planreferenz muss sie zur richtigen Übung beziehungsweise Session gehören.
+6. Satznummern müssen innerhalb der relevanten Workout-Übungsgruppe konsistent sein.
+7. Ein Satz erhält eine dauerhaft stabile ID.
+8. Die tatsächlichen Eingaben werden unverändert gespeichert.
+9. Keine vorberechneten Volumen- oder 1RM-Werte im Sheet speichern.
+10. Jeder neue Satz startet mit einer gültigen Revisionsnummer.
+11. Der `exercise_name_snapshot` muss mit der zum Zeitpunkt des Loggings gültigen Übungsbezeichnung befüllt werden.
+
+### Mehrere Sätze
+
+Wenn mehrere Sätze innerhalb einer einzigen Nutzeraktion übertragen werden, soll die Operation als logische Einheit behandelt werden.
+
+Ein teilweiser Erfolg darf nicht fälschlich als vollständiger Erfolg gemeldet werden.
+
+Bei Google Sheets sind zusammengehörige Zelländerungen nach Möglichkeit in einem atomaren Batch auszuführen.
+
+---
+
+## 8. Arbeitsauftrag D – Gewichts- und Ausführungsvalidierung
+
+Arnold unterstützt unterschiedliche Gewichtsdefinitionen.
+
+### `load_basis`
+
+```text
+total
+per_implement
+machine_display
+added
+assistance
+bodyweight_only
+```
+
+### `execution_mode`
+
+```text
+bilateral_simultaneous
+unilateral
+alternating
+```
+
+### Seiten
+
+```text
+both
+left
+right
+alternating
+```
+
+### Wiederholungsbasis
+
+```text
+total
+per_side
+```
+
+Die Engine muss prüfen, ob Kombinationen fachlich sinnvoll und vollständig sind.
+
+### Beispiele
+
+**Langhantel-Bankdrücken**
+
+```json
+{
+  "load_kg": 70,
+  "load_basis": "total",
+  "implement_count": 1,
+  "execution_mode": "bilateral_simultaneous",
+  "side": "both",
+  "reps": 10,
+  "reps_basis": "total"
+}
+```
+
+**Kurzhantel-Schrägbankdrücken**
+
+```json
+{
+  "load_kg": 20,
+  "load_basis": "per_implement",
+  "implement_count": 2,
+  "execution_mode": "bilateral_simultaneous",
+  "side": "both",
+  "reps": 10,
+  "reps_basis": "total"
+}
+```
+
+**Einarmiges Rudern rechts**
+
+```json
+{
+  "load_kg": 20,
+  "load_basis": "per_implement",
+  "implement_count": 1,
+  "execution_mode": "unilateral",
+  "side": "right",
+  "reps": 10,
+  "reps_basis": "total"
+}
+```
+
+### Besondere Anforderungen
+
+- Gewicht darf nicht ungeprüft verdoppelt werden.
+- Fehlende Angaben dürfen nicht stillschweigend geraten werden.
+- Wiederholungen pro Seite müssen eindeutig von Gesamtwiederholungen unterschieden werden.
+- Für Körpergewichtsübungen gelten die Konventionen aus Task 002.
+- Belastungsempfinden bleibt optional.
+- Plausibilitätswarnungen dürfen ungewöhnliche Leistungen nicht grundsätzlich verbieten.
+- Bei fehlender eindeutiger Interpretation muss ein strukturierter Validierungsfehler zurückgegeben werden.
+
+### Konsistenz
+
+Die Validierungslogik muss mit den tatsächlichen Berechnungsregeln der Analytics Engine aus Task 002 übereinstimmen.
+
+Keine zweiten widersprüchlichen Gewichtsregeln implementieren.
+
+---
+
+## 9. Arbeitsauftrag E – Bestehende Sätze korrigieren
+
+Implementiere:
+
+`update_set`
+
+### Beispiel
+
+Ein Nutzer sagt:
+
+„Beim letzten Bankdrücken waren es nicht 70, sondern 75 kg.“
+
+Arnold soll den identifizierten bestehenden Satz verändern.
+
+### Regeln
+
+1. Satz anhand der stabilen `set_id` identifizieren.
+2. Die Satz-ID darf sich nicht verändern.
+3. Das ursprüngliche Erstellungsdatum bleibt erhalten.
+4. `updated_at_utc` wird aktualisiert.
+5. `row_revision` wird erhöht.
+6. Fachliche Validierung erneut ausführen.
+7. `expected_row_revision` muss beim Änderungsaufruf angegeben werden.
+8. Bei Versionskonflikt keine Änderung durchführen.
+9. Bei mehrdeutiger Satzidentifikation keine willkürliche Auswahl treffen.
+10. Die Änderung muss nachweisbar im Audit-Protokoll erscheinen.
+
+### Optimistic Concurrency
+
+Beispiel:
+
+Aktuelle Satzrevision:
+
+`row_revision = 3`
+
+Eine Änderung mit:
+
+`expected_row_revision = 3`
+
+ist bei unverändertem Datensatz zulässig.
+
+Wenn inzwischen Revision 4 existiert, muss die ältere Änderung abgewiesen werden.
+
+**Wichtig:** Die Prüfung der Revisionsnummer in Google Sheets ist für sich genommen noch kein atomarer Compare-and-Swap-Vorgang.
+
+Implementiere eine geeignete Koordination gegen parallele Schreibprozesse. Dokumentiere die verbleibenden Risiken durch externe manuelle Änderungen ausdrücklich.
+
+---
+
+## 10. Arbeitsauftrag F – Sätze stornieren
+
+Implementiere:
+
+`void_set`
+
+### Ziel
+
+Fehlerhafte Trainingssätze dürfen aus aktuellen Auswertungen ausgeschlossen werden, ohne historische Daten physisch zu löschen.
+
+### Regeln
+
+- Keine Zeile aus der Tabelle entfernen.
+- `status` auf `voided` setzen.
+- Stabile Satz-ID beibehalten.
+- Revisionsnummer erhöhen.
+- Änderungszeitpunkt aktualisieren.
+- Stornierung im Audit-Protokoll dokumentieren.
+- Satz aus aktiven Analytics-Berechnungen ausschließen.
+- Eine erneute identische Stornierung idempotent behandeln.
+- Bei widersprüchlichem Zustand kontrollierten Fehler zurückgeben.
+
+### Beispiel
+
+„Den letzten Satz habe ich versehentlich doppelt eingetragen, entferne ihn.“
+
+Der Satz wird fachlich storniert.
+
+Er verschwindet aus den normalen Trainingsauswertungen, bleibt aber technisch nachvollziehbar.
+
+Keine physische Löschung durch das MCP-Tool.
+
+---
+
+## 11. Arbeitsauftrag G – Trainingseinheit abschließen
+
+Implementiere:
+
+`complete_workout`
+
+### Beispiel
+
+„Ich bin fertig mit meinem Push-Training.“
+
+### Regeln
+
+1. Workout muss existieren.
+2. Statuswechsel muss zulässig sein.
+3. Normalerweise mindestens ein gültiger aktiver Satz vorhanden.
+4. Endzeitpunkt setzen, sofern fachlich sinnvoll und bekannt.
+5. Status auf `completed` setzen.
+6. Workout-Revision erhöhen.
+7. Idempotente Wiederholungen unterstützen.
+8. Daten anschließend erneut lesen beziehungsweise verifizieren.
+9. Dashboard-Kennzahlen aktualisieren.
+
+### Statusmodell
+
+Verwende die vorhandenen Workout-Statuswerte:
+
+```text
+planned
+in_progress
+completed
+cancelled
+voided
+```
+
+Definiere ausdrücklich zulässige Übergänge.
+
+Beispielsweise:
+
+```text
+planned -> in_progress
+in_progress -> completed
+in_progress -> cancelled
+```
+
+Für Korrekturen bereits abgeschlossener Workouts muss es eine kontrollierte Lösung geben.
+
+Entscheide, ob dies über eine explizite Wiederöffnung oder einen besonders autorisierten Korrekturvorgang erfolgt.
+
+Nicht einfach abgeschlossene Workouts stillschweigend verändern.
+
+---
+
+## 12. Arbeitsauftrag H – Trainingseinheit abbrechen
+
+Implementiere:
+
+`cancel_workout`
+
+### Anforderungen
+
+- Status auf `cancelled` setzen.
+- Workout-Daten nicht physisch löschen.
+- Bereits dokumentierte Sätze erhalten.
+- Abgebrochene Einheit nicht als abgeschlossen zählen.
+- Auswirkungen auf Analytics gemäß Task 002.
+- Änderung nachvollziehbar protokollieren.
+- Unzulässige Statuswechsel ablehnen.
+
+Eine spätere Wiederaufnahme muss nicht vollständig implementiert werden, sollte aber architektonisch möglich bleiben.
+
+---
+
+## 13. Arbeitsauftrag I – Neue Übungen hinzufügen
+
+Implementiere:
+
+`create_exercise`
+
+### Beispiel
+
+„Füge Bulgarian Split Squats zu meinen Übungen hinzu.“
+
+### Verhalten
+
+1. Übungskatalog überprüfen.
+2. Bestehende mögliche Treffer erkennen.
+3. Bei Mehrdeutigkeit keine neue Übung automatisch erzeugen.
+4. Neue Übung mit stabiler `exercise_id` erstellen.
+5. Fachliche Eigenschaften validieren.
+6. Default-Ausführung festlegen.
+7. Default-Gewichtsdefinition festlegen.
+8. Status `active` setzen.
+9. Zeitstempel und Revision speichern.
+10. Anlage im Audit-Protokoll dokumentieren.
+
+### Wichtig
+
+Eine neue Übung im Katalog bedeutet nicht automatisch, dass der bestehende Trainingsplan verändert wird.
+
+Die Bearbeitung und Versionierung von Trainingsplänen gehört zu Task 005.
+
+In Task 004 geht es ausschließlich um die sichere Verwaltung von Übungsdefinitionen als Voraussetzung für spätere Workouts.
+
+### Varianten
+
+Wenn eine neue Bewegung wesentlich von einer bestehenden Variante abweicht, soll sie eine eigene Exercise-ID erhalten.
+
+Bestehende historische Exercise-IDs dürfen niemals neu vergeben oder nachträglich für eine andere Bewegung wiederverwendet werden.
+
+---
+
+## 14. Arbeitsauftrag J – Idempotenz
+
+**Das ist eine verbindliche Kernanforderung.**
+
+MCP-Tool-Aufrufe können wiederholt werden.
+
+Beispielsweise:
+
+1. Nutzer speichert einen Satz.
+2. Google Sheets verarbeitet die Anfrage.
+3. Die Netzwerkantwort geht verloren.
+4. ChatGPT oder die UI wiederholt denselben Aufruf.
+
+Arnold darf dadurch keinen zweiten Satz erzeugen.
+
+### Implementierung
+
+Jede schreibende Operation erhält:
+
+`request_id`
+
+Die ID beschreibt eine konkrete Nutzeroperation.
+
+Dazu speichert die Anwendung einen Fingerprint des fachlichen Payloads.
+
+### Verhalten
+
+**Gleiche ID + identischer Payload**
+
+Bereits vorhandenes Ergebnis zurückgeben.
+
+Keine zweite Änderung ausführen.
+
+**Gleiche ID + veränderter Payload**
+
+Konflikt zurückgeben.
+
+Keine Änderung ausführen.
+
+**Neue ID + identischer Payload**
+
+Als eigenständige Operation zulassen, sofern fachlich gültig.
+
+### Persistenz
+
+Die Idempotenzinformationen müssen Neustarts überstehen.
+
+Verwende eine austauschbare `OperationLedger`-Schnittstelle.
+
+Für automatisierte Tests ist eine In-Memory-Implementierung zulässig.
+
+Für den späteren Produktivbetrieb muss das Ledger dauerhaft sein.
+
+Prüfe und dokumentiere ausdrücklich den Fall:
+
+„Google Sheets hat geschrieben, aber die Ledger-Bestätigung ist fehlgeschlagen.“
+
+Eine Retry-Logik muss zunächst anhand stabiler Datensatz- beziehungsweise Operations-IDs prüfen, ob die Änderung bereits durchgeführt wurde.
+
+**Keine Exactly-once-Garantie behaupten, solange diese auch bei Prozessabsturz und mehreren Instanzen nicht belastbar nachgewiesen ist.**
+
+---
+
+## 15. Arbeitsauftrag K – Nebenläufigkeit und Schreibkonflikte
+
+Die Anwendung muss parallele Schreibversuche berücksichtigen.
+
+### Beispiele
+
+- ChatGPT speichert einen Satz.
+- Gleichzeitig verwendet der Nutzer den UI-Logger.
+- Zwei Tool-Aufrufe versuchen, dieselbe Satznummer zu verwenden.
+- Eine Korrektur trifft auf einen inzwischen veränderten Datensatz.
+
+### Anforderungen
+
+1. Schreiboperationen je Tracker kontrolliert koordinieren.
+2. Satz-IDs unabhängig von Zellpositionen erzeugen.
+3. Vor gezielten Updates die aktuelle Datensatzrevision prüfen.
+4. Keine Korrektur allein anhand einer früher bekannten Zeilennummer durchführen.
+5. Parallele Bearbeitungen kontrolliert behandeln.
+6. Keine verlorenen Updates als Erfolg ausgeben.
+7. Bei unklarer Konfliktsituation keine weitere Schreiboperation durchführen.
+
+### Technische Entscheidung
+
+Für den lokalen Ein-Prozess-Test kann eine per-Tracker-Schreibwarteschlange verwendet werden.
+
+Für den produktiven Mehrinstanzbetrieb ist eine verteilte Koordination beziehungsweise ein transaktionales Backend erforderlich.
+
+Implementiere die Schnittstelle dafür, ohne einen externen Dienst einzurichten.
+
+Falls dieser Schutz noch nicht vorhanden ist, müssen produktive Schreibzugriffe deaktiviert bleiben.
+
+---
+
+## 16. Arbeitsauftrag L – Google Sheets Write Adapter
+
+Implementiere einen separaten:
+
+`ArnoldSheetsWriteAdapter`
+
+Der Adapter soll die fachlichen Änderungen aus dem Workout Logging Service in die sechs Tabellen übertragen können.
+
+### Anforderungen
+
+- Vor jedem Schreiben Schema-Version prüfen.
+- Spreadsheet-ID explizit verwenden.
+- Header und Tabellenstruktur prüfen.
+- Workbook-Rolle kontrollieren.
+- Nur erlaubte Tabellen und Spalten beschreiben.
+- Schreibvorgänge nach Möglichkeit bündeln.
+- Struktur-IDs und historische Referenzen schützen.
+- Keine vollständigen Tabellenbereiche unnötig überschreiben.
+- Nach dem Schreiben gezielt zurücklesen und verifizieren.
+- Bei Fehlern strukturierte Fehlercodes zurückgeben.
+
+### Template-Schutz
+
+Wenn `CONFIG.file_role` folgenden Wert besitzt:
+
+`MASTER_TEMPLATE`
+
+muss der Adapter jede Schreiboperation ablehnen.
+
+Ebenso müssen leere oder noch nicht zugewiesene `tracker_id`-Werte produktive Schreibvorgänge verhindern.
+
+Ein späterer persönlicher Tracker verwendet eine separate, autorisierte Dateikopie.
+
+### Google-API-Verhalten
+
+Berücksichtige:
+
+- Schreibquoten.
+- HTTP 429.
+- HTTP 401/403.
+- HTTP 404.
+- Zeitüberschreitungen.
+- Netzwerkunterbrechungen.
+- Uneindeutige Commit-Ergebnisse.
+- Unvollständige oder veränderte Tabellenstruktur.
+
+Verwende Exponential Backoff mit begrenzten Wiederholungen, soweit fachlich sicher.
+
+Bei unklarem Schreibstatus zuerst verifizieren, statt dieselbe Änderung blind erneut anzufügen.
+
+Google Sheets Batch-Updates können mehrere Änderungen innerhalb einer API-Anfrage atomar ausführen.
+
+Diese Garantie erstreckt sich jedoch nicht auf ein separates externes Operations-Ledger oder beliebige konkurrierende Änderungen durch andere Clients.
+
+### Sicherheitsvorgabe
+
+Der Adapter darf nicht allgemein beliebige Zellbereiche auf Benutzeranweisung überschreiben.
+
+Textwerte müssen als Text geschrieben werden. Verhindere, dass frei eingegebene Übungsnamen oder Notizen ungewollt zu ausführbaren Tabellenformeln werden.
+
+---
+
+## 17. Arbeitsauftrag M – Schreibzugriffe sicher deaktivierbar machen
+
+Implementiere eine klare Konfiguration für Schreibfunktionen.
+
+Empfohlene Betriebsmodi:
+
+```text
+disabled
+fixture
+test_sheet
+production
+```
+
+### `disabled`
+
+Keine echten Schreiboperationen möglich.
+
+### `fixture`
+
+Alle Schreiboperationen laufen gegen einen synthetischen Testadapter.
+
+### `test_sheet`
+
+Schreiboperationen sind nur in einer ausdrücklich konfigurierten, dedizierten Testdatei zulässig.
+
+Zusätzliche Anforderungen:
+
+- Separate Testdatei.
+- Explizite Freigabe in der Konfiguration.
+- Keine Master-Datei.
+- Keine ungeschützte öffentliche MCP-Verbindung.
+- Tatsächlich geprüfte Berechtigung für den schreibenden Akteur.
+
+Wenn diese Voraussetzungen nicht nachweisbar erfüllt sind, Modus ablehnen.
+
+### `production`
+
+Für Task 004 noch nicht freischalten.
+
+Der Modus darf erst funktionieren, nachdem folgende Bestandteile implementiert und getestet sind:
+
+- Echte Nutzeridentität.
+- Tracker-Zuordnung zum authentifizierten Nutzer.
+- Serverübergreifendes Operation Ledger.
+- Verlässliche Schreibkoordination.
+- Passende OAuth-Berechtigungen.
+- Auditierung und Wiederherstellungsverfahren.
+
+### Verbindliche Regel
+
+Ein Environment-Wert wie `MCP_ACCESS=private` darf allein nicht als ausreichende Nutzer-Authentifizierung betrachtet werden.
+
+---
+
+## 18. Arbeitsauftrag N – MCP-Schreibtools
+
+Registriere die neuen MCP-Tools:
+
+| Tool | Funktion |
+|---|---|
+| `start_workout` | Neue Trainingseinheit anlegen |
+| `log_workout_sets` | Einen oder mehrere Sätze speichern |
+| `update_set` | Bestehenden Satz korrigieren |
+| `void_set` | Satz fachlich stornieren |
+| `complete_workout` | Training abschließen |
+| `cancel_workout` | Training abbrechen |
+| `create_exercise` | Neue Übungsdefinition hinzufügen |
+
+Zusätzlich kann ein lesendes `get_workout`-Tool ergänzt werden, falls dies für sichere Korrekturen oder den UI-Logger erforderlich ist.
+
+### Anforderungen
+
+- Zod Input-Schema.
+- Zod Output-Schema.
+- Verständliche Tool-Beschreibung.
+- `structuredContent`.
+- Sinnvolle MCP-Tool-Annotationen.
+- Strukturierte Fehlercodes.
+- Keine internen Zugangsdaten in Ausgaben.
+- Rückgabe der erzeugten beziehungsweise aktualisierten Datensatz-IDs.
+- Rückgabe der neuen Revision.
+- Rückgabe des tatsächlichen Operationsergebnisses.
+- Eindeutiger Hinweis bei wiederholter idempotenter Operation.
+
+### Fehlercodes
+
+Definiere mindestens sinngemäß:
+
+```text
+VALIDATION_ERROR
+EXERCISE_NOT_FOUND
+WORKOUT_NOT_FOUND
+SET_NOT_FOUND
+INVALID_STATUS_TRANSITION
+REVISION_CONFLICT
+DUPLICATE_OPERATION
+SCHEMA_MISMATCH
+TEMPLATE_WRITE_FORBIDDEN
+AUTH_REQUIRED
+PERMISSION_DENIED
+STORAGE_UNAVAILABLE
+COMMIT_STATUS_UNKNOWN
+```
+
+Nicht jeder Fehler ist automatisch ein technischer Serverfehler.
+
+Eine ungültige Satzangabe muss beispielsweise als Validierungsfehler erkennbar sein.
+
+---
+
+## 19. Arbeitsauftrag O – Integration des vorhandenen UI-Loggers
+
+Arnold besitzt bereits einen interaktiven Demo-Logger.
+
+Erweitere diese bestehende Grundlage.
+
+### Ziel
+
+Der Nutzer soll künftig in einer Trainingseinheit Sätze über die MCP-App speichern können.
+
+### UI-Funktionen
+
+- Workout auswählen oder starten.
+- Übung auswählen.
+- Gewicht eingeben.
+- Wiederholungen eingeben.
+- Ausführung anzeigen beziehungsweise ändern.
+- Optional RPE/RIR erfassen.
+- Einen Satz speichern.
+- Einen bereits erfassten Satz korrigieren.
+- Training abschließen.
+
+### Besondere UX-Anforderungen
+
+Die App soll möglichst viele Angaben aus dem bereits bekannten Trainingsplan übernehmen.
+
+Beispiel:
+
+Bei Schrägbank-Kurzhanteldrücken ist bereits bekannt:
+
+- Gewicht pro Hantel.
+- Zwei Kurzhanteln.
+- Beidseitige Ausführung.
+
+Der Nutzer soll normalerweise nur tatsächliches Gewicht und Wiederholungen ändern müssen.
+
+Abweichungen bleiben möglich.
+
+### Nach erfolgreichem Speichern
+
+- UI aktualisieren.
+- Neue Satzdaten anzeigen.
+- Neue Kennzahlen aus der Analytics Engine laden.
+- Keine optimistisch als erfolgreich dargestellten, unbestätigten Schreibvorgänge.
+
+### Bei Fehlern
+
+- Nutzereingaben erhalten.
+- Verständliche Fehlermeldung anzeigen.
+- Doppelte Speicherung beim erneuten Versuch vermeiden.
+- Bei unklarem Commit-Status den Serverstatus prüfen.
+
+### Abgrenzung
+
+Noch keinen vollständigen Trainingsplan-Editor bauen.
+
+Noch kein umfassendes Onboarding integrieren.
+
+Die UI-Erweiterung dient ausschließlich dem sicheren Workout-Logging.
+
+---
+
+## 20. Arbeitsauftrag P – Analytics-Integration
+
+Nach erfolgreichen Änderungen müssen die vorhandenen Analysen aktualisiert werden können.
+
+### Beispiel
+
+1. Nutzer startet ein Workout.
+2. Nutzer speichert drei Arbeitssätze.
+3. Nutzer schließt das Workout ab.
+4. Dashboard zeigt anschließend die aktualisierte Trainingshistorie.
+
+### Anforderungen
+
+- Die Analytics Engine darf keine eigenen Schreibvorgänge ausführen.
+- Gespeicherte Daten müssen aus dem aktualisierten Domain-Dataset gelesen werden.
+- Keine veralteten Snapshots ungekennzeichnet zurückgeben.
+- Erfolgreiche Schreibvorgänge müssen passende Daten-Caches invalidieren.
+- Bei stornierten Sätzen müssen Kennzahlen entsprechend neu berechnet werden.
+- Bei Satzkorrekturen müssen betroffene PRs und Verläufe aktualisiert werden.
+- Historische Planversionen dürfen nicht verändert werden.
+
+### Performance
+
+Vermeide die Übertragung des vollständigen Dashboards nach jedem einzelnen Satz, sofern dies nicht erforderlich ist.
+
+Bevorzuge eine kompakte Bestätigung mit anschließendem gezielten Datenabruf.
+
+---
+
+## 21. Arbeitsauftrag Q – Auditierung
+
+Arnold benötigt eine nachvollziehbare Änderungshistorie.
+
+Implementiere eine `AuditLogRepository`-Schnittstelle.
+
+### Audit-Ereignisse
+
+Mindestens:
+
+```text
+WORKOUT_CREATED
+WORKOUT_COMPLETED
+WORKOUT_CANCELLED
+SET_CREATED
+SET_UPDATED
+SET_VOIDED
+EXERCISE_CREATED
+```
+
+Jedes Ereignis soll technisch nachvollziehbar enthalten:
+
+- Operation-ID.
+- Ereignistyp.
+- Betroffene Entity-ID.
+- Zeitpunkt.
+- Technischer Akteur beziehungsweise geprüfte Nutzerreferenz, sofern vorhanden.
+- Vorherige Revision.
+- Neue Revision.
+- Ergebnis.
+- Relevante Änderung ohne unnötige personenbezogene Informationen.
+
+Für die Tests reicht eine lokale beziehungsweise simulierte Implementierung.
+
+Der produktive Audit-Speicher wird später im Backend bereitgestellt.
+
+Keine siebte Google-Sheets-Tabelle hinzufügen.
+
+---
+
+## 22. Arbeitsauftrag R – Automatisierte Tests
+
+Implementiere umfassende Unit-, Integrations- und MCP-Tests.
+
+### Workout-Erstellung
+
+- Neue Einheit ohne Trainingsplan.
+- Neue Einheit mit gültigem Trainingsplan.
+- Unbekannte Plan-ID.
+- Ungültige Session-Zuordnung.
+- Doppelte Operations-ID.
+- Unterschiedlicher Payload bei gleicher Operations-ID.
+
+### Satz-Logging
+
+- Einzelnen Satz speichern.
+- Drei Sätze gemeinsam speichern.
+- Unbekannte Exercise-ID.
+- Unbekannte Workout-ID.
+- Ungültige Wiederholungen.
+- Ungültiges Gewicht.
+- Einseitige Ausführung.
+- Zwei Kurzhanteln.
+- Alternierende Wiederholungen.
+- Aufwärmsatz.
+- Arbeitssatz.
+- Spontane Übung ohne `plan_item_id`.
+
+### Satzkorrekturen
+
+- Gültige Korrektur.
+- Revisionsnummer erhöhen.
+- Alte Revision ablehnen.
+- Nicht vorhandene Satz-ID.
+- Mehrdeutige Identifikation vermeiden.
+- Aktualisierten Wert im Dashboard anzeigen.
+
+### Stornierung
+
+- Satz stornieren.
+- Datensatz bleibt vorhanden.
+- Analytics schließt stornierten Satz aus.
+- Wiederholte identische Stornierung.
+- Ungültige Statusänderung.
+
+### Workout-Abschluss
+
+- Gültiges Training abschließen.
+- Doppelten Abschluss idempotent behandeln.
+- Abschluss ohne zulässige Sätze.
+- Abgebrochenes Training.
+- Statuswechsel auf ungültigen Zustand.
+
+### Datensicherheit
+
+- Zwei parallele identische Schreibaufrufe.
+- Zwei parallele unterschiedliche Schreibaufrufe.
+- Prozessneustart nach gespeichertem Vorgang.
+- Google bestätigt Änderung, Antwort geht verloren.
+- Ledger-Eintrag fehlt nach erfolgreichem Sheets-Commit.
+- Falsche Schema-Version.
+- Master-Datei verweigert Schreibzugriff.
+- Fehlende Nutzerautorisierung.
+- Beschädigte Tabellenstruktur.
+- Fremde Tracker-ID.
+- Netzwerk-Timeout.
+- Google HTTP 429.
+- Keine Formelausführung durch Freitext.
+
+### Integration
+
+- Speicherung → erneuter Lesezugriff.
+- Speicherung → Analytics Engine.
+- Speicherung → MCP-Tool-Ergebnis.
+- Speicherung → UI-Logger.
+- Satzkorrektur → aktualisierte Fortschrittsanalyse.
+- Satzstornierung → aktualisierte Kennzahlen.
+
+Alle Tests verwenden synthetische Daten.
+
+---
+
+## 23. Browser- und MCP-App-Tests
+
+Erweitere die vorhandenen Playwright-Tests.
+
+Prüfe insbesondere:
+
+1. Workout-Logger öffnen.
+2. Trainingsübung auswählen.
+3. Satz speichern.
+4. Erfolgreiche Speicherung anzeigen.
+5. Weiteren Satz speichern.
+6. Bestehenden Satz korrigieren.
+7. Ungültige Eingabe anzeigen.
+8. Netzwerkfehler simulieren.
+9. Doppeltes Absenden verhindern.
+10. Training abschließen.
+11. Dashboard-Aktualisierung.
+12. Historisches Tool-Ergebnis beim erneuten Öffnen.
+13. Demo-Reset weiterhin funktionsfähig.
+
+Der vorhandene Demo-Modus muss vollständig erhalten bleiben.
+
+---
+
+## 24. Dokumentation
+
+Erstelle:
+
+`docs/ARNOLD-WRITE-CONTRACT.md`
+
+Dokumentiere:
+
+1. Die komplette Schreibarchitektur.
+2. Domain-Operationen.
+3. MCP-Tool-Verträge.
+4. Eingabe- und Ausgabe-Schemas.
+5. Workout-Statusmodell.
+6. Satzstatusmodell.
+7. ID-Strategie.
+8. Revisionsstrategie.
+9. Idempotenzkonzept.
+10. Nebenläufigkeit.
+11. Google-Sheets-Schreibmechanismus.
+12. Umgang mit API-Fehlern.
+13. Umgang mit unklaren Commit-Ergebnissen.
+14. Audit-Konzept.
+15. Berechtigungsmodell.
+16. Schutz der Master-Datei.
+17. Grenzen von Google Sheets.
+18. Noch fehlende Bestandteile für Produktionsfreigabe.
+19. Beispielhafte MCP-Tool-Aufrufe.
+20. Teststrategie.
+
+Die Dokumentation muss mit dem bereits vorhandenen Arnold SKILL.md und dem Data Contract aus Task 001 vereinbar sein.
+
+Falls notwendige Änderungen an der Agent-Anleitung erkannt werden, dokumentiere diese zunächst als Vorschlag. Verändere die Google-Drive-Datei nicht automatisch.
+
+---
+
+## 25. Sicherheits- und Änderungsgrenzen
+
+Folgende Regeln sind verbindlich:
+
+- Die Arnold-Masterdatei niemals beschreiben.
+- Die alte Fitness-Tracker-Datei niemals verändern.
+- Keine echten Trainingslogs ändern.
+- Keine Nutzerkonten simulieren, um Berechtigungsprüfungen zu umgehen.
+- Keine öffentliche Schreib-API ohne wirksame Authentifizierung anbieten.
+- Keine Google-OAuth-Implementierung vor Task 007.
+- Keine vollständige Trainingsplanverwaltung vor Task 005.
+- Keine Änderungen an produktiven ChatGPT-Verbindungen.
+- Keine Tunnel-Konfiguration verändern.
+- Kein Deployment.
+- Keine externen Datenbankdienste ohne ausdrückliche Freigabe anlegen.
+- Keine Zugangsdaten committen.
+- Keine unkontrollierten Löschoperationen.
+- Keine Schemaänderungen ohne Migrationsplanung.
+- Bestehende Demo- und Lesefunktionen erhalten.
+
+Wenn die notwendigen Sicherheitsgarantien für echte Google-Sheets-Schreibzugriffe noch nicht vollständig bereitgestellt werden können, implementiere die entsprechenden Schnittstellen und Tests, lasse produktive Schreibfunktionen aber deaktiviert.
+
+Eine sauber dokumentierte Sicherheitsgrenze ist besser als ein scheinbar funktionierendes, aber unsicheres Schreibsystem.
+
+---
+
+## 26. Definition of Done
+
+Task 004 gilt als erfolgreich abgeschlossen, wenn:
+
+- [ ] Ein eigenständiger Workout Logging Service existiert.
+- [ ] Workouts können über den Testadapter erstellt werden.
+- [ ] Sätze können einzeln und gesammelt gespeichert werden.
+- [ ] Bestehende Sätze können kontrolliert korrigiert werden.
+- [ ] Sätze können fachlich storniert werden.
+- [ ] Trainingseinheiten können abgeschlossen werden.
+- [ ] Trainingseinheiten können abgebrochen werden.
+- [ ] Neue Übungsdefinitionen können hinzugefügt werden.
+- [ ] Alle Schreibaktionen verwenden stabile IDs.
+- [ ] Alle Schreibaktionen besitzen gültige Zod-Schemas.
+- [ ] Idempotenz wurde implementiert und getestet.
+- [ ] Schreibkonflikte werden erkannt und kontrolliert behandelt.
+- [ ] Google-Sheets-Write-Adapter existiert.
+- [ ] Master-Template-Schreibschutz ist implementiert.
+- [ ] Produktiver Write-Modus bleibt ohne Sicherheitsvoraussetzungen deaktiviert.
+- [ ] Änderungen können über das Domain-Modell wieder gelesen werden.
+- [ ] Analytics werden nach Änderungen korrekt aktualisiert.
+- [ ] Der bestehende UI-Logger funktioniert mit dem neuen Test-Backend.
+- [ ] Auditierung ist technisch vorbereitet und getestet.
+- [ ] Die bisherigen Demo-Funktionen funktionieren.
+- [ ] Die technischen Tests bestehen.
+- [ ] Dokumentation ist vollständig.
+
+### Abschlussprüfungen
+
+Führe nach Möglichkeit aus:
+
+```bash
+npm run typecheck
+npm test
+npm run build
+npm run test:e2e
+npm run format:check
+```
+
+Dokumentiere jede Prüfung und ihr tatsächliches Ergebnis.
+
+---
+
+## 27. Abschlussbericht
+
+Stoppe nach diesem Arbeitspaket.
+
+Erstelle einen vollständigen Bericht:
+
+**ARNOLD TASK 004 – COMPLETION REPORT**
+
+Gliedere den Bericht wie folgt:
+
+1. **Status:** Completed / Partial / Blocked
+2. **Implementierte Schreiboperationen**
+3. **Neue MCP-Tools**
+4. **Neue und veränderte Dateien**
+5. **Workout- und Satzstatusmodell**
+6. **Idempotenz- und Nebenläufigkeitsstrategie**
+7. **Google-Sheets-Write-Adapter**
+8. **Testmodus und Sicherheitsgrenzen**
+9. **UI-Logger-Integration**
+10. **Analytics-Aktualisierung**
+11. **Audit-Implementierung**
+12. **Ergebnisse aller Tests**
+13. **Bekannte Risiken und technische Einschränkungen**
+14. **Noch fehlende Voraussetzungen für produktive Schreibzugriffe**
+15. **Abweichungen vom Auftrag**
+16. **Git-Branch und Commit-SHA**, sofern vorhanden
+17. **Empfehlung für Task 005**
+
+### Besonders wichtige Abnahmefragen
+
+Beantworte ausdrücklich:
+
+- Kann Arnold mehrere Sätze zuverlässig speichern?
+- Werden doppelte MCP-Aufrufe erkannt?
+- Was passiert bei parallelen Schreibvorgängen?
+- Können abgeschlossene Workouts sicher korrigiert werden?
+- Werden alte Planversionen und Workout-Referenzen erhalten?
+- Können einseitige und beidseitige Übungen korrekt gespeichert werden?
+- Werden korrigierte oder stornierte Sätze korrekt in Analytics berücksichtigt?
+- Ist die Arnold-Masterdatei zuverlässig vor Schreibzugriffen geschützt?
+- Welche Sicherheitsgarantien sind tatsächlich implementiert und welche nur vorbereitet?
+- Ist der produktive Schreibmodus weiterhin deaktiviert?
+- Funktioniert die bisherige MCP-App weiterhin?
+- Wurden die Tests tatsächlich erfolgreich ausgeführt?
+
+**Beginne mit Task 004 erst nach erfolgreicher Integration der Tasks 001, 002 und 003.**

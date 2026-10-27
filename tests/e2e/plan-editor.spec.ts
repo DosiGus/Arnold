@@ -9,12 +9,12 @@ import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
 // One tracker per concern, because a plan change is persistent: the editing
-// tests share 8796 and clean up after themselves, while the destructive flows
+// tests share 8896 and clean up after themselves, while the destructive flows
 // get a tracker of their own.
-const PLAN_URL = "http://127.0.0.1:8796";
-const EMPTY_URL = "http://127.0.0.1:8797";
-const ACTIVATE_URL = "http://127.0.0.1:8798";
-const CONFLICT_URL = "http://127.0.0.1:8799";
+const PLAN_URL = "http://127.0.0.1:8896";
+const EMPTY_URL = "http://127.0.0.1:8897";
+const ACTIVATE_URL = "http://127.0.0.1:8898";
+const CONFLICT_URL = "http://127.0.0.1:8899";
 
 const nav = (page: Page, name: string) =>
   page
@@ -270,6 +270,14 @@ test("reviews an invalid draft, fixes it, then confirms and activates", async ({
     page.getByText(/INVALID_REP_RANGE|Wiederholungsminimum/),
   ).toBeVisible();
 
+  // The rejected settings remain editable; correct them before reviewing.
+  await expect(
+    dialog.getByLabel("Wiederholungen von", { exact: true }),
+  ).toHaveValue("12");
+  await dialog.getByLabel("Wiederholungen von", { exact: true }).fill("8");
+  await dialog.getByLabel("Wiederholungen bis", { exact: true }).fill("12");
+  await dialog.getByRole("button", { name: "Übernehmen" }).click();
+  await expect(dialog).not.toBeVisible();
   // Review shows the difference to the active plan.
   await button(page, "Änderungen prüfen").click();
   await expect(

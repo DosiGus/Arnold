@@ -173,3 +173,9 @@ Architektur, Tool-Verträge und Fehlerbehandlung:
 [ARNOLD-WRITE-CONTRACT](docs/ARNOLD-WRITE-CONTRACT.md).
 Abnahme und tatsächliche Prüfergebnisse:
 [Task-004-Bericht](docs/ARNOLD-TASK-004-COMPLETION-REPORT.md).
+
+### Gemeinsamer S001-Prüfstand
+
+`STORAGE_MODE=arnold_fixture ARNOLD_WRITE_MODE=fixture PORT=8795 npm start` startet jetzt Dashboard, Historie, Fortschritt, Trainingslogger und Planeditor über dieselbe synthetische Runtime. `/preview` und `/host` sind lokal nutzbar; alle Daten bleiben Fixtures. Der Read-only- und Demo-Betrieb bleibt erhalten. Produktive Writes sind gesperrt.
+
+Siehe [S001-Abschlussbericht](docs/ARNOLD-STABILIZATION-S001-COMPLETION-REPORT.md), [Testanleitung](docs/TESTING.md) und [Herkunftsnachweis](docs/qa/s001/INPUT-PROVENANCE.json). Dies ist eine Implementierungsübergabe; die unabhängige erneute QA steht gesondert aus.

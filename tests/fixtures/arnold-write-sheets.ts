@@ -18,6 +18,7 @@ export class FakeArnoldWriteSheets
     const rejected = this.reject.shift();
     if (rejected) throw { response: { status: rejected } };
     const next = structuredClone(this.tables);
+    const metadata = structuredClone(this.metadata);
     for (const request of requests) {
       const body =
         "appendCells" in request ? request.appendCells : request.updateCells;
@@ -35,8 +36,21 @@ export class FakeArnoldWriteSheets
               : cell.userEnteredValue.numberValue,
         ),
       );
-      if ("appendCells" in request) next[table].push(...rows);
-      else
+      if ("appendCells" in request) {
+        const usedRows = next[table].reduce(
+          (last, row, index) =>
+            row.some(
+              (cell) => cell !== null && cell !== undefined && cell !== "",
+            )
+              ? index + 1
+              : last,
+          0,
+        );
+        next[table].splice(usedRows, next[table].length - usedRows, ...rows);
+        const grid = metadata.sheets.find((s) => s.properties.sheetId === id)!
+          .properties.gridProperties;
+        grid.rowCount = Math.max(grid.rowCount, next[table].length);
+      } else
         rows.forEach((row, i) => {
           next[table][request.updateCells.range.startRowIndex + i] = row;
         });
@@ -46,6 +60,7 @@ export class FakeArnoldWriteSheets
       throw Error("broken transport partial commit");
     }
     this.tables = next;
+    this.metadata = metadata;
     if (this.loseResponse) throw Error("response lost after atomic commit");
   }
 }

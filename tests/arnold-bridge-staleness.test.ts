@@ -33,7 +33,7 @@ class FakeApp {
   onerror?: (error: Error) => void;
   readonly calls: { name: string; arguments: unknown }[] = [];
   /** Replies queued per tool name; a thrown value simulates a failing call. */
-  responses = new Map<string, () => ToolResult>();
+  responses = new Map<string, () => ToolResult | Promise<ToolResult>>();
   connect = vi.fn(async () => {});
   close = vi.fn(async () => {});
   getHostContext = () => ({ theme: "light" as const });
@@ -266,4 +266,34 @@ describe("host lifecycle", () => {
     expect(payloads).toEqual([]);
     expect(errors).toEqual([]);
   });
+  it.each([false, true])(
+    "drops a superseded first revalidation and its error fallback (failure=%s)",
+    async (failed) => {
+      let resolve!: (value: ToolResult) => void;
+      let reject!: (error: Error) => void;
+      fake.responses.set(
+        "get_arnold_dashboard_v2",
+        () =>
+          new Promise<ToolResult>((yes, no) => {
+            resolve = yes;
+            reject = no;
+          }),
+      );
+      const { client, payloads, staleFlags, errors } = await bootClient();
+      await client.connect();
+      const historical = v2Payload("2026-10-01T08:00:00Z");
+      const newest = v2Payload("2026-10-25T10:00:00Z");
+      fake.ontoolresult!(okResult(historical));
+      fake.ontoolresult!(okResult(newest));
+      if (failed) reject(new Error("Slow failure"));
+      else resolve(okResult(v2Payload("2026-10-25T09:00:00Z")));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(payloads).toHaveLength(1);
+      expect(asV2(payloads[0]).source.generated_at).toBe(
+        "2026-10-25T10:00:00Z",
+      );
+      expect(staleFlags.at(-1)).toBe(false);
+      expect(errors).toHaveLength(0);
+    },
+  );
 });

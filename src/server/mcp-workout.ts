@@ -1,3 +1,7 @@
+import {
+  AbandonWriteInputSchema,
+  AbandonWriteResponseSchema,
+} from "../shared/write-recovery.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/server";
 import {
@@ -107,6 +111,36 @@ export function registerWorkoutTools(
   );
   // Disabled/default Arnold connections retain a read-only surface.
   if (!logging || logging.mode === "disabled") return;
+  server.registerTool(
+    "abandon_rejected_write",
+    {
+      description:
+        "Schließt einen nachweislich abgelehnten Plan- oder Workout-Auftrag endgültig im gemeinsamen Journal. request_id bezeichnet den Originalauftrag. Keine Trainingsdaten werden verändert. Bei unklarem oder erneut laufendem Dispatch wird das Schließen abgelehnt; dann den Originalauftrag mit unverändertem Payload prüfen.",
+      inputSchema: AbandonWriteInputSchema,
+      outputSchema: AbandonWriteResponseSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async (input) => {
+      const payload = await logging.abandonRejected(input, actorContext);
+      return {
+        isError: !payload.ok,
+        content: [
+          {
+            type: "text" as const,
+            text: payload.ok
+              ? "Abgelehnter Auftrag endgültig geschlossen; keine Trainingsdaten geändert."
+              : payload.error!.message,
+          },
+        ],
+        structuredContent: payload,
+      };
+    },
+  );
   for (const operation of Object.keys(WriteInputs) as WriteOperation[]) {
     server.registerTool(
       operation,
