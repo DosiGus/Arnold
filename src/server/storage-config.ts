@@ -36,23 +36,71 @@ export function createStorage(
       : undefined,
   });
 }
+/**
+ * Whether a binding reaches beyond this machine.
+ *
+ * A public address is not only the bind host: an `allowedHosts` entry or an
+ * allowed origin naming a tunnel or a service domain is just as reachable, so
+ * all three are judged together.
+ */
+export function isPublicBinding(
+  host: string,
+  allowedHosts: string[],
+  allowedOrigins: string[],
+): boolean {
+  return (
+    !LOOPBACK_HOSTS.includes(host) ||
+    allowedHosts.some((h) => !LOOPBACK_HOSTS.includes(h)) ||
+    allowedOrigins.some(
+      (origin) => !LOOPBACK_HOSTS.includes(new URL(origin).hostname),
+    )
+  );
+}
+
+/**
+ * Decides whether this Arnold deployment may listen beyond loopback.
+ *
+ * The rule has two halves, and both matter:
+ *
+ *   - A source that reads a **real Google file** may only be reachable
+ *     publicly when authentication is active. Without it, anyone who finds the
+ *     address reads somebody's training history — which is why this started out
+ *     as a blanket loopback requirement.
+ *   - A **synthetic** source has nothing to leak. Its dataset lives in memory,
+ *     its writes touch only that dataset, and a restart discards them. Refusing
+ *     to expose it bought no safety and blocked the one thing a tunnel or a
+ *     hosted test instance is for.
+ *
+ * So the refusal is now aimed at what is actually sensitive, instead of at
+ * every non-loopback binding.
+ */
+export function requireSafeArnoldBinding(input: {
+  synthetic: boolean;
+  /** True when bearer validation is active (Task 007 `AUTH_MODE=oidc`). */
+  authenticated: boolean;
+  host: string;
+  allowedHosts: string[];
+  allowedOrigins: string[];
+}) {
+  const { synthetic, authenticated, host, allowedHosts, allowedOrigins } =
+    input;
+  if (!isPublicBinding(host, allowedHosts, allowedOrigins)) return;
+  if (synthetic || authenticated) return;
+  throw new Error(
+    "Eine echte Arnold-Trainingsdatei darf nicht über eine öffentliche Adresse erreichbar sein, solange keine Authentifizierung aktiv ist. Entweder an Loopback binden und einen privaten MCP-Tunnel verwenden, oder AUTH_MODE=oidc konfigurieren, oder für einen offenen Test STORAGE_MODE=arnold_fixture mit synthetischen Daten nutzen.",
+  );
+}
+
 /** Any mode that reads a real Google file must stay bound to loopback. */
 export function requireLoopbackOnly(
   host: string,
   allowedHosts: string[],
   allowedOrigins: string[],
 ) {
-  if (
-    !LOOPBACK_HOSTS.includes(host) ||
-    allowedHosts.some((h) => !LOOPBACK_HOSTS.includes(h)) ||
-    allowedOrigins.some(
-      (origin) => !LOOPBACK_HOSTS.includes(new URL(origin).hostname),
-    )
-  ) {
+  if (isPublicBinding(host, allowedHosts, allowedOrigins))
     throw new Error(
       "Google-Sheets-Modus darf nur an Loopback gebunden sein und keine öffentlichen Hosts oder Origins freigeben. Einen privaten MCP-Tunnel verwenden.",
     );
-  }
 }
 export function requirePrivateBinding(
   storage: StorageAdapter,

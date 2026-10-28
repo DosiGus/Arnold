@@ -723,6 +723,7 @@ export function createFixturePlanning(
   let generation = 0;
   const source: ArnoldDataSource = {
     mode: "arnold_sheets",
+    synthetic: true,
     label: "Arnold · Plan-Fixture",
     description:
       "Ausschließlich synthetische Trainingspläne. Lokaler Testmodus; kein persönliches Nutzerkonto und keine Google-Datei.",

@@ -1,4 +1,6 @@
-import { createFixtureLogging, writeModeFromEnv } from "./workout/fixture.js";
+import { writeModeFromEnv } from "./workout/fixture.js";
+import { createFixtureOnboarding } from "./onboarding/fixture.js";
+import { planFixtureDataset } from "./plan/fixture.js";
 import type { WorkoutLoggingService } from "./workout/service.js";
 import type { TrainingPlanService } from "./plan/service.js";
 import type { OnboardingService } from "./onboarding/service.js";
@@ -15,8 +17,8 @@ import {
   createArnoldSource,
   createStorage,
   isArnoldMode,
-  requireLoopbackOnly,
   requirePrivateBinding,
+  requireSafeArnoldBinding,
 } from "./storage-config.js";
 import { loadAuthConfig } from "./auth/config.js";
 import { buildAuthSurface, type AuthSurface } from "./auth/router.js";
@@ -52,7 +54,11 @@ export function createHttpApp(options: ServerOptions = {}) {
   const runtime: NonNullable<ServerOptions["workoutRuntime"]> | undefined =
     options.workoutRuntime ??
     (mode === "fixture" && !options.storage && !options.arnoldSource
-      ? createFixtureLogging()
+      ? // The full synthetic runtime, not just the logger: a deployment wired
+        // from the environment must expose the plan editor and the onboarding
+        // too, or two thirds of the product are simply absent from the tool
+        // list and a connected client cannot reach them.
+        createFixtureOnboarding({ dataset: planFixtureDataset() })
       : undefined);
   if (runtime && (options.storage || options.arnoldSource))
     throw new Error(
@@ -87,10 +93,19 @@ export function createHttpApp(options: ServerOptions = {}) {
       .map((s) => s.trim())
       .filter(Boolean) ??
     [];
-  if (arnoldSource) requireLoopbackOnly(host, allowedHosts, allowedOrigins);
-  else requirePrivateBinding(storage!, host, allowedHosts, allowedOrigins);
+  // Built before the binding check, because whether a public address is
+  // acceptable depends on whether bearer validation is actually active.
   const auth =
     options.auth ?? buildAuthSurface({ config: loadAuthConfig(process.env) });
+  if (arnoldSource)
+    requireSafeArnoldBinding({
+      synthetic: arnoldSource.synthetic,
+      authenticated: auth.summary.mode === "oidc",
+      host,
+      allowedHosts,
+      allowedOrigins,
+    });
+  else requirePrivateBinding(storage!, host, allowedHosts, allowedOrigins);
   const app = createMcpExpressApp({
     host,
     allowedHosts,
@@ -149,7 +164,13 @@ export function createHttpApp(options: ServerOptions = {}) {
       status: "ok",
       app: "arnold",
       auth: auth.summary.mode,
-      synthetic: storage?.mode === "demo",
+      // Whether this instance serves made-up data. In Arnold mode that is the
+      // source's own answer: reporting `false` for a synthetic fixture would
+      // tell an operator checking whether real training data is exposed exactly
+      // the wrong thing.
+      synthetic: arnoldSource
+        ? arnoldSource.synthetic
+        : storage?.mode === "demo",
       source: arnoldSource
         ? "arnold_sheets"
         : storage?.mode === "demo"

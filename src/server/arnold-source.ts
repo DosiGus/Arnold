@@ -88,6 +88,16 @@ export interface ArnoldDataSource {
   readonly mode: "arnold_sheets";
   readonly label: string;
   readonly description: string;
+  /**
+   * False only for a source that reads a real Google file.
+   *
+   * This is what decides whether the server may listen on a public address: a
+   * synthetic dataset has nothing to leak, a personal tracker has everything.
+   * It is a property of the source rather than of the environment, because
+   * tests and fixture runtimes inject sources directly and must be judged by
+   * what they actually serve. See `requireSafeArnoldBinding`.
+   */
+  readonly synthetic: boolean;
   /** Validated dataset; throws `ArnoldSourceError` on any failure. */
   load(): Promise<DatasetSnapshot>;
   /** Drops the cached dataset. Call after a successful write. */
@@ -111,6 +121,8 @@ export type ArnoldSheetsSourceOptions = ArnoldSheetsReadOptions & {
  */
 export class ArnoldSheetsDataSource implements ArnoldDataSource {
   readonly mode = "arnold_sheets" as const;
+  /** Reads a real Google file: never exposed on a public address unauthenticated. */
+  readonly synthetic = false;
   readonly label: string;
   readonly description: string;
   private readonly adapter: ArnoldSheetsReadAdapter;
@@ -182,6 +194,8 @@ export class ArnoldSheetsDataSource implements ArnoldDataSource {
 /** In-memory source over a fixed dataset; used by tests and fixture servers. */
 export class StaticArnoldDataSource implements ArnoldDataSource {
   readonly mode = "arnold_sheets" as const;
+  /** Holds only the dataset it was constructed with; no Google file behind it. */
+  readonly synthetic = true;
   readonly label: string;
   readonly description: string;
   private failure?: ArnoldSourceFailure;

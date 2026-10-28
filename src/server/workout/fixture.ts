@@ -157,6 +157,7 @@ export function createFixtureLogging(
   let generation = 0;
   const source: ArnoldDataSource = {
     mode: "arnold_sheets",
+    synthetic: true,
     label: "Arnold · Schreib-Fixture",
     description:
       "Ausschließlich synthetische Trainingsdaten. Lokaler Testmodus; kein persönliches Nutzerkonto.",
