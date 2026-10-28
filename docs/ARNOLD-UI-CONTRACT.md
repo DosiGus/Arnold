@@ -441,3 +441,27 @@ Cache-Schlüsselbestandteil).
 
 Tests verwenden ausschließlich synthetische lokale Fixtures
 (`tests/fixtures/arnold-dashboard.ts`) und verändern keine echten Trainingsdaten.
+
+## 16. Task 004: kontrollierter Workout-Logger
+
+`get_workout` ergänzt die lesende Oberfläche in jedem Arnold-v2-Modus um aktuelle
+Rohdatensätze mit IDs/Revisionen, offene Workouts und Logger-Fähigkeiten.
+Standardmäßig bleibt `can_write=false`; die sieben Schreibtools werden nur bei
+explizit eingebundener Schreib-Runtime registriert. In `disabled` bleiben sie
+unveröffentlicht. Der frühere Demo-Vertrag inklusive `log_demo_set` und Reset ist
+unverändert.
+
+`STORAGE_MODE=arnold_fixture` zusammen mit `ARNOLD_WRITE_MODE=fixture` startet den
+v2-Logger mit synthetischem Katalog und Trainingsplan. Die UI übernimmt sichtbare
+Vorschläge, zeigt unbestätigte Writes niemals als Erfolg und wiederholt unklare
+Vorgänge mit derselben Operations-ID. Die MCP-App benötigt keinen direkten
+Google-Zugriff. `ArnoldMcpClient` hält ausstehende Requests über Ansichtswechsel;
+Browser-Previews sichern sie zusätzlich in Session Storage, soweit verfügbar.
+Eine vollständige neue Host-Sitzung ohne Browser-Speicher besitzt diese lokale
+Wiederherstellungsinformation nicht; der Server bleibt die Quelle des Zustands.
+
+Dashboard-Abrufe aus Hooks werden nicht erneut als initiales Host-Ergebnis
+publiziert. So führt eine bestätigte Mutation zu einem gezielten Workout-Read
+und einer kompakten Dashboard-Aktualisierung, ohne eine Refresh-Schleife.
+
+Details: [ARNOLD-WRITE-CONTRACT](ARNOLD-WRITE-CONTRACT.md).

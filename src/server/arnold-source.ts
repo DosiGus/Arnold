@@ -116,11 +116,20 @@ export class ArnoldSheetsDataSource implements ArnoldDataSource {
   private readonly adapter: ArnoldSheetsReadAdapter;
   private readonly ttl: number;
   private readonly now: () => number;
+  private generation = 0;
   private cached?: { dataset: ArnoldDataset; at: number };
   private pending?: Promise<DatasetSnapshot>;
 
   constructor(options: ArnoldSheetsSourceOptions) {
-    this.adapter = new ArnoldSheetsReadAdapter(options, options.transport);
+    const {
+      cacheTtlMs: _ttl,
+      label: _label,
+      description: _description,
+      transport,
+      now: _now,
+      ...readOptions
+    } = options;
+    this.adapter = new ArnoldSheetsReadAdapter(readOptions, transport);
     this.ttl = Math.max(options.cacheTtlMs ?? 15_000, 0);
     this.now = options.now ?? Date.now;
     this.label = options.label ?? "Arnold · Google Sheets";
@@ -142,23 +151,30 @@ export class ArnoldSheetsDataSource implements ArnoldDataSource {
     if (cached && this.now() - cached.at < this.ttl)
       return this.snapshot(cached.dataset, cached.at);
     if (this.pending) return this.pending;
-    this.pending = (async () => {
+    const generation = this.generation;
+    let pending!: Promise<DatasetSnapshot>;
+    pending = (async (): Promise<DatasetSnapshot> => {
+      let dataset: ArnoldDataset;
       try {
-        const dataset = await this.adapter.getDataset();
-        const at = this.now();
-        this.cached = { dataset, at };
-        return this.snapshot(dataset, at);
+        dataset = await this.adapter.getDataset();
       } catch (error) {
-        // A failed read must not leave a stale dataset looking authoritative.
         throw new ArnoldSourceError(classifyFailure(error));
       } finally {
-        this.pending = undefined;
+        if (this.pending === pending) this.pending = undefined;
       }
+      // A read started before a write cannot repopulate the cache or be served
+      // as fresh after invalidation. Re-read only after the old adapter read ended.
+      if (generation !== this.generation) return this.load();
+      const at = this.now();
+      this.cached = { dataset, at };
+      return this.snapshot(dataset, at);
     })();
-    return this.pending;
+    this.pending = pending;
+    return pending;
   }
 
   invalidate(): void {
+    this.generation++;
     this.cached = undefined;
   }
 }

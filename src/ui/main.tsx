@@ -4,15 +4,16 @@ import { ArnoldClient, type ArnoldPayload } from "./client";
 import { ArnoldApp } from "./App";
 import { ArnoldDashboardApp } from "./ArnoldDashboardApp";
 import { ArnoldMcpClient } from "./client/ArnoldMcpClient";
+import { OnboardingView } from "./views/OnboardingView";
 import "./style.css";
 
 /**
  * Boots the app and picks the interface for the contract the server speaks.
  *
- * The demo path (v1) and the Arnold path (v2) are deliberately separate
- * components: the two data models disagree about what a workout is, so one
- * component serving both would have to guess. The contract in the payload
- * decides, which keeps the existing demo mode working untouched.
+ * The demo path (v1), the Arnold path (v2) and the setup wizard are deliberately
+ * separate components: their data models disagree about what they describe, so
+ * one component serving all three would have to guess. The contract in the
+ * payload decides, which keeps the existing demo mode working untouched.
  */
 function Boot() {
   const [client] = useState(() => new ArnoldClient());
@@ -28,6 +29,15 @@ function Boot() {
       ? "dark"
       : "light";
     client.onPayload = (next) => {
+      // A freshly started setup arrives with its session secret. It is stored
+      // in the client immediately, because every later onboarding call needs
+      // it — a session id alone is not a permission.
+      if (next.contract === "onboarding" && next.onboarding.session_token)
+        mcp.rememberOnboarding({
+          onboarding_session_id:
+            next.onboarding.state.session.onboarding_session_id,
+          session_token: next.onboarding.session_token,
+        });
       setPayload(next);
       setError("");
     };
@@ -40,7 +50,7 @@ function Boot() {
     return () => {
       void client.close();
     };
-  }, [client]);
+  }, [client, mcp]);
 
   if (!payload)
     return (
@@ -61,6 +71,15 @@ function Boot() {
           </>
         )}
       </main>
+    );
+
+  if (payload.contract === "onboarding")
+    return (
+      <OnboardingView
+        client={mcp}
+        initial={payload.onboarding.state}
+        resumed={payload.onboarding.resumed}
+      />
     );
 
   return payload.contract === "v2" ? (

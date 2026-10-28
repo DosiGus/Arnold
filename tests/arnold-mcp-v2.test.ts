@@ -73,6 +73,7 @@ describe("Arnold v2 MCP surface", () => {
       "get_arnold_dashboard_v2",
       "get_arnold_exercise_progress_v2",
       "get_arnold_workouts_v2",
+      "get_workout",
       "show_arnold_dashboard",
     ]);
     for (const tool of tools) {

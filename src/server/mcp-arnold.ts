@@ -1,3 +1,9 @@
+import { registerWorkoutTools } from "./mcp-workout.js";
+import { registerPlanTools } from "./mcp-plan.js";
+import { registerOnboardingTools } from "./mcp-onboarding.js";
+import type { TrainingPlanService } from "./plan/service.js";
+import type { OnboardingService } from "./onboarding/service.js";
+import type { WorkoutLoggingService } from "./workout/service.js";
 /**
  * MCP tools for the Arnold schema v1 dashboard.
  *
@@ -176,6 +182,10 @@ export function createArnoldV2McpServer(
   source: ArnoldDataSource,
   uiFile: string,
   clock: ArnoldServerClock = () => new Date(),
+  logging?: WorkoutLoggingService,
+  actorContext?: unknown,
+  plans?: TrainingPlanService,
+  onboarding?: OnboardingService,
 ) {
   const server = new McpServer({ name: "arnold", version: "0.5.0" });
   const sourceLabel = source.label;
@@ -367,5 +377,11 @@ export function createArnoldV2McpServer(
     },
   );
 
+  registerWorkoutTools(server, source, logging, actorContext);
+  registerPlanTools(server, plans, actorContext);
+  // Onboarding is its own app resource and tool set. Registering it last keeps
+  // the dashboard surface above byte-for-byte unchanged for a deployment that
+  // publishes no onboarding at all.
+  registerOnboardingTools(server, onboarding, uiFile, actorContext);
   return server;
 }
