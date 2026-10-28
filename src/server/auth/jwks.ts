@@ -28,9 +28,22 @@
 import type { PublicJwk } from "./jwt.js";
 import { ArnoldAuthError } from "./errors.js";
 
+/**
+ * The slice of `fetch` Arnold's outbound calls use.
+ *
+ * Narrower than `fetch` so tests can supply a plain function, but wide enough
+ * for a form POST — the Google token and revoke endpoints need `method` and
+ * `body`, and widening the type here beats casting at each of those call
+ * sites.
+ */
 export type FetchLike = (
   url: string,
-  init?: { signal?: AbortSignal; headers?: Record<string, string> },
+  init?: {
+    signal?: AbortSignal;
+    headers?: Record<string, string>;
+    method?: string;
+    body?: string;
+  },
 ) => Promise<{
   ok: boolean;
   status: number;
