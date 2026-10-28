@@ -153,3 +153,23 @@ Die konkrete Anleitung einschließlich Secure MCP Tunnel und HTTPS-Alternative s
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) beschreibt Adapter, Berechnungen, MCP-Lifecycle und die spätere Google-Sheets-Anbindung. [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) vergleicht Hosting-Wege.
 
 Dieser Prototyp verwendet einen gemeinsamen synthetischen Demo-Datensatz ohne Authentifizierung. Er bietet keine Konten, Google OAuth, Sheets-Synchronisierung, Zahlungen oder Verarbeitung echter Gesundheitsdaten. Andere bereits offene Browserfenster aktualisieren sich erst nach Neuladen; es gibt keinen Hintergrund-Sync. Der Öffnungs-Prompt und die beschriebenen UI-Flows sind in ChatGPT geprüft; eine umfassende Prompt-Evaluation und weitere Geräte stehen aus.
+
+### Task 004: synthetischer Workout-Logger
+
+Die eigenständige Schreibschicht verwendet das bestehende Arnold-Schema v1.0.0.
+Zum lokalen Testen nach `npm run build`:
+
+```bash
+STORAGE_MODE=arnold_fixture ARNOLD_WRITE_MODE=fixture PORT=8795 npm start
+```
+
+Öffne `http://127.0.0.1:8795/preview` oder `/host` und wähle „Training eintragen“.
+Dieser Modus enthält ausschließlich synthetische Daten im Arbeitsspeicher;
+ein Serverneustart setzt den Fixture-Tracker zurück. Der bisherige Demo-Modus
+einschließlich Reset bleibt unverändert. Standardmäßig sind die neuen
+Schreibfunktionen deaktiviert. Produktive Writes sind bis Task 007 gesperrt.
+
+Architektur, Tool-Verträge und Fehlerbehandlung:
+[ARNOLD-WRITE-CONTRACT](docs/ARNOLD-WRITE-CONTRACT.md).
+Abnahme und tatsächliche Prüfergebnisse:
+[Task-004-Bericht](docs/ARNOLD-TASK-004-COMPLETION-REPORT.md).

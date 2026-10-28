@@ -1,3 +1,7 @@
+import { createFixtureLogging, writeModeFromEnv } from "./workout/fixture.js";
+import type { WorkoutLoggingService } from "./workout/service.js";
+import type { TrainingPlanService } from "./plan/service.js";
+import type { OnboardingService } from "./onboarding/service.js";
 import { createMcpExpressApp } from "@modelcontextprotocol/express";
 import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
 import type { NextFunction, Request, Response } from "express";
@@ -19,6 +23,15 @@ export interface ServerOptions {
   storage?: StorageAdapter;
   /** Arnold schema v1 read source; selects the v2 dashboard mode. */
   arnoldSource?: ArnoldDataSource;
+  workoutRuntime?: {
+    source: ArnoldDataSource;
+    service: WorkoutLoggingService;
+    /** Task 005 plan management over the same source; omitted leaves plans read-only. */
+    plans?: TrainingPlanService;
+    /** Task 006 onboarding over the same source; omitted publishes no onboarding. */
+    onboarding?: OnboardingService;
+    actorContext?: (request: Request) => Promise<unknown>;
+  };
   root?: string;
   allowedOrigins?: string[];
   allowedHosts?: string[];
@@ -26,9 +39,27 @@ export interface ServerOptions {
 }
 export function createHttpApp(options: ServerOptions = {}) {
   const root = options.root ?? process.cwd();
+  const mode = writeModeFromEnv();
+  const runtime: NonNullable<ServerOptions["workoutRuntime"]> | undefined =
+    options.workoutRuntime ??
+    (mode === "fixture" && !options.storage && !options.arnoldSource
+      ? createFixtureLogging()
+      : undefined);
+  if (runtime && (options.storage || options.arnoldSource))
+    throw new Error(
+      "Workout-Runtime muss denselben Lese- und Schreibpfad besitzen.",
+    );
+  if (
+    runtime?.service.mode === "test_sheet" &&
+    !("actorContext" in runtime && runtime.actorContext)
+  )
+    throw new Error(
+      "Test-Sheet benötigt einen geprüften Request-Authentifizierer.",
+    );
   // Exactly one of the two data paths is active per process: the legacy demo /
   // Sheets storage, or the Arnold schema v1 source behind the v2 tools.
   const arnoldSource =
+    runtime?.source ??
     options.arnoldSource ??
     (options.storage === undefined && isArnoldMode()
       ? createArnoldSource(root)
@@ -113,7 +144,13 @@ export function createHttpApp(options: ServerOptions = {}) {
       version: "0.5.0",
     }),
   );
-  app.get("/", (_req, res) => res.redirect("/preview"));
+  // The query string is carried across the redirect: the preview selects its
+  // entry point from it (`?onboarding=1` opens the setup wizard), and dropping
+  // it here would silently send every such visit to the dashboard instead.
+  app.get("/", (req, res) => {
+    const query = req.originalUrl.slice(req.path.length);
+    res.redirect(`/preview${query}`);
+  });
   app.get("/preview", (_req, res) =>
     res.sendFile(resolve(root, "dist/ui/dashboard.html")),
   );
@@ -125,6 +162,13 @@ export function createHttpApp(options: ServerOptions = {}) {
       ? createArnoldV2McpServer(
           arnoldSource,
           resolve(root, "dist/ui/dashboard.html"),
+          undefined,
+          runtime?.service,
+          runtime && "actorContext" in runtime
+            ? await runtime.actorContext?.(req)
+            : undefined,
+          runtime?.plans,
+          runtime?.onboarding,
         )
       : createArnoldMcpServer(
           storage!,

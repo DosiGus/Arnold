@@ -1,3 +1,5 @@
+import { WorkoutLoggerView } from "./views/WorkoutLoggerView";
+import { TrainingPlanEditorView } from "./views/TrainingPlanEditorView";
 /**
  * Shell of the Arnold v2 dashboard.
  *
@@ -6,13 +8,15 @@
  * narrow: which view is on screen, the shared period filter, refreshing, and
  * surfacing whether the data on screen is current.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   AlertTriangle,
   ChevronRight,
+  ClipboardList,
   Dumbbell,
   LayoutDashboard,
   Moon,
+  Plus,
   RefreshCw,
   Sun,
   TrendingUp,
@@ -26,15 +30,21 @@ import { WorkoutHistoryView } from "./views/WorkoutHistoryView";
 import { ExerciseProgressView } from "./views/ExerciseProgressView";
 import { dateTimeLabel } from "./format";
 
-type Screen = "overview" | "history" | "progress";
+type Screen = "overview" | "history" | "progress" | "logger" | "plan";
 
 const NAV = [
   { id: "overview", label: "Übersicht", icon: LayoutDashboard },
   { id: "history", label: "Workouts", icon: Dumbbell },
   { id: "progress", label: "Fortschritt", icon: TrendingUp },
+  { id: "logger", label: "Training eintragen", icon: Plus },
+  { id: "plan", label: "Trainingsplan", icon: ClipboardList },
 ] as const;
 
 const HEADINGS: Record<Screen, { title: string; lead: string }> = {
+  logger: {
+    title: "Dein Training festhalten.",
+    lead: "Tatsächliche Sätze. Bestätigte Speicherung.",
+  },
   overview: {
     title: "Dein Training. Dein Fortschritt.",
     lead: "Kleine Schritte. Messbare Ergebnisse. Alles an einem Ort.",
@@ -46,6 +56,10 @@ const HEADINGS: Record<Screen, { title: string; lead: string }> = {
   progress: {
     title: "Fortschritt wird sichtbar.",
     lead: "Verstehe deine Entwicklung – Übung für Übung.",
+  },
+  plan: {
+    title: "Dein Trainingsplan.",
+    lead: "Jede Struktur ist möglich. Änderungen behalten deine Historie.",
   },
 };
 
@@ -61,6 +75,28 @@ export function ArnoldDashboardApp({
   /** True when the payload came from a replayed result that could not be revalidated. */
   stale: boolean;
 }) {
+  const [canWrite, setCanWrite] = useState(false);
+  // Plan management is a separate capability: a deployment may publish the
+  // plan tools read-only, or not at all. Both probes fail closed.
+  const [hasPlans, setHasPlans] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void client
+      .workout()
+      .then((c) => {
+        if (active) setCanWrite(c.can_write);
+      })
+      .catch(() => {});
+    void client
+      .planContext()
+      .then(() => {
+        if (active) setHasPlans(true);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [client]);
   const [screen, setScreen] = useState<Screen>("overview");
   const [workoutId, setWorkoutId] = useState<string>();
   // The overview is always unfiltered; the views own their own filters, so a
@@ -108,7 +144,11 @@ export function ArnoldDashboardApp({
         </div>
         <span className="nav-label">TRAINING</span>
         <nav aria-label="Hauptnavigation">
-          {NAV.map((item) => (
+          {NAV.filter(
+            (item) =>
+              (item.id !== "logger" || canWrite) &&
+              (item.id !== "plan" || hasPlans),
+          ).map((item) => (
             <button
               key={item.id}
               className={`nav-item ${screen === item.id ? "active" : ""}`}
@@ -145,7 +185,9 @@ export function ArnoldDashboardApp({
               <small>
                 {view.source.file_role === "MASTER_TEMPLATE"
                   ? "Master-Vorlage · lesend"
-                  : "Arnold-Tracker · lesend"}
+                  : canWrite
+                    ? "Training erfassen"
+                    : "Arnold-Tracker · lesend"}
               </small>
             </span>
           </div>
@@ -256,8 +298,20 @@ export function ArnoldDashboardApp({
                   initialWorkoutId={workoutId}
                 />
               )}
+              {screen === "logger" && (
+                <WorkoutLoggerView
+                  client={client}
+                  onChanged={dashboard.reload}
+                />
+              )}
               {screen === "progress" && (
                 <ExerciseProgressView client={client} dashboard={view} />
+              )}
+              {screen === "plan" && (
+                <TrainingPlanEditorView
+                  client={client}
+                  onChanged={dashboard.reload}
+                />
               )}
             </>
           )}
