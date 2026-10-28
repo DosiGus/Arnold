@@ -184,10 +184,12 @@ export function createHttpApp(options: ServerOptions = {}) {
             : undefined,
           runtime?.plans,
           runtime?.onboarding,
+          auth.guard,
         )
       : createArnoldMcpServer(
           storage!,
           resolve(root, "dist/ui/dashboard.html"),
+          auth.guard,
         );
     const transport = new NodeStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,

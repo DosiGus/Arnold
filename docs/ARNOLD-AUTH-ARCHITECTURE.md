@@ -1,6 +1,6 @@
 # Arnold Auth Architecture
 
-**Status: Task 007-A implemented and unit/integration-verified. Not staging-verified, not production-verified.**
+**Status: Task 007-A and 007-B implemented and unit/integration-verified. Not staging-verified, not production-verified.**
 
 This document describes the authentication that exists in the code today. Anything
 not yet built is marked **NOT IMPLEMENTED** with the work package that owns it.
@@ -14,12 +14,12 @@ connection, or a real Google account — see [Verification status](#verification
 Arnold needs two unrelated authorizations, and conflating them is the single most
 dangerous mistake available in this design.
 
-|                | Layer A                                 | Layer B                                      |
-| -------------- | --------------------------------------- | -------------------------------------------- |
-| **Question**   | Which Arnold user is this MCP call for? | May Arnold touch this person's Google Drive? |
-| **Direction**  | ChatGPT → Arnold                        | Arnold → Google                              |
-| **Credential** | Arnold access token (bearer, JWT)       | Google refresh/access token                  |
-| **Status**     | **Implemented (007-A)**                 | **NOT IMPLEMENTED (007-B)**                  |
+|                | Layer A                                 | Layer B                                           |
+| -------------- | --------------------------------------- | ------------------------------------------------- |
+| **Question**   | Which Arnold user is this MCP call for? | May Arnold touch this person's Google Drive?      |
+| **Direction**  | ChatGPT → Arnold                        | Arnold → Google                                   |
+| **Credential** | Arnold access token (bearer, JWT)       | Google refresh/access token                       |
+| **Status**     | **Implemented (007-A)**                 | **Service implemented (007-B); routes not wired** |
 
 The rule, from Task 007 §4:
 
@@ -28,9 +28,12 @@ The rule, from Task 007 §4:
 - A valid **Arnold** token never, on its own, grants access to arbitrary Google
   Drive files.
 
-Today only Layer A exists. There is no Google OAuth code in this repository yet, so
-there is currently no way for Arnold to read or write a user's own Google file —
-`drive.file` provisioning is 007-B/007-C.
+Layer B's logic exists — the authorization flow, `drive.file` scope policy,
+id_token verification, encrypted refresh-token storage, refresh, revocation and
+disconnect are all implemented and tested in `src/server/google/`. What is **not**
+wired is the HTTP surface (`/auth/google/*`), so there is no way for a user to
+actually start the flow yet, and no Google Cloud project has been configured.
+Tracker provisioning on top of it is 007-C and does not exist.
 
 ---
 
@@ -221,13 +224,26 @@ accounts.
 
 `src/server/auth/scopes.ts`, `src/server/auth/tool-guard.ts`.
 
-| Class                 | Required scopes                | For                                     |
-| --------------------- | ------------------------------ | --------------------------------------- |
-| `PUBLIC`              | none                           | information identical for every caller  |
-| `AUTHENTICATED_READ`  | `arnold.read`                  | own training data, analytics, dashboard |
-| `AUTHENTICATED_WRITE` | `arnold.read` + `arnold.write` | logging workouts and sets               |
-| `PLAN_WRITE`          | `arnold.read` + `arnold.plan`  | creating/activating training plans      |
-| `ACCOUNT_MANAGEMENT`  | `arnold.account`               | Google connect/disconnect, deletion     |
+| Class                 | Credential                     | For                                                       |
+| --------------------- | ------------------------------ | --------------------------------------------------------- |
+| `PUBLIC`              | none                           | information identical for every caller (no members today) |
+| `SYNTHETIC_SANDBOX`   | none, **open mode only**       | demo writes to process-local invented data                |
+| `ONBOARDING_PREVIEW`  | the onboarding session secret  | Task 006's pre-authentication setup flow                  |
+| `AUTHENTICATED_READ`  | `arnold.read`                  | own training data, analytics, dashboard                   |
+| `AUTHENTICATED_WRITE` | `arnold.read` + `arnold.write` | logging workouts and sets                                 |
+| `PLAN_WRITE`          | `arnold.read` + `arnold.plan`  | creating/activating training plans                        |
+| `ACCOUNT_MANAGEMENT`  | `arnold.account`               | Google connect/disconnect, deletion                       |
+
+Three classes run without an Arnold token, and none is an escape hatch:
+
+- `SYNTHETIC_SANDBOX` is refused outright in `enforced` mode, so it cannot become
+  a way to write without authentication in a real deployment.
+- `ONBOARDING_PREVIEW` does not mean "no credential" — it means the Arnold token
+  is not the credential. `OnboardingAccessControl` requires the setup's own
+  256-bit secret and compares it in constant time. This is §6's unauthenticated
+  preview; 007-A2 still has to add the authenticated handoff that turns a
+  confirmed draft into a real user's plan.
+- `PUBLIC` has no members, so the surface needing nothing at all is empty.
 
 **Scope matching is exact. No scope implies another.** `arnold.write` does not
 stand in for `arnold.plan`: a client allowed to log sets is not therefore allowed
@@ -249,23 +265,70 @@ revocation effective mid-session — a long-lived MCP session must not be a wind
 where a disabled account keeps working. `tests/auth-isolation.test.ts` asserts
 exactly this.
 
-### Known gap: tools are not yet wired to access classes
+### How a tool gets its class
 
-**The transport gate is live** — `/mcp` is unreachable without a valid token, and
-that is asserted over real HTTP. But Arnold's individual tools still carry their
-Task 001–003 registrations, which name no access class, so **no MCP call currently
-reaches `ArnoldToolGuard`**.
+Classes are **not** written next to each `registerTool` call. They live in one
+table, `src/server/auth/tool-access.ts`, and `guardToolRegistrations` intercepts
+`McpServer.registerTool` to apply them.
 
-Tool-level classes are applied in `mcp-arnold.ts`, `mcp-plan.ts` and
-`mcp-workout.ts` — files Tasks 004–006 are editing concurrently — so that wiring
-lands at the merge. Until then the guard's behaviour is proven only by
-`tests/auth-isolation.test.ts`, and `tests/auth-http.test.ts` asserts that no guard
-event is emitted, so the gap cannot close silently or be forgotten.
+Interception rather than per-call-site guards, for two reasons:
 
-Practical consequence today: authentication is enforced at the door, authorization
-per tool is not. That is safe only because no write tool exists in this worktree's
-base (Task 003). **It must be completed before any deployment that exposes write
-tools.**
+- **Coverage.** Tools are registered across five modules, some inside loops over
+  a contract's keys (`WriteInputs`, `PlanWriteInputs`), some through
+  `registerAppTool` (which delegates to `registerTool` internally). Interception
+  catches all of them, including registration code that knows nothing about
+  authentication.
+- **The failure mode.** An unclassified tool throws **at registration time**, so
+  the server refuses to start rather than publishing a tool with no authority
+  requirement. A forgotten classification is a boot failure in development, not
+  an unauthenticated write path in production.
+
+`tests/auth-tool-access.test.ts` asks each server configuration which tools it
+actually publishes and asserts every one is classified — in both directions, so
+a stale entry for a deleted tool also fails. That test, not this document, is
+what keeps the table honest as tools are added.
+
+### The same tool can mean different things
+
+`log_workout_sets` against a user's Google tracker writes personal data and needs
+`arnold.write`. The identical tool against Task 004's **fixture** runtime touches
+process-local invented data owned by nobody. A name-keyed table cannot express
+that, so the runtime declares it: `syntheticWrites` reclassifies the write
+classes to `SYNTHETIC_SANDBOX` when the write runtime's mode is `fixture`.
+
+This cannot open a hole. The guard refuses `SYNTHETIC_SANDBOX` outright in
+`enforced` mode, so setting the flag wrongly **denies** writes rather than
+permitting them, and `ACCOUNT_MANAGEMENT` is never reclassified.
+
+### What an environment-driven deployment actually exposes
+
+Worth stating precisely, because it is easy to overestimate:
+
+The write tools (Task 004), plan write tools (Task 005) and onboarding tools
+(Task 006) are each registered **only when a runtime is injected**:
+`registerOnboardingTools` returns early without an `OnboardingService`,
+`registerWorkoutTools` returns early when logging is absent or `disabled`, and
+`registerPlanTools` returns early when plans are `disabled`.
+
+`createHttpApp` injects a runtime from the environment in exactly one case:
+`ARNOLD_WRITE_MODE=fixture` with no storage or Arnold source supplied, which
+yields `createFixtureLogging()` — synthetic data, no Google calls. Every other
+environment-driven configuration publishes **read tools only**.
+
+So the current exposure is: reads behind the bearer gate and the guard; writes
+reachable only under an explicitly synthetic runtime or an explicit injection in
+tests. Task 004's own guards still apply underneath (`production` write mode is
+rejected outright, and `test_sheet` demands an authenticated actor kind).
+
+### Known gap: scope refusals are not audited
+
+An under-scoped call is refused by the SDK's registered scope challenge _before_
+the handler runs. That is the protocol-correct behaviour — it answers with an
+`insufficient_scope` challenge the client can act on — but it means the handler
+never runs, so Arnold's own guard never sees the call and **emits no audit
+event**. Scope refusals are visible to the client and absent from the audit sink
+that §26 asks to monitor. Asserted in `tests/auth-http.test.ts` so it cannot be
+forgotten; closing it requires reporting the challenge path as well.
 
 ### Open mode
 
@@ -318,13 +381,13 @@ credential in a log line.
 
 ## 9. HTTP surface
 
-| Route                                         | Auth   | Status                          |
-| --------------------------------------------- | ------ | ------------------------------- |
-| `/.well-known/oauth-protected-resource[/mcp]` | public | implemented (`oidc` mode only)  |
-| `/.well-known/oauth-authorization-server`     | public | implemented (`oidc` mode only)  |
-| `/health`                                     | public | reports `auth` mode, no secrets |
-| `/mcp`                                        | bearer | implemented                     |
-| `/auth/google/*`                              | —      | **NOT IMPLEMENTED — 007-B**     |
+| Route                                                    | Auth   | Status                                                                             |
+| -------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------- |
+| `/.well-known/oauth-protected-resource[/mcp]`            | public | implemented (`oidc` mode only)                                                     |
+| `/.well-known/oauth-authorization-server`                | public | implemented (`oidc` mode only)                                                     |
+| `/health`                                                | public | reports `auth` mode, no secrets                                                    |
+| `/mcp`                                                   | bearer | implemented                                                                        |
+| `/auth/google/start` `/callback` `/status` `/disconnect` | bearer | **NOT WIRED.** `GoogleConnectionService` implements the logic; no route mounts it. |
 
 Discovery is mounted before everything else: an unauthenticated client must be able
 to read the protected-resource document in order to learn how to authenticate.
@@ -341,7 +404,7 @@ Task 007 §31 requires these levels to be kept apart. They are:
 
 | Level                     | Status                                                                                                 |
 | ------------------------- | ------------------------------------------------------------------------------------------------------ |
-| **Unit-verified**         | ✅ 136 tests in `tests/auth-*.test.ts`                                                                 |
+| **Unit-verified**         | ✅ 251 tests in `tests/auth-*.test.ts` and `tests/google-*.test.ts`                                    |
 | **Integration-verified**  | ✅ `tests/auth-http.test.ts` — real `createHttpApp`, real HTTP, real JWKS fetch from a loopback issuer |
 | **Staging-verified**      | ❌ **NOT VERIFIED.** No real authorization server has been configured or contacted.                    |
 | **ChatGPT-host-verified** | ❌ **NOT VERIFIED.** No ChatGPT client has connected to this build.                                    |
@@ -357,24 +420,36 @@ exercises Arnold's side of the protocol and proves nothing about any real provid
 1. **Choose and provision an authorization server.** Not chosen.
 2. **Confirm ChatGPT's client registration requirement** (CIMD vs DCR) against
    current OpenAI documentation.
-3. **Implement the PostgreSQL identity store** (007-D). `IDENTITY_STORE=postgres`
-   currently throws.
-4. Google OAuth (007-B), tracker provisioning (007-C), and the end-to-end journey
-   (007-E) — none implemented.
+3. **Mount the `/auth/google/*` routes.** The service exists; nothing exposes it.
+4. **Create and configure a Google Cloud project** — OAuth client, consent
+   screen, Drive and Sheets APIs, redirect URIs, test users. A deployment gate,
+   not a code task.
+5. **Implement the PostgreSQL identity store** (007-D). `IDENTITY_STORE=postgres`
+   currently throws, and the pending-authorization store is single-instance.
+6. **Move the onboarding→authenticated handoff into place** (007-A2). Task 006's
+   `oauthStateBinding()` is carried through the Google flow, but the step that
+   adopts a confirmed anonymous draft into a verified user does not exist.
+7. Tracker provisioning (007-C) and the end-to-end journey (007-E) — not started.
 
 ---
 
 ## 11. Test inventory
 
-| File                                | Tests | Covers                                                            |
-| ----------------------------------- | ----- | ----------------------------------------------------------------- |
-| `tests/auth-token-verifier.test.ts` | 45    | §29 authentication matrix, JWKS cache, JWT decoding               |
-| `tests/auth-isolation.test.ts`      | 32    | §17 multi-user isolation, access classes, per-call re-check       |
-| `tests/auth-config.test.ts`         | 26    | §25 fail-closed configuration                                     |
-| `tests/auth-discovery.test.ts`      | 20    | AS metadata validation, issuer spoofing, PKCE, registration mode  |
-| `tests/auth-http.test.ts`           | 13    | real HTTP: challenges, discovery documents, authenticated session |
+| File                                | Tests | Covers                                                           |
+| ----------------------------------- | ----- | ---------------------------------------------------------------- |
+| `tests/auth-token-verifier.test.ts` | 45    | §29 authentication matrix, JWKS cache, JWT decoding              |
+| `tests/google-oauth.test.ts`        | 48    | §8/§9/§10 OAuth flow, refresh, revocation, disconnect            |
+| `tests/google-credentials.test.ts`  | 40    | token encryption, AAD binding, rotation, scope policy            |
+| `tests/auth-isolation.test.ts`      | 32    | §17 multi-user isolation, access classes, per-call re-check      |
+| `tests/auth-config.test.ts`         | 26    | §25 fail-closed configuration                                    |
+| `tests/auth-tool-access.test.ts`    | 22    | every published tool is classified; guarded registration         |
+| `tests/auth-discovery.test.ts`      | 20    | AS metadata validation, issuer spoofing, PKCE, registration mode |
+| `tests/auth-http.test.ts`           | 16    | real HTTP: challenges, discovery, guarded tool calls             |
 
 Scripts: `npm run test:auth`, `npm run test:security`, `npm run test:integration`.
+
+Whole suite after the Tasks 004–006 merge: **1130 tests across 50 files**, with
+no regressions on either side.
 
 The §29 cases covered as _attacks_ rather than happy paths: `alg: none`, HS256
 signed with the public key, swapped claims under a valid signature, ES256 against

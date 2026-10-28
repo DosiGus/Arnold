@@ -23,6 +23,8 @@ import {
   filteredWorkouts,
 } from "../shared/calculations.js";
 import type { StorageAdapter } from "./storage.js";
+import { guardToolRegistrations } from "./auth/guarded-server.js";
+import type { ArnoldToolGuard } from "./auth/tool-guard.js";
 
 export const RESOURCE_URI = "ui://arnold/dashboard-v5.html";
 const readOnly = {
@@ -36,16 +38,23 @@ const result = (data: Record<string, unknown>, message: string) => ({
   structuredContent: data,
 });
 
-export function createArnoldMcpServer(storage: StorageAdapter, uiFile: string) {
+export function createArnoldMcpServer(
+  storage: StorageAdapter,
+  uiFile: string,
+  guard?: ArnoldToolGuard,
+) {
   const isDemo = storage.mode === "demo";
   const sourceLabel = isDemo
     ? "Synthetische Demo-Daten"
     : "Google Sheets · Trainingslog (lesend)";
   const readAnnotations = { ...readOnly, openWorldHint: !isDemo };
-  const server = new McpServer({
+  const bare = new McpServer({
     name: "arnold",
     version: "0.5.0",
   });
+  // Patched before any registration below, so every tool is classified and
+  // guarded — including the ones registered through registerAppTool.
+  const server = guard ? guardToolRegistrations(bare, guard) : bare;
   registerAppResource(
     server,
     "Arnold",

@@ -146,6 +146,23 @@ export class ArnoldToolGuard {
     access: ToolAccessClass,
     ctx: ServerContext,
   ): Promise<AuthenticatedArnoldContext | undefined> {
+    // Writes to synthetic demo data are allowed only where that data is all
+    // there is. In an enforcing deployment this class must not exist at all,
+    // so it is refused rather than quietly downgraded.
+    if (access === "SYNTHETIC_SANDBOX") {
+      if (this.mode !== "open")
+        throw new ArnoldAuthError(
+          "AUTH_REQUIRED",
+          `${tool} schreibt synthetische Demo-Daten und ist in einem authentifizierenden Betrieb nicht verfügbar.`,
+        );
+      return this.openModeContext;
+    }
+
+    // Task 006's setup flow authorizes itself with the session secret, so the
+    // Arnold token is not the credential for these calls. The onboarding
+    // service refuses the call if the secret is absent or wrong.
+    if (access === "ONBOARDING_PREVIEW") return undefined;
+
     if (!requiresAuthentication(access)) return undefined;
 
     if (this.mode === "open") {

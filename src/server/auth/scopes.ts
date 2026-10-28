@@ -40,11 +40,28 @@ export const ALL_ARNOLD_SCOPES: readonly ArnoldScope[] =
 /**
  * How much authority a tool needs.
  *
- * `PUBLIC` is the only class that may run without a token, and it may only
- * return information that is identical for every caller.
+ * Three classes run without an Arnold token, and each is narrow for a reason
+ * rather than being a convenience escape hatch:
+ *
+ * - `PUBLIC` may only return information identical for every caller.
+ *
+ * - `SYNTHETIC_SANDBOX` writes, but only to process-local synthetic demo data
+ *   with no user association. These are the Task 001–003 demo tools, which
+ *   exist only when storage is the synthetic JSON fixture. The guard refuses
+ *   this class outright in `enforced` mode, so it cannot become a way to write
+ *   without authentication in a real deployment.
+ *
+ * - `ONBOARDING_PREVIEW` is Task 006's deliberately pre-authentication setup
+ *   flow (§6's unauthenticated preview). Authorization is not absent here, it
+ *   is *delegated*: `OnboardingAccessControl` requires the 256-bit session
+ *   secret the setup was created with, and compares it in constant time. This
+ *   class says "the Arnold token is not the credential for this call", not
+ *   "there is no credential".
  */
 export const TOOL_ACCESS_CLASSES = [
   "PUBLIC",
+  "SYNTHETIC_SANDBOX",
+  "ONBOARDING_PREVIEW",
   "AUTHENTICATED_READ",
   "AUTHENTICATED_WRITE",
   "PLAN_WRITE",
@@ -62,15 +79,22 @@ export type ToolAccessClass = (typeof TOOL_ACCESS_CLASSES)[number];
 export const REQUIRED_SCOPES: Record<ToolAccessClass, readonly ArnoldScope[]> =
   {
     PUBLIC: [],
+    SYNTHETIC_SANDBOX: [],
+    ONBOARDING_PREVIEW: [],
     AUTHENTICATED_READ: [ARNOLD_SCOPES.read],
     AUTHENTICATED_WRITE: [ARNOLD_SCOPES.read, ARNOLD_SCOPES.write],
     PLAN_WRITE: [ARNOLD_SCOPES.read, ARNOLD_SCOPES.plan],
     ACCOUNT_MANAGEMENT: [ARNOLD_SCOPES.account],
   };
 
-/** Every class except `PUBLIC` requires a verified Arnold user. */
+/** Classes for which the Arnold access token is the credential. */
 export function requiresAuthentication(access: ToolAccessClass): boolean {
-  return access !== "PUBLIC";
+  return (
+    access === "AUTHENTICATED_READ" ||
+    access === "AUTHENTICATED_WRITE" ||
+    access === "PLAN_WRITE" ||
+    access === "ACCOUNT_MANAGEMENT"
+  );
 }
 
 /** Classes that may change stored user state. Used by audit and rate limits. */
@@ -78,7 +102,8 @@ export function isMutating(access: ToolAccessClass): boolean {
   return (
     access === "AUTHENTICATED_WRITE" ||
     access === "PLAN_WRITE" ||
-    access === "ACCOUNT_MANAGEMENT"
+    access === "ACCOUNT_MANAGEMENT" ||
+    access === "SYNTHETIC_SANDBOX"
   );
 }
 

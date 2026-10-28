@@ -1,6 +1,8 @@
 import { registerWorkoutTools } from "./mcp-workout.js";
 import { registerPlanTools } from "./mcp-plan.js";
 import { registerOnboardingTools } from "./mcp-onboarding.js";
+import { guardToolRegistrations } from "./auth/guarded-server.js";
+import type { ArnoldToolGuard } from "./auth/tool-guard.js";
 import type { TrainingPlanService } from "./plan/service.js";
 import type { OnboardingService } from "./onboarding/service.js";
 import type { WorkoutLoggingService } from "./workout/service.js";
@@ -186,8 +188,18 @@ export function createArnoldV2McpServer(
   actorContext?: unknown,
   plans?: TrainingPlanService,
   onboarding?: OnboardingService,
+  guard?: ArnoldToolGuard,
 ) {
-  const server = new McpServer({ name: "arnold", version: "0.5.0" });
+  const bare = new McpServer({ name: "arnold", version: "0.5.0" });
+  // Patched before any registration, so the tools registered here and the ones
+  // added by registerWorkoutTools / registerPlanTools / registerOnboardingTools
+  // are all classified and guarded. A fixture write runtime invents its own
+  // data, so its writes are sandbox writes rather than writes to a real user.
+  const server = guard
+    ? guardToolRegistrations(bare, guard, {
+        syntheticWrites: logging?.mode === "fixture",
+      })
+    : bare;
   const sourceLabel = source.label;
   const load = (): Promise<DatasetSnapshot> => source.load();
   const context = (snapshot: DatasetSnapshot) => ({

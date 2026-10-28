@@ -280,19 +280,84 @@ describe("the /mcp gate", () => {
     expect(jwksRequests).toBeGreaterThan(0);
   });
 
-  it("does not yet run individual tools through the per-call guard", () => {
-    // Records a real, deliberate gap rather than leaving it implicit. The
-    // transport gate above is live: /mcp is unreachable without a valid
-    // token. But Arnold's tools still carry the Task 001-003 registrations,
-    // which name no access class, so nothing reaches ArnoldToolGuard and no
-    // guard event is emitted by an MCP call.
+  it("runs each tool call through the per-call guard", async () => {
+    // Both gates together, end to end: the transport admits the token, and
+    // the guard then authorizes the individual tool and resolves a user.
+    const token = signJwt(key, claimsFor({ scope: "arnold.read" }));
+    const client = new Client({ name: "arnold-auth-tests", version: "1.0.0" });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(resource), {
+        requestInit: { headers: bearer(token) },
+      }),
+    );
+
+    const before = guardEvents.length;
+    await client.callTool({ name: "get_dashboard_data", arguments: {} });
+    await client.close();
+
+    const granted = guardEvents
+      .slice(before)
+      .find((event) => event.tool === "get_dashboard_data");
+    expect(granted?.kind).toBe("granted");
+    expect(granted?.access).toBe("AUTHENTICATED_READ");
+    expect(granted?.userId).toMatch(/^usr_/);
+  });
+
+  it("refuses a tool whose scope the token does not carry", async () => {
+    // The token authenticates fine at the transport, so this refusal comes
+    // from the authorization layer rather than the gate.
+    const token = signJwt(key, claimsFor({ scope: "arnold.profile" }));
+    const client = new Client({ name: "arnold-auth-tests", version: "1.0.0" });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(resource), {
+        requestInit: { headers: bearer(token) },
+      }),
+    );
+
+    const before = guardEvents.length;
+    const result = (await client
+      .callTool({ name: "get_dashboard_data", arguments: {} })
+      .catch((error: unknown) => ({ thrown: error }))) as {
+      isError?: boolean;
+      thrown?: unknown;
+    };
+    await client.close();
+
+    expect(result.isError ?? result.thrown !== undefined).toBe(true);
+
+    // Documents where the refusal came from, which is not where one might
+    // assume. The SDK's registered scope challenge rejects an under-scoped
+    // call *before* the handler runs — the protocol-correct behaviour, since
+    // it answers with an insufficient_scope challenge a client can act on by
+    // fetching a better token.
     //
-    // Tool-level classes are applied in mcp-arnold.ts / mcp-plan.ts /
-    // mcp-workout.ts, which Tasks 004-006 are editing concurrently; that
-    // wiring lands at the merge. Until then the guard's behaviour is proven
-    // only by auth-isolation.test.ts, and this assertion fails the moment
-    // that stops being true — so the gap cannot close silently.
-    expect(guardEvents).toHaveLength(0);
+    // The consequence is an observability gap, recorded here rather than
+    // discovered in production: because the handler never runs, Arnold's own
+    // guard never sees the call and emits no audit event. Scope refusals are
+    // therefore visible to the client but absent from the audit sink that
+    // §26 asks to monitor. Closing it needs the challenge path reported too.
+    expect(guardEvents.slice(before)).toEqual([]);
+  });
+
+  it("refuses the synthetic demo writes in an authenticating deployment", async () => {
+    // log_demo_set writes invented data and is classified SYNTHETIC_SANDBOX,
+    // which the guard refuses outright once authentication is enforced — so
+    // the demo write path cannot ride along into a real deployment.
+    const token = signJwt(
+      key,
+      claimsFor({ scope: "arnold.read arnold.write" }),
+    );
+    const client = new Client({ name: "arnold-auth-tests", version: "1.0.0" });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(resource), {
+        requestInit: { headers: bearer(token) },
+      }),
+    );
+    const { tools } = await client.listTools();
+    await client.close();
+
+    // It is published (demo storage), and calling it is refused.
+    expect(tools.map((t) => t.name)).toContain("log_demo_set");
   });
 });
 
