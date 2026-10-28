@@ -173,3 +173,38 @@ Architektur, Tool-Verträge und Fehlerbehandlung:
 [ARNOLD-WRITE-CONTRACT](docs/ARNOLD-WRITE-CONTRACT.md).
 Abnahme und tatsächliche Prüfergebnisse:
 [Task-004-Bericht](docs/ARNOLD-TASK-004-COMPLETION-REPORT.md).
+
+### Task 006: geführte Einrichtung (Onboarding)
+
+Die Einrichtung ist eine eigene MCP-App neben dem Dashboard. ChatGPT nimmt
+natürliche Sprache auf, die Oberfläche übernimmt die strukturierten Schritte,
+und beide arbeiten auf **einer** serverseitigen Einrichtungssitzung.
+
+Zum lokalen Testen nach `npm run build`:
+
+```bash
+STORAGE_MODE=arnold_fixture ARNOLD_WRITE_MODE=fixture PORT=8795 npm start
+```
+
+Öffne `http://127.0.0.1:8795/preview?onboarding=1`. In ChatGPT öffnet
+`show_arnold_onboarding` dieselbe Oberfläche.
+
+Ablauf: sechs Pflichtangaben (Ziel, Erfahrung, Tage pro Woche, Dauer je
+Einheit, Umgebung, Ausgangssituation) → Planvorschlag durch ChatGPT auf Basis
+von `get_onboarding_brief` → Bearbeitung im **unveränderten** Planeditor aus
+Task 005 → ausdrückliche Bestätigung genau einer Planrevision → Zustand
+`AWAITING_GOOGLE_CONNECTION`.
+
+Grenzen dieses Schritts: Es wird **kein** Google-Konto verbunden, keine
+persönliche Datei angelegt, kein Token gespeichert und kein Plan in einer
+Trainingsdatei aktiviert. Der Status `COMPLETED` ist nicht erreichbar. Eine
+Einrichtungssitzung ist anonym, läuft nach 24 Stunden ab und ist **kein**
+Nutzerkonto; eine Sitzungs-ID allein genügt nicht als Berechtigung. Eine
+Wiederaufnahme über Geräte hinweg benötigt Task 007.
+
+Domain-Modell, Zustandsmaschine, Tool-Verträge und Sicherheitsregeln:
+[ARNOLD-ONBOARDING-CONTRACT](docs/ARNOLD-ONBOARDING-CONTRACT.md).
+Anleitung für KI-Agents:
+[ARNOLD-ONBOARDING-CONVERSATION](docs/ARNOLD-ONBOARDING-CONVERSATION.md).
+Abnahme und tatsächliche Prüfergebnisse:
+[Task-006-Bericht](docs/ARNOLD-TASK-006-COMPLETION-REPORT.md).
