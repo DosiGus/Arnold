@@ -26,6 +26,7 @@ import type { McpServer, ServerContext } from "@modelcontextprotocol/server";
 import { requireToolAccess } from "./tool-access.js";
 import { scopeChallengeFor, type ArnoldToolGuard } from "./tool-guard.js";
 import type { AuthenticatedArnoldContext } from "./identity.js";
+import { AsyncLocalStorage } from "node:async_hooks";
 
 /**
  * The verified context for the call currently being handled.
@@ -35,18 +36,25 @@ import type { AuthenticatedArnoldContext } from "./identity.js";
  * in Tasks 001–006, the guard records the resolved context here for the
  * duration of the call and `currentArnoldContext()` reads it back.
  *
- * This is safe in Node's single-threaded model because it is written
- * immediately before awaiting the handler and cleared immediately after, with
- * no await in between — so no two handlers can observe each other's value.
- * It is nonetheless a stopgap: 007-C threads the context explicitly into the
- * provisioning and tracker-resolution paths, where it has to be an argument
- * because those operations span several awaits.
+ * AsyncLocalStorage carries that context across awaits without sharing it
+ * with another request. A module-level variable is unsafe even on one Node
+ * thread: another handler can run while the first is awaiting storage.
  */
-let activeContext: AuthenticatedArnoldContext | undefined;
+const activeContext = new AsyncLocalStorage<
+  AuthenticatedArnoldContext | undefined
+>();
 
 /** The verified user for the in-flight tool call, if the class provides one. */
 export function currentArnoldContext(): AuthenticatedArnoldContext | undefined {
-  return activeContext;
+  return activeContext.getStore();
+}
+
+/** Trusted HTTP callback paths use the same isolated context as MCP handlers. */
+export function withArnoldContext<T>(
+  context: AuthenticatedArnoldContext,
+  action: () => T,
+): T {
+  return activeContext.run(context, action);
 }
 
 type RegisterTool = McpServer["registerTool"];
@@ -68,6 +76,7 @@ export interface GuardRegistrationOptions {
    * them. `ACCOUNT_MANAGEMENT` is never reclassified.
    */
   syntheticWrites?: boolean;
+  authenticatedOnboarding?: boolean;
 }
 
 /**
@@ -94,7 +103,9 @@ export function guardToolRegistrations(
       options.syntheticWrites &&
       (declared === "AUTHENTICATED_WRITE" || declared === "PLAN_WRITE")
         ? "SYNTHETIC_SANDBOX"
-        : declared;
+        : options.authenticatedOnboarding && declared === "ONBOARDING_PREVIEW"
+          ? "PLAN_WRITE"
+          : declared;
 
     const challenge = scopeChallengeFor(access);
     const guardedConfig = {
@@ -113,13 +124,7 @@ export function guardToolRegistrations(
     const guardedHandler = async (...args: unknown[]) => {
       const ctx = args[args.length - 1] as ServerContext;
       const context = await guard.authorize(name, access, ctx);
-      const previous = activeContext;
-      activeContext = context;
-      try {
-        return await handler(...args);
-      } finally {
-        activeContext = previous;
-      }
+      return activeContext.run(context, () => handler(...args));
     };
 
     return (original as unknown as (...a: unknown[]) => unknown)(

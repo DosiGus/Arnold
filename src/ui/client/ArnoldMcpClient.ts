@@ -94,6 +94,20 @@ export class ArnoldMcpClient {
   /** Held in memory so an opaque MCP App origin without storage still works. */
   private onboardingClaim?: OnboardingClaim;
   constructor(private readonly client: ArnoldClient) {}
+  async connectGoogle() {
+    const result = z
+      .object({ authorization_url: z.string().url() })
+      .parse(await this.client.call("connect_google_account", this.claim()));
+    await this.client.openExternal(result.authorization_url);
+  }
+  async finishSetup() {
+    return z
+      .object({ spreadsheet_url: z.string().url() })
+      .parse(await this.client.call("finish_arnold_setup", this.claim()));
+  }
+  async openDashboard() {
+    await this.client.call("show_arnold_dashboard");
+  }
   getPending(tracker: string) {
     let saved = this.pendingWrites.get(tracker);
     try {

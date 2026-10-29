@@ -50,7 +50,7 @@ const nonnegativeInt = z.number().int().nonnegative();
  *
  * Bounded and stored verbatim, but never interpreted: the brief labels it as
  * user data so a model reading it treats it as a preference, not as an
- * instruction to the server. See `docs/ARNOLD-ONBOARDING-CONVERSATION.md`.
+ * instruction to the server.
  */
 const freeText = z.string().min(1).max(600);
 const label = z.string().min(1).max(120);
@@ -463,7 +463,7 @@ export const OnboardingHandoffSchema = z.strictObject({
   /** Why the handoff is not ready, when it is not. */
   blocked_reason: z.string().nullable(),
   /** Always true in Task 006: nothing has been written to any Google file. */
-  google_connection_pending: z.literal(true),
+  google_connection_pending: z.boolean(),
 });
 export type OnboardingHandoff = z.infer<typeof OnboardingHandoffSchema>;
 
@@ -582,6 +582,7 @@ export const OnboardingStateSchema = z.strictObject({
   allowed_events: z.array(z.string()),
   /** fixture while there is no verified identity; production needs Task 007. */
   mode: z.enum(["fixture", "production"]),
+  google_connection_available: z.boolean().default(false),
   /** False when this deployment cannot write a plan draft at all. */
   can_write_plan: z.boolean(),
   /**

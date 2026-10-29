@@ -13,6 +13,11 @@ export default defineConfig({
   },
   webServer: [
     {
+      command: "npx tsx tests/fixtures/connected-server.ts",
+      url: "http://127.0.0.1:8803/health",
+      reuseExistingServer: false,
+    },
+    {
       command: "node dist/server/main.js",
       url: "http://127.0.0.1:8790/health",
       reuseExistingServer: false,

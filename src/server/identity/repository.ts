@@ -239,9 +239,10 @@ export class FileIdentityRepository extends BaseIdentityRepository {
     change: (state: IdentityState) => T | Promise<T>,
   ): Promise<T> {
     const result = this.queue.then(async () => {
-      const state = await this.read();
+      const state = structuredClone(await this.read());
       const value = await change(state);
       await this.persist(state);
+      this.cache = state;
       return value;
     });
     this.queue = result.catch(() => undefined);
@@ -261,6 +262,11 @@ function normalizeState(parsed: unknown): IdentityState {
   if (parsed === null || typeof parsed !== "object")
     throw new Error("Identitätsspeicher ist kein Objekt.");
   const candidate = parsed as Partial<IdentityState>;
+  if (
+    !Array.isArray(candidate.users) ||
+    !Array.isArray(candidate.identity_connections)
+  )
+    throw new Error("Identitätsspeicher enthält keine gültigen Kontotabellen.");
   return {
     users: Array.isArray(candidate.users) ? candidate.users : [],
     identity_connections: Array.isArray(candidate.identity_connections)

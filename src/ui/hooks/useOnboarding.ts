@@ -352,6 +352,26 @@ export function useOnboarding(
   }, [adopt, client]);
 
   const session = state?.session;
+  const connectGoogle = async () => {
+    setError("");
+    try {
+      await client.connectGoogle();
+      setMessage(
+        "Google-Freigabe im geöffneten Fenster abschließen. Anschließend hier aktualisieren.",
+      );
+    } catch (error) {
+      setError((error as Error).message);
+    }
+  };
+  const finishSetup = async () => {
+    setError("");
+    try {
+      await client.finishSetup();
+      await reload(true);
+    } catch (error) {
+      setError((error as Error).message);
+    }
+  };
   const expired = session?.status === "EXPIRED";
   const cancelled = session?.status === "CANCELLED";
 
@@ -380,6 +400,8 @@ export function useOnboarding(
     cancel,
     restart,
     reload,
+    connectGoogle,
+    finishSetup,
     clearMessage: () => setMessage(""),
   };
 }

@@ -423,11 +423,13 @@ export function WelcomeStep({
   busy,
   resumed,
   canWritePlan,
+  googleAvailable = false,
 }: {
   onStart: () => void;
   busy: boolean;
   resumed: boolean;
   canWritePlan: boolean;
+  googleAvailable?: boolean;
 }) {
   return (
     <OnboardingLayout
@@ -459,13 +461,15 @@ export function WelcomeStep({
       </ol>
       {/* Said up front rather than discovered at the end: the Google step is
           genuinely not available yet, and the welcome screen must not imply it. */}
-      <OnboardingNotice tone="info" title="Was Arnold jetzt noch nicht tut">
-        <p>
-          Das Verbinden deines Google-Kontos und das Anlegen deiner persönlichen
-          Trainingsdatei folgen im nächsten Entwicklungsschritt. Bis dahin wird
-          kein Google-Konto verbunden und keine Datei erstellt.
-        </p>
-      </OnboardingNotice>
+      {!googleAvailable && (
+        <OnboardingNotice tone="info" title="Was Arnold jetzt noch nicht tut">
+          <p>
+            Das Verbinden deines Google-Kontos und das Anlegen deiner
+            persönlichen Trainingsdatei folgen im nächsten Entwicklungsschritt.
+            Bis dahin wird kein Google-Konto verbunden und keine Datei erstellt.
+          </p>
+        </OnboardingNotice>
+      )}
       {!canWritePlan && (
         <OnboardingNotice tone="warning" title="Eingeschränkte Umgebung">
           <p>
@@ -1157,6 +1161,9 @@ export function GoogleConnectionHandoffStep({
   exerciseCount,
   onRevise,
   busy,
+  available = false,
+  onConnect,
+  onRefresh,
 }: {
   planName: string;
   revision: number;
@@ -1164,6 +1171,9 @@ export function GoogleConnectionHandoffStep({
   exerciseCount: number;
   onRevise: () => void;
   busy: boolean;
+  available?: boolean;
+  onConnect?: () => void;
+  onRefresh?: () => void;
 }) {
   return (
     <OnboardingLayout
@@ -1183,25 +1193,52 @@ export function GoogleConnectionHandoffStep({
           </p>
         </div>
       </div>
-      <OnboardingNotice tone="info" title="Noch nicht verfügbar">
-        <p>
-          Die Google-Verbindung ist noch nicht implementiert. Es wurde kein
-          Google-Konto verbunden, keine Datei angelegt und kein Plan in einer
-          Trainingsdatei aktiviert. Dein bestätigter Plan ist gespeichert und
-          wird für diesen Schritt übernommen.
-        </p>
-      </OnboardingNotice>
+      {available ? (
+        <OnboardingNotice tone="info" title="Deine eigene Trainingsdatei">
+          <p>
+            Gib Arnold bei Google Zugriff auf die von Arnold erstellte Datei.
+            Nach erfolgreicher Prüfung wird dein bestätigter Plan dort
+            aktiviert. Deine übrigen Drive-Dateien bleiben außerhalb dieser
+            Freigabe.
+          </p>
+        </OnboardingNotice>
+      ) : (
+        <OnboardingNotice tone="info" title="Noch nicht verfügbar">
+          <p>
+            Die Google-Verbindung ist noch nicht implementiert. Es wurde kein
+            Google-Konto verbunden, keine Datei angelegt und kein Plan in einer
+            Trainingsdatei aktiviert. Dein bestätigter Plan ist gespeichert und
+            wird für diesen Schritt übernommen.
+          </p>
+        </OnboardingNotice>
+      )}
       <div className="onb-actions">
         <button
           type="button"
           className="primary"
-          disabled
-          aria-disabled="true"
-          title="Diese Funktion folgt im nächsten Entwicklungsschritt."
+          disabled={!available || busy}
+          aria-disabled={!available || busy}
+          onClick={onConnect}
+          title={
+            available
+              ? "Google-Freigabe öffnen"
+              : "Diese Funktion folgt im nächsten Entwicklungsschritt."
+          }
         >
           Google-Konto verbinden
         </button>
-        <span className="onb-badge">Nächster Entwicklungsschritt</span>
+        {available ? (
+          <button
+            type="button"
+            className="secondary"
+            onClick={onRefresh}
+            disabled={busy}
+          >
+            Einrichtung prüfen und abschließen
+          </button>
+        ) : (
+          <span className="onb-badge">Nächster Entwicklungsschritt</span>
+        )}
       </div>
       <div className="onb-actions">
         <button

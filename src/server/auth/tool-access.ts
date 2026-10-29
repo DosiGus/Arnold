@@ -29,6 +29,10 @@ import type { ToolAccessClass } from "./scopes.js";
  * to be configured.
  */
 export const TOOL_ACCESS: Readonly<Record<string, ToolAccessClass>> = {
+  connect_google_account: "ACCOUNT_MANAGEMENT",
+  finish_arnold_setup: "ACCOUNT_MANAGEMENT",
+  get_google_connection: "ACCOUNT_MANAGEMENT",
+  disconnect_google_account: "ACCOUNT_MANAGEMENT",
   // ── mcp.ts — the Task 001–003 v1 surface (demo / read-only Sheets) ──
   show_arnold_dashboard: "AUTHENTICATED_READ",
   get_dashboard_data: "AUTHENTICATED_READ",

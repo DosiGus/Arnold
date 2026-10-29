@@ -168,7 +168,13 @@ export const WorkoutContextSchema = z.strictObject({
   exercises: z.array(ArnoldExerciseSchema),
   plans: z.array(ArnoldPlanVersionSchema),
   plan_items: z.array(ArnoldPlanItemSchema),
-  write_mode: z.enum(["disabled", "fixture", "test_sheet", "production"]),
+  write_mode: z.enum([
+    "disabled",
+    "fixture",
+    "test_sheet",
+    "connected",
+    "production",
+  ]),
   can_write: z.boolean(),
   can_correct_completed: z.boolean(),
 });

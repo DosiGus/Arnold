@@ -148,6 +148,24 @@ export function OnboardingView({
       </div>
     );
 
+  if (session.status === "COMPLETED")
+    return (
+      <div className="onb-shell">
+        <OnboardingLayout
+          title="Deine Einrichtung ist abgeschlossen."
+          lead="Google ist verbunden. Dein bestätigter Trainingsplan liegt in deiner persönlichen Trainingsdatei."
+        >
+          <button
+            type="button"
+            className="primary"
+            onClick={() => void client.openDashboard()}
+          >
+            Zum Training
+          </button>
+        </OnboardingLayout>
+      </div>
+    );
+
   const profile = session.profile;
   const mark = (fields: readonly string[]) =>
     setTouched((previous) => ({
@@ -222,6 +240,9 @@ export function OnboardingView({
             sessionCount={state.plan.session_count}
             exerciseCount={state.plan.exercise_count}
             onRevise={() => void onb.revisePlan()}
+            available={state.google_connection_available}
+            onConnect={() => void onb.connectGoogle()}
+            onRefresh={() => void onb.finishSetup()}
             busy={onb.busy}
           />
         </div>
@@ -350,6 +371,7 @@ export function OnboardingView({
           <WelcomeStep
             resumed={resumed || progress.answered_required > 0}
             canWritePlan={state.can_write_plan}
+            googleAvailable={state.google_connection_available}
             busy={onb.busy}
             onStart={() => onb.goToStep("goal")}
           />

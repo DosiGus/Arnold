@@ -111,8 +111,10 @@ const ok = (data: Record<string, unknown>, text: string) => ({
 function summarize(state: OnboardingState): string {
   const { session, progress, handoff } = state;
   const where = `${STATUS_LABEL[session.status]} · Schritt "${STEP_LABEL[session.current_step]}"`;
+  if (session.status === "COMPLETED")
+    return "Die Einrichtung ist abgeschlossen. Deine persönliche Google-Trainingsdatei wurde geprüft und der bestätigte Plan übernommen.";
   if (session.status === "AWAITING_GOOGLE_CONNECTION")
-    return `${where}. Der Trainingsplan ist bestätigt und für die Einrichtung freigegeben. Die Google-Verbindung und das Anlegen der persönlichen Trainingsdatei sind noch nicht verfügbar.`;
+    return `${where}. Der Trainingsplan ist bestätigt und für die Einrichtung freigegeben. ${state.google_connection_available ? "Verbinde jetzt Google über connect_google_account. Erst nach Freigabe und Dateiprüfung ist die Einrichtung abgeschlossen." : "Die Google-Verbindung und das Anlegen der persönlichen Trainingsdatei sind in dieser Umgebung noch nicht verfügbar."}`;
   if (handoff.status === "superseded")
     return `${where}. ${handoff.blocked_reason}`;
   if (session.status === "REVIEWING_PLAN" && state.plan)
@@ -228,7 +230,9 @@ export function registerOnboardingTools(
               source: {
                 label: "Arnold · Einrichtung",
                 description:
-                  "Gespeicherter Einrichtungsstand. Es wurde noch keine Google-Datei angelegt.",
+                  state.session.status === "COMPLETED"
+                    ? "Abgeschlossene Einrichtung mit persönlicher Google-Trainingsdatei."
+                    : "Gespeicherter Einrichtungsstand. Es wurde noch keine Google-Datei angelegt.",
                 schema_version: ONBOARDING_SCHEMA_VERSION,
               },
             },
@@ -450,7 +454,7 @@ export function registerOnboardingTools(
         return ok(
           result,
           result.handoff.status === "ready_for_google_connection"
-            ? `Der Trainingsplan ist bestätigt und für die Einrichtung freigegeben (Planversion ${result.handoff.confirmed_plan_version_id}, Revision ${result.handoff.confirmed_plan_revision}). Die Google-Verbindung und das Anlegen der persönlichen Trainingsdatei folgen im nächsten Entwicklungsschritt; bisher wurde keine Google-Datei erstellt.`
+            ? `Der Trainingsplan ist bestätigt und für die Einrichtung freigegeben (Planversion ${result.handoff.confirmed_plan_version_id}, Revision ${result.handoff.confirmed_plan_revision}). ${result.state.google_connection_available ? "Google kann jetzt über connect_google_account verbunden werden." : "Die Google-Verbindung ist in dieser Umgebung nicht verfügbar; bisher wurde keine Google-Datei erstellt."}`
             : `Noch nicht übergabebereit: ${result.handoff.blocked_reason}`,
         );
       } catch (error) {

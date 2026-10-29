@@ -120,6 +120,8 @@ export interface StartConnectionInput {
 }
 
 export interface CompleteConnectionInput {
+  /** A provisioned tracker stays bound to its original Google account. */
+  expectedGoogleSubject?: string;
   state: string;
   code?: string;
   /** Google's `error` parameter, when the user declined or it failed. */
@@ -221,7 +223,6 @@ export class GoogleConnectionService {
 
     if (
       pending.onboardingBinding !== undefined &&
-      input.expectedOnboardingBinding !== undefined &&
       pending.onboardingBinding !== input.expectedOnboardingBinding
     ) {
       // The confirmed plan changed between starting and finishing the flow.
@@ -278,6 +279,14 @@ export class GoogleConnectionService {
     });
 
     const existing = await this.options.repository.findByUser(context.userId);
+    if (
+      input.expectedGoogleSubject &&
+      input.expectedGoogleSubject !== identity.subject
+    )
+      throw new GoogleConnectionError(
+        "GOOGLE_ACCOUNT_CHANGE_REQUIRES_CONFIRMATION",
+        "Bitte dasselbe Google-Konto verbinden, dem deine Trainingsdatei gehört.",
+      );
     if (
       existing &&
       existing.google_subject !== identity.subject &&
@@ -368,6 +377,11 @@ export class GoogleConnectionService {
     });
     this.refreshes.set(context.userId, refresh);
     return refresh;
+  }
+
+  /** A definite Google 401 invalidates only this user's cached access token. */
+  invalidateAccessToken(context: AuthenticatedArnoldContext): void {
+    this.accessTokens.delete(context.userId);
   }
 
   private async performRefresh(

@@ -23,8 +23,7 @@
  *
  * Note for maintainers: `WorkoutLoggingService` still carries its own inline
  * copy of this sequence. Both are kept in step deliberately; folding the
- * workout service onto this runner is a tracked follow-up, see
- * docs/ARNOLD-PLAN-CONTRACT.md.
+ * workout service onto this runner is a tracked follow-up.
  */
 import {
   ArnoldDatasetSchema,

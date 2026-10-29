@@ -33,7 +33,8 @@ export class WriteError extends Error {
     super(message);
   }
 }
-export type WriteMode = "disabled" | "fixture" | "test_sheet" | "production";
+export type WriteMode =
+  "disabled" | "fixture" | "test_sheet" | "connected" | "production";
 export type Permission = "write" | "correct_completed";
 export interface Actor {
   subject: string;
@@ -200,6 +201,7 @@ export const AuditEventSchema = z.object({
     "ONBOARDING_PLAN_REVISION_REQUESTED",
     "ONBOARDING_CONFIRMATION_INVALIDATED",
     "ONBOARDING_HANDOFF_PREPARED",
+    "ONBOARDING_COMPLETED",
     "ONBOARDING_CANCELLED",
     "ONBOARDING_EXPIRED",
   ]),
@@ -321,7 +323,7 @@ export class FileOperationLedger implements OperationLedger {
   }
 }
 export interface ArnoldWriteRepository {
-  readonly kind: "fixture" | "test_sheet";
+  readonly kind: "fixture" | "test_sheet" | "connected";
   read(): Promise<ArnoldDataset>;
   /** One logical atomic batch. Unknown outcomes must throw COMMIT_STATUS_UNKNOWN. */
   apply(changes: readonly EntityChange[]): Promise<void>;
