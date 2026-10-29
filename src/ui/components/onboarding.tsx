@@ -14,6 +14,7 @@
  * keeps a later translation a matter of swapping those maps.
  */
 import type { ReactNode } from "react";
+import strengthSculpture from "../assets/strength-sculpture.webp?inline";
 import { useId, useState } from "react";
 import {
   AlertTriangle,
@@ -23,6 +24,7 @@ import {
   Info,
   LoaderCircle,
   Pencil,
+  Orbit,
   RefreshCw,
   Sparkles,
 } from "lucide-react";
@@ -75,6 +77,11 @@ export function OnboardingLayout({
     // A <section>, so the step header below is an ordinary header rather than a
     // second page banner — a <header> in a plain <div> maps to role="banner".
     <section className="onb" aria-label={title}>
+      <div className="onb-brand">
+        <Orbit size={24} strokeWidth={1.25} aria-hidden="true" />
+        <span>arnold</span>
+        <span className="source-badge">Einrichtung</span>
+      </div>
       {progress && <OnboardingProgressBar progress={progress} />}
       <header className="onb-head">
         {onBack && (
@@ -122,7 +129,7 @@ export function OnboardingProgressBar({
       >
         <span style={{ width: `${progress.percent}%` }} />
       </div>
-      <ol className="onb-steps">
+      <ol className="onb-steps visually-hidden">
         {PROFILE_STEPS.map((step) => (
           <li
             key={step}
@@ -145,8 +152,8 @@ export function OnboardingProgressBar({
       </ol>
       <p className="onb-progress-text">
         {progress.profile_complete
-          ? "Alle Pflichtangaben sind erfasst."
-          : `${progress.answered_required} von ${progress.total_required} Pflichtangaben erfasst.`}
+          ? "Angaben vollständig."
+          : `${progress.answered_required} / ${progress.total_required} Angaben`}
       </p>
     </div>
   );
@@ -216,10 +223,12 @@ export function ChoiceGroup<T extends string | number>({
                    a storage key, and without this a screen reader announces
                    "muscle_gain" instead of "Muskelaufbau". */
                 aria-label={option.label}
-                aria-describedby={option.hint ? hintId : undefined}
+                aria-describedby={
+                  columns === "compact" && option.hint ? hintId : undefined
+                }
               />
               <span className="onb-choice-label">{option.label}</span>
-              {option.hint && (
+              {columns === "compact" && option.hint && (
                 <span className="onb-choice-hint" id={hintId}>
                   {option.hint}
                 </span>
@@ -434,41 +443,27 @@ export function WelcomeStep({
   return (
     <OnboardingLayout
       title="Willkommen bei Arnold"
-      lead="Dein KI-gestützter Trainingsbegleiter. In wenigen Minuten hast du einen Trainingsplan, der zu dir passt."
+      lead="Dein Training. In deinem Rhythmus."
     >
+      <div className="onb-welcome-visual" aria-hidden="true">
+        <span>Dein Moment.</span>
+        <img src={strengthSculpture} alt="" draggable={false} />
+      </div>
       <ol className="onb-intro">
         <li>
-          <strong>Deine Angaben</strong>
-          <span>
-            Ziel, Erfahrung und wie viel Zeit du fürs Training hast. Sechs kurze
-            Fragen.
-          </span>
+          <strong>Dein Ziel</strong>
         </li>
         <li>
-          <strong>Dein Planvorschlag</strong>
-          <span>
-            Arnold erstellt daraus im Chat einen Trainingsplan – oder übernimmt
-            deinen bestehenden.
-          </span>
+          <strong>Dein Plan</strong>
         </li>
         <li>
-          <strong>Deine Entscheidung</strong>
-          <span>
-            Du bearbeitest den Plan, bis er passt, und bestätigst ihn
-            anschließend selbst.
-          </span>
+          <strong>Dein Training</strong>
         </li>
       </ol>
-      {/* Said up front rather than discovered at the end: the Google step is
-          genuinely not available yet, and the welcome screen must not imply it. */}
       {!googleAvailable && (
-        <OnboardingNotice tone="info" title="Was Arnold jetzt noch nicht tut">
-          <p>
-            Das Verbinden deines Google-Kontos und das Anlegen deiner
-            persönlichen Trainingsdatei folgen im nächsten Entwicklungsschritt.
-            Bis dahin wird kein Google-Konto verbunden und keine Datei erstellt.
-          </p>
-        </OnboardingNotice>
+        <p className="onb-note">
+          Google-Verbindung nicht verfügbar. Es wird keine Datei erstellt.
+        </p>
       )}
       {!canWritePlan && (
         <OnboardingNotice tone="warning" title="Eingeschränkte Umgebung">
@@ -558,7 +553,6 @@ export function GoalStep({
   return (
     <OnboardingLayout
       title="Was möchtest du erreichen?"
-      lead="Dein Ziel und deine Erfahrung bestimmen, wie dein Plan aufgebaut wird."
       footer={
         <button
           type="button"
@@ -624,7 +618,6 @@ export function AvailabilityStep({
   return (
     <OnboardingLayout
       title="Wie sieht dein Trainingsalltag aus?"
-      lead="Ein Plan hilft nur, wenn er in deine Woche passt."
       onBack={onBack}
       footer={
         <button
@@ -713,7 +706,6 @@ export function PreferencesStep({
   return (
     <OnboardingLayout
       title="Hast du eigene Vorlieben?"
-      lead="Nur die erste Frage ist nötig. Alles andere kannst du überspringen und später ergänzen."
       onBack={onBack}
       footer={
         <>
@@ -908,7 +900,6 @@ export function ProfileSummaryStep({
   return (
     <OnboardingLayout
       title="Passt das so?"
-      lead="Prüfe deine Angaben. Du kannst jede Zeile ändern."
       progress={progress}
       onBack={onBack}
       footer={
@@ -1178,7 +1169,7 @@ export function GoogleConnectionHandoffStep({
   return (
     <OnboardingLayout
       title="Dein Trainingsplan ist bereit."
-      lead={`${planName} · ${sessionCount} Trainingseinheiten · ${exerciseCount} Übungen · bestätigte Revision ${revision}`}
+      lead={`${planName} · ${sessionCount} Trainingseinheiten · ${exerciseCount} Übungen`}
     >
       <div className="onb-ready" role="status">
         <span className="onb-ready-icon" aria-hidden="true">

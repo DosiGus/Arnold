@@ -182,39 +182,35 @@ export function TrainingPlanEditorView({
     <div className="plan-editor">
       {/* The status line is the single place that reports what the screen is
           doing, so a saved change is never implied by the UI alone. */}
-      <div className="plan-statusbar" role="status" aria-live="polite">
-        <span className={`plan-state-chip ${state.toLowerCase()}`}>
-          {state === "ACTIVATION_CONFIRMED" ? (
-            <CheckCircle2 size={14} aria-hidden="true" />
-          ) : state === "CONFLICT" ||
-            state === "ERROR" ||
-            state === "DRAFT_INVALID" ? (
-            <AlertTriangle size={14} aria-hidden="true" />
-          ) : (
-            <Info size={14} aria-hidden="true" />
-          )}
-          {PLAN_STATE_TEXT[state]}
-        </span>
-        {plan && (
-          <span className="plan-hint">
-            {plan.name} · Version {plan.version_no} · Revision{" "}
-            {plan.row_revision}
+      {state !== "VIEWING_ACTIVE" && (
+        <div className="plan-statusbar" role="status" aria-live="polite">
+          <span className={`plan-state-chip ${state.toLowerCase()}`}>
+            {state === "ACTIVATION_CONFIRMED" ? (
+              <CheckCircle2 size={14} aria-hidden="true" />
+            ) : state === "CONFLICT" ||
+              state === "ERROR" ||
+              state === "DRAFT_INVALID" ? (
+              <AlertTriangle size={14} aria-hidden="true" />
+            ) : (
+              <Info size={14} aria-hidden="true" />
+            )}
+            {PLAN_STATE_TEXT[state]}
           </span>
-        )}
-        <button
-          type="button"
-          className="secondary"
-          disabled={busy}
-          onClick={() => editor.reload()}
-        >
-          <RefreshCw
-            size={14}
-            className={busy ? "spin" : ""}
-            aria-hidden="true"
-          />
-          Neu laden
-        </button>
-      </div>
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy}
+            onClick={() => editor.reload()}
+          >
+            <RefreshCw
+              size={14}
+              className={busy ? "spin" : ""}
+              aria-hidden="true"
+            />
+            Neu laden
+          </button>
+        </div>
+      )}
 
       {editor.message && (
         <p className="plan-notice success" role="status">
@@ -268,21 +264,10 @@ export function TrainingPlanEditorView({
         </p>
       )}
 
-      {/* The explanation the task asks for, shown before the first edit. */}
-      {canWrite && plan && !editable && !editor.explained && (
-        <div className="plan-notice info" role="status">
-          <Info size={15} aria-hidden="true" />
-          <div>
-            <strong>
-              Du bearbeitest eine neue Version deines Trainingsplans.
-            </strong>
-            <p>
-              Deine bisherigen Trainingsdaten bleiben erhalten. Der aktive Plan
-              bleibt unverändert, bis du die neue Version ausdrücklich
-              bestätigst.
-            </p>
-          </div>
-        </div>
+      {editable && (
+        <p className="plan-draft-note">
+          Entwurf · Wird erst mit deiner Bestätigung aktiv.
+        </p>
       )}
 
       {!plan ? (
@@ -459,11 +444,7 @@ export function TrainingPlanEditorView({
       {/* ----------------------------------------------------------- panels */}
 
       {panel?.kind === "add_session" && (
-        <PlanDialog
-          title="Trainingstag hinzufügen"
-          description="Der Name ist frei wählbar – etwa Push, Oberkörper A oder Training 1."
-          onClose={close}
-        >
+        <PlanDialog title="Trainingstag hinzufügen" onClose={close}>
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -506,11 +487,7 @@ export function TrainingPlanEditorView({
       )}
 
       {panel?.kind === "create_plan" && (
-        <PlanDialog
-          title="Neuen Trainingsplan anlegen"
-          description="Du bestimmst die Struktur. Es gibt keine Vorgabe für Split oder Anzahl der Trainingstage."
-          onClose={close}
-        >
+        <PlanDialog title="Neuen Trainingsplan anlegen" onClose={close}>
           <form
             onSubmit={(event) => {
               event.preventDefault();

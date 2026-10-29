@@ -43,10 +43,8 @@ async function pickExercise(page: Page, query: string, name: RegExp) {
 /** Opens the editor on the active plan. */
 async function openEditor(page: Page, url = PLAN_URL) {
   await page.goto(`${url}/preview`);
-  await nav(page, "Trainingsplan").click();
-  await expect(
-    page.getByRole("heading", { name: "Dein Trainingsplan." }),
-  ).toBeVisible();
+  await nav(page, "Plan").click();
+  await expect(page.getByRole("heading", { name: "Dein Plan." })).toBeVisible();
 }
 
 /**
@@ -57,7 +55,9 @@ async function openEditor(page: Page, url = PLAN_URL) {
  */
 async function openDraft(page: Page, url = PLAN_URL) {
   await openEditor(page, url);
-  await expect(page.getByText("Dein aktiver Trainingsplan.")).toBeVisible();
+  await expect(
+    page.locator(".plan-summary").getByText("Aktiv", { exact: true }),
+  ).toBeVisible();
   const resume = button(page, "Entwurf weiter bearbeiten");
   await (
     (await resume.count()) ? resume : button(page, "Plan bearbeiten")
@@ -84,7 +84,7 @@ async function discardDraft(page: Page) {
 
 test.describe.configure({ mode: "serial" });
 
-test("shows the active plan read-only and explains what editing does", async ({
+test("shows the active plan read-only and offers an explicit edit action", async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -103,13 +103,9 @@ test("shows the active plan read-only and explains what editing does", async ({
   await expect(page.getByText("Demo Bankdrücken").first()).toBeVisible();
   await expect(page.getByText("Ziel 75 kg").first()).toBeVisible();
 
-  // The explanation the user needs before the first edit.
-  await expect(
-    page.getByText("Du bearbeitest eine neue Version deines Trainingsplans."),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Deine bisherigen Trainingsdaten bleiben erhalten."),
-  ).toBeVisible();
+  // The active plan stays concise; starting an edit is an explicit action.
+  await expect(button(page, "Plan bearbeiten")).toBeVisible();
+  await expect(page.locator(".plan-draft-note")).toHaveCount(0);
 
   // An active plan offers no edit controls at all.
   await expect(button(page, "Push umbenennen")).toHaveCount(0);
@@ -235,7 +231,7 @@ test("adds a training day and marks it unsaved until it has an exercise", async 
   // pretending the session was saved.
   await expect(arme.getByText("Noch nicht gespeichert")).toBeVisible();
   await expect(
-    arme.getByText(/erst gespeichert, wenn sie mindestens eine Übung enthält/),
+    arme.getByText(/Füge eine Übung hinzu, um diese Einheit zu speichern/),
   ).toBeVisible();
   await expect(button(page, "Bestätigen und aktivieren")).toBeDisabled();
 
@@ -303,9 +299,9 @@ test("reviews an invalid draft, fixes it, then confirms and activates", async ({
   await expect(button(page, "Entwurf verwerfen")).toHaveCount(0);
 
   // The dashboard picks up the newly activated plan.
-  await nav(page, "Übersicht").click();
+  await nav(page, "Überblick").click();
   await expect(
-    page.getByRole("heading", { name: "Dein Training. Dein Fortschritt." }),
+    page.getByRole("heading", { name: "Dein Überblick." }),
   ).toBeVisible();
   await expect(
     page.getByText("Push Pull Legs angepasst").first(),
@@ -326,12 +322,14 @@ test("navigation alone never activates a plan", async ({ page }) => {
   await expect(
     page.getByRole("dialog", { name: "Trainingsplan aktivieren" }),
   ).toHaveCount(0);
-  await nav(page, "Übersicht").click();
-  await nav(page, "Trainingsplan").click();
+  await nav(page, "Überblick").click();
+  await nav(page, "Plan").click();
 
   // Nothing was activated: the editor is back on the unchanged active plan and
   // the draft is still waiting, offered explicitly rather than applied.
-  await expect(page.getByText("Dein aktiver Trainingsplan.")).toBeVisible();
+  await expect(
+    page.locator(".plan-summary").getByText("Aktiv", { exact: true }),
+  ).toBeVisible();
   await expect(page.getByText("Aktiv", { exact: true }).first()).toBeVisible();
   await expect(page.getByText(/offenen Entwurf|offene Entwürfe/)).toBeVisible();
   await expect(button(page, "Entwurf weiter bearbeiten")).toBeVisible();
@@ -527,7 +525,9 @@ test("discards a draft without touching the active plan", async ({ page }) => {
   await openDraft(page);
   await button(page, "Entwurf verwerfen").click();
   // Back on the active plan, unchanged.
-  await expect(page.getByText("Dein aktiver Trainingsplan.")).toBeVisible();
+  await expect(
+    page.locator(".plan-summary").getByText("Aktiv", { exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Push Pull Legs angepasst" }),
   ).toBeVisible();

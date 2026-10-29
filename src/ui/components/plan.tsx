@@ -268,11 +268,7 @@ export function ExercisePicker({
     [exercises, normalized],
   );
   return (
-    <PlanDialog
-      title={title}
-      description="Such nach Name, Gerät oder Muskelgruppe. Die Ausführung wird aus dem Übungskatalog übernommen."
-      onClose={onClose}
-    >
+    <PlanDialog title={title} onClose={onClose}>
       <label>
         Übung suchen
         <input
@@ -393,7 +389,6 @@ export function ExerciseSettingsPanel({
   return (
     <PlanDialog
       title={exercise.exercise_name}
-      description="Zielwerte und Ausführung dieser Planposition. Geplante Werte, nicht tatsächlich geloggte Sätze."
       onClose={onClose}
       footer={
         <>
@@ -534,9 +529,6 @@ export function ExerciseSettingsPanel({
           onChange={(event) => set("notes", event.target.value)}
         />
       </label>
-      <p className="plan-hint">
-        Planposition {exercise.plan_item_id} · Revision {exercise.row_revision}
-      </p>
     </PlanDialog>
   );
 }
@@ -900,10 +892,7 @@ export function TrainingSessionCard({
       {!session.persisted && (
         <p className="plan-notice info" role="status">
           <Info size={15} aria-hidden="true" />
-          <span>
-            Diese Trainingseinheit ist erst gespeichert, wenn sie mindestens
-            eine Übung enthält. Das Datenmodell kennt keine leere Einheit.
-          </span>
+          <span>Füge eine Übung hinzu, um diese Einheit zu speichern.</span>
         </p>
       )}
       {sessionIssues.map((issue) => (
@@ -980,8 +969,6 @@ export function PlanOverview({
               <span className={`plan-tag ${plan.status}`}>
                 {PLAN_STATUS_LABEL[plan.status]}
               </span>
-              {` Version ${plan.version_no}`}
-              {plan.split_key ? ` · ${plan.split_key}` : ""}
               {plan.days_per_week !== null
                 ? ` · ${plan.days_per_week} ${plan.days_per_week === 1 ? "Trainingstag" : "Trainingstage"} pro Woche`
                 : ""}
@@ -996,21 +983,6 @@ export function PlanOverview({
           <div>
             <dt>Übungen</dt>
             <dd>{plan.exercise_count}</dd>
-          </div>
-          <div>
-            <dt>Zugeordnete Trainings</dt>
-            <dd>{plan.workout_count}</dd>
-          </div>
-          <div>
-            <dt>{isActive ? "Aktiv seit" : "Stand"}</dt>
-            <dd>
-              {dateLabel(
-                (isActive ? plan.activated_at_utc : plan.updated_at_utc)?.slice(
-                  0,
-                  10,
-                ) ?? plan.created_at_utc.slice(0, 10),
-              )}
-            </dd>
           </div>
         </dl>
         {children}

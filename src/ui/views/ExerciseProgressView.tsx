@@ -6,7 +6,7 @@
  * interpolation, no zero filling and no comparison across execution variants.
  */
 import { useEffect, useState } from "react";
-import { Activity, TrendingUp } from "lucide-react";
+import { TrendingUp } from "lucide-react";
 import type {
   ArnoldDashboardView,
   ProgressMetricKey,
@@ -21,9 +21,8 @@ import {
   ExerciseSelector,
   LoadingState,
   MetricCard,
-  PeriodFilter,
+  RecordRow,
   StatusNotice,
-  type PeriodValue,
 } from "../components";
 import { ProgressChart } from "../components/TrendChart";
 import {
@@ -51,7 +50,6 @@ export function ExerciseProgressView({
       "",
   );
   const [metric, setMetric] = useState<ProgressMetricKey>("max_load");
-  const [period, setPeriod] = useState<PeriodValue>({});
 
   // The catalog can change under a reload; keep the selection valid.
   useEffect(() => {
@@ -62,7 +60,7 @@ export function ExerciseProgressView({
       setExerciseId(dashboard.exercises[0]?.exercise_id ?? "");
   }, [dashboard.exercises, exerciseId]);
 
-  const progress = useExerciseProgress(client, exerciseId, metric, period);
+  const progress = useExerciseProgress(client, exerciseId, metric, {});
   const view = progress.data;
   const selectedMeta = PROGRESS_METRICS.find((m) => m.key === metric)!;
   // The engine states which convention the plotted series follows; a total load
@@ -90,52 +88,41 @@ export function ExerciseProgressView({
 
   return (
     <>
-      <div className="filter-bar progress-filters">
-        <div className="filter-selects">
-          <ExerciseSelector
-            exercises={dashboard.exercises}
-            value={exerciseId}
-            onChange={setExerciseId}
-          />
-          <label htmlFor="progress-metric">
-            Kennzahl
-            <select
-              id="progress-metric"
-              aria-label="Kennzahl"
-              value={metric}
-              onChange={(e) => setMetric(e.target.value as ProgressMetricKey)}
-            >
-              {PROGRESS_METRICS.map((entry) => {
-                const available = view?.available_metrics.find(
-                  (m) => m.key === entry.key,
-                );
-                return (
-                  <option key={entry.key} value={entry.key}>
-                    {entry.label}
-                    {available && available.point_count === 0
-                      ? " · keine Messpunkte"
-                      : ""}
-                  </option>
-                );
-              })}
-            </select>
-          </label>
-        </div>
-        <PeriodFilter
-          value={period}
-          onChange={setPeriod}
-          anchor={dashboard.period.to}
-          idPrefix="progress"
-          scopeLabel="Fortschritt"
+      <div className="progress-toolbar">
+        <ExerciseSelector
+          exercises={dashboard.exercises}
+          value={exerciseId}
+          onChange={setExerciseId}
         />
+        <div className="segmented" role="group" aria-label="Kennzahl">
+          {(
+            [
+              { key: "max_load", label: "Kraft" },
+              { key: "estimated_1rm", label: "1RM" },
+              { key: "nominal_volume", label: "Volumen" },
+              { key: "total_reps", label: "Wdh." },
+            ] as const
+          ).map((item) => (
+            <button
+              key={item.key}
+              className={metric === item.key ? "selected" : ""}
+              aria-pressed={metric === item.key}
+              onClick={() => setMetric(item.key)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {progress.error && (
         <ErrorState message={progress.error} onRetry={progress.reload} />
       )}
-      {view?.notices.map((notice) => (
-        <StatusNotice key={notice.code} notice={notice} />
-      ))}
+      {view?.notices
+        .filter((notice) => notice.severity === "warning")
+        .map((notice) => (
+          <StatusNotice key={notice.code} notice={notice} />
+        ))}
 
       {view && (
         <div className="stats-grid" aria-busy={progress.loading}>
@@ -180,18 +167,7 @@ export function ExerciseProgressView({
               <span className="legend-dot" aria-hidden="true" />
               {selectedMeta.label}
               {seriesBasis ? ` · ${seriesBasis}` : ""}
-              <span>
-                {view.selected_series.points.length} Messpunkte ·
-                Zusammenfassung pro Tag:{" "}
-                {
-                  {
-                    max: "Maximum",
-                    sum: "Summe",
-                    mean: "Mittelwert",
-                    last: "letzter Wert",
-                  }[view.selected_series.aggregation]
-                }
-              </span>
+              <span>{view.selected_series.points.length} Messpunkte</span>
             </div>
           </>
         ) : (
@@ -205,14 +181,23 @@ export function ExerciseProgressView({
         )}
       </Card>
 
-      {view && view.variants.length > 0 && (
-        <Card>
+      {dashboard.records.length > 0 && (
+        <Card className="progress-records">
           <div className="card-heading">
-            <div>
-              <h2>Ausführungsarten</h2>
-              <p>Lasten werden nur innerhalb einer Ausführung verglichen</p>
-            </div>
+            <h2>Deine Rekorde</h2>
           </div>
+          {dashboard.records.map((record) => (
+            <RecordRow
+              key={`${record.metric}-${record.exercise_id}-${record.achieved_on}`}
+              record={record}
+            />
+          ))}
+        </Card>
+      )}
+
+      {view && view.variants.length > 0 && (
+        <details className="card progress-details">
+          <summary>Ausführungsarten</summary>
           <div className="table-scroll">
             <table className="set-list">
               <caption className="visually-hidden">
@@ -259,19 +244,8 @@ export function ExerciseProgressView({
               </tbody>
             </table>
           </div>
-        </Card>
+        </details>
       )}
-
-      <div className="info-note">
-        <Activity size={18} aria-hidden="true" />
-        <p>
-          <strong>Eine Schätzung, keine Messung.</strong> Das geschätzte 1RM
-          nutzt die Epley-Formel: Gewicht × (1 + Wiederholungen / 30). Bei einer
-          Wiederholung entspricht es dem Gewicht. Hohe Wiederholungszahlen
-          verringern die Aussagekraft. Werte pro Hantel und Maschinenanzeigen
-          sind nicht mit Gesamtlasten vergleichbar.
-        </p>
-      </div>
     </>
   );
 }

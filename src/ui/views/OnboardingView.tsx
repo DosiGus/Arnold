@@ -27,7 +27,6 @@ import type {
   TrainingEnvironment,
   TrainingGoal,
 } from "../../shared/onboarding-contract";
-import { STATUS_LABEL } from "../../shared/onboarding-contract";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
 import { useOnboarding } from "../hooks/useOnboarding";
 import {
@@ -274,7 +273,7 @@ export function OnboardingView({
         {banner}
         <OnboardingLayout
           title="Dein Planvorschlag"
-          lead={`${plan.name} · ${plan.session_count} Trainingseinheiten · ${plan.exercise_count} Übungen · Revision ${plan.row_revision}`}
+          lead={`${plan.name} · ${plan.session_count} Trainingseinheiten · ${plan.exercise_count} Übungen`}
           footer={
             <>
               <button
@@ -306,14 +305,6 @@ export function OnboardingView({
             </>
           }
         >
-          <OnboardingNotice tone="info" title="Du hast das letzte Wort">
-            <p>
-              Dieser Plan ist ein Entwurf. Du kannst Trainingstage und Übungen
-              ändern, Sätze und Wiederholungen anpassen und Zielgewichte
-              ergänzen. Erst deine Bestätigung gibt den Plan für die Einrichtung
-              frei.
-            </p>
-          </OnboardingNotice>
           {!confirmable && planValidation && !planValidation.valid && (
             <OnboardingNotice
               tone="warning"
@@ -325,13 +316,6 @@ export function OnboardingView({
               </p>
             </OnboardingNotice>
           )}
-          {/* Unknown target loads are a normal state, said plainly rather than
-              filled with invented numbers. */}
-          <p className="onb-note">
-            <Info size={13} aria-hidden="true" /> Zielgewichte, die du nicht
-            genannt hast, bleiben leer. Du kannst sie jetzt oder später
-            eintragen.
-          </p>
           <div className="onb-editor">
             {/* The Task 005 editor, unchanged. Every edit it makes raises the
                 draft revision, which is what invalidates an older confirmation. */}
@@ -514,9 +498,12 @@ export function OnboardingView({
       {banner}
       {content()}
       <footer className="onb-statusbar">
-        <span className="onb-status-chip">{STATUS_LABEL[session.status]}</span>
         {/* Said rather than implied: the setup survives on this server only. */}
-        <span className="onb-status-note">{state.resume.note}</span>
+        <span className="onb-status-note">
+          {state.resume.durable
+            ? "Einrichtung gespeichert."
+            : "Nur für diese Serversitzung gespeichert."}
+        </span>
         <button
           type="button"
           className="onb-quiet"

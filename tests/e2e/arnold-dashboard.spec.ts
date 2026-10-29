@@ -34,34 +34,28 @@ test("opens the dashboard with engine metrics and switches between views", async
   await page.goto(`${WITH_HISTORY}/preview`);
 
   await expect(
-    page.getByRole("heading", { name: "Dein Training. Dein Fortschritt." }),
+    page.getByRole("heading", { name: "Dein Überblick." }),
   ).toBeVisible();
   // KPI values come from the analytics engine, not from the browser.
-  await expect(page.getByText("Trainingseinheiten").first()).toBeVisible();
+  await expect(page.getByText("Trainings", { exact: true })).toBeVisible();
   await expect(
-    page.locator(".stat-card").filter({ hasText: "Trainingseinheiten" }),
+    page
+      .locator(".stat-card")
+      .filter({ has: page.getByText("Trainings", { exact: true }) }),
   ).toContainText("5");
-  await expect(page.locator(".source-note")).toContainText(
-    "Arnold · Testdatei",
-  );
-  await expect(page.locator(".source-note")).toContainText("Schema 1.0.0");
-
-  // The weekly development chart is interactive and keyboard reachable.
-  await page
-    .getByRole("group", { name: "Kennzahl der Wochenentwicklung" })
-    .getByRole("button", { name: "Trainingstage" })
-    .click();
+  await expect(page.locator(".performance-strip .stat-card")).toHaveCount(3);
+  await expect(page.locator(".source-note")).toHaveCount(0);
   await expect(
-    page.getByRole("img", { name: /Trainingstage pro Woche/ }),
+    page.getByRole("img", { name: /Einheiten pro Woche/ }),
   ).toBeVisible();
 
-  await nav(page, "Workouts").click();
+  await nav(page, "Verlauf").click();
   await expect(
-    page.getByRole("heading", { name: "Jede Einheit zählt." }),
+    page.getByRole("heading", { name: "Deine Trainings." }),
   ).toBeVisible();
   await nav(page, "Fortschritt").click();
   await expect(
-    page.getByRole("heading", { name: "Fortschritt wird sichtbar." }),
+    page.getByRole("heading", { name: "Dein Fortschritt." }),
   ).toBeVisible();
   expect(errors).toEqual([]);
 });
@@ -69,10 +63,11 @@ test("opens the dashboard with engine metrics and switches between views", async
 test("filters the workout history and opens one session", async ({ page }) => {
   const errors = trackErrors(page);
   await page.goto(`${WITH_HISTORY}/preview`);
-  await nav(page, "Workouts").click();
+  await nav(page, "Verlauf").click();
 
   await expect(page.getByText("5 Einheiten gefunden")).toBeVisible();
 
+  await page.locator(".filter-disclosure summary").click();
   // Session names come from the stored history, not from a fixed split.
   await page
     .getByLabel("Trainingseinheit", { exact: true })
@@ -132,14 +127,18 @@ test("shows a progress chart and an empty state for an untrained exercise", asyn
 
   // Switching the metric re-reads from the backend, not from a local formula.
   await page
-    .getByLabel("Kennzahl", { exact: true })
-    .selectOption("estimated_1rm");
+    .getByRole("group", { name: "Kennzahl" })
+    .getByRole("button", { name: "1RM", exact: true })
+    .click();
   await expect(
     page.getByRole("img", { name: /Geschätztes 1RM in kg/ }),
   ).toBeVisible();
 
   // An exercise with no comparable load shows a reason, not an empty chart.
-  await page.getByLabel("Kennzahl", { exact: true }).selectOption("max_load");
+  await page
+    .getByRole("group", { name: "Kennzahl" })
+    .getByRole("button", { name: "Kraft", exact: true })
+    .click();
   await page
     .getByLabel("Übung", { exact: true })
     .selectOption(EXERCISES.pullup);
@@ -147,9 +146,8 @@ test("shows a progress chart and an empty state for an untrained exercise", asyn
 
   // Execution variants are listed in plain language.
   await page.getByLabel("Übung", { exact: true }).selectOption(EXERCISES.row);
-  await expect(
-    page.getByRole("heading", { name: "Ausführungsarten" }),
-  ).toBeVisible();
+  await page.locator(".progress-details summary").click();
+  await expect(page.locator(".progress-details")).toHaveAttribute("open", "");
   await expect(page.locator("table").last()).toContainText("kg pro Hantel");
   expect(errors).toEqual([]);
 });
@@ -162,7 +160,7 @@ test("shows the welcome state for an empty tracker with no fake workouts", async
 
   await expect(page.getByText("Willkommen bei Arnold")).toBeVisible();
   await expect(
-    page.getByText(/Deine Trainingsdatenbasis ist bereit/),
+    page.getByText(/Dein erstes Training ist der Anfang/),
   ).toBeVisible();
   // No invented example sessions, and no onboarding button that leads nowhere.
   await expect(page.locator(".history-row")).toHaveCount(0);
@@ -172,7 +170,7 @@ test("shows the welcome state for an empty tracker with no fake workouts", async
   ).toHaveCount(0);
 
   // The history view is usable and empty rather than broken.
-  await nav(page, "Workouts").click();
+  await nav(page, "Verlauf").click();
   await expect(page.getByText("0 Einheiten gefunden")).toBeVisible();
   expect(errors).toEqual([]);
 });
@@ -198,7 +196,7 @@ test("renders on a mobile viewport without horizontal scrolling", async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${WITH_HISTORY}/preview`);
   await expect(
-    page.getByRole("heading", { name: "Dein Training. Dein Fortschritt." }),
+    page.getByRole("heading", { name: "Dein Überblick." }),
   ).toBeVisible();
   expect(
     await page
@@ -207,7 +205,7 @@ test("renders on a mobile viewport without horizontal scrolling", async ({
   ).toBe(true);
 
   // The set table scrolls inside its own container, not the page.
-  await nav(page, "Workouts").click();
+  await nav(page, "Verlauf").click();
   await page.locator(".history-row").first().click();
   expect(
     await page
@@ -234,7 +232,7 @@ test("supports the light and the dark host theme", async ({ page }) => {
 
 test("meets accessibility checks on every view", async ({ page }) => {
   await page.goto(`${WITH_HISTORY}/preview`);
-  for (const view of ["Übersicht", "Workouts", "Fortschritt"]) {
+  for (const view of ["Überblick", "Verlauf", "Fortschritt"]) {
     await nav(page, view).click();
     await expect(page.locator("#main-content")).toBeVisible();
     const results = await new AxeBuilder({ page })
@@ -259,10 +257,10 @@ test("is keyboard navigable with a visible focus ring", async ({ page }) => {
   expect(focus.tag).toBeTruthy();
 
   // Navigation is reachable and operable from the keyboard alone.
-  await nav(page, "Workouts").focus();
+  await nav(page, "Verlauf").focus();
   await page.keyboard.press("Enter");
   await expect(
-    page.getByRole("heading", { name: "Jede Einheit zählt." }),
+    page.getByRole("heading", { name: "Deine Trainings." }),
   ).toBeVisible();
 });
 
@@ -280,9 +278,10 @@ test("drives the dashboard through the MCP Apps bridge in the test host", async 
   const app = page.frameLocator("iframe");
 
   await expect(
-    app.getByRole("heading", { name: "Dein Training. Dein Fortschritt." }),
+    app.getByRole("heading", { name: "Dein Überblick." }),
   ).toBeVisible();
-  await expect(app.locator(".source-note")).toContainText("Arnold · Testdatei");
+  await expect(app.locator(".performance-strip .stat-card")).toHaveCount(3);
+  await expect(app.locator(".source-note")).toHaveCount(0);
 
   // The app opened through show_arnold_dashboard and then revalidated, which is
   // the guard against a replayed result from chat history.
@@ -294,7 +293,7 @@ test("drives the dashboard through the MCP Apps bridge in the test host", async 
   // Views fetch their own data through the bridge.
   await app
     .getByRole("navigation", { name: "Hauptnavigation" })
-    .getByRole("button", { name: "Workouts", exact: true })
+    .getByRole("button", { name: "Verlauf", exact: true })
     .click();
   await expect.poll(() => calls.includes("get_arnold_workouts")).toBe(true);
   await app

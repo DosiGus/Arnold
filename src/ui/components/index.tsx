@@ -52,10 +52,12 @@ export function Card({
  */
 export function MetricCard({
   metric,
+  label,
   tone = "green",
   icon: Icon,
 }: {
   metric: ViewMetric;
+  label?: string;
   tone?: string;
   icon?: typeof Dumbbell;
 }) {
@@ -69,7 +71,7 @@ export function MetricCard({
   return (
     <Card className={`stat-card ${shown.known ? "" : "metric-unknown"}`}>
       <div className="stat-top">
-        <span>{metric.label}</span>
+        <span>{label ?? metric.label}</span>
         {Icon && (
           <span className={`stat-icon ${tone}`} aria-hidden="true">
             <Icon size={18} />
@@ -81,9 +83,9 @@ export function MetricCard({
         {shown.unit && <span>{shown.unit}</span>}
       </div>
       {basis && shown.known && <div className="stat-basis">{basis}</div>}
-      <div className="stat-detail">
-        {shown.known ? metric.detail : (metric.note ?? metric.detail)}
-      </div>
+      {!shown.known && (
+        <div className="stat-detail">{metric.note ?? metric.detail}</div>
+      )}
       {/* A caveat can accompany a correctly computed value — a per-implement
           load is `valid` and still must not be read as a total — so the note is
           shown whenever the engine attached one. */}

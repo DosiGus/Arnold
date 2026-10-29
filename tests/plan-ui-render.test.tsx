@@ -69,10 +69,10 @@ describe("the plan overview", () => {
     const output = text(<PlanOverview plan={plan} isActive />);
     expect(output).toContain("Push Pull Legs angepasst");
     expect(output).toContain("Aktiv");
-    expect(output).toContain("Version 2");
+    expect(output).not.toContain("Version 2");
     expect(output).toContain("3 Trainingstage pro Woche");
     expect(output).toContain("Trainingseinheiten");
-    expect(output).toContain("Zugeordnete Trainings");
+    expect(output).toContain("Übungen");
     // A technical id is never the primary label.
     expect(output).not.toContain("pfx-v2");
   });
@@ -174,7 +174,7 @@ describe("a training session card", () => {
     );
     expect(output).toContain("Noch nicht gespeichert");
     expect(output).toContain(
-      "erst gespeichert, wenn sie mindestens eine Übung enthält",
+      "Füge eine Übung hinzu, um diese Einheit zu speichern.",
     );
     expect(output).toContain("Noch keine Übung in dieser Einheit.");
   });
@@ -484,9 +484,8 @@ describe("the exercise settings panel", () => {
     expect(output).toContain("Anzahl Geräte");
     expect(output).toContain("Pause (Sekunden)");
     expect(output).toContain("Notiz");
-    expect(output).toContain(
-      "Geplante Werte, nicht tatsächlich geloggte Sätze",
-    );
+    expect(output).toContain("Zielgewicht (kg)");
+    expect(output).not.toContain("Planposition");
   });
 
   it("disables the target weight for a bodyweight exercise", async () => {

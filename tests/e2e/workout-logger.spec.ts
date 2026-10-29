@@ -7,7 +7,7 @@ function nav(page: Page, name: string) {
 }
 async function open(page: Page, session = "Demo Push") {
   await page.goto(`${URL}/preview`);
-  await nav(page, "Training eintragen").click();
+  await nav(page, "Training").click();
   await page.getByLabel("Trainingseinheit", { exact: true }).fill(session);
   await page
     .getByRole("button", { name: "Workout starten", exact: true })
@@ -53,8 +53,8 @@ test("writes confirmed sets, preserves defaults, corrects, validates and complet
   await expect(page.locator(".confirmed-sets li").first()).toContainText(
     "25 kg pro Hantel",
   );
-  await expect(page.locator(".confirmed-sets li").first()).toContainText(
-    "Revision 2",
+  await expect(page.locator(".confirmed-sets li").first()).not.toContainText(
+    "20 kg pro Hantel",
   );
   await page.getByLabel("Gewicht (kg)", { exact: true }).fill("-5");
   await page.getByLabel("Wiederholungen", { exact: true }).fill("7");
@@ -84,7 +84,7 @@ test("writes confirmed sets, preserves defaults, corrects, validates and complet
   await page
     .getByRole("button", { name: "Training abschließen", exact: true })
     .click();
-  await expect(page.locator(".workout-logger")).toContainText("completed");
+  await expect(page.locator(".workout-logger")).toContainText("Abgeschlossen");
   await page
     .getByRole("button", { name: "Satz 1 korrigieren", exact: true })
     .click();
@@ -98,9 +98,11 @@ test("writes confirmed sets, preserves defaults, corrects, validates and complet
   await expect(page.locator(".confirmed-sets li").first()).toContainText(
     "26 kg pro Hantel",
   );
-  await nav(page, "Übersicht").click();
+  await nav(page, "Überblick").click();
   await expect(
-    page.locator(".stat-card").filter({ hasText: "Trainingseinheiten" }),
+    page
+      .locator(".stat-card")
+      .filter({ has: page.getByText("Trainings", { exact: true }) }),
   ).toContainText("1");
   expect(errors).toEqual([]);
 });
@@ -136,7 +138,7 @@ test("recovers a lost response across reload with the same operation ID and no d
     "55",
   );
   await page.reload();
-  await nav(page, "Training eintragen").click();
+  await nav(page, "Training").click();
   await expect(page.getByRole("alert")).toContainText("unbestätigter Vorgang");
   await page
     .getByRole("button", {
@@ -152,7 +154,7 @@ test("recovers a lost response across reload with the same operation ID and no d
   await page
     .getByRole("button", { name: "Training abbrechen", exact: true })
     .click();
-  await expect(page.locator(".workout-logger")).toContainText("cancelled");
+  await expect(page.locator(".workout-logger")).toContainText("Abgebrochen");
 });
 test("MCP App bridge can write inside an opaque sandbox without browser storage", async ({
   page,
@@ -165,7 +167,7 @@ test("MCP App bridge can write inside an opaque sandbox without browser storage"
   const frame = page.frameLocator("iframe");
   await frame
     .getByRole("navigation", { name: "Hauptnavigation" })
-    .getByRole("button", { name: "Training eintragen", exact: true })
+    .getByRole("button", { name: "Training", exact: true })
     .click();
   await frame
     .getByLabel("Trainingseinheit", { exact: true })

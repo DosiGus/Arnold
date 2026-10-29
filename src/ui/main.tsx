@@ -5,6 +5,7 @@ import { ArnoldDashboardApp } from "./ArnoldDashboardApp";
 import { ArnoldMcpClient } from "./client/ArnoldMcpClient";
 import { OnboardingView } from "./views/OnboardingView";
 import "./style.css";
+import "./glass.css";
 
 /**
  * Boots the app and picks the interface for the contract the server speaks.

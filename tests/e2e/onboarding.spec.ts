@@ -164,10 +164,8 @@ test("a new user walks the whole setup up to the Google handoff", async ({
   await openWizard(page);
 
   // Step 1: the welcome names what is and is not available.
-  await expect(shows(page, /Was Arnold jetzt noch nicht tut/)).toBeVisible();
-  await expect(
-    shows(page, /kein Google-Konto verbunden und keine Datei erstellt/),
-  ).toBeVisible();
+  await expect(shows(page, /Google-Verbindung nicht verfügbar/)).toBeVisible();
+  await expect(shows(page, /Es wird keine Datei erstellt/)).toBeVisible();
 
   await fillProfile(page);
 
@@ -176,7 +174,7 @@ test("a new user walks the whole setup up to the Google handoff", async ({
   await expect(shows(page, "3 Tage pro Woche")).toBeVisible();
   await expect(shows(page, "60 Minuten je Training")).toBeVisible();
   await expect(shows(page, "Fitnessstudio")).toBeVisible();
-  await expect(shows(page, "Alle Pflichtangaben sind erfasst.")).toBeVisible();
+  await expect(shows(page, "Angaben vollständig.")).toBeVisible();
 
   // Requesting the plan opens the honest handoff to the chat: there is no
   // button that fakes a model call.
@@ -237,7 +235,7 @@ test("a new user walks the whole setup up to the Google handoff", async ({
   await button(page, "Nach dem Vorschlag suchen").click();
   await expect(heading(page, "Dein Planvorschlag")).toBeVisible();
   await expect(shows(page, /3 Trainingseinheiten/).first()).toBeVisible();
-  await expect(shows(page, /Du hast das letzte Wort/)).toBeVisible();
+  await expect(page.locator(".plan-draft-note")).toContainText("erst");
 
   // The Task 005 editor is mounted inside the wizard, not a second editor.
   await expect(page.locator(".onb-editor .plan-editor")).toBeVisible();
@@ -275,7 +273,9 @@ test("editing the proposal rebinds the confirmation to the new revision", async 
 }) => {
   const claim = await seedProposal(page, ONB_B_URL);
   await expect(heading(page, "Dein Planvorschlag")).toBeVisible();
-  await expect(shows(page, /Revision 1/).first()).toBeVisible();
+  expect(
+    (await callTool(page, "get_onboarding_plan", claim)).plan.row_revision,
+  ).toBe(1);
 
   // Replace an exercise through the Task 005 editor mounted in the wizard.
   await page
@@ -288,7 +288,10 @@ test("editing the proposal rebinds the confirmation to the new revision", async 
   await picker.locator(".plan-picker-item").first().click();
 
   // The draft moved on, so the wizard now shows a higher revision.
-  await expect(shows(page, /Revision 2/).first()).toBeVisible();
+  await expect(page.locator(".onb-editor")).toContainText("Demo Beinpresse");
+  expect(
+    (await callTool(page, "get_onboarding_plan", claim)).plan.row_revision,
+  ).toBe(2);
 
   // The lifecycle controls belong to the setup, not to the embedded editor.
   await expect(
@@ -318,7 +321,10 @@ test("editing the proposal rebinds the confirmation to the new revision", async 
   await expect(dialog.getByText(/Revision 2/).first()).toBeVisible();
   await dialog.getByRole("button", { name: "Plan bestätigen" }).click();
   await expect(heading(page, "Dein Trainingsplan ist bereit.")).toBeVisible();
-  await expect(shows(page, /bestätigte Revision 2/).first()).toBeVisible();
+  expect(
+    (await callTool(page, "get_onboarding_state", claim)).handoff
+      .confirmed_plan_revision,
+  ).toBe(2);
 });
 
 /**
@@ -452,7 +458,7 @@ test("closing and reopening the app resumes the stored setup", async ({
 }) => {
   await openWizard(page, ONB_B_URL);
   await fillProfile(page);
-  await expect(shows(page, "Alle Pflichtangaben sind erfasst.")).toBeVisible();
+  await expect(shows(page, "Angaben vollständig.")).toBeVisible();
 
   // A reload stands in for closing the panel and coming back to it.
   await page.reload();
@@ -460,7 +466,7 @@ test("closing and reopening the app resumes the stored setup", async ({
   await expect(heading(page, "Passt das so?")).toBeVisible();
   await expect(shows(page, "Muskelaufbau")).toBeVisible();
   await expect(shows(page, "60 Minuten je Training")).toBeVisible();
-  await expect(shows(page, "Alle Pflichtangaben sind erfasst.")).toBeVisible();
+  await expect(shows(page, "Angaben vollständig.")).toBeVisible();
 });
 
 test("a setup without its credential starts fresh instead of leaking one", async ({
@@ -550,7 +556,7 @@ test("a refused write shows the reason and keeps the stored state", async ({
 
   // The screen still shows the answers that actually stand.
   await page.reload();
-  await expect(shows(page, "Alle Pflichtangaben sind erfasst.")).toBeVisible();
+  await expect(shows(page, "Angaben vollständig.")).toBeVisible();
   await expect(shows(page, "2 Tage pro Woche")).toHaveCount(0);
 });
 

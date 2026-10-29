@@ -80,36 +80,39 @@ export function WorkoutHistoryView({
 
   return (
     <>
-      <div className="filter-bar history-filters">
-        <PeriodFilter
-          value={period}
-          onChange={setPeriod}
-          anchor={dashboard.period.to}
-          idPrefix="history"
-          scopeLabel="Workouts"
-        />
-        <div className="filter-selects">
-          <PlanSelector
-            plans={dashboard.plan_history}
-            value={planId}
-            onChange={setPlanId}
+      <details className="filter-disclosure">
+        <summary>Zeitraum & Filter</summary>
+        <div className="filter-bar history-filters">
+          <PeriodFilter
+            value={period}
+            onChange={setPeriod}
+            anchor={dashboard.period.to}
+            idPrefix="history"
+            scopeLabel="Workouts"
           />
-          <SessionSelector
-            sessions={dashboard.session_names}
-            value={sessionName}
-            onChange={setSessionName}
-          />
-          <label className="checkbox-field" htmlFor="history-all-statuses">
-            <input
-              id="history-all-statuses"
-              type="checkbox"
-              checked={includeAllStatuses}
-              onChange={(e) => setIncludeAllStatuses(e.target.checked)}
+          <div className="filter-selects">
+            <PlanSelector
+              plans={dashboard.plan_history}
+              value={planId}
+              onChange={setPlanId}
             />
-            Abgebrochene und offene Einheiten zeigen
-          </label>
+            <SessionSelector
+              sessions={dashboard.session_names}
+              value={sessionName}
+              onChange={setSessionName}
+            />
+            <label className="checkbox-field" htmlFor="history-all-statuses">
+              <input
+                id="history-all-statuses"
+                type="checkbox"
+                checked={includeAllStatuses}
+                onChange={(e) => setIncludeAllStatuses(e.target.checked)}
+              />
+              Abgebrochene und offene Einheiten zeigen
+            </label>
+          </div>
         </div>
-      </div>
+      </details>
 
       {history.error && (
         <ErrorState message={history.error} onRetry={history.reload} />
@@ -133,7 +136,7 @@ export function WorkoutHistoryView({
         <Card className="history-list">
           <div className="card-heading">
             <div>
-              <h2>Deine Trainingseinheiten</h2>
+              <h2>Trainings</h2>
               <p>
                 {history.loading && !history.data
                   ? "Einheiten werden geladen …"

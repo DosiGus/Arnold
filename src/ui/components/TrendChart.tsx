@@ -10,6 +10,9 @@
 import {
   Area,
   AreaChart,
+  Bar,
+  BarChart,
+  Cell,
   CartesianGrid,
   Line,
   LineChart,
@@ -116,8 +119,8 @@ export function WeeklyTrendChart({
           >
             <defs>
               <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#23a786" stopOpacity={0.2} />
-                <stop offset="100%" stopColor="#23a786" stopOpacity={0} />
+                <stop offset="0%" stopColor="var(--chart)" stopOpacity={0.2} />
+                <stop offset="100%" stopColor="var(--chart)" stopOpacity={0} />
               </linearGradient>
             </defs>
             <CartesianGrid
@@ -155,12 +158,12 @@ export function WeeklyTrendChart({
               type="monotone"
               dataKey="value"
               name={meta.label}
-              stroke="#199d7c"
+              stroke="var(--chart)"
               strokeWidth={2.5}
               fill={`url(#${id})`}
               activeDot={{
                 r: 5,
-                fill: "#199d7c",
+                fill: "var(--chart)",
                 stroke: "var(--card)",
                 strokeWidth: 3,
               }}
@@ -257,13 +260,13 @@ export function ProgressChart({
               type="monotone"
               dataKey="value"
               name={qualified}
-              stroke="#199d7c"
+              stroke="var(--chart)"
               strokeWidth={2.5}
               // A single logged set must still be visible, so the dot is drawn.
-              dot={{ r: data.length === 1 ? 5 : 3, fill: "#199d7c" }}
+              dot={{ r: data.length === 1 ? 5 : 3, fill: "var(--chart)" }}
               activeDot={{
                 r: 5,
-                fill: "#199d7c",
+                fill: "var(--chart)",
                 stroke: "var(--card)",
                 strokeWidth: 3,
               }}
@@ -287,3 +290,89 @@ export function ProgressChart({
 }
 
 export { UNKNOWN };
+
+/** A bounded weekly view. Every column is a reported week, including zero;
+ * the small baseline ticks are the grid, never invented training activity. */
+export function WeeklyActivityChart({
+  weeks,
+}: {
+  weeks: readonly WeekPoint[];
+}) {
+  const rows = weeks.slice(-12);
+  return (
+    <>
+      <div
+        className="weekly-activity-chart"
+        role="img"
+        aria-label={`Einheiten pro Woche: ${rows.map((week) => `${week.label}: ${week.workouts}`).join("; ")}`}
+      >
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart
+            data={rows}
+            margin={{ top: 10, right: 0, left: -22, bottom: 0 }}
+            barCategoryGap="29%"
+            accessibilityLayer
+          >
+            <CartesianGrid
+              stroke="var(--border)"
+              strokeDasharray="2 5"
+              vertical={false}
+            />
+            <XAxis
+              dataKey="label"
+              tickLine={false}
+              axisLine={false}
+              tick={axisTick}
+              minTickGap={28}
+              dy={7}
+            />
+            <YAxis
+              tickLine={false}
+              axisLine={false}
+              tick={axisTick}
+              allowDecimals={false}
+              domain={[0, "dataMax"]}
+              tickCount={3}
+              width={38}
+            />
+            <Tooltip
+              cursor={{ fill: "var(--soft)", radius: 5 }}
+              contentStyle={tooltipStyle}
+              formatter={(value) => [
+                formatNumber(Number(value), 0),
+                "Einheiten",
+              ]}
+              labelFormatter={(label) => `Woche ab ${label}`}
+            />
+            <Bar
+              dataKey="workouts"
+              radius={[5, 5, 2, 2]}
+              maxBarSize={34}
+              isAnimationActive={false}
+            >
+              {rows.map((week, index) => (
+                <Cell
+                  key={week.week_start}
+                  fill={
+                    index === rows.length - 1
+                      ? "var(--chart)"
+                      : "var(--bar-muted)"
+                  }
+                />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      <DataTable
+        caption="Einheiten pro Woche je Kalenderwoche"
+        unit="Einheiten"
+        rows={rows.map((week) => ({
+          key: week.week_start,
+          label: `Woche ab ${week.label}`,
+          value: week.workouts,
+        }))}
+      />
+    </>
+  );
+}

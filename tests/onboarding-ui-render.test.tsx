@@ -131,9 +131,7 @@ describe("the welcome step", () => {
     expect(output).toContain("Einrichtung starten");
     // Said up front, not discovered at the end: the Google step is named *and*
     // explicitly negated, so a reader cannot take it as already done.
-    expect(output).toMatch(/noch nicht/i);
-    expect(output).toContain("Google");
-    expect(output).toMatch(/kein Google-Konto verbunden/i);
+    expect(output).toContain("Google-Verbindung nicht verfügbar");
     expect(output).toMatch(/keine Datei erstellt/i);
   });
 
@@ -319,7 +317,7 @@ describe("progress", () => {
     expect(markup).toContain('role="progressbar"');
     expect(markup).toContain("aria-valuenow");
     expect(markup).toContain("aria-label");
-    expect(text(markup)).toContain("Alle Pflichtangaben sind erfasst.");
+    expect(text(markup)).toContain("Angaben vollständig.");
   });
 
   it("counts an incomplete profile honestly", () => {
@@ -333,7 +331,7 @@ describe("progress", () => {
         }}
       />,
     );
-    expect(output).toContain("2 von 6");
+    expect(output).toContain("2 / 6");
   });
 });
 

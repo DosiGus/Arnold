@@ -34,7 +34,7 @@ test("T3-02: one refresh click settles instead of looping", async ({
   const calls = countCalls(page);
   await page.goto(`${WITH_HISTORY}/preview`);
   await expect(
-    page.getByRole("heading", { name: "Dein Training. Dein Fortschritt." }),
+    page.getByRole("heading", { name: "Dein Überblick." }),
   ).toBeVisible();
   const atOpen = calls.length;
 
@@ -60,7 +60,7 @@ test("T3-02: opening the dashboard issues a bounded number of calls", async ({
   const calls = countCalls(page);
   await page.goto(`${WITH_HISTORY}/preview`);
   await expect(
-    page.getByRole("heading", { name: "Dein Training. Dein Fortschritt." }),
+    page.getByRole("heading", { name: "Dein Überblick." }),
   ).toBeVisible();
   await page.waitForTimeout(1200);
   expect(calls.length).toBeLessThanOrEqual(3);
@@ -70,7 +70,11 @@ test("T3-05: clicking a cancelled session opens that session", async ({
   page,
 }) => {
   await page.goto(`${WITH_HISTORY}/preview`);
-  // The overview lists the cancelled session from the fixture.
+  // Cancelled entries remain reachable in the full history, outside the
+  // motivational overview's last-completed-session card.
+  await nav(page, "Verlauf").click();
+  await page.locator(".filter-disclosure summary").click();
+  await page.getByLabel("Abgebrochene und offene Einheiten zeigen").check();
   const card = page.getByRole("button", {
     name: /Abgebrochene Einheit am 20\. Oktober 2026/,
   });
@@ -86,31 +90,33 @@ test("T3-05: clicking a cancelled session opens that session", async ({
   await expect(detail).not.toContainText("Freies Training");
 });
 
-test("T3-06: the overview has a working period filter", async ({ page }) => {
+test("T3-06: period controls live in history and do not reset the overview", async ({
+  page,
+}) => {
   await page.goto(`${WITH_HISTORY}/preview`);
-  await expect(page.getByLabel("Übersicht von")).toBeVisible();
-  await expect(page.getByLabel("Übersicht bis")).toBeVisible();
-
-  // A selection with no sessions is reported, not shown as an empty tracker.
-  await page.getByLabel("Übersicht von").fill("2030-01-01");
-  await page.getByLabel("Übersicht bis").fill("2030-01-31");
+  await expect(page.locator(".performance-strip .stat-card")).toHaveCount(3);
+  await expect(page.getByLabel("Übersicht von")).toHaveCount(0);
+  await nav(page, "Verlauf").click();
+  await page.locator(".filter-disclosure summary").click();
+  await page.getByLabel("Workouts von").fill("2030-01-01");
+  await page.getByLabel("Workouts bis").fill("2030-01-31");
   await expect(
-    page.getByText("Keine Einheiten im gewählten Zeitraum"),
+    page.getByText("Keine Einheiten gefunden").first(),
   ).toBeVisible();
-  // The welcome screen belongs to a tracker without history, not to a filter.
   await expect(page.getByText("Willkommen bei Arnold")).toHaveCount(0);
   await expect(page.locator(".history-row")).toHaveCount(0);
-
-  // Narrowing to October keeps only October's sessions in the recent list.
-  await page.getByLabel("Übersicht von").fill("2026-10-01");
-  await page.getByLabel("Übersicht bis").fill("2026-10-31");
-  // Exact match: the notice above says "Keine Einheiten im gewählten Zeitraum".
-  await expect(
-    page.getByText("Einheiten im gewählten Zeitraum", { exact: true }),
-  ).toBeVisible();
+  await page.getByLabel("Workouts von").fill("2026-10-01");
+  await page.getByLabel("Workouts bis").fill("2026-10-31");
+  await expect(page.locator(".history-row").first()).toBeVisible();
   await expect(
     page.getByRole("button", { name: /am 14\. September 2026/ }),
   ).toHaveCount(0);
+  await nav(page, "Überblick").click();
+  await expect(
+    page
+      .locator(".stat-card")
+      .filter({ has: page.getByText("Trainings", { exact: true }) }),
+  ).toContainText("5");
 });
 
 test("T3-04: the progress view names the load convention", async ({ page }) => {
@@ -126,8 +132,9 @@ test("T3-04: the progress view names the load convention", async ({ page }) => {
 
   // The 1RM is computed and still carries its caveat.
   await page
-    .getByLabel("Kennzahl", { exact: true })
-    .selectOption("estimated_1rm");
+    .getByRole("group", { name: "Kennzahl" })
+    .getByRole("button", { name: "1RM", exact: true })
+    .click();
   const oneRm = page
     .locator(".stat-card")
     .filter({ hasText: "Bestes geschätztes 1RM" });
@@ -148,9 +155,8 @@ test("T3-09: the progress view fits a 390px screen with variants", async ({
   await nav(page, "Fortschritt").click();
   // The unilateral exercise is the one that renders the variants table.
   await page.getByLabel("Übung", { exact: true }).selectOption(EXERCISES.row);
-  await expect(
-    page.getByRole("heading", { name: "Ausführungsarten" }),
-  ).toBeVisible();
+  await page.locator(".progress-details summary").click();
+  await expect(page.locator(".progress-details")).toHaveAttribute("open", "");
 
   const overflow = await page.locator("body").evaluate((el) => ({
     scrollWidth: el.scrollWidth,

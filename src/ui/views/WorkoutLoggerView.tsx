@@ -161,8 +161,7 @@ export function WorkoutLoggerView({
   return (
     <div className="logger-grid workout-logger">
       <section className="card logger-card">
-        <h2>Training eintragen</h2>
-        <p>Jeder Satz wird erst nach bestätigter Speicherung angezeigt.</p>
+        <h2>Training starten</h2>
         {logger.error && <p role="alert">{logger.error}</p>}
         {logger.message && <p role="status">{logger.message}</p>}
         {logger.pending && (
@@ -230,8 +229,12 @@ export function WorkoutLoggerView({
               <>
                 <p>
                   <strong>{workout.session_name_snapshot}</strong> ·{" "}
-                  {workout.workout_date_local} · {workout.status} · Revision{" "}
-                  {workout.row_revision}
+                  {workout.workout_date_local} ·{" "}
+                  {closed
+                    ? "Abgeschlossen"
+                    : workout.status === "cancelled"
+                      ? "Abgebrochen"
+                      : "Läuft"}
                 </p>
                 {(workout.status === "in_progress" ||
                   (closed && edit && data.can_correct_completed)) && (
@@ -462,16 +465,16 @@ export function WorkoutLoggerView({
         )}
       </section>
       <section className="card logger-card">
-        <h2>Bestätigte Sätze</h2>
+        <h2>Deine Sätze</h2>
         {!data?.sets.length ? (
-          <p>Noch keine Sätze in dieser Einheit.</p>
+          <p>Noch keine Sätze.</p>
         ) : (
           <ol className="confirmed-sets">
             {data.sets.map((set) => (
               <li key={set.set_id}>
                 <strong>{set.exercise_name_snapshot}</strong>
                 <p>
-                  {formatSetLine(set)} · Revision {set.row_revision}
+                  {formatSetLine(set)}
                   {set.status === "voided" ? " · storniert" : ""}
                 </p>
                 {set.status === "active" &&

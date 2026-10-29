@@ -126,7 +126,7 @@ test("onboarding, Google consent, personal tracker, first set, and browser reloa
   await wizard.getByRole("button", { name: "Zum Training" }).click();
   const navigation = page.getByRole("navigation", { name: "Hauptnavigation" });
   await navigation
-    .getByRole("button", { name: "Training eintragen", exact: true })
+    .getByRole("button", { name: "Training", exact: true })
     .click();
   await page.getByLabel("Trainingseinheit", { exact: true }).fill("Einheit 1");
   await page
@@ -146,7 +146,7 @@ test("onboarding, Google consent, personal tracker, first set, and browser reloa
   await expect(page.locator(".confirmed-sets li")).toHaveCount(1);
   await page.goto(`${base}/preview`);
   await navigation
-    .getByRole("button", { name: "Training eintragen", exact: true })
+    .getByRole("button", { name: "Training", exact: true })
     .click();
   await page
     .getByRole("combobox", { name: "Offenes Workout", exact: true })

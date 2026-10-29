@@ -45,24 +45,25 @@ const noop = () => {};
 describe("overview renders an engine payload", () => {
   const view = buildDashboardView(fullDataset(), CONTEXT);
 
-  it("shows the KPI labels and values it was given", () => {
+  it("shows a focused selection of engine KPIs with their values", () => {
     const output = text(
       <OverviewView view={view} onOpenWorkout={noop} onOpenProgress={noop} />,
     );
-    expect(output).toContain("Trainingseinheiten");
-    expect(output).toContain("Trainingstage");
-    expect(output).toContain("Gültige Arbeitssätze");
-    expect(output).toContain("Nominales Trainingsvolumen");
+    expect(output).toContain("Trainings");
+    expect(output).toContain("Arbeitssätze");
+    expect(output).toContain("Volumen");
+    expect(output).not.toContain("Trainingstage pro Woche");
+    expect(output).not.toContain("Vergleichbares Volumen");
     // Five completed sessions out of six workouts.
-    expect(output).toMatch(/Trainingseinheiten\s+5/);
+    expect(output).toMatch(/Trainings\s+5/);
   });
 
-  it("names the data source and the active plan", () => {
+  it("shows the active plan and recent training", () => {
     const output = text(
       <OverviewView view={view} onOpenWorkout={noop} onOpenProgress={noop} />,
     );
     expect(output).toContain("Testplan Oberkörper v2");
-    expect(output).toContain("Zuletzt auf der Trainingsfläche");
+    expect(output).toContain("Zuletzt trainiert");
   });
 
   it("never renders an internal identifier as user-facing text", () => {
@@ -93,11 +94,8 @@ describe("empty and template states in the UI", () => {
       <OverviewView view={view} onOpenWorkout={noop} onOpenProgress={noop} />,
     );
     expect(output).toContain("Willkommen bei Arnold");
-    expect(output).toContain("Deine Trainingsdatenbasis ist bereit");
-    expect(output).toContain(
-      "Sobald du dein erstes Training erfasst, siehst du hier deine Fortschritte",
-    );
-    // No onboarding affordance may exist while onboarding does not.
+    expect(output).toContain("Dein erstes Training ist der Anfang.");
+    // A read-only empty view offers no unavailable training action.
     expect(markup).not.toMatch(/<button/);
     expect(output).not.toMatch(/Jetzt starten|Einrichten|Onboarding/i);
   });
