@@ -218,11 +218,16 @@ export function createHttpApp(options: ServerOptions = {}) {
     const query = req.originalUrl.slice(req.path.length);
     res.redirect(`/preview${query}`);
   });
+  // Only these two fixed files are ever sent. `dotfiles: "allow"` is needed
+  // because the checkout itself may sit under a hidden directory (a worktree
+  // in `.codex/…`), which `sendFile` would otherwise refuse as a dotfile path.
   app.get("/preview", (_req, res) =>
-    res.sendFile(resolve(root, "dist/ui/dashboard.html")),
+    res.sendFile(resolve(root, "dist/ui/dashboard.html"), {
+      dotfiles: "allow",
+    }),
   );
   app.get("/host", (_req, res) =>
-    res.sendFile(resolve(root, "dist/host/host.html")),
+    res.sendFile(resolve(root, "dist/host/host.html"), { dotfiles: "allow" }),
   );
   app.all("/mcp", auth.bearerGate, async (req, res) => {
     const handle = async () => {
