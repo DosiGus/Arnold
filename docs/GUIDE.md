@@ -179,8 +179,7 @@ cloudflared tunnel --url http://localhost:8787      # gibt https://<zufall>.tryc
 In einem zweiten Terminal, Hostnamen **ohne** `https://` einsetzen:
 
 ```bash
-STORAGE_MODE=arnold_fixture ARNOLD_WRITE_MODE=fixture PORT=8787 \
-  ALLOWED_HOSTS=<zufall>.trycloudflare.com,127.0.0.1,localhost npm start
+PORT=8787 ALLOWED_HOSTS=<zufall>.trycloudflare.com,127.0.0.1,localhost npm start
 curl https://<zufall>.trycloudflare.com/health      # erwartet "synthetic":true
 ```
 
