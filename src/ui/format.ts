@@ -5,7 +5,11 @@
  * only adds date formatting and the rule for rendering a `ViewMetric`. No
  * component formats a weight on its own.
  */
-import { formatNumber, UNKNOWN } from "../shared/arnold-format";
+import {
+  formatNumber,
+  LOAD_BASIS_LABEL,
+  UNKNOWN,
+} from "../shared/arnold-format";
 import type { ViewMetric } from "../shared/arnold-view";
 
 export {
@@ -89,7 +93,11 @@ export function metricDisplay(metric: ViewMetric): {
 /** Full sentence for assistive technology, including the reason when unknown. */
 export function metricAriaLabel(metric: ViewMetric): string {
   const shown = metricDisplay(metric);
-  return shown.known
-    ? `${metric.label}: ${shown.value} ${shown.unit}`.trim()
-    : `${metric.label}: nicht verfügbar. ${metric.note ?? ""}`.trim();
+  if (!shown.known)
+    return `${metric.label}: nicht verfügbar. ${metric.note ?? ""}`.trim();
+  const basis =
+    metric.load_basis && metric.load_basis !== "total"
+      ? ` ${LOAD_BASIS_LABEL[metric.load_basis]}`
+      : "";
+  return `${metric.label}: ${shown.value} ${shown.unit}${basis}`.trim();
 }
