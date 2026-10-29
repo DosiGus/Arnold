@@ -19,9 +19,8 @@
  *   - success is reported only after the data contract, a storage readback,
  *     the audit append and the ledger commit have all succeeded.
  *
- * Writes are available in the fixture mode only. There is deliberately no
- * Google Sheets path for PLANS and PLAN_ITEMS yet: see the security section of
- * docs/ARNOLD-PLAN-CONTRACT.md.
+ * Writes run in the fixture mode and in the connected profile
+ * (src/server/connected); the read-only Sheets profile never writes plans.
  */
 import {
   ARNOLD_SCHEMA_VERSION,

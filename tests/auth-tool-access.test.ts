@@ -126,7 +126,7 @@ describe("every published tool is classified", () => {
   it("publishes the write and onboarding tools only when a runtime supplies them", async () => {
     // Establishes what an environment-driven deployment without an injected
     // runtime actually exposes, which is the basis for the exposure claims in
-    // docs/ARNOLD-AUTH-ARCHITECTURE.md.
+    // docs/ARCHITECTURE.md.
     const runtime = createFixturePlanning();
     const readOnly = await publishedTools(
       createArnoldV2McpServer(runtime.source, "dist/ui/dashboard.html"),

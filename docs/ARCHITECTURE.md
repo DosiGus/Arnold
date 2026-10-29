@@ -1,87 +1,146 @@
 # Architektur
 
-## Ausgangslage und Modernisierung
+Arnold ist ein MCP-Server mit einer MCP-App-Oberfläche. Der Server kennt keine Sitzungen (stateless Streamable HTTP): pro Anfrage entstehen ein `McpServer` und ein Transport, der gemeinsame Zustand lebt in Diensten und Repositories außerhalb des Transports.
 
-Der ursprüngliche Starter besaß ein Tool, flüchtige Arrays, keine Output-Schemas oder Tests und ein HTML-Dashboard mit separater Fixture. Ein unvalidierter `message`-Listener ersetzte dort den MCP-Apps-Lifecycle. Die neue UI enthält keine eigene Fixture und keinen selbst implementierten JSON-RPC-/postMessage-Listener.
-
-Am 24.10.2026 wurden die npm-Versionen und Peer Dependencies geprüft: `@modelcontextprotocol/ext-apps` **2.0.3** benötigt die modularen MCP-Pakete 2.x und Zod 4. Eingesetzt sind Client/Server/Core **2.4.0**, Node-Transport **2.1.2**, Express-Adapter **2.0.2**, React **19.3.1**, Vite **8.3.5**, TypeScript **6.0.3**, Recharts **3.10.1**, Zod **4.6.7**. Exakte Auflösungen stehen im Lockfile. Das bisherige monolithische `@modelcontextprotocol/sdk` 1.x wurde entfernt.
-
-## Verantwortlichkeiten
+## Code-Karte
 
 ```text
 src/
-  shared/
-    schemas.ts        Eingaben, Ausgaben und Domänentypen (Zod)
-    calculations.ts   Reine Berechnungen, unabhängig von I/O
+  shared/       Verträge, die Server und UI teilen (Zod-Schemas, Typen, reine Funktionen)
+    arnold-schema-v1.ts   Sechs Tabellen des Trainingsformats, Zeilen- und Referenzvalidierung
+    workout-contract.ts   Workout-/Satz-Eingaben und -Ausgaben
+    plan-contract.ts      Planmodell, Operationen, Validierung
+    onboarding-contract.ts  Einrichtungsprofil, Zustandsautomat, Handoff
+    schemas.ts, calculations.ts, arnold-view.ts, arnold-format.ts
+  analytics/    Reine Kennzahlen-Engine (keine I/O): Aktivität, Volumen, Rekorde, Fortschritt, Planerfüllung
   server/
-    fixture.ts        Ursprünglicher synthetischer Datensatz
-    storage.ts        StorageAdapter + JsonStorageAdapter
-    mcp.ts            Tool-/Ressourcenregistrierung, verbindet Adapter und Berechnungen
-    http.ts           HTTP-Routen, Origin-/Host-Prüfung, Transport je Anfrage
-    main.ts           Prozessstart und Shutdown
-  ui/
-    client.ts         Offizielle App-Bridge; MCP-Client für Browser-Vorschau
-    main.tsx          Bootstrap, Host-Theme, Loading-/Fehlerzustand
-    App.tsx           Vier Ansichten und Interaktionen
-    style.css         Theme-Tokens und responsive Layouts
-  host/
-    main.ts           Lokaler Host mit offiziellem AppBridge
+    main.ts, bootstrap.ts, http.ts   Start, Profilwahl, Express-App, Host-/Origin-Schutz
+    mcp-arnold.ts, mcp-workout.ts, mcp-plan.ts, mcp-onboarding.ts   Tool-Registrierung je Bereich
+    arnold-presenter.ts   Engine-Ergebnisse → Dashboard-Modell
+    arnold-sheets-read-adapter.ts, arnold-sheets-write-adapter.ts, arnold-grid-parser.ts, arnold-sheet-parser.ts
+    workout/ plan/ onboarding/   Fachdienste (service.ts) mit Fixture-Varianten für synthetische Daten
+    auth/       Bearer-Prüfung (JWKS), Scopes, Zugriffsklassen pro Tool, Discovery-Dokumente
+    google/     OAuth-Ablauf, verschlüsselter Refresh-Token-Speicher, Verbindungsdienst
+    identity/   Dauerhafte Nutzerzuordnung (Google-Subject → interne Nutzer-ID)
+    connected/  Profil `arnold_connected`: Laufzeit pro Nutzer, Dateianlage, Browser-Rücksprung
+    storage*.ts, google-sheets-storage.ts, fixture.ts, mcp.ts, sheet-parser.ts   Ursprüngliches Demo-Modell (Push/Pull/Legs)
+  ui/           React-App (ein Bundle, ein HTML-Dokument ohne externe Assets)
+    views/ components/ hooks/ client/   Ansichten, Bausteine, Zustandslogik, MCP-Client-Anbindung
+  host/         Lokaler Test-Host mit offiziellem `AppBridge`
+tests/          Vitest (Unit/Integration), tests/e2e = Playwright, tests/fixtures = synthetische Daten
 ```
 
-Vite bündelt jeweils ein vollständiges HTML-Dokument mit eingebettetem JavaScript und CSS. Die Ressource braucht keine externen Assets. Der serverseitige TypeScript-Code wird nach `dist/server` und `dist/shared` kompiliert; `npm start` benötigt keinen TypeScript-Loader.
+Vite bündelt `dashboard.html` (App) und `host.html` (Test-Host) zu je einer Datei mit eingebettetem JS/CSS. Der Server (`dist/server`, `dist/shared`, `dist/analytics`) läuft ohne TypeScript-Loader.
 
-## MCP-Apps-Lifecycle
+## MCP-Apps-Lebenszyklus
 
-1. Host initialisiert einen MCP-Client gegen `/mcp` und entdeckt Tools.
-2. `show_arnold_dashboard` verweist über `_meta.ui.resourceUri` auf die registrierte UI.
-3. Host liest das HTML mit `resources/read`; MIME-Typ: `text/html;profile=mcp-app`.
-4. Die UI registriert `ontoolresult`, Theme- und Teardown-Handler **vor** `App.connect()`.
-5. Das SDK führt `ui/initialize` und die Initialized-Notification durch.
-6. Host liefert Tool-Argumente und Tool-Ergebnis über die offizielle Bridge. Da ChatGPT beim Wiederöffnen einen historischen Snapshot wiedergeben kann, liest die UI vor dem ersten Anzeigen den aktuellen Stand über `get_dashboard_data` nach. Bei einem Ladefehler kann der historische Stand mit einem sichtbaren Fehlerhinweis angezeigt werden.
-7. UI-Aktionen verwenden `App.callServerTool()`. Schreibtools liefern den neuen Dashboard-Snapshot zurück.
+1. Der Host verbindet sich mit `/mcp` und entdeckt die Tools.
+2. Ein Tool wie `show_arnold_dashboard` verweist über `_meta.ui.resourceUri` auf die UI-Ressource (MIME `text/html;profile=mcp-app`).
+3. Der Host liest die Ressource und startet sie in einem isolierten iframe (CSP `connect-src 'none'`: die UI hat keinen eigenen Netzwerkzugriff).
+4. Die UI registriert ihre Handler (`ontoolresult`, Theme, Teardown) **vor** `App.connect()` und lädt aktuelle Daten per `callServerTool`. ChatGPT kann beim Wiederöffnen einen alten Snapshot liefern; deshalb liest die UI vor dem ersten Anzeigen neu nach.
+5. Schreibende UI-Aktionen laufen über `callServerTool`; das Ergebnis ersetzt den angezeigten Stand.
 
-`/host` verwendet `AppBridge`, `PostMessageTransport` und einen tatsächlichen MCP-Client. Das iframe hat `allow-scripts allow-forms`, eine opake Origin und CSP `connect-src 'none'`. Die App erhält somit keine direkten Netzwerkrechte. Der Host gibt keine eigene protokollfremde Nachrichtensimulation vor. Er ist ein **lokaler Entwicklerhost**, keine vollständige Host-Plattform mit Freigabe- oder Multi-App-Verwaltung.
+Es gibt keine Abhängigkeit von `window.openai`. `/preview` nutzt denselben Server über einen normalen MCP-Client ohne iframe, `/host` über `AppBridge`. Beides sind Entwicklungswerkzeuge, kein Ersatz für einen echten Host.
 
-`/preview` läuft ohne iframe und verwendet den offiziellen `StreamableHTTPClientTransport` gegen denselben Server. Das ist ein anderer Transportweg, keine Ersatzdatenhaltung. Das Backend ist in beiden Fällen identisch.
+## Datenmodell
 
-Die Registrierung nutzt die gemeinsamen MCP-Apps-Felder. Es gibt keine Abhängigkeit von `window.openai` oder produktspezifischen Browser-Globals. Host-Themes werden initial und bei Kontextänderungen übernommen. Der Theme-Button kann sie lokal wechseln; spätere Host-Änderungen werden wieder angewendet.
+Trainingsdaten liegen in einer Google-Tabelle mit `schema_id = arnold.training_raw`, Version `1.0.0` und sechs Tabs:
 
-## Transport und lokale Speicherung
+| Tab          | Inhalt                                                  |
+| ------------ | ------------------------------------------------------- |
+| `CONFIG`     | Tracker-ID, Dateirolle, Einstellungen                   |
+| `EXERCISES`  | Übungskatalog                                           |
+| `PLANS`      | Planversionen (`draft` / `active` / `archived`)         |
+| `PLAN_ITEMS` | Sessions und Positionen einer Planversion               |
+| `WORKOUTS`   | Durchgeführte Einheiten (lokales Datum, Status)         |
+| `SETS`       | Einzelne Sätze mit Last, Wiederholungen, Ausführungsart |
 
-Streamable HTTP ist stateless: Pro Request werden ein MCP-Server und Transport erstellt und anschließend geschlossen. Ein gemeinsamer StorageAdapter lebt für die gesamte HTTP-Prozesslaufzeit. Sein Inhalt liegt dauerhaft in der JSON-Datei, nicht im MCP-Transport.
+Spaltennamen sind `snake_case` und exakt festgelegt (`src/shared/arnold-schema-v1.ts`). Der Lese-Adapter prüft vor jeder Abfrage Datei-, Tab- und Tracker-Identität und stoppt bei Abweichung, statt zu raten. Formeln und Literale werden unterschieden; Freitext, der mit `=` beginnt, wird immer als Text geschrieben.
 
-Der Adapter stellt `getSnapshot`, `getWorkouts`, `getSets`, `getExercises`, `saveSet` und `resetDemoData` bereit. Berechnungen lesen einen konsistenten Snapshot. Schreiboperationen laufen über eine Promise-Warteschlange und schreiben erst eine temporäre Datei, dann ein atomares Rename. Fehlerhafte vorhandene Dateien werden nicht still durch eine Fixture ersetzt.
+Das ältere Demo-Modell (`demo`, `google_sheets`) hat ein eigenes, einfacheres Format und eigene Tools; es ist unabhängig vom Arnold-Schema.
 
-Das Dateiformat enthält schema-versionierte Übungen, Einheiten, Sätze und Idempotenzschlüssel. Persistenz und Schlüsselregistrierung erfolgen gemeinsam. Netzwerk-Retries erzeugen dadurch auch nach einem Prozessneustart keine Duplikate. Ein Reset beginnt eine neue Demo und löscht die Schlüssel.
+## Fachregeln
 
-Diese Garantien gelten innerhalb **eines Prozesses**. Mehrere Instanzen auf derselben Datei, verteilte Transaktionen und gleichzeitige unabhängige Adapter-Schreiber sind nicht unterstützt. Keine fsync-/Power-Loss-Garantie; atomares Rename verhindert teilweise sichtbare JSON-Inhalte.
+### Lasten und Volumen (`src/analytics`)
 
-## Berechnungsregeln
+Jeder Satz trägt `load_basis`; die Engine mischt Bedeutungen nie unbeschriftet.
 
-- Volumen: Summe aus Gewicht × Wiederholungen; Rundung auf zwei Nachkommastellen.
-- Wochen beginnen montags; Kalenderdaten werden in UTC verarbeitet.
-- Trainingstage/Woche: unterschiedliche Trainingsdaten geteilt durch Kalenderwochen zwischen erster und letzter gefilterter Einheit, einschließlich leerer Zwischenwochen. Mehrere Splits an einem Tag zählen als ein Trainingstag.
-- Persönlicher Bestwert: höchstes Gewicht; bei Gleichstand mehr Wiederholungen, dann das neueste Datum. Die Demo zeigt die drei Hauptübungen; der Sheets-Modus die ersten drei vorhandenen Übungsbestwerte. Die API liefert alle.
-- Epley: `kg × (1 + reps / 30)`, bei einer Wiederholung `kg`. Immer als **Schätzung** bezeichnet.
-- Übungsverlauf: pro Datum maximales Gewicht, mittlere Wiederholungen über Sätze, Gesamtvolumen, höchste geschätzte 1RM und Satzanzahl.
-- Datumsfilter inklusive; vertauschte Grenzen ergeben einen Toolfehler, leere gültige Bereiche ergeben leere Ergebnisse.
+| `load_basis`      | Bedeutung                   | Volumenkanal      | In 1RM-Schätzung     |
+| ----------------- | --------------------------- | ----------------- | -------------------- |
+| `total`           | Gesamte externe Last        | `free_weight`     | ja                   |
+| `per_implement`   | Last pro Hantel/Gerät       | `free_weight`     | ja, pro Gerät        |
+| `machine_display` | Angezeigte Maschinenlast    | `machine_display` | ja, gerätespezifisch |
+| `added`           | Zusatzlast bei Eigengewicht | `added_external`  | nein                 |
+| `assistance`      | Unterstützung               | keiner            | nein                 |
+| `bodyweight_only` | Körpergewicht               | keiner            | nein                 |
 
-## Lesender GoogleSheetsStorageAdapter
+- Kanäle sind physikalisch nicht vergleichbar und werden getrennt ausgewiesen. `comparable_free_weight_volume` enthält nur `free_weight`.
+- Eine unbekannte Last ist **unbekannt, nicht null**: Eigengewicht ohne Körpergewichtsmessung und Unterstützungssätze erzeugen weder Volumen noch Rekorde.
+- Wochen beginnen **montags**; Kalendertage kommen wörtlich aus `workout_date_local`, UTC-Zeitstempel werden nie in Tage umgerechnet. Zwei Workouts am selben Tag sind zwei Einheiten, aber ein Trainingstag. Leere Wochen bleiben als Nullbucket erhalten.
+- Wochenstreaks gibt es nur mit ausdrücklich übergebenem Wochenziel; die laufende Woche beendet einen Streak nie.
+- Rekorde werden nur innerhalb desselben Vergleichbarkeitsschlüssels `JSON([exercise_id, load_basis, execution_mode, implement_count, side])` verglichen. Rekordtypen: `max_load`, `max_reps_at_load`, `estimated_1rm`, `exercise_workout_volume`.
+- Geschätztes 1RM: Epley, nur im Wiederholungsbereich der Engine, immer als Schätzung bezeichnet.
+- Nicht berechenbare Werte tragen einen maschinenlesbaren Grund (`status`/`reason`), statt zu fehlen oder 0 zu sein.
 
-`storage-config.ts` wählt `demo` oder `google_sheets`. Der Sheets-Modus erfordert `MCP_ACCESS=private`, Loopback-Bindung, ausschließlich lokale erlaubte Hosts und lokale bzw. keine Origins. Eine öffentliche Demo-Konfiguration lässt den Server nicht mit echten Daten starten. Diese Prüfungen ersetzen keine Authentifizierung eines externen Transports; für ChatGPT muss eine private Verbindung eingerichtet werden.
+Die Engine ist rein und deterministisch; Ergebnisse tragen die Version der Konventionen (`src/analytics/types.ts`). Der Presenter übernimmt Kennzahlen unverändert; die UI rechnet nichts nach.
 
-`google-sheets-storage.ts` verwendet die offizielle `google-auth-library` mit `spreadsheets.readonly`. Keine Connector-Cookies oder GPT-OAuth-Tokens werden übernommen. Ein Dienstkonto erhält nur Betrachterrechte an der ausgewählten Datei. Google-Rechte gelten dennoch für die ganze Datei, nicht für einen Tab; diese Grenze muss vor der Freigabe klar sein. Der Code fragt nur den fest konfigurierten Tab ab.
+### Trainingspläne (`src/server/plan`, `src/shared/plan-contract.ts`)
 
-Vor jeder Datenabfrage werden Datei-ID, Tab-ID, Tab-Name und Grid-Grenzen verifiziert. Werte werden als unformatierte Zahlen mit Datumsserien gelesen. Der Parser prüft die exakten Überschriften, interpretiert Google-Datumszahlen/German-Datumswerte und Dezimalzahlen, verwendet die effektive Last, validiert Sätze über Zod und verwirft Duplikate oder nicht als `ok` markierte Zeilen. IDs werden stabil aus Datei, Tab und Satz-ID bzw. Übungsnamen abgeleitet. Warnungen enthalten Zeilennummern und Gründe, keine kopierten Zellinhalte.
+- Eine Planfamilie hat mehrere **Versionen**. Lebenszyklus: `draft → active → archived` oder `draft → archived`; nie zurück. „Alten Plan wieder nutzen“ heißt: neue Draft-Version auf Basis der alten.
+- Je Tracker höchstens eine aktive Version. Aktive und archivierte Versionen sind unveränderlich.
+- Änderungen sind **typisierte Operationen** (`add_session`, `replace_plan_exercise`, `reorder_plan_exercises`, `update_plan_exercise_targets`, …) auf einem Entwurf mit Revisionsschutz; veraltete Revisionen werden abgelehnt.
+- Die Aktivierung erfordert Validierung und eine Bestätigung der exakten Version und Revision, und läuft als ein atomarer Batch (neue Version aktiv, alte archiviert).
+- Session- und Positions-IDs sind stabil und überleben Umbenennungen, damit Workout-Referenzen historisch gültig bleiben.
 
-Gleichzeitige Abfragen teilen denselben laufenden Read. Nach Abschluss gibt es keinen Snapshot-Cache; der nächste Abruf liest Google erneut. Eingaben und berechnete Spalten werden in getrennten, begrenzten Reads gelesen; gleichzeitiges GPT-Schreiben ist keine transaktionale Snapshot-Garantie. Nach abgeschlossenem Logging erneut aktualisieren.
+### Workout-Logging (`src/server/workout`)
 
-`saveSet` und `resetDemoData` lehnt der Adapter ab. Die entsprechenden MCP-Tools werden in diesem Modus nicht registriert. Das bestehende GPT bleibt der Schreiber. Die UI erhält Herkunft, Ladezeit und übersprungene Zeilen und zeigt drei lesende Ansichten mit Aktualisieren an. Das iframe selbst erhält weder Google-Schlüssel noch Netzwerkrechte.
+Ablauf: `start_workout` → `log_workout_sets` / `update_set` / `void_set` → `complete_workout` oder `cancel_workout`. Jeder Schreibaufruf trägt eine `request_id`; Wiederholungen mit derselben ID erzeugen nie eine zweite Zeile, auch nicht nach Serverneustart. Schreibvorgänge sind Batches mit Readback und Auditeintrag. Bei unklarem Ergebnis (Antwort verloren) wird gelesen und verglichen, nicht blind wiederholt.
 
-Das ist eine einzelne, explizit konfigurierte private Datei für diesen Nutzer. Ein Produkt für mehrere Nutzer benötigt Nutzeranmeldung, je Nutzer autorisierte Dateien und getrennte Credentials. Es wird keine Mehrnutzerfähigkeit behauptet.
+### Einrichtung (`src/server/onboarding`)
 
-## Offizielle Grundlagen
+Ein Zustandsautomat führt von Profil über Planvorschlag zur **ausdrücklichen Bestätigung genau einer Planrevision**; erst danach darf Google verbunden werden. Chat-Turns und die Wizard-Oberfläche arbeiten auf demselben Serverzustand (kein zweiter Profilspeicher im Chat). Vor der Anmeldung schützt ein eigenes 256-Bit-Sitzungsgeheimnis den Entwurf.
 
-- [MCP Apps Quickstart](https://github.com/modelcontextprotocol/ext-apps/blob/main/docs/quickstart.md)
-- [MCP Apps Basic Host](https://github.com/modelcontextprotocol/ext-apps/tree/main/examples/basic-host)
-- [OpenAI: Add UI to your MCP server](https://developers.openai.com/plugins/build/chatgpt-ui)
+## Authentifizierung und Zugriff
+
+Arnold ist **Resource Server**, kein Authorization Server: Es prüft Tokens, stellt keine aus.
+
+- Bearer-JWT: Signatur über JWKS, Issuer, Audience (= MCP-Resource-URL, RFC 8707), Ablauf. Algorithmen sind fest; Fehlerantworten verraten keine Details.
+- Identität ist ein dauerhafter interner Nutzer, gekoppelt an das stabile Subject des Anmeldeanbieters, nie an eine E-Mail. Nutzer-IDs und Datei-IDs sind nie Tool-Argumente.
+- Jedes Tool hat genau eine **Zugriffsklasse** (Tabelle in `src/server/auth/tool-access.ts`, erzwungen von `guardToolRegistrations`). Ein nicht klassifiziertes Tool kann nicht registriert werden.
+
+| Klasse                | Credential                        | Beispiele                                                            |
+| --------------------- | --------------------------------- | -------------------------------------------------------------------- |
+| `SYNTHETIC_SANDBOX`   | keines, nur im offenen Modus      | `log_demo_set`, `reset_demo_data`                                    |
+| `ONBOARDING_PREVIEW`  | Sitzungsgeheimnis der Einrichtung | `start_arnold_onboarding`, `confirm_onboarding_plan`                 |
+| `AUTHENTICATED_READ`  | `arnold.read`                     | `show_arnold_dashboard`, `get_workouts`, `get_training_plan`         |
+| `AUTHENTICATED_WRITE` | `arnold.read` + `arnold.write`    | `start_workout`, `log_workout_sets`, `create_exercise`               |
+| `PLAN_WRITE`          | `arnold.read` + `arnold.plan`     | `create_plan_version`, `update_plan_draft`, `activate_training_plan` |
+| `ACCOUNT_MANAGEMENT`  | `arnold.account`                  | `connect_google_account`, `disconnect_google_account`                |
+
+Scopes gelten exakt: kein Scope impliziert einen anderen. Die Prüfung läuft **bei jedem Aufruf**, nicht einmal pro Verbindung, damit ein gesperrter Nutzer mitten in einer Sitzung sofort draußen ist.
+
+- **Konfiguration scheitert geschlossen** (`src/server/auth/config.ts`): widersprüchliche Einstellungen stoppen den Start. `AUTH_MODE=open` ist nur in `ARNOLD_ENV=development` erlaubt und nur mit synthetischen Daten.
+- **Google-Zugriff:** Scope nur `drive.file` (plus `openid`, `email`); ein breiterer Grant wird abgelehnt. Refresh-Tokens liegen AES-256-GCM-verschlüsselt (`TOKEN_ENCRYPTION_KEY`, rotierbar). Der OAuth-Rücksprung braucht Cookie, `state`, PKCE, Nonce, gültiges ID-Token und den unveränderten bestätigten Plan. Das Arnold-Bearer-Token steht nie in einem Browserlink.
+- **Nutzertrennung:** Der Nutzerkontext reist über `AsyncLocalStorage`, nie global. Im Connected-Profil werden POSTs pro Nutzer serialisiert.
+
+Details zu jeder Regel stehen als Kommentar am zuständigen Modul (`src/server/auth/*`, `src/server/google/*`).
+
+## Tools
+
+Rund 40 Tools in fünf Bereichen; die vollständige, verbindliche Liste ist die Zugriffsklassentabelle in `src/server/auth/tool-access.ts`.
+
+| Bereich       | Tools (Auswahl)                                                                                                                                                                                                                                                                        |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dashboard     | `show_arnold_dashboard`, `get_dashboard_data`, `get_workouts`, `get_exercise_progress`                                                                                                                                                                                                 |
+| Workout       | `get_workout`, `start_workout`, `log_workout_sets`, `update_set`, `void_set`, `complete_workout`, `cancel_workout`, `create_exercise`                                                                                                                                                  |
+| Trainingsplan | `get_training_plan`, `list_training_plans`, `get_plan_history`, `validate_training_plan`, `compare_plan_versions`, `get_plan_editor_context`, `create_training_plan`, `create_plan_version`, `clone_plan_version`, `update_plan_draft`, `activate_training_plan`, `archive_plan_draft` |
+| Einrichtung   | `show_arnold_onboarding`, `start_arnold_onboarding`, `update_onboarding_profile`, `request_onboarding_plan`, `submit_onboarding_plan_proposal`, `confirm_onboarding_plan`, `get_onboarding_handoff`, …                                                                                 |
+| Konto         | `connect_google_account`, `finish_arnold_setup`, `get_google_connection`, `disconnect_google_account`                                                                                                                                                                                  |
+
+Schreibtools sind nur registriert, wenn das Profil Schreiben erlaubt (`arnold_fixture` oder `arnold_connected`); `arnold_sheets` bleibt rein lesend.
+
+## Grenzen
+
+- Das Connected-Profil ist ein **Einzelserver-Entwicklungsprofil** (ein Prozess pro Zustandsordner, Dateispeicher). Mehrinstanzbetrieb, Postgres-Speicher (`IDENTITY_STORE=postgres` ist nicht implementiert) und verteilte Sperren fehlen.
+- Google-Zugriff gilt pro Datei, nicht pro Tab. Zugriffsrechte der ChatGPT-Drive-Verbindung werden nicht an Arnold weitergereicht.
+- Mit `drive.file` kann Arnold keine bestehende Tabelle suchen oder öffnen, nur selbst angelegte; ein Import bräuchte einen eigenen Picker-Ablauf.

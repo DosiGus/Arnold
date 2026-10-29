@@ -14,7 +14,7 @@
  * indexed from 1. Duplicate or gapped order values are therefore not
  * reachable through this module.
  *
- * Identity rules, from ARNOLD-PLAN-CONTRACT.md §5–6:
+ * Identity rules:
  *   - a new version always re-issues every `plan_item_id`;
  *   - a session continued inside the same family keeps its `session_id`;
  *   - a new, duplicated or re-parented session gets a new `session_id`;

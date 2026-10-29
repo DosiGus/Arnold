@@ -50,7 +50,7 @@ const nonnegativeInt = z.number().int().nonnegative();
  *
  * Bounded and stored verbatim, but never interpreted: the brief labels it as
  * user data so a model reading it treats it as a preference, not as an
- * instruction to the server. See `docs/ARNOLD-ONBOARDING-CONVERSATION.md`.
+ * instruction to the server.
  */
 const freeText = z.string().min(1).max(600);
 const label = z.string().min(1).max(120);
