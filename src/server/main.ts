@@ -8,7 +8,13 @@ const server = (await createConfiguredHttpApp({ host })).listen(
   host,
   () => {
     console.log(
-      `Arnold · ${process.env.STORAGE_MODE === "arnold_connected" ? "Google Sheets (persönlich, authentifiziert, Einzelserver-Entwicklung)" : process.env.STORAGE_MODE === "google_sheets" || process.env.STORAGE_MODE === "arnold_sheets" ? "Google Sheets (lesend, privat)" : "synthetische Demo"}\nPreview: http://localhost:${port}/preview\nMCP Apps Test-Host: http://localhost:${port}/host\nMCP: http://localhost:${port}/mcp`,
+      `Arnold · ${
+        process.env.STORAGE_MODE === "arnold_connected"
+          ? "Google Sheets (persönlich, authentifiziert, Einzelserver-Entwicklung)"
+          : process.env.STORAGE_MODE === "arnold_sheets"
+            ? "Google Sheets (lesend, privat)"
+            : "synthetische Daten"
+      }\nPreview: http://localhost:${port}/preview\nMCP Apps Test-Host: http://localhost:${port}/host\nMCP: http://localhost:${port}/mcp`,
     );
   },
 );

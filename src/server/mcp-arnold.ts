@@ -9,18 +9,11 @@ import type { WorkoutLoggingService } from "./workout/service.js";
 /**
  * MCP tools for the Arnold schema v1 dashboard.
  *
- * Why these tools are versioned rather than reusing the v1 names: the v1
- * `DashboardSchema` models a workout as a Push/Pull/Legs session with bare `kg`
- * numbers. Arnold data has neither — a session is a free-text name and every
- * load carries a convention (`per_implement`, `machine_display`, …). Answering
- * in the v1 shape would mean inventing a split and silently dropping the load
- * basis, so Arnold mode publishes `*_v2` tools with their own documented
- * contract and leaves the v1 tools untouched for demo mode.
- *
- * `show_arnold_dashboard` keeps its name in both modes, because it is the tool
- * that opens the app. Its payload is self-describing: the `ui_contract` field
- * tells a client which contract it is looking at, so the change is explicit
- * rather than silent. One deployment only ever runs in one mode.
+ * The `*_v2` suffix dates from the first prototype, which modelled a workout as
+ * a Push/Pull/Legs session with bare `kg` numbers and has since been removed.
+ * Arnold data has neither — a session is a free-text name and every load
+ * carries a convention (`per_implement`, `machine_display`, …) — so these tools
+ * keep their own documented contract and the `ui_contract` field in the payload.
  */
 import { readFile } from "node:fs/promises";
 import { McpServer } from "@modelcontextprotocol/server";

@@ -9,15 +9,11 @@ import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
 import type { NextFunction, Request, Response } from "express";
 import { resolve } from "node:path";
 import { ARNOLD_UI_CONTRACT } from "../shared/arnold-view.js";
-import { createArnoldMcpServer } from "./mcp.js";
 import { createArnoldV2McpServer } from "./mcp-arnold.js";
-import type { StorageAdapter } from "./storage.js";
 import type { ArnoldDataSource } from "./arnold-source.js";
 import {
   createArnoldSource,
-  createStorage,
   isArnoldMode,
-  requirePrivateBinding,
   requireSafeArnoldBinding,
 } from "./storage-config.js";
 import { loadAuthConfig } from "./auth/config.js";
@@ -30,7 +26,6 @@ import { withArnoldContext } from "./auth/guarded-server.js";
 export interface ServerOptions {
   env?: NodeJS.ProcessEnv;
   connected?: { runtime: ConnectedArnoldRuntime; browser: GoogleBrowserFlow };
-  storage?: StorageAdapter;
   /** Arnold schema v1 read source; selects the v2 dashboard mode. */
   arnoldSource?: ArnoldDataSource;
   workoutRuntime?: {
@@ -49,35 +44,53 @@ export interface ServerOptions {
   /**
    * Task 007 identity surface. Built from the environment when omitted, which
    * in development means `AUTH_MODE=open` — no bearer validation and no
-   * protected-resource advertisement, so the demo and read-only profiles of
-   * Tasks 001–003 behave exactly as before.
+   * protected-resource advertisement, which is what the synthetic and
+   * read-only profiles run with.
    */
   auth?: AuthSurface;
 }
+/**
+ * With nothing configured the server runs the synthetic fixture profile:
+ * invented data in memory, every tool available, no Google account involved.
+ * Any explicit `STORAGE_MODE` or injected runtime is left exactly as given.
+ */
+function withDefaultProfile(options: ServerOptions): NodeJS.ProcessEnv {
+  const env = options.env ?? process.env;
+  if (
+    env.STORAGE_MODE !== undefined ||
+    env.ARNOLD_WRITE_MODE !== undefined ||
+    options.connected ||
+    options.arnoldSource ||
+    options.workoutRuntime
+  )
+    return env;
+  return {
+    ...env,
+    STORAGE_MODE: "arnold_fixture",
+    ARNOLD_WRITE_MODE: "fixture",
+  };
+}
 export function createHttpApp(options: ServerOptions = {}) {
   const root = options.root ?? process.cwd();
-  const env = options.env ?? process.env;
+  const env = withDefaultProfile(options);
   const mode = writeModeFromEnv(env);
   if (
     options.connected &&
-    (options.storage ||
-      options.arnoldSource ||
-      options.workoutRuntime ||
-      mode !== "disabled")
+    (options.arnoldSource || options.workoutRuntime || mode !== "disabled")
   )
     throw new Error(
       "Arnold Connected benötigt einen eigenen Datenpfad ohne Fixture-Schreibmodus.",
     );
   const runtime: NonNullable<ServerOptions["workoutRuntime"]> | undefined =
     options.workoutRuntime ??
-    (mode === "fixture" && !options.storage && !options.arnoldSource
+    (mode === "fixture" && !options.arnoldSource
       ? // The full synthetic runtime, not just the logger: a deployment wired
         // from the environment must expose the plan editor and the onboarding
         // too, or two thirds of the product are simply absent from the tool
         // list and a connected client cannot reach them.
         createFixtureOnboarding({ dataset: planFixtureDataset() })
       : undefined);
-  if (runtime && (options.storage || options.arnoldSource))
+  if (runtime && options.arnoldSource)
     throw new Error(
       "Workout-Runtime muss denselben Lese- und Schreibpfad besitzen.",
     );
@@ -88,18 +101,16 @@ export function createHttpApp(options: ServerOptions = {}) {
     throw new Error(
       "Test-Sheet benötigt einen geprüften Request-Authentifizierer.",
     );
-  // Exactly one of the two data paths is active per process: the legacy demo /
-  // Sheets storage, or the Arnold schema v1 source behind the v2 tools.
+  // Exactly one data path is active per process: the synthetic fixture runtime,
+  // the read-only Arnold Sheets source, or the connected per-user runtime.
   const arnoldSource =
     runtime?.source ??
     options.arnoldSource ??
-    (options.storage === undefined && isArnoldMode(env)
-      ? createArnoldSource(root, env)
-      : undefined);
-  const storage =
-    arnoldSource || options.connected
-      ? undefined
-      : (options.storage ?? createStorage(root, env));
+    (isArnoldMode(env) ? createArnoldSource(root, env) : undefined);
+  if (!arnoldSource && !options.connected)
+    throw new Error(
+      "STORAGE_MODE muss arnold_fixture, arnold_sheets oder arnold_connected sein.",
+    );
   const host = options.host ?? env.HOST ?? "127.0.0.1";
   const allowedHosts = options.allowedHosts ??
     env.ALLOWED_HOSTS?.split(",")
@@ -123,15 +134,13 @@ export function createHttpApp(options: ServerOptions = {}) {
     throw new Error(
       "Connected-Runtime und HTTP-Endpunkt benötigen dieselbe aktive Authentifizierung.",
     );
-  if (arnoldSource || options.connected)
-    requireSafeArnoldBinding({
-      synthetic: arnoldSource?.synthetic ?? false,
-      authenticated: auth.summary.mode === "oidc",
-      host,
-      allowedHosts,
-      allowedOrigins,
-    });
-  else requirePrivateBinding(storage!, host, allowedHosts, allowedOrigins);
+  requireSafeArnoldBinding({
+    synthetic: arnoldSource?.synthetic ?? false,
+    authenticated: auth.summary.mode === "oidc",
+    host,
+    allowedHosts,
+    allowedOrigins,
+  });
   const app = createMcpExpressApp({
     host,
     allowedHosts,
@@ -192,26 +201,13 @@ export function createHttpApp(options: ServerOptions = {}) {
       status: "ok",
       app: "arnold",
       auth: auth.summary.mode,
-      // Whether this instance serves made-up data. In Arnold mode that is the
-      // source's own answer: reporting `false` for a synthetic fixture would
-      // tell an operator checking whether real training data is exposed exactly
-      // the wrong thing.
-      synthetic: options.connected
-        ? false
-        : arnoldSource
-          ? arnoldSource.synthetic
-          : storage?.mode === "demo",
-      source: options.connected
-        ? "arnold_connected"
-        : arnoldSource
-          ? "arnold_sheets"
-          : storage?.mode === "demo"
-            ? "local_demo"
-            : "google_sheets",
-      ui_contract:
-        arnoldSource || options.connected
-          ? ARNOLD_UI_CONTRACT
-          : "arnold.dashboard/1",
+      // Whether this instance serves made-up data. That is the source's own
+      // answer: reporting `false` for a synthetic fixture would tell an
+      // operator checking whether real training data is exposed exactly the
+      // wrong thing.
+      synthetic: options.connected ? false : arnoldSource!.synthetic,
+      source: options.connected ? "arnold_connected" : "arnold_sheets",
+      ui_contract: ARNOLD_UI_CONTRACT,
       version: "0.5.0",
     }),
   );
@@ -236,24 +232,18 @@ export function createHttpApp(options: ServerOptions = {}) {
           )
         : runtime;
       const requestSource = userRuntime?.source ?? arnoldSource;
-      const server = requestSource
-        ? createArnoldV2McpServer(
-            requestSource,
-            resolve(root, "dist/ui/dashboard.html"),
-            undefined,
-            userRuntime?.service,
-            userRuntime && "actorContext" in userRuntime
-              ? await userRuntime.actorContext?.(req)
-              : undefined,
-            userRuntime?.plans,
-            userRuntime?.onboarding,
-            auth.guard,
-          )
-        : createArnoldMcpServer(
-            storage!,
-            resolve(root, "dist/ui/dashboard.html"),
-            auth.guard,
-          );
+      const server = createArnoldV2McpServer(
+        requestSource!,
+        resolve(root, "dist/ui/dashboard.html"),
+        undefined,
+        userRuntime?.service,
+        userRuntime && "actorContext" in userRuntime
+          ? await userRuntime.actorContext?.(req)
+          : undefined,
+        userRuntime?.plans,
+        userRuntime?.onboarding,
+        auth.guard,
+      );
       if (options.connected)
         registerGoogleTools(
           server,

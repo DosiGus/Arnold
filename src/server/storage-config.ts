@@ -1,41 +1,10 @@
 import { isAbsolute, resolve } from "node:path";
-import { GoogleSheetsStorageAdapter } from "./google-sheets-storage.js";
-import { JsonStorageAdapter, type StorageAdapter } from "./storage.js";
 import {
   ArnoldSheetsDataSource,
   type ArnoldDataSource,
 } from "./arnold-source.js";
 
 export const LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
-export function createStorage(
-  root: string,
-  env: NodeJS.ProcessEnv = process.env,
-): StorageAdapter {
-  const mode = env.STORAGE_MODE ?? "demo";
-  if (mode === "demo")
-    return new JsonStorageAdapter(
-      resolve(root, env.DEMO_DATA_FILE ?? "data/demo.json"),
-    );
-  if (mode !== "google_sheets")
-    throw new Error("STORAGE_MODE muss demo oder google_sheets sein.");
-  if (env.MCP_ACCESS !== "private")
-    throw new Error(
-      "Echte Sheets-Daten erfordern MCP_ACCESS=private und eine private MCP-Verbindung. Der öffentliche Demo-Tunnel bleibt ausgeschlossen.",
-    );
-  const keyFile = env.GOOGLE_APPLICATION_CREDENTIALS;
-  return new GoogleSheetsStorageAdapter({
-    spreadsheetId: env.GOOGLE_SPREADSHEET_ID ?? "",
-    sheetId: Number(env.GOOGLE_SHEET_ID),
-    sheetTitle: env.GOOGLE_SHEET_TITLE ?? "Trainingslog",
-    headerRow: Number(env.GOOGLE_HEADER_ROW ?? "4"),
-    maxRows: Number(env.GOOGLE_MAX_ROWS ?? "20004"),
-    keyFile: keyFile
-      ? isAbsolute(keyFile)
-        ? keyFile
-        : resolve(root, keyFile)
-      : undefined,
-  });
-}
 /**
  * Whether a binding reaches beyond this machine.
  *
@@ -89,27 +58,6 @@ export function requireSafeArnoldBinding(input: {
   throw new Error(
     "Eine echte Arnold-Trainingsdatei darf nicht über eine öffentliche Adresse erreichbar sein, solange keine Authentifizierung aktiv ist. Entweder an Loopback binden und einen privaten MCP-Tunnel verwenden, oder AUTH_MODE=oidc konfigurieren, oder für einen offenen Test STORAGE_MODE=arnold_fixture mit synthetischen Daten nutzen.",
   );
-}
-
-/** Any mode that reads a real Google file must stay bound to loopback. */
-export function requireLoopbackOnly(
-  host: string,
-  allowedHosts: string[],
-  allowedOrigins: string[],
-) {
-  if (isPublicBinding(host, allowedHosts, allowedOrigins))
-    throw new Error(
-      "Google-Sheets-Modus darf nur an Loopback gebunden sein und keine öffentlichen Hosts oder Origins freigeben. Einen privaten MCP-Tunnel verwenden.",
-    );
-}
-export function requirePrivateBinding(
-  storage: StorageAdapter,
-  host: string,
-  allowedHosts: string[],
-  allowedOrigins: string[],
-) {
-  if (storage.mode !== "google_sheets") return;
-  requireLoopbackOnly(host, allowedHosts, allowedOrigins);
 }
 
 export const ARNOLD_STORAGE_MODE = "arnold_sheets";

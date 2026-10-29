@@ -33,15 +33,7 @@ export const TOOL_ACCESS: Readonly<Record<string, ToolAccessClass>> = {
   finish_arnold_setup: "ACCOUNT_MANAGEMENT",
   get_google_connection: "ACCOUNT_MANAGEMENT",
   disconnect_google_account: "ACCOUNT_MANAGEMENT",
-  // ── mcp.ts — the Task 001–003 v1 surface (demo / read-only Sheets) ──
   show_arnold_dashboard: "AUTHENTICATED_READ",
-  get_dashboard_data: "AUTHENTICATED_READ",
-  get_workouts: "AUTHENTICATED_READ",
-  get_exercise_progress: "AUTHENTICATED_READ",
-  // Registered only when storage is the synthetic JSON fixture (`isDemo`).
-  // They write, but only to process-local synthetic data owned by nobody.
-  log_demo_set: "SYNTHETIC_SANDBOX",
-  reset_demo_data: "SYNTHETIC_SANDBOX",
 
   // ── mcp-arnold.ts — the v2 analytics surface ──
   get_arnold_dashboard_v2: "AUTHENTICATED_READ",

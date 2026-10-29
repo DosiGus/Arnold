@@ -30,7 +30,6 @@ npm run format       # Prettier
 
 ## Stolperfallen
 
-- Es gibt zwei Datenmodelle: das ursprüngliche Demo-Modell (`storage.ts`, `mcp.ts`, `fixture.ts`, `sheet-parser.ts`, `google-sheets-storage.ts`, `src/ui/App.tsx`) und das Arnold-Schema (`arnold-*`, `workout/`, `plan/`, `onboarding/`, `ArnoldDashboardApp.tsx`). Neue Arbeit gehört in das Arnold-Schema.
 - Tests brauchen lokale TCP-Listener; in der Sandbox mit freigegebener lokaler Ausführung laufen lassen.
 - Andere Sessions arbeiten parallel in Git-Worktrees. Vor Branch-Arbeit `git worktree list` und den Stand prüfen.
 - Ältere Verträge und Task-Berichte: `git show archive/docs-before-cleanup:docs/<datei>`.

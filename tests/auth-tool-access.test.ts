@@ -21,9 +21,7 @@ import {
   type ServerContext,
 } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import { createArnoldMcpServer } from "../src/server/mcp.js";
 import { createArnoldV2McpServer } from "../src/server/mcp-arnold.js";
-import { JsonStorageAdapter } from "../src/server/storage.js";
 import { createFixtureLogging } from "../src/server/workout/fixture.js";
 import { createFixturePlanning } from "../src/server/plan/fixture.js";
 import { createFixtureOnboarding } from "../src/server/onboarding/fixture.js";
@@ -80,17 +78,6 @@ async function publishedTools(server: McpServer): Promise<string[]> {
 }
 
 describe("every published tool is classified", () => {
-  it("covers the v1 demo surface", async () => {
-    const server = createArnoldMcpServer(
-      new JsonStorageAdapter(join(await tempDir(), "demo.json")),
-      "dist/ui/dashboard.html",
-    );
-    const tools = await publishedTools(server);
-
-    expect(tools.length).toBeGreaterThan(0);
-    for (const tool of tools) expect(toolAccessFor(tool), tool).toBeDefined();
-  });
-
   it("covers the v2 read surface", async () => {
     const runtime = createFixturePlanning();
     const server = createArnoldV2McpServer(
@@ -154,15 +141,6 @@ describe("every published tool is classified", () => {
         ),
       ),
     );
-    const v1 = new Set(
-      await publishedTools(
-        createArnoldMcpServer(
-          new JsonStorageAdapter(join(await tempDir(), "demo.json")),
-          "dist/ui/dashboard.html",
-        ),
-      ),
-    );
-
     const googleServer = new McpServer({
       name: "google-registration-probe",
       version: "1",
@@ -175,7 +153,7 @@ describe("every published tool is classified", () => {
     );
     const google = new Set(await publishedTools(googleServer));
     const orphans = Object.keys(TOOL_ACCESS).filter(
-      (tool) => !widest.has(tool) && !v1.has(tool) && !google.has(tool),
+      (tool) => !widest.has(tool) && !google.has(tool),
     );
     expect(orphans).toEqual([]);
   });
@@ -193,11 +171,10 @@ describe("the classification table", () => {
     );
   });
 
-  it("marks the demo writes as synthetic rather than as user writes", () => {
-    expect(toolsWithAccess("SYNTHETIC_SANDBOX")).toEqual([
-      "log_demo_set",
-      "reset_demo_data",
-    ]);
+  it("keeps SYNTHETIC_SANDBOX out of the table: it is a runtime reclassification", () => {
+    // Synthetic writes are the same tool names as user writes, reclassified
+    // per server by `syntheticWrites`; no tool is declared sandbox by name.
+    expect(toolsWithAccess("SYNTHETIC_SANDBOX")).toEqual([]);
   });
 
   it("classifies every onboarding tool as preview", () => {
@@ -363,12 +340,13 @@ describe("guarded registration", () => {
 
   it("never reclassifies account management", async () => {
     const result = (await invoke(
-      serverWithTool("log_demo_set", enforcedGuard(), {
+      serverWithTool("connect_google_account", enforcedGuard(), {
         syntheticWrites: true,
       }),
-      "log_demo_set",
+      "connect_google_account",
     )) as { isError?: boolean };
-    // log_demo_set is already SYNTHETIC_SANDBOX, so enforced mode refuses it.
+    // Account management keeps its class, and enforced mode refuses a call
+    // without credentials.
     expect(result.isError).toBe(true);
   });
 
@@ -439,7 +417,7 @@ describe("guarded registration", () => {
         guard,
       );
       server.registerTool(
-        "get_dashboard_data",
+        "get_arnold_dashboard_v2",
         { inputSchema: z.object({}) },
         async () => {
           const before = currentArnoldContext()?.userId;
@@ -465,12 +443,12 @@ describe("guarded registration", () => {
     }
     try {
       const first = connections[0].client.callTool({
-        name: "get_dashboard_data",
+        name: "get_arnold_dashboard_v2",
         arguments: {},
       });
       await started[0];
       const second = connections[1].client.callTool({
-        name: "get_dashboard_data",
+        name: "get_arnold_dashboard_v2",
         arguments: {},
       });
       await started[1];

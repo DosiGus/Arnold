@@ -1,6 +1,6 @@
 # Arnold – Aufbau und Betrieb
 
-Teil 1 erklärt, wie Arnold gebaut ist und welche Regeln gelten. Teil 2 beschreibt Konfiguration, ChatGPT-Test und das Connected-Profil. Tests: `npm run check` (Stand 29.10.2026: 1.173 Unit- und 53 Browser-Tests grün, alles gegen simulierte Anbieter; Browser-Tests brauchen lokale TCP-Listener und laufen auf den Ports 8790–8804).
+Teil 1 erklärt, wie Arnold gebaut ist und welche Regeln gelten. Teil 2 beschreibt Konfiguration, ChatGPT-Test und das Connected-Profil. Tests: `npm run check` (Stand 29.10.2026: 1.146 Unit- und 44 Browser-Tests grün, alles gegen simulierte Anbieter; Browser-Tests brauchen lokale TCP-Listener und laufen auf den Ports 8790–8804).
 
 # Teil 1 – Aufbau
 
@@ -27,7 +27,7 @@ src/
     google/     OAuth-Ablauf, verschlüsselter Refresh-Token-Speicher, Verbindungsdienst
     identity/   Dauerhafte Nutzerzuordnung (Google-Subject → interne Nutzer-ID)
     connected/  Profil `arnold_connected`: Laufzeit pro Nutzer, Dateianlage, Browser-Rücksprung
-    storage*.ts, google-sheets-storage.ts, fixture.ts, mcp.ts, sheet-parser.ts   Ursprüngliches Demo-Modell (Push/Pull/Legs)
+    storage-config.ts   Profilwahl für `arnold_sheets`, Prüfung öffentlicher Bindungen
   ui/           React-App (ein Bundle, ein HTML-Dokument ohne externe Assets)
     views/ components/ hooks/ client/   Ansichten, Bausteine, Zustandslogik, MCP-Client-Anbindung
   host/         Lokaler Test-Host mit offiziellem `AppBridge`
@@ -60,8 +60,6 @@ Trainingsdaten liegen in einer Google-Tabelle mit `schema_id = arnold.training_r
 | `SETS`       | Einzelne Sätze mit Last, Wiederholungen, Ausführungsart |
 
 Spaltennamen sind `snake_case` und exakt festgelegt (`src/shared/arnold-schema-v1.ts`). Der Lese-Adapter prüft vor jeder Abfrage Datei-, Tab- und Tracker-Identität und stoppt bei Abweichung, statt zu raten. Formeln und Literale werden unterschieden; Freitext, der mit `=` beginnt, wird immer als Text geschrieben.
-
-Das ältere Demo-Modell (`demo`, `google_sheets`) hat ein eigenes, einfacheres Format und eigene Tools; es ist unabhängig vom Arnold-Schema.
 
 ## Fachregeln
 
@@ -112,14 +110,14 @@ Arnold ist **Resource Server**, kein Authorization Server: Es prüft Tokens, ste
 - Identität ist ein dauerhafter interner Nutzer, gekoppelt an das stabile Subject des Anmeldeanbieters, nie an eine E-Mail. Nutzer-IDs und Datei-IDs sind nie Tool-Argumente.
 - Jedes Tool hat genau eine **Zugriffsklasse** (Tabelle in `src/server/auth/tool-access.ts`, erzwungen von `guardToolRegistrations`). Ein nicht klassifiziertes Tool kann nicht registriert werden.
 
-| Klasse                | Credential                        | Beispiele                                                            |
-| --------------------- | --------------------------------- | -------------------------------------------------------------------- |
-| `SYNTHETIC_SANDBOX`   | keines, nur im offenen Modus      | `log_demo_set`, `reset_demo_data`                                    |
-| `ONBOARDING_PREVIEW`  | Sitzungsgeheimnis der Einrichtung | `start_arnold_onboarding`, `confirm_onboarding_plan`                 |
-| `AUTHENTICATED_READ`  | `arnold.read`                     | `show_arnold_dashboard`, `get_workouts`, `get_training_plan`         |
-| `AUTHENTICATED_WRITE` | `arnold.read` + `arnold.write`    | `start_workout`, `log_workout_sets`, `create_exercise`               |
-| `PLAN_WRITE`          | `arnold.read` + `arnold.plan`     | `create_plan_version`, `update_plan_draft`, `activate_training_plan` |
-| `ACCOUNT_MANAGEMENT`  | `arnold.account`                  | `connect_google_account`, `disconnect_google_account`                |
+| Klasse                | Credential                        | Beispiele                                                              |
+| --------------------- | --------------------------------- | ---------------------------------------------------------------------- |
+| `SYNTHETIC_SANDBOX`   | keines, nur im offenen Modus      | Schreib-Tools des Fixture-Profils (zur Laufzeit umklassifiziert)       |
+| `ONBOARDING_PREVIEW`  | Sitzungsgeheimnis der Einrichtung | `start_arnold_onboarding`, `confirm_onboarding_plan`                   |
+| `AUTHENTICATED_READ`  | `arnold.read`                     | `show_arnold_dashboard`, `get_arnold_workouts_v2`, `get_training_plan` |
+| `AUTHENTICATED_WRITE` | `arnold.read` + `arnold.write`    | `start_workout`, `log_workout_sets`, `create_exercise`                 |
+| `PLAN_WRITE`          | `arnold.read` + `arnold.plan`     | `create_plan_version`, `update_plan_draft`, `activate_training_plan`   |
+| `ACCOUNT_MANAGEMENT`  | `arnold.account`                  | `connect_google_account`, `disconnect_google_account`                  |
 
 Scopes gelten exakt: kein Scope impliziert einen anderen. Die Prüfung läuft **bei jedem Aufruf**, nicht einmal pro Verbindung, damit ein gesperrter Nutzer mitten in einer Sitzung sofort draußen ist.
 
@@ -135,7 +133,7 @@ Rund 40 Tools in fünf Bereichen; die vollständige, verbindliche Liste ist die 
 
 | Bereich       | Tools (Auswahl)                                                                                                                                                                                                                                                                        |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Dashboard     | `show_arnold_dashboard`, `get_dashboard_data`, `get_workouts`, `get_exercise_progress`                                                                                                                                                                                                 |
+| Dashboard     | `show_arnold_dashboard`, `get_arnold_dashboard_v2`, `get_arnold_workouts_v2`, `get_arnold_exercise_progress_v2`                                                                                                                                                                        |
 | Workout       | `get_workout`, `start_workout`, `log_workout_sets`, `update_set`, `void_set`, `complete_workout`, `cancel_workout`, `create_exercise`                                                                                                                                                  |
 | Trainingsplan | `get_training_plan`, `list_training_plans`, `get_plan_history`, `validate_training_plan`, `compare_plan_versions`, `get_plan_editor_context`, `create_training_plan`, `create_plan_version`, `clone_plan_version`, `update_plan_draft`, `activate_training_plan`, `archive_plan_draft` |
 | Einrichtung   | `show_arnold_onboarding`, `start_arnold_onboarding`, `update_onboarding_profile`, `request_onboarding_plan`, `submit_onboarding_plan_proposal`, `confirm_onboarding_plan`, `get_onboarding_handoff`, …                                                                                 |
@@ -155,19 +153,17 @@ Konfiguration, Verbindung mit ChatGPT, Connected-Profil, Hosting und Backup. All
 
 ## Betriebsarten
 
-| `STORAGE_MODE`     | Start                          | Port (Konvention) | Werkzeuge                      |
-| ------------------ | ------------------------------ | ----------------- | ------------------------------ |
-| `demo` (Standard)  | `npm start`                    | 8787              | Demo-Dashboard, `log_demo_set` |
-| `arnold_fixture`   | `ARNOLD_WRITE_MODE=fixture`    | 8787              | Alle, auf synthetischen Daten  |
-| `arnold_sheets`    | `MCP_ACCESS=private`, Datei-ID | 8789              | Nur lesend, eigene Datei       |
-| `google_sheets`    | `MCP_ACCESS=private`           | 8788              | Nur lesend, älteres Format     |
-| `arnold_connected` | OIDC + Google OAuth            | 8787              | Alle, pro Nutzer eine Datei    |
+| `STORAGE_MODE`              | Start                          | Port (Konvention) | Werkzeuge                     |
+| --------------------------- | ------------------------------ | ----------------- | ----------------------------- |
+| `arnold_fixture` (Standard) | `npm start`                    | 8787              | Alle, auf synthetischen Daten |
+| `arnold_sheets`             | `MCP_ACCESS=private`, Datei-ID | 8789              | Nur lesend, eigene Datei      |
+| `arnold_connected`          | OIDC + Google OAuth            | 8787              | Alle, pro Nutzer eine Datei   |
 
-Ohne `ARNOLD_WRITE_MODE=fixture` registriert `arnold_fixture` nur die 12 lesenden Werkzeuge. `ARNOLD_WRITE_MODE=production` wird immer abgelehnt.
+Ohne jede Einstellung läuft `arnold_fixture` mit `ARNOLD_WRITE_MODE=fixture`. Wer `STORAGE_MODE=arnold_fixture` ausdrücklich setzt, muss auch `ARNOLD_WRITE_MODE=fixture` setzen. `ARNOLD_WRITE_MODE=production` wird immer abgelehnt. Die früheren Modi `demo` und `google_sheets` gibt es nicht mehr.
 
 **Schutzregeln beim Start** (der Server weigert sich, nicht nur zu warnen):
 
-- Eine echte Datei (`arnold_sheets`, `google_sheets`) erfordert `MCP_ACCESS=private`, Loopback-Bindung und nur lokale `ALLOWED_HOSTS`/`ALLOWED_ORIGINS`. Sie wird nie über einen öffentlichen Tunnel ohne Anmeldung bedient.
+- Eine echte Datei (`arnold_sheets`) erfordert `MCP_ACCESS=private`, Loopback-Bindung und nur lokale `ALLOWED_HOSTS`/`ALLOWED_ORIGINS`. Sie wird nie über einen öffentlichen Tunnel ohne Anmeldung bedient.
 - `HOST`/`ALLOWED_HOSTS`/`ALLOWED_ORIGINS` werden bei jeder Anfrage geprüft (DNS-Rebinding-Schutz). Eine Tunnel-Domain muss ausdrücklich in `ALLOWED_HOSTS` stehen, Origins ohne `*`.
 - `AUTH_MODE=open` nur mit `ARNOLD_ENV=development` und synthetischen Daten; in `staging`/`production` ist `oidc` Pflicht.
 
@@ -205,7 +201,6 @@ Nach der Planbestätigung sagt Arnold, die Google-Verbindung sei in diesem Modus
 | Server antwortet nicht über Tunnel | Tunnel-Hostname fehlt in `ALLOWED_HOSTS`                      |
 | Server startet nicht               | Echte Datenquelle konfiguriert; `STORAGE_MODE=arnold_fixture` |
 | ChatGPT findet keine Werkzeuge     | Adresse endet nicht auf `/mcp`                                |
-| 12 statt 36 Werkzeuge              | `ARNOLD_WRITE_MODE=fixture` fehlt                             |
 | Alte Tools/UI nach Änderung        | Connector „Refresh“, neuen Chat öffnen                        |
 
 Alternativ zum Quick-Tunnel: [OpenAI Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) mit dem offiziellen `tunnel-client` (`tunnel-client doctor`, dann `run`). Das ist der Weg für private Daten; Runtime-Key nie in Repository oder Chat.
@@ -217,7 +212,7 @@ Für lokale Auswertung einer bestehenden Arnold-Tabelle mit einem Google-Dienstk
 1. Dienstkonto ohne Cloud-Rollen anlegen, Sheets API aktivieren, Tabelle für das Konto als Betrachter freigeben (Google gewährt pro Datei, nicht pro Tab).
 2. Schlüssel nur als `data/google-sheets-reader.json` (Modus 600, ignoriert) ablegen.
 3. `.env.sheets` aus der Vorlage in `.env.example` füllen (`ARNOLD_SPREADSHEET_ID`, optional `ARNOLD_EXPECTED_TRACKER_ID`, `ARNOLD_CACHE_TTL_MS`).
-4. `node --env-file=.env.sheets dist/server/main.js` und `/host` auf dem konfigurierten Port öffnen. `scripts/check-sheets.ts` gibt nur Herkunft, Kennzahlen und Ladezeit aus.
+4. `node --env-file=.env.sheets dist/server/main.js` und `/host` auf dem konfigurierten Port öffnen.
 
 Der Adapter liest nur den konfigurierten Tracker, stoppt bei geänderter Datei-, Tab- oder Spaltenidentität und schreibt nie.
 

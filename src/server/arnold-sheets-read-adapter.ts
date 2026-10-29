@@ -134,7 +134,7 @@ const optionsSchema = z.strictObject({
   maxColumnsPerTable: z.number().int().min(23).max(64).default(64),
 });
 
-/** Separate data-access API; does not implement the legacy demo StorageAdapter or publish MCP tools. */
+/** Separate data-access API; does not publish MCP tools. */
 export class ArnoldSheetsReadAdapter {
   readonly readOnly = true as const;
   private readonly options: z.infer<typeof optionsSchema>;
