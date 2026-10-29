@@ -1,6 +1,6 @@
 # Arnold – Hinweise für die Entwicklung
 
-MCP-App (Node/Express + React) für Training mit Google-Sheets-Speicher. Überblick: `README.md`. Aufbau, Fachregeln, Auth: `docs/ARCHITECTURE.md`. Konfiguration und ChatGPT-Test: `docs/OPERATIONS.md`. Tests: `docs/TESTING.md`.
+MCP-App (Node/Express + React) für Training mit Google-Sheets-Speicher. Überblick: `README.md`. Aufbau, Fachregeln, Auth, Konfiguration, ChatGPT-Test und offene Punkte: `docs/GUIDE.md`.
 
 ## Befehle
 

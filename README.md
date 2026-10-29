@@ -34,7 +34,7 @@ npm start          # synthetische Demo auf http://localhost:8787
 
 ## Betriebsarten
 
-Der Server wählt über `STORAGE_MODE` (und `AUTH_MODE`) eine Betriebsart. Details und Variablen: [docs/OPERATIONS.md](docs/OPERATIONS.md).
+Der Server wählt über `STORAGE_MODE` (und `AUTH_MODE`) eine Betriebsart. Details und Variablen: [docs/GUIDE.md](docs/GUIDE.md).
 
 | Modus              | Daten                                       | Anmeldung | Zweck                          |
 | ------------------ | ------------------------------------------- | --------- | ------------------------------ |
@@ -47,9 +47,7 @@ Der Server wählt über `STORAGE_MODE` (und `AUTH_MODE`) eine Betriebsart. Detai
 
 ## Dokumentation
 
-- [CLAUDE.md](CLAUDE.md) – Orientierung für die Entwicklung: Struktur, Konventionen, Stolperfallen.
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) – Aufbau, Datenmodell, Fachregeln, Authentifizierung, Tool-Katalog.
-- [docs/OPERATIONS.md](docs/OPERATIONS.md) – Konfiguration, ChatGPT-Test, Connected-Profil, Hosting, Backup.
-- [docs/TESTING.md](docs/TESTING.md) – Testaufbau und was nicht nachgewiesen ist.
+- [CLAUDE.md](CLAUDE.md) – Orientierung für die Entwicklung: Befehle, Regeln, Stolperfallen.
+- [docs/GUIDE.md](docs/GUIDE.md) – Aufbau, Datenmodell, Fachregeln, Authentifizierung, Konfiguration, ChatGPT-Test, Connected-Profil, offene Punkte.
 
 Ältere ausführliche Verträge und Abschlussberichte stehen im Git-Tag `archive/docs-before-cleanup` (`git show archive/docs-before-cleanup:docs/<datei>`).

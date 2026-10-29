@@ -10,7 +10,7 @@ import {
 /**
  * Version of the calculation conventions, not of the raw data schema.
  * Bump this whenever a formula, an eligibility rule or a status mapping changes,
- * so stored or cached results stay traceable. See docs/ARCHITECTURE.md.
+ * so stored or cached results stay traceable. See docs/GUIDE.md.
  */
 export const METRICS_VERSION = "1.1.0";
 

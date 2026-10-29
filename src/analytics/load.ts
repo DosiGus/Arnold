@@ -9,7 +9,7 @@ import type {
   VolumeChannel,
 } from "./types.js";
 
-/** Epley is only applied inside this repetition range; see docs/ARCHITECTURE.md. */
+/** Epley is only applied inside this repetition range; see docs/GUIDE.md. */
 export const EPLEY_MIN_REPS = 1;
 export const EPLEY_MAX_REPS = 10;
 
