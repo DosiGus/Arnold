@@ -126,7 +126,7 @@ describe("full pipeline from the sheets transport to the MCP tools", () => {
     });
     const client = await connect(source);
     const result = (await client.callTool({
-      name: "get_arnold_dashboard_v2",
+      name: "get_arnold_dashboard",
       arguments: {},
     })) as CallToolResult;
     expect(result.isError).not.toBe(true);
@@ -178,7 +178,7 @@ describe("full pipeline from the sheets transport to the MCP tools", () => {
     const view = ArnoldDashboardViewSchema.parse(
       (
         (await client.callTool({
-          name: "get_arnold_dashboard_v2",
+          name: "get_arnold_dashboard",
           arguments: {},
         })) as CallToolResult
       ).structuredContent,
@@ -199,7 +199,7 @@ describe("full pipeline from the sheets transport to the MCP tools", () => {
       }),
     );
     const result = (await client.callTool({
-      name: "get_arnold_dashboard_v2",
+      name: "get_arnold_dashboard",
       arguments: {},
     })) as CallToolResult;
     expect(result.isError).toBe(true);

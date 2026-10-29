@@ -36,9 +36,9 @@ export const TOOL_ACCESS: Readonly<Record<string, ToolAccessClass>> = {
   show_arnold_dashboard: "AUTHENTICATED_READ",
 
   // ── mcp-arnold.ts — the v2 analytics surface ──
-  get_arnold_dashboard_v2: "AUTHENTICATED_READ",
-  get_arnold_workouts_v2: "AUTHENTICATED_READ",
-  get_arnold_exercise_progress_v2: "AUTHENTICATED_READ",
+  get_arnold_dashboard: "AUTHENTICATED_READ",
+  get_arnold_workouts: "AUTHENTICATED_READ",
+  get_arnold_exercise_progress: "AUTHENTICATED_READ",
 
   // ── mcp-workout.ts — Task 004 ──
   get_workout: "AUTHENTICATED_READ",

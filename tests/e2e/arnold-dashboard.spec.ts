@@ -288,7 +288,7 @@ test("drives the dashboard through the MCP Apps bridge in the test host", async 
   // the guard against a replayed result from chat history.
   await expect.poll(() => calls.includes("show_arnold_dashboard")).toBe(true);
   await expect
-    .poll(() => calls.filter((c) => c === "get_arnold_dashboard_v2").length)
+    .poll(() => calls.filter((c) => c === "get_arnold_dashboard").length)
     .toBeGreaterThanOrEqual(1);
 
   // Views fetch their own data through the bridge.
@@ -296,13 +296,13 @@ test("drives the dashboard through the MCP Apps bridge in the test host", async 
     .getByRole("navigation", { name: "Hauptnavigation" })
     .getByRole("button", { name: "Workouts", exact: true })
     .click();
-  await expect.poll(() => calls.includes("get_arnold_workouts_v2")).toBe(true);
+  await expect.poll(() => calls.includes("get_arnold_workouts")).toBe(true);
   await app
     .getByRole("navigation", { name: "Hauptnavigation" })
     .getByRole("button", { name: "Fortschritt", exact: true })
     .click();
   await expect
-    .poll(() => calls.includes("get_arnold_exercise_progress_v2"))
+    .poll(() => calls.includes("get_arnold_exercise_progress"))
     .toBe(true);
 
   // No write or demo tool is ever reachable in Arnold mode.

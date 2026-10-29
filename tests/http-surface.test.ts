@@ -50,7 +50,7 @@ describe("default synthetic profile", () => {
     const names = (await client.listTools()).tools.map((tool) => tool.name);
     for (const name of [
       "show_arnold_dashboard",
-      "get_arnold_dashboard_v2",
+      "get_arnold_dashboard",
       "start_workout",
       "log_workout_sets",
       "create_training_plan",

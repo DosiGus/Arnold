@@ -258,7 +258,7 @@ describe("tool guard in enforced mode", () => {
 
   it("refuses an authenticated tool with no credential", async () => {
     const error = await guardWith()
-      .authorize("get_arnold_dashboard_v2", "AUTHENTICATED_READ", ctxWith())
+      .authorize("get_arnold_dashboard", "AUTHENTICATED_READ", ctxWith())
       .then(
         () => null,
         (caught: unknown) => caught,
@@ -268,7 +268,7 @@ describe("tool guard in enforced mode", () => {
 
   it("admits a read tool holding arnold.read", async () => {
     const context = await guardWith().authorize(
-      "get_arnold_dashboard_v2",
+      "get_arnold_dashboard",
       "AUTHENTICATED_READ",
       ctxWith(authFor("subject-alice", [ARNOLD_SCOPES.read])),
     );
@@ -351,7 +351,7 @@ describe("tool guard in enforced mode", () => {
     const guard = guardWith(repository);
     const read = (subject: string) =>
       guard.authorize(
-        "get_arnold_dashboard_v2",
+        "get_arnold_dashboard",
         "AUTHENTICATED_READ",
         ctxWith(authFor(subject, [ARNOLD_SCOPES.read])),
       );
@@ -376,7 +376,7 @@ describe("tool guard in enforced mode", () => {
     const auth = authFor("subject-alice", [ARNOLD_SCOPES.read]);
 
     const first = await guard.authorize(
-      "get_arnold_dashboard_v2",
+      "get_arnold_dashboard",
       "AUTHENTICATED_READ",
       ctxWith(auth),
     );
@@ -385,7 +385,7 @@ describe("tool guard in enforced mode", () => {
     await repository.setStatus(first!.userId, "DISABLED");
 
     const error = await guard
-      .authorize("get_arnold_dashboard_v2", "AUTHENTICATED_READ", ctxWith(auth))
+      .authorize("get_arnold_dashboard", "AUTHENTICATED_READ", ctxWith(auth))
       .then(
         () => null,
         (caught: unknown) => caught,
@@ -422,7 +422,7 @@ describe("tool guard in enforced mode", () => {
     );
 
     await guard.authorize(
-      "get_arnold_dashboard_v2",
+      "get_arnold_dashboard",
       "AUTHENTICATED_READ",
       ctxWith(authFor("subject-alice", [ARNOLD_SCOPES.read])),
     );
@@ -474,7 +474,7 @@ describe("tool guard in open mode", () => {
 
   it("still serves read tools, so the demo mode keeps working", async () => {
     const context = await openGuard().authorize(
-      "get_arnold_dashboard_v2",
+      "get_arnold_dashboard",
       "AUTHENTICATED_READ",
       ctxWith(),
     );

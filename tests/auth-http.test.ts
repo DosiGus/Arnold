@@ -284,12 +284,12 @@ describe("the /mcp gate", () => {
     );
 
     const before = guardEvents.length;
-    await client.callTool({ name: "get_arnold_dashboard_v2", arguments: {} });
+    await client.callTool({ name: "get_arnold_dashboard", arguments: {} });
     await client.close();
 
     const granted = guardEvents
       .slice(before)
-      .find((event) => event.tool === "get_arnold_dashboard_v2");
+      .find((event) => event.tool === "get_arnold_dashboard");
     expect(granted?.kind).toBe("granted");
     expect(granted?.access).toBe("AUTHENTICATED_READ");
     expect(granted?.userId).toMatch(/^usr_/);
@@ -308,7 +308,7 @@ describe("the /mcp gate", () => {
 
     const before = guardEvents.length;
     const result = (await client
-      .callTool({ name: "get_arnold_dashboard_v2", arguments: {} })
+      .callTool({ name: "get_arnold_dashboard", arguments: {} })
       .catch((error: unknown) => ({ thrown: error }))) as {
       isError?: boolean;
       thrown?: unknown;

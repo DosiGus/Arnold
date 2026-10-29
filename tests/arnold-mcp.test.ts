@@ -30,15 +30,15 @@ const call = (name: string, args = {}) =>
   client.callTool({ name, arguments: args }) as Promise<CallToolResult>;
 const dashboard = async (args = {}) =>
   ArnoldDashboardViewSchema.parse(
-    (await call("get_arnold_dashboard_v2", args)).structuredContent,
+    (await call("get_arnold_dashboard", args)).structuredContent,
   );
 const history = async (args = {}) =>
   ArnoldWorkoutHistoryViewSchema.parse(
-    (await call("get_arnold_workouts_v2", args)).structuredContent,
+    (await call("get_arnold_workouts", args)).structuredContent,
   );
 const progress = async (args: Record<string, unknown>) =>
   ArnoldExerciseProgressViewSchema.parse(
-    (await call("get_arnold_exercise_progress_v2", args)).structuredContent,
+    (await call("get_arnold_exercise_progress", args)).structuredContent,
   );
 
 beforeAll(async () => {
@@ -49,7 +49,7 @@ beforeAll(async () => {
     http.once("error", reject);
   });
   const port = (http.address() as { port: number }).port;
-  client = new Client({ name: "arnold-v2-tests", version: "1.0.0" });
+  client = new Client({ name: "arnold-mcp-tests", version: "1.0.0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`)),
   );
@@ -70,9 +70,9 @@ describe("Arnold v2 MCP surface", () => {
   it("advertises the versioned tools with input and output schemas", async () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
-      "get_arnold_dashboard_v2",
-      "get_arnold_exercise_progress_v2",
-      "get_arnold_workouts_v2",
+      "get_arnold_dashboard",
+      "get_arnold_exercise_progress",
+      "get_arnold_workouts",
       "get_workout",
       "show_arnold_dashboard",
     ]);
@@ -413,7 +413,7 @@ describe("failure handling over MCP", () => {
       message: "Google Sheets ist vorübergehend nicht verfügbar.",
       retryable: true,
     });
-    const result = await call("get_arnold_dashboard_v2");
+    const result = await call("get_arnold_dashboard");
     expect(result.isError).toBe(true);
     expect(result.structuredContent).toBeUndefined();
     const text = result.content
@@ -445,7 +445,7 @@ describe("failure handling over MCP", () => {
         "Die Arnold-Datei passt nicht zum erwarteten Schema v1. Struktur und Spalten der sechs Tabellen prüfen.",
       retryable: false,
     });
-    const result = await call("get_arnold_workouts_v2");
+    const result = await call("get_arnold_workouts");
     expect(result.isError).toBe(true);
     expect(
       (result._meta as { arnold?: { failure?: { code?: string } } })?.arnold
@@ -454,7 +454,7 @@ describe("failure handling over MCP", () => {
   });
 
   it("rejects contradictory filters without inventing a result", async () => {
-    const result = await call("get_arnold_dashboard_v2", {
+    const result = await call("get_arnold_dashboard", {
       from: "2026-10-20",
       to: "2026-09-01",
     });

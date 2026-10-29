@@ -420,7 +420,7 @@ describe("connected end-to-end journey (Google simulated, real HTTP and MCP)", (
     ).toBe(true);
     const dashboard = ArnoldDashboardViewSchema.parse(
       (
-        await call("alice", "get_arnold_dashboard_v2", {
+        await call("alice", "get_arnold_dashboard", {
           from: "2026-10-29",
           to: "2026-10-29",
         })

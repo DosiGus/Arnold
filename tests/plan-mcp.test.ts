@@ -104,16 +104,16 @@ describe("plan MCP tools", () => {
     const names = (await client.listTools()).tools.map((tool) => tool.name);
     for (const expected of [
       "show_arnold_dashboard",
-      "get_arnold_dashboard_v2",
-      "get_arnold_workouts_v2",
-      "get_arnold_exercise_progress_v2",
+      "get_arnold_dashboard",
+      "get_arnold_workouts",
+      "get_arnold_exercise_progress",
       "get_workout",
       "start_workout",
       "log_workout_sets",
     ])
       expect(names, `missing ${expected}`).toContain(expected);
     const dashboard = ArnoldDashboardViewSchema.parse(
-      (await call("get_arnold_dashboard_v2")).structuredContent,
+      (await call("get_arnold_dashboard")).structuredContent,
     );
     expect(dashboard.active_plan!.plan_version_id).toBe("pfx-v2");
   });
@@ -322,7 +322,7 @@ describe("plan MCP tools", () => {
 
     // The dashboard immediately reflects the new active plan.
     const dashboard = ArnoldDashboardViewSchema.parse(
-      (await call("get_arnold_dashboard_v2")).structuredContent,
+      (await call("get_arnold_dashboard")).structuredContent,
     );
     expect(dashboard.active_plan!.plan_version_id).toBe(draft.plan_version_id);
     expect(dashboard.active_plan!.session_count).toBe(4);
@@ -407,6 +407,6 @@ describe("plan tools on a read-only connection", () => {
       expect(names, operation).not.toContain(operation);
     expect(names).not.toContain("get_training_plan");
     // The dashboard still works.
-    expect(names).toContain("get_arnold_dashboard_v2");
+    expect(names).toContain("get_arnold_dashboard");
   });
 });

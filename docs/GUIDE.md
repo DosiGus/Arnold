@@ -110,14 +110,14 @@ Arnold ist **Resource Server**, kein Authorization Server: Es prüft Tokens, ste
 - Identität ist ein dauerhafter interner Nutzer, gekoppelt an das stabile Subject des Anmeldeanbieters, nie an eine E-Mail. Nutzer-IDs und Datei-IDs sind nie Tool-Argumente.
 - Jedes Tool hat genau eine **Zugriffsklasse** (Tabelle in `src/server/auth/tool-access.ts`, erzwungen von `guardToolRegistrations`). Ein nicht klassifiziertes Tool kann nicht registriert werden.
 
-| Klasse                | Credential                        | Beispiele                                                              |
-| --------------------- | --------------------------------- | ---------------------------------------------------------------------- |
-| `SYNTHETIC_SANDBOX`   | keines, nur im offenen Modus      | Schreib-Tools des Fixture-Profils (zur Laufzeit umklassifiziert)       |
-| `ONBOARDING_PREVIEW`  | Sitzungsgeheimnis der Einrichtung | `start_arnold_onboarding`, `confirm_onboarding_plan`                   |
-| `AUTHENTICATED_READ`  | `arnold.read`                     | `show_arnold_dashboard`, `get_arnold_workouts_v2`, `get_training_plan` |
-| `AUTHENTICATED_WRITE` | `arnold.read` + `arnold.write`    | `start_workout`, `log_workout_sets`, `create_exercise`                 |
-| `PLAN_WRITE`          | `arnold.read` + `arnold.plan`     | `create_plan_version`, `update_plan_draft`, `activate_training_plan`   |
-| `ACCOUNT_MANAGEMENT`  | `arnold.account`                  | `connect_google_account`, `disconnect_google_account`                  |
+| Klasse                | Credential                        | Beispiele                                                            |
+| --------------------- | --------------------------------- | -------------------------------------------------------------------- |
+| `SYNTHETIC_SANDBOX`   | keines, nur im offenen Modus      | Schreib-Tools des Fixture-Profils (zur Laufzeit umklassifiziert)     |
+| `ONBOARDING_PREVIEW`  | Sitzungsgeheimnis der Einrichtung | `start_arnold_onboarding`, `confirm_onboarding_plan`                 |
+| `AUTHENTICATED_READ`  | `arnold.read`                     | `show_arnold_dashboard`, `get_arnold_workouts`, `get_training_plan`  |
+| `AUTHENTICATED_WRITE` | `arnold.read` + `arnold.write`    | `start_workout`, `log_workout_sets`, `create_exercise`               |
+| `PLAN_WRITE`          | `arnold.read` + `arnold.plan`     | `create_plan_version`, `update_plan_draft`, `activate_training_plan` |
+| `ACCOUNT_MANAGEMENT`  | `arnold.account`                  | `connect_google_account`, `disconnect_google_account`                |
 
 Scopes gelten exakt: kein Scope impliziert einen anderen. Die Prüfung läuft **bei jedem Aufruf**, nicht einmal pro Verbindung, damit ein gesperrter Nutzer mitten in einer Sitzung sofort draußen ist.
 
@@ -133,7 +133,7 @@ Rund 40 Tools in fünf Bereichen; die vollständige, verbindliche Liste ist die 
 
 | Bereich       | Tools (Auswahl)                                                                                                                                                                                                                                                                        |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Dashboard     | `show_arnold_dashboard`, `get_arnold_dashboard_v2`, `get_arnold_workouts_v2`, `get_arnold_exercise_progress_v2`                                                                                                                                                                        |
+| Dashboard     | `show_arnold_dashboard`, `get_arnold_dashboard`, `get_arnold_workouts`, `get_arnold_exercise_progress`                                                                                                                                                                                 |
 | Workout       | `get_workout`, `start_workout`, `log_workout_sets`, `update_set`, `void_set`, `complete_workout`, `cancel_workout`, `create_exercise`                                                                                                                                                  |
 | Trainingsplan | `get_training_plan`, `list_training_plans`, `get_plan_history`, `validate_training_plan`, `compare_plan_versions`, `get_plan_editor_context`, `create_training_plan`, `create_plan_version`, `clone_plan_version`, `update_plan_draft`, `activate_training_plan`, `archive_plan_draft` |
 | Einrichtung   | `show_arnold_onboarding`, `start_arnold_onboarding`, `update_onboarding_profile`, `request_onboarding_plan`, `submit_onboarding_plan_proposal`, `confirm_onboarding_plan`, `get_onboarding_handoff`, …                                                                                 |

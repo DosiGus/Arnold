@@ -9,11 +9,10 @@ import type { WorkoutLoggingService } from "./workout/service.js";
 /**
  * MCP tools for the Arnold schema v1 dashboard.
  *
- * The `*_v2` suffix dates from the first prototype, which modelled a workout as
- * a Push/Pull/Legs session with bare `kg` numbers and has since been removed.
- * Arnold data has neither — a session is a free-text name and every load
- * carries a convention (`per_implement`, `machine_display`, …) — so these tools
- * keep their own documented contract and the `ui_contract` field in the payload.
+ * Arnold data has no Push/Pull/Legs split and no bare `kg` numbers — a session
+ * is a free-text name and every load carries a convention (`per_implement`,
+ * `machine_display`, …) — so these tools have their own documented contract,
+ * identified by the `ui_contract` field in the payload.
  */
 import { readFile } from "node:fs/promises";
 import { McpServer } from "@modelcontextprotocol/server";
@@ -129,7 +128,7 @@ const ProgressInputSchema = z.object({
   exercise_id: z
     .string()
     .min(1)
-    .describe("Übungs-ID aus get_arnold_dashboard_v2.exercises."),
+    .describe("Übungs-ID aus get_arnold_dashboard.exercises."),
   ...periodShape,
   metric: ProgressMetricKeySchema.optional().describe(
     "Auswertungsmetrik; Standard max_load. Lasten werden nur innerhalb vergleichbarer Ausführungen verglichen.",
@@ -173,7 +172,7 @@ function today(clock: ArnoldServerClock): string {
   return clock().toISOString().slice(0, 10);
 }
 
-export function createArnoldV2McpServer(
+export function createArnoldMcpServer(
   source: ArnoldDataSource,
   uiFile: string,
   clock: ArnoldServerClock = () => new Date(),
@@ -273,7 +272,7 @@ export function createArnoldV2McpServer(
   );
 
   server.registerTool(
-    "get_arnold_dashboard_v2",
+    "get_arnold_dashboard",
     {
       title: "Arnold-Trainingsüberblick laden",
       description: `Standardisierte Kennzahlen aus der Arnold Analytics Engine: Einheiten, Trainingstage, Trainingshäufigkeit, Arbeitssätze, Trainingsvolumen, Wochenentwicklung, Bestleistungen, aktiver Trainingsplan und Datenqualität. Quelle: ${sourceLabel}. Vertrag arnold.dashboard/2. Nicht berechenbare Kennzahlen werden als null mit Begründung geliefert, niemals als 0.`,
@@ -311,7 +310,7 @@ export function createArnoldV2McpServer(
   );
 
   server.registerTool(
-    "get_arnold_workouts_v2",
+    "get_arnold_workouts",
     {
       title: "Arnold-Workout-Historie laden",
       description: `Trainingshistorie mit Übungsblöcken und einzelnen Sätzen, absteigend nach Datum. Filter nach Zeitraum, Planversion, Trainingseinheit, Übung und Status; Blätterung über limit und offset. Keine Beschränkung auf feste Splits. Sätze werden unverändert geliefert, inklusive Lastdefinition, Seite und Ausführungsart. Quelle: ${sourceLabel}. Vertrag arnold.dashboard/2.`,
@@ -350,7 +349,7 @@ export function createArnoldV2McpServer(
   );
 
   server.registerTool(
-    "get_arnold_exercise_progress_v2",
+    "get_arnold_exercise_progress",
     {
       title: "Arnold-Übungsfortschritt laden",
       description: `Entwicklung einer Übung über die Zeit: maximale vergleichbare Last, geschätztes 1RM nach Epley, nominales Volumen, Wiederholungen und Trainingshäufigkeit. Lasten und 1RM-Werte werden nur innerhalb derselben Ausführungsart und Lastdefinition verglichen. Enthält ausschließlich echte Messpunkte; fehlende Werte bleiben leer. Keine medizinische Bewertung. Quelle: ${sourceLabel}. Vertrag arnold.dashboard/2.`,

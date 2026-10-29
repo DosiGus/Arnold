@@ -176,7 +176,7 @@ describe("tool discovery", () => {
     // The existing surface must not be disturbed by the new one.
     for (const expected of [
       "show_arnold_dashboard",
-      "get_arnold_dashboard_v2",
+      "get_arnold_dashboard",
       "get_training_plan",
       "update_plan_draft",
       "activate_training_plan",

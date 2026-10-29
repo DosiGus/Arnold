@@ -116,7 +116,7 @@ describe("workout tools over real Streamable HTTP", () => {
       ).ok,
     ).toBe(true);
     const view = ArnoldDashboardViewSchema.parse(
-      (await call("get_arnold_dashboard_v2")).structuredContent,
+      (await call("get_arnold_dashboard")).structuredContent,
     );
     expect(view.totals.workouts_in_period).toBe(1);
     expect(view.kpis.find((k) => k.key === "nominal_volume")?.value).toBe(1650);

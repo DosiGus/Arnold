@@ -21,7 +21,7 @@ import {
   type ServerContext,
 } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import { createArnoldV2McpServer } from "../src/server/mcp-arnold.js";
+import { createArnoldMcpServer } from "../src/server/mcp-arnold.js";
 import { createFixtureLogging } from "../src/server/workout/fixture.js";
 import { createFixturePlanning } from "../src/server/plan/fixture.js";
 import { createFixtureOnboarding } from "../src/server/onboarding/fixture.js";
@@ -80,7 +80,7 @@ async function publishedTools(server: McpServer): Promise<string[]> {
 describe("every published tool is classified", () => {
   it("covers the v2 read surface", async () => {
     const runtime = createFixturePlanning();
-    const server = createArnoldV2McpServer(
+    const server = createArnoldMcpServer(
       runtime.source,
       "dist/ui/dashboard.html",
     );
@@ -94,7 +94,7 @@ describe("every published tool is classified", () => {
     // The widest configuration Arnold can publish. If anything is
     // unclassified anywhere, it shows up here.
     const runtime = createFixtureOnboarding();
-    const server = createArnoldV2McpServer(
+    const server = createArnoldMcpServer(
       runtime.source,
       "dist/ui/dashboard.html",
       undefined,
@@ -116,7 +116,7 @@ describe("every published tool is classified", () => {
     // docs/GUIDE.md.
     const runtime = createFixturePlanning();
     const readOnly = await publishedTools(
-      createArnoldV2McpServer(runtime.source, "dist/ui/dashboard.html"),
+      createArnoldMcpServer(runtime.source, "dist/ui/dashboard.html"),
     );
 
     expect(readOnly).not.toContain("log_workout_sets");
@@ -130,7 +130,7 @@ describe("every published tool is classified", () => {
     const runtime = createFixtureOnboarding();
     const widest = new Set(
       await publishedTools(
-        createArnoldV2McpServer(
+        createArnoldMcpServer(
           runtime.source,
           "dist/ui/dashboard.html",
           undefined,
@@ -289,8 +289,8 @@ describe("guarded registration", () => {
 
   it("refuses an authenticated read with no credential", async () => {
     const result = (await invoke(
-      serverWithTool("get_arnold_dashboard_v2", enforcedGuard()),
-      "get_arnold_dashboard_v2",
+      serverWithTool("get_arnold_dashboard", enforcedGuard()),
+      "get_arnold_dashboard",
     )) as { isError?: boolean };
     // The guard throws; the SDK surfaces it as an error result.
     expect(result.isError).toBe(true);
@@ -298,8 +298,8 @@ describe("guarded registration", () => {
 
   it("serves a read in open mode without a credential", async () => {
     const result = (await invoke(
-      serverWithTool("get_arnold_dashboard_v2", openGuard()),
-      "get_arnold_dashboard_v2",
+      serverWithTool("get_arnold_dashboard", openGuard()),
+      "get_arnold_dashboard",
     )) as { isError?: boolean; structuredContent?: { seen: string | null } };
 
     expect(result.isError).toBeFalsy();
@@ -370,17 +370,17 @@ describe("guarded registration", () => {
     });
 
     await invoke(
-      serverWithTool("get_arnold_dashboard_v2", guard),
-      "get_arnold_dashboard_v2",
+      serverWithTool("get_arnold_dashboard", guard),
+      "get_arnold_dashboard",
     );
 
-    expect(events).toContain("refused:get_arnold_dashboard_v2");
+    expect(events).toContain("refused:get_arnold_dashboard");
   });
 
   it("exposes the verified context only for the duration of the call", async () => {
-    const server = serverWithTool("get_arnold_dashboard_v2", openGuard());
+    const server = serverWithTool("get_arnold_dashboard", openGuard());
     expect(currentArnoldContext()).toBeUndefined();
-    await invoke(server, "get_arnold_dashboard_v2");
+    await invoke(server, "get_arnold_dashboard");
     // Cleared again afterwards, so a later unguarded path cannot read a stale
     // identity and act as that user.
     expect(currentArnoldContext()).toBeUndefined();
@@ -417,7 +417,7 @@ describe("guarded registration", () => {
         guard,
       );
       server.registerTool(
-        "get_arnold_dashboard_v2",
+        "get_arnold_dashboard",
         { inputSchema: z.object({}) },
         async () => {
           const before = currentArnoldContext()?.userId;
@@ -443,12 +443,12 @@ describe("guarded registration", () => {
     }
     try {
       const first = connections[0].client.callTool({
-        name: "get_arnold_dashboard_v2",
+        name: "get_arnold_dashboard",
         arguments: {},
       });
       await started[0];
       const second = connections[1].client.callTool({
-        name: "get_arnold_dashboard_v2",
+        name: "get_arnold_dashboard",
         arguments: {},
       });
       await started[1];

@@ -22,7 +22,7 @@ import { readStoredClaim } from "./client/onboarding-claim";
  * dashboard payload can never be read as a setup state, or the other way round.
  */
 export type ArnoldPayload =
-  | { contract: "v2"; dashboard: ArnoldDashboardView }
+  | { contract: "dashboard"; dashboard: ArnoldDashboardView }
   /** The setup wizard. Its own contract, so it never renders dashboard data. */
   | { contract: "onboarding"; onboarding: OnboardingView };
 
@@ -49,7 +49,7 @@ export class ArnoldClient {
     if (onboarding.success)
       return { contract: "onboarding", onboarding: onboarding.data };
     const v2 = ArnoldDashboardViewSchema.safeParse(content);
-    return v2.success ? { contract: "v2", dashboard: v2.data } : null;
+    return v2.success ? { contract: "dashboard", dashboard: v2.data } : null;
   }
 
   /**
@@ -97,7 +97,7 @@ export class ArnoldClient {
    */
   private refreshTool(payload: ArnoldPayload | null) {
     if (payload?.contract === "onboarding") return null;
-    return "get_arnold_dashboard_v2";
+    return "get_arnold_dashboard";
   }
 
   async connect() {

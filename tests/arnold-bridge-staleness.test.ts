@@ -56,8 +56,8 @@ vi.mock("@modelcontextprotocol/ext-apps", () => ({
 }));
 
 /** Narrows a published payload to the v2 contract so its fields are typed. */
-function asV2(payload: ArnoldPayload) {
-  if (payload.contract !== "v2")
+function asDashboard(payload: ArnoldPayload) {
+  if (payload.contract !== "dashboard")
     throw new Error(
       `Erwartet wurde der v2-Vertrag, erhalten: ${payload.contract}`,
     );
@@ -96,7 +96,7 @@ describe("replayed tool results on reopening a chat", () => {
   it("revalidates against the server instead of trusting chat history", async () => {
     const stale = v2Payload("2026-10-01T08:00:00Z");
     const fresh = v2Payload("2026-10-25T09:00:00Z");
-    fake.responses.set("get_arnold_dashboard_v2", () => okResult(fresh));
+    fake.responses.set("get_arnold_dashboard", () => okResult(fresh));
     const { client, payloads, staleFlags } = await bootClient();
     await client.connect();
 
@@ -105,15 +105,17 @@ describe("replayed tool results on reopening a chat", () => {
     await vi.waitFor(() => expect(payloads.length).toBe(1));
 
     // What reached the interface is the server's answer, not the replay.
-    expect(fake.calls.map((c) => c.name)).toEqual(["get_arnold_dashboard_v2"]);
-    expect(payloads[0].contract).toBe("v2");
-    expect(asV2(payloads[0]).source.generated_at).toBe("2026-10-25T09:00:00Z");
+    expect(fake.calls.map((c) => c.name)).toEqual(["get_arnold_dashboard"]);
+    expect(payloads[0].contract).toBe("dashboard");
+    expect(asDashboard(payloads[0]).source.generated_at).toBe(
+      "2026-10-25T09:00:00Z",
+    );
     expect(staleFlags.at(-1)).toBe(false);
   });
 
   it("falls back to the replayed payload only while marking it stale", async () => {
     const stale = v2Payload("2026-10-01T08:00:00Z");
-    fake.responses.set("get_arnold_dashboard_v2", () => {
+    fake.responses.set("get_arnold_dashboard", () => {
       throw new Error("Google Sheets ist vorübergehend nicht verfügbar.");
     });
     const { client, payloads, errors, staleFlags } = await bootClient();
@@ -123,7 +125,9 @@ describe("replayed tool results on reopening a chat", () => {
     await vi.waitFor(() => expect(payloads.length).toBe(1));
 
     // The old payload is shown — there is nothing else — but never as current.
-    expect(asV2(payloads[0]).source.generated_at).toBe("2026-10-01T08:00:00Z");
+    expect(asDashboard(payloads[0]).source.generated_at).toBe(
+      "2026-10-01T08:00:00Z",
+    );
     expect(staleFlags.at(-1)).toBe(true);
     expect(errors.join(" ")).toContain("Aktualisierung fehlgeschlagen");
   });
@@ -132,7 +136,7 @@ describe("replayed tool results on reopening a chat", () => {
     const stale = v2Payload("2026-10-01T08:00:00Z");
     const fresh = v2Payload("2026-10-25T09:00:00Z");
     let reachable = false;
-    fake.responses.set("get_arnold_dashboard_v2", () => {
+    fake.responses.set("get_arnold_dashboard", () => {
       if (!reachable) throw new Error("Google Sheets nicht erreichbar.");
       return okResult(fresh);
     });
@@ -145,9 +149,9 @@ describe("replayed tool results on reopening a chat", () => {
     // The user presses "Aktualisieren" once the source is reachable again; the
     // banner must disappear rather than outlive the problem it described.
     reachable = true;
-    await client.call("get_arnold_dashboard_v2");
+    await client.call("get_arnold_dashboard");
     expect(staleFlags.at(-1)).toBe(false);
-    expect(asV2(payloads.at(-1)!).source.generated_at).toBe(
+    expect(asDashboard(payloads.at(-1)!).source.generated_at).toBe(
       "2026-10-25T09:00:00Z",
     );
   });
@@ -155,7 +159,7 @@ describe("replayed tool results on reopening a chat", () => {
   it("applies the guard only to the first result, not to later ones", async () => {
     const first = v2Payload("2026-10-01T08:00:00Z");
     const second = v2Payload("2026-10-25T10:00:00Z");
-    fake.responses.set("get_arnold_dashboard_v2", () =>
+    fake.responses.set("get_arnold_dashboard", () =>
       okResult(v2Payload("2026-10-25T09:00:00Z")),
     );
     const { client, payloads } = await bootClient();
@@ -167,7 +171,9 @@ describe("replayed tool results on reopening a chat", () => {
     // A later result is a live answer to a live call and is published directly.
     fake.ontoolresult!(okResult(second));
     await vi.waitFor(() => expect(payloads.length).toBe(2));
-    expect(asV2(payloads[1]).source.generated_at).toBe("2026-10-25T10:00:00Z");
+    expect(asDashboard(payloads[1]).source.generated_at).toBe(
+      "2026-10-25T10:00:00Z",
+    );
     // Still exactly one revalidation call.
     expect(fake.calls).toHaveLength(1);
   });

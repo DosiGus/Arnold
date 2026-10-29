@@ -9,7 +9,7 @@ import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
 import type { NextFunction, Request, Response } from "express";
 import { resolve } from "node:path";
 import { ARNOLD_UI_CONTRACT } from "../shared/arnold-view.js";
-import { createArnoldV2McpServer } from "./mcp-arnold.js";
+import { createArnoldMcpServer } from "./mcp-arnold.js";
 import type { ArnoldDataSource } from "./arnold-source.js";
 import {
   createArnoldSource,
@@ -237,7 +237,7 @@ export function createHttpApp(options: ServerOptions = {}) {
           )
         : runtime;
       const requestSource = userRuntime?.source ?? arnoldSource;
-      const server = createArnoldV2McpServer(
+      const server = createArnoldMcpServer(
         requestSource!,
         resolve(root, "dist/ui/dashboard.html"),
         undefined,

@@ -368,7 +368,7 @@ export class ArnoldMcpClient {
 
   async dashboard(query: DashboardQuery = {}): Promise<ArnoldDashboardView> {
     return ArnoldDashboardViewSchema.parse(
-      await this.client.call("get_arnold_dashboard_v2", args(query), {
+      await this.client.call("get_arnold_dashboard", args(query), {
         publish: false,
       }),
     );
@@ -376,13 +376,13 @@ export class ArnoldMcpClient {
 
   async workouts(query: HistoryQuery = {}): Promise<ArnoldWorkoutHistoryView> {
     return ArnoldWorkoutHistoryViewSchema.parse(
-      await this.client.call("get_arnold_workouts_v2", args(query)),
+      await this.client.call("get_arnold_workouts", args(query)),
     );
   }
 
   async progress(query: ProgressQuery): Promise<ArnoldExerciseProgressView> {
     return ArnoldExerciseProgressViewSchema.parse(
-      await this.client.call("get_arnold_exercise_progress_v2", args(query)),
+      await this.client.call("get_arnold_exercise_progress", args(query)),
     );
   }
 }
