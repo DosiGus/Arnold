@@ -198,6 +198,7 @@ export function createArnoldV2McpServer(
   const server = guard
     ? guardToolRegistrations(bare, guard, {
         syntheticWrites: logging?.mode === "fixture",
+        authenticatedOnboarding: logging?.mode === "connected",
       })
     : bare;
   const sourceLabel = source.label;

@@ -166,7 +166,7 @@ export class TrainingPlanService {
     if (
       actor.trackerId !== this.options.trackerId ||
       !actor.permissions.includes(permission) ||
-      actor.kind !== "fixture"
+      actor.kind !== (this.mode === "connected" ? "authenticated" : "fixture")
     )
       throw planError(
         "PERMISSION_DENIED",

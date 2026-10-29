@@ -19,7 +19,9 @@ import {
   getOAuthProtectedResourceMetadataUrl,
 } from "@modelcontextprotocol/express";
 import type { OAuthMetadata } from "@modelcontextprotocol/server";
-import type { RequestHandler, Router } from "express";
+import type { RequestHandler, Router, Request } from "express";
+import type { AuthenticatedArnoldContext } from "./identity.js";
+import { ArnoldAuthError } from "./errors.js";
 import type { ArnoldAuthConfig } from "./config.js";
 import { ArnoldIdentityResolver } from "./identity.js";
 import { JwksCache } from "./jwks.js";
@@ -47,6 +49,8 @@ export interface AuthSurfaceOptions {
 }
 
 export interface AuthSurface {
+  resolveRequest(request: Request): Promise<AuthenticatedArnoldContext>;
+  assertActive(context: AuthenticatedArnoldContext): Promise<void>;
   /**
    * Mounts `/.well-known/oauth-protected-resource` and
    * `/.well-known/oauth-authorization-server`. Undefined in `open` mode,
@@ -88,6 +92,21 @@ export function buildAuthSurface(options: AuthSurfaceOptions): AuthSurface {
   const { config } = options;
   const repository = options.repository ?? createRepository(config);
   const resolver = new ArnoldIdentityResolver({ repository });
+  const resolveRequest = async (request: Request) => {
+    if (config.mode !== "oidc" || !request.auth)
+      throw new ArnoldAuthError(
+        "AUTH_REQUIRED",
+        "Verifizierte Anmeldung erforderlich.",
+      );
+    return resolver.resolve(request.auth);
+  };
+  const assertActive = async (context: AuthenticatedArnoldContext) => {
+    if ((await repository.byId(context.userId))?.status !== "ACTIVE")
+      throw new ArnoldAuthError(
+        "ACCOUNT_DISABLED",
+        "Arnold-Konto ist nicht aktiv.",
+      );
+  };
 
   if (config.mode === "open") {
     // The synthetic context is explicit and obviously fake, so that anything
@@ -108,6 +127,8 @@ export function buildAuthSurface(options: AuthSurfaceOptions): AuthSurface {
       onEvent: options.onGuardEvent,
     });
     return {
+      resolveRequest,
+      assertActive,
       metadataRouter: undefined,
       bearerGate: passThrough,
       guard,
@@ -159,6 +180,8 @@ export function buildAuthSurface(options: AuthSurfaceOptions): AuthSurface {
   });
 
   return {
+    resolveRequest,
+    assertActive,
     metadataRouter,
     bearerGate,
     guard,

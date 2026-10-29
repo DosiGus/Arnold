@@ -107,6 +107,14 @@ export interface TestSheetWriteOptions {
   authorizeWrite: () => Promise<Actor>;
   sleep?: (ms: number) => Promise<void>;
 }
+/** Created only by the authenticated per-user runtime after provisioning. */
+export interface PersonalSheetWriteOptions {
+  mode: "connected";
+  spreadsheetId: string;
+  trackerId: string;
+  authorizeWrite: () => Promise<Actor>;
+  sleep?: (ms: number) => Promise<void>;
+}
 type Metadata = {
   spreadsheetId: string;
   sheets: {
@@ -169,9 +177,9 @@ function apiFailure(error: unknown, writing: boolean): WriteError {
     true,
   );
 }
-/** Only the three domain tables are writable. CONFIG and plan history have no write path. */
+/** Test sheets permit three domain tables; connected trackers additionally permit plan lifecycle writes. CONFIG is never writable here. */
 export class ArnoldSheetsWriteAdapter implements ArnoldWriteRepository {
-  readonly kind = "test_sheet" as const;
+  readonly kind: "test_sheet" | "connected";
   private reader: ArnoldSheetsReadAdapter;
   private metadata?: Metadata;
   private grids = new Map<ArnoldTable, unknown>();
@@ -179,20 +187,22 @@ export class ArnoldSheetsWriteAdapter implements ArnoldWriteRepository {
   private allowedNext?: string;
   private quarantined = false;
   constructor(
-    private options: TestSheetWriteOptions,
+    private options: TestSheetWriteOptions | PersonalSheetWriteOptions,
     private transport: ArnoldSheetsWriteTransport,
   ) {
+    this.kind = "mode" in options ? options.mode : "test_sheet";
     if (options.spreadsheetId === ARNOLD_MASTER_SPREADSHEET_ID)
       throw new WriteError(
         "TEMPLATE_WRITE_FORBIDDEN",
         "Die Arnold-Masterdatei ist gesperrt.",
       );
     if (
-      !options.allowTestSheetWrites ||
-      !options.privateConnection ||
+      (!("mode" in options) &&
+        (!options.allowTestSheetWrites ||
+          !options.privateConnection ||
+          !options.dedicatedTestSpreadsheetId ||
+          options.spreadsheetId !== options.dedicatedTestSpreadsheetId)) ||
       typeof options.authorizeWrite !== "function" ||
-      !options.dedicatedTestSpreadsheetId ||
-      options.spreadsheetId !== options.dedicatedTestSpreadsheetId ||
       !options.trackerId ||
       options.trackerId === "TEMPLATE_UNASSIGNED"
     )
@@ -312,12 +322,15 @@ export class ArnoldSheetsWriteAdapter implements ArnoldWriteRepository {
     const before = await this.read(); // Revalidates CONFIG, all six headers, metadata, revisions and IDs.
     const after = changedDataset(before, changes);
     this.allowedNext = fingerprint(after);
-    // PLANS and PLAN_ITEMS are deliberately absent: Task 005 writes plans only
-    // through the fixture repository, so this Google path offers no plan surface.
+    // The dedicated test-sheet profile keeps its original three-table surface.
+    // Only an authenticated connected runtime adds PLANS and PLAN_ITEMS.
     const names: Partial<Record<EntityChange["table"], ArnoldTable>> = {
       workouts: "WORKOUTS",
       sets: "SETS",
       exercises: "EXERCISES",
+      ...(this.kind === "connected"
+        ? { plans: "PLANS" as const, planItems: "PLAN_ITEMS" as const }
+        : {}),
     };
     const requests: SheetsWriteRequest[] = [];
     const appends = new Map<ArnoldTable, { values: TextCell[] }[]>();

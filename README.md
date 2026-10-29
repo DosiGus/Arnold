@@ -39,7 +39,7 @@ Die lokale App benötigt **keinen OpenAI-API-Key** und führt keine Modell-API-A
 
 ## Arnold Data Foundation (Schema v1)
 
-Die separate Datenzugriffsschicht für `arnold.training_raw` / `1.0.0` unterstützt CONFIG, EXERCISES, PLANS, PLAN_ITEMS, WORKOUTS und SETS. `ArnoldSheetsReadAdapter.getDataset()` liefert validierte Rohdaten mit stabilen IDs und vollständigen Last-/Ausführungsdefinitionen. Sie ist bewusst noch nicht in das bestehende Dashboard eingebunden. Vertrag, Typen, Referenzen, Grenzen und Prüfstand: [ARNOLD-DATA-CONTRACT.md](docs/ARNOLD-DATA-CONTRACT.md).
+Die Datenzugriffsschicht für `arnold.training_raw` / `1.0.0` unterstützt CONFIG, EXERCISES, PLANS, PLAN_ITEMS, WORKOUTS und SETS. `ArnoldSheetsReadAdapter.getDataset()` liefert validierte Rohdaten mit stabilen IDs und vollständigen Last-/Ausführungsdefinitionen. Das v2-Dashboard und seine MCP-Tools verwenden diese Daten über `arnold-presenter.ts` und die Analytics-Engine. Der ältere Demo-/Trainingslog-Pfad bleibt separat. Vertrag: [ARNOLD-DATA-CONTRACT.md](docs/ARNOLD-DATA-CONTRACT.md).
 
 ## Arnold Analytics Engine (Metrics v1)
 
@@ -55,7 +55,7 @@ const analytics = buildArnoldDashboardAnalytics(dataset, {
 });
 ```
 
-Die Engine kennt kein Google, kein HTTP, kein MCP, kein React, kein Dateisystem und keine Systemuhr; sie verändert ihre Eingabe nicht und ist deterministisch. `Volumen = Gewicht × Wiederholungen` gilt dort **nicht** allgemein: Lastdefinition, Gerätezahl, Ausführungsart und Wiederholungsbasis gehen in jede Satzrechnung ein, und nicht berechenbare Beiträge werden als `not_available` mit maschinenlesbarem Grund ausgewiesen statt als Nullwert. Wie Task 001 ist diese Schicht bewusst noch nicht an Dashboard oder MCP-Tools angeschlossen.
+Die Engine kennt kein Google, kein HTTP, kein MCP, kein React, kein Dateisystem und keine Systemuhr; sie verändert ihre Eingabe nicht und ist deterministisch. `Volumen = Gewicht × Wiederholungen` gilt dort **nicht** allgemein: Lastdefinition, Gerätezahl, Ausführungsart und Wiederholungsbasis gehen in jede Satzrechnung ein, und nicht berechenbare Beiträge werden als `not_available` mit maschinenlesbarem Grund ausgewiesen statt als Nullwert. `arnold-presenter.ts` übersetzt die Engine-Ergebnisse in den UI-Vertrag; `mcp-arnold.ts` liefert sie an das v2-Dashboard. Diese Integration ist lokal getestet.
 
 Verbindliche Konventionen, Formeln, Grenzen und Beispielergebnisse: [ARNOLD-METRICS-SPEC.md](docs/ARNOLD-METRICS-SPEC.md).
 
@@ -152,7 +152,15 @@ Die konkrete Anleitung einschließlich Secure MCP Tunnel und HTTPS-Alternative s
 
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) beschreibt Adapter, Berechnungen, MCP-Lifecycle und die spätere Google-Sheets-Anbindung. [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) vergleicht Hosting-Wege.
 
-Dieser Prototyp verwendet einen gemeinsamen synthetischen Demo-Datensatz ohne Authentifizierung. Er bietet keine Konten, Google OAuth, Sheets-Synchronisierung, Zahlungen oder Verarbeitung echter Gesundheitsdaten. Andere bereits offene Browserfenster aktualisieren sich erst nach Neuladen; es gibt keinen Hintergrund-Sync. Der Öffnungs-Prompt und die beschriebenen UI-Flows sind in ChatGPT geprüft; eine umfassende Prompt-Evaluation und weitere Geräte stehen aus.
+Das Standardprofil verwendet einen gemeinsamen synthetischen Demo-Datensatz ohne Authentifizierung. Das ausdrücklich aktivierte Connected-Entwicklungsprofil bietet dagegen OIDC-Kontozuordnung, Google OAuth und persönliche Trainingsdateien. Dieser neue Ablauf ist lokal mit simulierten Anbietern geprüft; eine echte Google-/ChatGPT-Abnahme und produktiver Mehrinstanzbetrieb stehen aus. Andere bereits offene Browserfenster aktualisieren sich erst nach Neuladen; es gibt keinen Hintergrund-Sync. Die bisherige ChatGPT-Abnahme bezieht sich auf die ältere synthetische Demo.
+
+### Verbundenes End-to-End-Entwicklungsprofil
+
+`STORAGE_MODE=arnold_connected` verbindet die bestehenden Dienste zu einem Ablauf: authentifiziertes Onboarding → Planbestätigung → Google-Freigabe → eigene Trainingsdatei → Planaktivierung → Satz speichern → nach Serverneustart weiterlesen. `bootstrap.ts` lädt dazu die OIDC-Metadaten, und `src/server/connected/` löst den eigenen Tracker pro verifiziertem Nutzer auf. Ein globaler Nutzerkontext wurde durch `AsyncLocalStorage` ersetzt.
+
+Das Profil benötigt OIDC, `IDENTITY_STORE=file`, Google-OAuth-Client und Token-Verschlüsselung. Es ist auf **einen Entwicklungsserver** begrenzt; `staging`/`production` sind gesperrt. `/preview` hat keinen eigenen Login. Echte Google-Zugangsdaten wurden bei der lokalen Abnahme nicht verwendet.
+
+Konfiguration, Wiederaufnahme, API-Verträge und verbleibende Freigaben: [Connected-E2E-Abnahme](docs/ARNOLD-CONNECTED-E2E.md). Aktuelle Prüfergebnisse: [Testbericht](docs/TESTING.md).
 
 ### Task 004: synthetischer Workout-Logger
 
@@ -195,7 +203,7 @@ von `get_onboarding_brief` → Bearbeitung im **unveränderten** Planeditor aus
 Task 005 → ausdrückliche Bestätigung genau einer Planrevision → Zustand
 `AWAITING_GOOGLE_CONNECTION`.
 
-Grenzen dieses Schritts: Es wird **kein** Google-Konto verbunden, keine
+Grenzen des synthetischen Fixture-Profils: Es wird **kein** Google-Konto verbunden, keine
 persönliche Datei angelegt, kein Token gespeichert und kein Plan in einer
 Trainingsdatei aktiviert. Der Status `COMPLETED` ist nicht erreichbar. Eine
 Einrichtungssitzung ist anonym, läuft nach 24 Stunden ab und ist **kein**

@@ -22,8 +22,14 @@ import {
 } from "./storage-config.js";
 import { loadAuthConfig } from "./auth/config.js";
 import { buildAuthSurface, type AuthSurface } from "./auth/router.js";
+import type { ConnectedArnoldRuntime } from "./connected/runtime.js";
+import type { GoogleBrowserFlow } from "./connected/google-browser.js";
+import { registerGoogleTools } from "./connected/mcp-google.js";
+import { withArnoldContext } from "./auth/guarded-server.js";
 
 export interface ServerOptions {
+  env?: NodeJS.ProcessEnv;
+  connected?: { runtime: ConnectedArnoldRuntime; browser: GoogleBrowserFlow };
   storage?: StorageAdapter;
   /** Arnold schema v1 read source; selects the v2 dashboard mode. */
   arnoldSource?: ArnoldDataSource;
@@ -50,7 +56,18 @@ export interface ServerOptions {
 }
 export function createHttpApp(options: ServerOptions = {}) {
   const root = options.root ?? process.cwd();
-  const mode = writeModeFromEnv();
+  const env = options.env ?? process.env;
+  const mode = writeModeFromEnv(env);
+  if (
+    options.connected &&
+    (options.storage ||
+      options.arnoldSource ||
+      options.workoutRuntime ||
+      mode !== "disabled")
+  )
+    throw new Error(
+      "Arnold Connected benötigt einen eigenen Datenpfad ohne Fixture-Schreibmodus.",
+    );
   const runtime: NonNullable<ServerOptions["workoutRuntime"]> | undefined =
     options.workoutRuntime ??
     (mode === "fixture" && !options.storage && !options.arnoldSource
@@ -76,30 +93,39 @@ export function createHttpApp(options: ServerOptions = {}) {
   const arnoldSource =
     runtime?.source ??
     options.arnoldSource ??
-    (options.storage === undefined && isArnoldMode()
-      ? createArnoldSource(root)
+    (options.storage === undefined && isArnoldMode(env)
+      ? createArnoldSource(root, env)
       : undefined);
-  const storage = arnoldSource
-    ? undefined
-    : (options.storage ?? createStorage(root));
-  const host = options.host ?? process.env.HOST ?? "127.0.0.1";
+  const storage =
+    arnoldSource || options.connected
+      ? undefined
+      : (options.storage ?? createStorage(root, env));
+  const host = options.host ?? env.HOST ?? "127.0.0.1";
   const allowedHosts = options.allowedHosts ??
-    process.env.ALLOWED_HOSTS?.split(",")
+    env.ALLOWED_HOSTS?.split(",")
       .map((s) => s.trim())
       .filter(Boolean) ?? ["localhost", "127.0.0.1", "[::1]"];
   const allowedOrigins =
     options.allowedOrigins ??
-    process.env.ALLOWED_ORIGINS?.split(",")
+    env.ALLOWED_ORIGINS?.split(",")
       .map((s) => s.trim())
       .filter(Boolean) ??
     [];
   // Built before the binding check, because whether a public address is
   // acceptable depends on whether bearer validation is actually active.
   const auth =
-    options.auth ?? buildAuthSurface({ config: loadAuthConfig(process.env) });
-  if (arnoldSource)
+    options.auth ?? buildAuthSurface({ config: loadAuthConfig(env) });
+  if (
+    options.connected &&
+    (auth.summary.mode !== "oidc" ||
+      options.connected.runtime.options.auth !== auth)
+  )
+    throw new Error(
+      "Connected-Runtime und HTTP-Endpunkt benötigen dieselbe aktive Authentifizierung.",
+    );
+  if (arnoldSource || options.connected)
     requireSafeArnoldBinding({
-      synthetic: arnoldSource.synthetic,
+      synthetic: arnoldSource?.synthetic ?? false,
       authenticated: auth.summary.mode === "oidc",
       host,
       allowedHosts,
@@ -143,7 +169,7 @@ export function createHttpApp(options: ServerOptions = {}) {
       );
       res.setHeader(
         "Access-Control-Allow-Headers",
-        "Content-Type, Mcp-Session-Id, Mcp-Protocol-Version, Last-Event-ID",
+        "Authorization, Content-Type, Mcp-Session-Id, Mcp-Protocol-Version, Last-Event-ID",
       );
       res.setHeader(
         "Access-Control-Expose-Headers",
@@ -159,6 +185,8 @@ export function createHttpApp(options: ServerOptions = {}) {
   // Discovery first: an unauthenticated client must be able to read the
   // protected-resource document in order to learn how to authenticate.
   if (auth.metadataRouter) app.use(auth.metadataRouter);
+  if (options.connected)
+    app.use("/auth/google", options.connected.browser.router);
   app.get("/health", (_req, res) =>
     res.json({
       status: "ok",
@@ -168,15 +196,22 @@ export function createHttpApp(options: ServerOptions = {}) {
       // source's own answer: reporting `false` for a synthetic fixture would
       // tell an operator checking whether real training data is exposed exactly
       // the wrong thing.
-      synthetic: arnoldSource
-        ? arnoldSource.synthetic
-        : storage?.mode === "demo",
-      source: arnoldSource
-        ? "arnold_sheets"
-        : storage?.mode === "demo"
-          ? "local_demo"
-          : "google_sheets",
-      ui_contract: arnoldSource ? ARNOLD_UI_CONTRACT : "arnold.dashboard/1",
+      synthetic: options.connected
+        ? false
+        : arnoldSource
+          ? arnoldSource.synthetic
+          : storage?.mode === "demo",
+      source: options.connected
+        ? "arnold_connected"
+        : arnoldSource
+          ? "arnold_sheets"
+          : storage?.mode === "demo"
+            ? "local_demo"
+            : "google_sheets",
+      ui_contract:
+        arnoldSource || options.connected
+          ? ARNOLD_UI_CONTRACT
+          : "arnold.dashboard/1",
       version: "0.5.0",
     }),
   );
@@ -194,47 +229,67 @@ export function createHttpApp(options: ServerOptions = {}) {
     res.sendFile(resolve(root, "dist/host/host.html")),
   );
   app.all("/mcp", auth.bearerGate, async (req, res) => {
-    const server = arnoldSource
-      ? createArnoldV2McpServer(
-          arnoldSource,
-          resolve(root, "dist/ui/dashboard.html"),
-          undefined,
-          runtime?.service,
-          runtime && "actorContext" in runtime
-            ? await runtime.actorContext?.(req)
-            : undefined,
-          runtime?.plans,
-          runtime?.onboarding,
-          auth.guard,
-        )
-      : createArnoldMcpServer(
-          storage!,
-          resolve(root, "dist/ui/dashboard.html"),
-          auth.guard,
+    const handle = async () => {
+      const userRuntime = options.connected
+        ? await options.connected.runtime.forUser(
+            await auth.resolveRequest(req),
+          )
+        : runtime;
+      const requestSource = userRuntime?.source ?? arnoldSource;
+      const server = requestSource
+        ? createArnoldV2McpServer(
+            requestSource,
+            resolve(root, "dist/ui/dashboard.html"),
+            undefined,
+            userRuntime?.service,
+            userRuntime && "actorContext" in userRuntime
+              ? await userRuntime.actorContext?.(req)
+              : undefined,
+            userRuntime?.plans,
+            userRuntime?.onboarding,
+            auth.guard,
+          )
+        : createArnoldMcpServer(
+            storage!,
+            resolve(root, "dist/ui/dashboard.html"),
+            auth.guard,
+          );
+      if (options.connected)
+        registerGoogleTools(
+          server,
+          options.connected.runtime,
+          options.connected.browser,
         );
-    const transport = new NodeStreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-      enableJsonResponse: true,
-    });
-    res.on("close", () => {
-      void transport.close().catch(() => {});
-      void server.close().catch(() => {});
-    });
-    try {
-      await server.connect(transport);
-      await transport.handleRequest(req, res, req.body);
-    } catch (error) {
-      console.error(
-        "MCP request failed:",
-        error instanceof Error ? error.message : "Unknown error",
-      );
-      if (!res.headersSent)
-        res.status(500).json({
-          jsonrpc: "2.0",
-          id: null,
-          error: { code: -32603, message: "Interner MCP-Fehler." },
-        });
-    }
+      const transport = new NodeStreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+        enableJsonResponse: true,
+      });
+      res.on("close", () => {
+        void transport.close().catch(() => {});
+        void server.close().catch(() => {});
+      });
+      try {
+        await server.connect(transport);
+        await transport.handleRequest(req, res, req.body);
+      } catch (error) {
+        console.error(
+          "MCP request failed:",
+          error instanceof Error ? error.message : "Unknown error",
+        );
+        if (!res.headersSent)
+          res.status(500).json({
+            jsonrpc: "2.0",
+            id: null,
+            error: { code: -32603, message: "Interner MCP-Fehler." },
+          });
+      }
+    };
+    if (options.connected) {
+      const context = await auth.resolveRequest(req);
+      if (req.method === "POST")
+        await options.connected.runtime.exclusive(context, handle);
+      else await withArnoldContext(context, handle);
+    } else await handle();
   });
   app.use((_req, res) => res.status(404).json({ error: "Nicht gefunden." }));
   app.use((error: Error, _req: Request, res: Response, _next: NextFunction) => {

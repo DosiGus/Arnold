@@ -12,7 +12,7 @@ export function WorkoutLoggerView({
   onChanged: () => void;
 }) {
   const logger = useWorkoutLogger(client, onChanged);
-  const [session, setSession] = useState("Demo Push"),
+  const [session, setSession] = useState(""),
     [date, setDate] = useState(
       new Intl.DateTimeFormat("en-CA").format(new Date()),
     );
@@ -206,6 +206,7 @@ export function WorkoutLoggerView({
                     Trainingseinheit
                     <input
                       required
+                      placeholder="Name deiner Trainingseinheit"
                       value={session}
                       onChange={(e) => setSession(e.target.value)}
                     />

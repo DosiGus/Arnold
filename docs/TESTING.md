@@ -1,65 +1,40 @@
 # Lokaler Testbericht
 
-Die Umbenennung zu **Arnold 0.4.0** wurde am **25.10.2026** mit Build, Typecheck, allen **30 Unit-/MCP-Tests**, allen **9 Browser-Tests** und Formatprüfung bestätigt. Browser-Titel, Arnold-Navigation sowie die aktualisierten Desktop-/Mobil-Screenshots wurden zusätzlich geprüft.
+Stand: **29. Oktober 2026**, macOS/ARM, Node **26.7.0**. Dieser Bericht trennt lokale technische Abnahme und reale Anbieter-/Host-Abnahme.
 
-Geprüft am **24.10.2026**, macOS/ARM, Node **26.7.0**, npm **11.19.0**, Chromium **156.0.8078.4** über Playwright **1.64.1**.
+## Aktueller Prüfstand
 
-## Ergebnisse
+Die vollständige Unit-/Integrationssuite besteht mit **1.173 Tests in 53 Dateien**. Sie umfasst den bisherigen Demo-/Fixture-Stand sowie den neuen verbundenen Ablauf. Die gemeinsame Abnahme mit `npm run check` bestätigt außerdem den Build einschließlich Typecheck und **53/53 Chromium-Browser-Tests**. `npm run format:check` und `git diff --check` sind erfolgreich. Einzelheiten und Grenzen: [Connected-Bericht](ARNOLD-CONNECTED-E2E.md).
 
-| Prüfung                                         | Ergebnis                                                                             |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `npm install` und reproduzierbares `npm ci`     | Erfolgreich; npm-Audit meldete 0 bekannte Schwachstellen zum Prüfzeitpunkt           |
-| `npm run build` einschließlich Typecheck        | Erfolgreich; selbstständige HTML-Bundles und kompilierter Node-Server                |
-| `npm test`                                      | **30/30** bestanden, vier Testdateien                                                |
-| `npm run test:e2e`                              | **9/9** bestanden in Chromium                                                        |
-| `npm run format:check`                          | Erfolgreich                                                                          |
-| Laufender Server / Browser-Vorschau             | Start und Darstellung auf Port 8787 geprüft                                          |
-| Direkte Verbindung mit ChatGPT                  | **Erfolgreich; siehe [ChatGPT-Abnahme](CHATGPT-ABNAHME.md)**                         |
-| Offizieller externer Basic Host / Inspector-GUI | Anleitung vorhanden; hier nicht zusätzlich ausgeführt                                |
-| Docker / Cloud-Deployment / Tunnel              | Cloudflare-Testtunnel ausgeführt; Docker und dauerhaftes Deployment nicht ausgeführt |
+| Bereich                       | Nachweis                                                                                                                                                                                   |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Datenmodell und Sheets-Parser | Sechs Rohdatentabellen, stabile IDs, Schema-/Dateiidentität, Lastdefinitionen, Formelprovenienz, Grenzen und beschädigte Daten                                                             |
+| Analytics und v2-Dashboard    | Deterministische Berechnungen; Presenter übernimmt Kennzahlen aus der Engine; MCP liefert sie an die echte Oberfläche                                                                      |
+| Workout-/Plan-Schreiben       | Validierung, Revisionen, vollständige atomare Batches, Readback, Audit, persistente Operations-IDs, keine Duplikate bei Retries                                                            |
+| Onboarding                    | Profil, Planvorschlag, gemeinsamer Planeditor, ausdrückliche Bestätigung genau einer Revision, ungültige/stale Bestätigungen                                                               |
+| Authentifizierung             | JWT-/JWKS-Prüfung, Issuer/Audience, Scopes pro Tool, fremde Nutzer-/Tracker-Zuordnungen, Kontosperren und AsyncLocalStorage bei interleavten Nutzern                                       |
+| Connected-Ablauf              | 22 HTTP-/MCP-Integrationstests: Google-Freigabe, eigene Datei, Planaktivierung, erster Satz, Serverneustart, zwei parallele Nutzer, Reconnect, widerrufene Tokens und verlorene Antworten  |
+| Speicherfehler                | Fehlgeschlagene Dateiumbenennung verändert keine bestätigte Cache-Identität/-Verbindung; beschädigte oder verschwundene Zustandsdateien führen nicht zu einem stillen leeren Kontospeicher |
+| Browser                       | Bestehende Dashboard-/Logger-/Plan-/Onboarding-Tests plus neuer Durchlauf bis zur Google-Datei und Satz-Wiederaufnahme; Chromium                                                           |
 
-Die Testausgaben enthalten eine harmlose Playwright-Meldung über gleichzeitige `NO_COLOR`-/`FORCE_COLOR`-Umgebungsvariablen. Der Build benötigt keine extern geladenen UI-Assets. Das Dashboard-Bundle hat unkomprimiert ca. **980 kB**, gzip ca. **279 kB**; der Entwicklerhost ca. 340 kB unkomprimiert.
+## Was der neue End-to-End-Test beweist
 
-## Was die 30 Unit-/MCP-Tests beweisen
+`tests/connected-journey.test.ts` startet den normalen HTTP-Server, den offiziellen MCP-Client und einen lokalen Issuer mit echten signierten Test-JWTs und JWKS-HTTP-Abruf. Alle Produktdienste werden gemeinsam verwendet. Nur die externen OIDC-/Google-Anbieter und die Trainingsdaten sind synthetisch.
 
-**Berechnungen (9):** bekannte Gewichts-/Wiederholungswerte, leere Mengen, Epley-Schätzung und Single, ursprüngliche Fixture einschließlich 40.021 kg Gesamtvolumen, Wochenwechsel über Jahresgrenzen, leere Zwischenwochen, inklusive Datumsgrenzen, Splitfilter, persönliche Bestleistungen, Übungsverläufe und leere Ergebnisse ohne NaN/Infinity.
+Der Test verbindet ein geprüftes Konto mit einer eigenen Google-Datei der Simulation, übernimmt den ausdrücklich bestätigten Plan, speichert Sätze, liest sie über das Dashboard und öffnet nach einem vollständigen Server-/Runtime-Neustart dieselben Daten wieder. Derselbe Satz wird mit derselben Operations-ID erneut angefragt und bleibt einmal gespeichert. Ein bekannter Beispielsatz mit 60 kg × 10 Wiederholungen liefert nach Workout-Abschluss 600 kg nominales Volumen im Dashboard.
 
-**Speicher (7):** persistenter Satz und neue Einheit, Wiederöffnung der JSON-Datei, persistente Idempotenz, zehn konkurrierende identische Requests ohne Duplikate, Konflikte bei Schlüsselwiederverwendung, bewusst gleiche Sätze mit unterschiedlichen Schlüsseln, fortlaufende Satznummern, ungültige Eingaben, vollständiger Reset und Erhalt beschädigter Dateien zur Fehlerdiagnose.
+Zusätzlich werden verweigerte Scopes, fremde Claims einschließlich bekanntem Session-Secret, fremde Workout-IDs, parallele Nutzer, Callback ohne Cookie, Callback-Replay, geändertes Profil während der Google-Freigabe, Kontosperre, verlorene Create-/Init-/Write-Antworten, Wiederverbinden und Google-Widerruf geprüft. Eine weiterhin unklare Initialisierung bleibt gesperrt, statt Daten zu überschreiben.
 
-**MCP über echten HTTP-Transport (8):** Initialisierung über den offiziellen Client, Tool-Discovery aller sechs Tools, Input-/Output-Schemas und Annotationen, UI-Metadaten, `resources/list`/`resources/read`, MIME-Typ und eingebettetes Bundle, Tool-Ergebnisse mit validem `structuredContent`, Filter, Fehlerfälle, Speichern/Deduplizieren/Reset über getrennte stateless Requests, Health-/Preview-/Host-Routen und Ablehnung fremder Origins/Hosts.
+`tests/e2e/connected.spec.ts` öffnet die echte React-Oberfläche. Ein simulierter Chat-Turn übermittelt Profil und Vorschlag über MCP. Danach bedient der Browser die Planbestätigung, den Google-Button, den Rücksprung, den Abschluss und den Logger. Ein gespeicherter Satz wird nach Neuladen über die vorhandene offene Workout-Auswahl wieder angezeigt. Die Google-Weiterleitung wird im erfolgreichen Test bereits am lokalen Startlink simuliert. Synthetische Bearer werden ausschließlich vom Test hinzugefügt. Die Browser-Vorschau selbst implementiert keinen OIDC-Login.
 
-Zusätzlich: Sheets-Server bietet nur vier Lesetools, frische Werte nach Änderung der Testquelle und korrektes `synthetic: false` für Dashboard, Historie und Fortschritt.
+## Bestehende Browser-Abdeckung
 
-**Sheets (6):** Spaltenstruktur, Datumsserien, Dezimalkomma, effektive Last bei Eigengewicht, stabile IDs, ungültige/unvollständige Zeilen und Duplikate; feste Bereiche A:G/O:S, gebündelte gleichzeitige Reads, neue Reads nach Abschluss, Schreibsperren, Datei-/Tab-Abweichungen, Grid-Grenzen sowie Ablehnung öffentlicher Konfigurationen.
-
-## Was die 9 Browser-Tests beweisen
-
-1. Vorschau lädt reale MCP-Daten, filtert den Volumenchart, wechselt auf Sätze, öffnet das gewählte letzte Workout und filtert die Historie.
-2. Übungsauswahl und Diagrammkennzahlen laden über MCP. Eigene Datumsgrenzen erzeugen korrekt einen Empty-State bzw. einen Fehler bei vertauschten Grenzen.
-3. Logger speichert einen Satz im Backend. Nach Browser-Neuladen bleiben 109 Sätze und 40.621 kg sichtbar. Demo-Reset stellt den Ursprung wieder her.
-4. **Eingebetteter MCP-Apps-Lifecycle:** der lokale Host entdeckt die UI über MCP, lädt die Ressource, initialisiert `AppBridge` ↔ `App`, liefert das initiale Tool-Ergebnis und leitet Historien-, Fortschritts-, Speicher- und Reset-Aufrufe aus dem iframe zum echten Server weiter. Der Test beobachtet die tatsächlichen `tools/call`-HTTP-Anfragen und prüft fehlende JavaScript-Laufzeitfehler.
-5. Mobile Navigation, Logger und Theme-Button bei 390 × 844 px; kein horizontaler Überlauf.
-6. Ein Host spielt beim Wiederöffnen absichtlich den alten 108-Satz-Snapshot ab. Die App gleicht ihn mit dem Backend ab und zeigt die inzwischen gespeicherten 109 Sätze und 40.621 kg. Dieser Regressionstest scheiterte vor der Korrektur und besteht seit Version 0.2.1.
-7. Initialer dunkler Host-Kontext wird vom iframe übernommen.
-8. axe-Prüfung der vier Ansichten im hellen und dunklen Theme gegen WCAG-A-/AA-Regeln; keine gemeldeten Verstöße in den geprüften Zuständen. Für stabile Kontrastmessungen werden Animationen über die unterstützte `prefers-reduced-motion`-Einstellung deaktiviert. Das ist keine vollständige manuelle Accessibility-Zertifizierung.
-
-9. Sheets-Modus mit synthetischer Master-Struktur über den echten AppBridge-Lifecycle: Quelle und effektive Last sichtbar, dynamische Bestleistungen, Historie, Fortschritt, Aktualisieren und mobile Breite; Demo-Logger/Reset fehlen und werden nicht aufgerufen.
-
-Der Testhost setzt eine CSP mit `connect-src 'none'` für die App. Der bestandene Schreibtest belegt damit den Weg über die Host-Bridge und nicht einen direkten Fetch aus dem iframe.
-
-Bei der Implementierung gefundene und korrigierte Probleme: fehlendes `allow-forms` im lokalen iframe, zu geringe Textkontraste, nicht benannte Status-Tabellenspalte, fehlende zugängliche Namen der kompakten Navigation und Auswahl des passenden Workouts beim Klick aus der Übersicht.
-
-## Analytics Engine
-
-Die Berechnungsschicht aus Task 002 ist mit vollständig synthetischen Fixtures geprüft: Gewichtskonventionen und Ausführungsarten einschließlich der sechs Referenzbeispiele, Volumenkanäle und Abdeckung, Trainingstage über Wochen- und Jahresgrenzen, Wochenstreak mit laufender Woche, Bestleistungen und ihre Vergleichbarkeit, Epley-Grenzen, Übungsverlauf mit Serienaggregation, Planhistorie und Planerfüllung, Filterfehler, Datenqualität, Determinismus sowie numerische Extremwerte. Eine Architekturprüfung stellt sicher, dass die Schicht ausschließlich `zod` und das validierte Rohschema importiert und keine Systemuhr liest. Die Engine ist nicht an HTTP, MCP oder die Oberfläche angeschlossen; Browser-Tests decken sie daher nicht ab.
-
-## Visuelle Prüfung
-
-Desktop sowie mobile Light-/Dark-Ansichten wurden im Browser aufgenommen und geprüft:
-
-- [Dashboard Desktop](screenshots/dashboard-desktop.png)
-- [Dashboard Mobile](screenshots/dashboard-mobile.png)
-- [Dashboard Mobile Dark](screenshots/dashboard-dark-mobile.png)
+- Dashboard, Charts, Zeit-/Plan-/Splitfilter, Historie, Fortschritt und Empty-/Error-Zustände.
+- Sätze speichern, korrigieren, stornieren, Training abschließen, Wiederholungsversuche bei verlorenem Response.
+- Planeditor, Versionen, Aktivierung, Konflikte und erster Plan.
+- Geführte Einrichtung, Vorschlag im gemeinsamen Editor, Bestätigungsrevisionen, Wiederaufnahme, Ablauf, Sitzungsschutz und Tastaturbedienung.
+- Echter `App`/`AppBridge`-Handshake im isolierten iframe, inklusive Schreibaufrufen bei `connect-src 'none'`.
+- Mobile Breiten, dunkles Theme und automatisierte axe-Prüfungen in den vorhandenen geprüften Ansichten. Das ersetzt keine manuelle Accessibility-Zertifizierung.
 
 ## Wiederholen
 
@@ -70,15 +45,26 @@ npm run check
 npm run format:check
 ```
 
-Unit-/MCP-Tests legen temporäre Datenverzeichnisse an. E2E-Tests starten auf Port 8790 und benutzen ausschließlich `test-results/e2e-demo.json`; die laufende Demo-Datei auf Port 8787 bleibt davon unabhängig. Bei Browser-Fehlern entstehen Screenshot und Trace unter `test-results/`.
+Gezielt:
 
-Eine Umgebung, die lokale TCP-Listener oder Browserprozesse blockiert, benötigt dafür eine entsprechende Freigabe. Die hier zunächst eingeschränkte Sandbox wurde für die lokalen Listener-/Browser-Tests freigegeben.
+```bash
+npm test -- tests/connected-journey.test.ts tests/connected-storage.test.ts tests/auth-tool-access.test.ts
+npm run test:e2e -- --grep 'onboarding, Google consent'
+```
 
-## Grenzen und offene Abnahme
+Tests schreiben ausschließlich temporäre Verzeichnisse beziehungsweise `test-results/`. Die Browser-Konfiguration startet eigene Server auf **8790–8804**; persönliche Trainingsdateien und die laufende Demo auf 8787 werden nicht zurückgesetzt. Bei Fehlern liegen Screenshots und Traces unter `test-results/`. Der neue erfolgreiche Browser-Durchlauf schreibt `test-results/connected-logger.png` zur visuellen Kontrolle.
 
-- Die gemeinsame MCP-Apps-Bridge ist lokal und für die dokumentierten Flows in ChatGPT geprüft. Eine umfassende Modell-/Prompt-Evaluation und weitere ChatGPT-Clients stehen aus. Siehe [CHATGPT-ABNAHME.md](CHATGPT-ABNAHME.md).
-- Sheets-Adapter implementiert und mit einer synthetischen Google-Transport-Testquelle geprüft. Metadaten und erlaubte Trainingslog-Bereiche wurden über den verbundenen Drive-Connector verifiziert. Ein tatsächlicher Backend-Zugriff mit eigenem Google-Schlüssel und die private ChatGPT-Verbindung sind noch offen. Keine Kundenkonto- oder Zahlungsabläufe implementiert.
-- Getestet wurde Chromium; Safari, Firefox und echte Mobilgeräte stehen aus.
-- Der JSON-Speicher unterstützt einen Prozess pro Datei. Verteilte Schreibvorgänge, Stromausfall-Durabilität und Mehrbenutzer-Isolation sind nicht abgedeckt.
-- Keine Echtzeit-Synchronisierung zwischen mehreren bereits geöffneten Dashboards; Neuladen holt den aktuellen Backendstand.
-- Keine Lasttests, kein produktiver Zugriffsschutz und kein öffentliches Hosting. Nur synthetische Daten verwenden.
+Die Sandbox blockiert lokale TCP-Listener; die hier ausgeführten HTTP-/Browser-Tests liefen mit freigegebener lokaler Ausführung. Harmlose Playwright-Meldungen zu gleichzeitig gesetzten `NO_COLOR`-/`FORCE_COLOR`-Variablen sind keine Testfehler.
+
+## Was weiterhin nicht nachgewiesen ist
+
+- **Echte Google-/OIDC-/ChatGPT-Abnahme des Connected-Profils.** Die ältere [ChatGPT-Demo-Abnahme](CHATGPT-ABNAHME.md) gilt für synthetische Daten und ist kein Nachweis des neuen persönlichen Ablaufs.
+- Produktiver Mehrinstanzbetrieb, PostgreSQL-Zustandsspeicher, verteilte Sperren, echte Google-Quoten, Lasttests, Wiederherstellung auf einer neuen Instanz, Monitoring sowie Aufbewahrung und Löschung der lokalen Journale.
+- Safari, Firefox, echte Mobilgeräte und umfassende Modell-/Prompt-Evaluation.
+- Automatische geräteübergreifende Wiederaufnahme und Hintergrund-Synchronisierung anderer offener Ansichten.
+
+Das Connected-Profil bleibt deshalb ausdrücklich auf einen Entwicklungsserver begrenzt. Konfiguration und noch offene reale Abnahme: [ARNOLD-CONNECTED-E2E.md](ARNOLD-CONNECTED-E2E.md).
+
+## Historischer Kontext
+
+Die dokumentierten 30 Unit-/MCP- und neun Browser-Tests vom 24./25. Oktober gehörten zur frühen Demo. Der Ausgangsstand dieser Prüfung hatte bereits **1.146 Tests in 51 Dateien** und 52 Browser-Tests. Diese Zahlen waren im alten Bericht nicht nachgeführt. Auch der Hinweis, Analytics sei noch nicht mit der UI verbunden, war überholt: das v2-Dashboard nutzt die Engine bereits über den Presenter.

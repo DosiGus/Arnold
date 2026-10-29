@@ -23,6 +23,8 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { OnboardingErrorCode } from "../../shared/onboarding-contract.js";
 import type { OnboardingRecord } from "./repository.js";
+import { currentArnoldContext } from "../auth/guarded-server.js";
+import type { AuthenticatedArnoldContext } from "../auth/identity.js";
 
 export class OnboardingAccessError extends Error {
   constructor(
@@ -149,6 +151,34 @@ export class DenyOnboardingAccessControl implements OnboardingAccessControl {
     _context?: unknown,
   ): Promise<OnboardingPrincipal> {
     this.deny();
+  }
+}
+
+/** A verified Arnold account plus the existing session secret are both required. */
+export class AuthenticatedOnboardingAccessControl implements OnboardingAccessControl {
+  readonly mode = "production" as const;
+  constructor(private userId: string) {}
+  async establish(context?: unknown): Promise<OnboardingPrincipal> {
+    const caller = (context ?? currentArnoldContext()) as
+      AuthenticatedArnoldContext | undefined;
+    if (!caller || caller.userId !== this.userId)
+      throw new OnboardingAccessError(
+        "AUTH_REQUIRED",
+        "Verifizierte Anmeldung für dieses Konto erforderlich.",
+      );
+    return { subject: caller.userId, kind: "authenticated", verified: true };
+  }
+  async authorize(record: OnboardingRecord, token: string, context?: unknown) {
+    const principal = await this.establish(context);
+    if (
+      record.owner_subject !== principal.subject ||
+      !tokenMatches(record.token_fingerprint, token)
+    )
+      throw new OnboardingAccessError(
+        "PERMISSION_DENIED",
+        "Diese Einrichtungssitzung ist nicht zugänglich.",
+      );
+    return principal;
   }
 }
 

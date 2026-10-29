@@ -208,4 +208,9 @@ export class ArnoldClient {
     await this.app?.close();
     await this.preview?.close();
   }
+
+  async openExternal(url: string) {
+    if (this.app) await this.app.openLink({ url });
+    else window.open(url, "_blank", "noopener,noreferrer");
+  }
 }

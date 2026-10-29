@@ -101,7 +101,8 @@ export class WorkoutLoggingService {
     if (
       actor.trackerId !== this.options.trackerId ||
       !actor.permissions.includes(permission) ||
-      (this.mode === "test_sheet" && actor.kind !== "authenticated") ||
+      ((this.mode === "test_sheet" || this.mode === "connected") &&
+        actor.kind !== "authenticated") ||
       (this.mode === "fixture" && actor.kind !== "fixture")
     )
       throw new WriteError(

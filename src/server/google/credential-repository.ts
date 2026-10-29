@@ -272,6 +272,10 @@ export class FileGoogleCredentialRepository extends BaseCredentialRepository {
     try {
       const parsed = JSON.parse(await readFile(this.path, "utf8")) as unknown;
       const candidate = parsed as Partial<CredentialState>;
+      if (!Array.isArray(candidate.google_connections))
+        throw new Error(
+          "Google-Verbindungsspeicher enthält keine gültige Verbindungstabelle.",
+        );
       this.cache = {
         google_connections: Array.isArray(candidate.google_connections)
           ? candidate.google_connections
@@ -288,12 +292,13 @@ export class FileGoogleCredentialRepository extends BaseCredentialRepository {
     change: (state: CredentialState) => T | Promise<T>,
   ): Promise<T> {
     const result = this.queue.then(async () => {
-      const state = await this.read();
+      const state = structuredClone(await this.read());
       const value = await change(state);
       await mkdir(dirname(this.path), { recursive: true });
       const temp = `${this.path}.${randomUUID()}.tmp`;
       await writeFile(temp, JSON.stringify(state, null, 2), { mode: 0o600 });
       await rename(temp, this.path);
+      this.cache = state;
       return value;
     });
     this.queue = result.catch(() => undefined);

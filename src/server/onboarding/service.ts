@@ -107,6 +107,8 @@ const fail = (
 ) => new OnboardingError(code, message, false, details);
 
 export interface OnboardingServiceOptions {
+  googleConnectionAvailable?: boolean;
+  beforeMutation?: () => Promise<void>;
   repository: OnboardingStateRepository;
   access: OnboardingAccessControl;
   /** Task 005. Absent means this deployment cannot hold a plan draft. */
@@ -219,7 +221,9 @@ export class OnboardingService {
       profile_complete: isProfileComplete(record.session.profile),
       has_plan_draft: record.session.plan_draft_reference !== null,
       has_confirmation: record.session.confirmed_plan_reference !== null,
-      expired: isExpired(record.session, this.clock()),
+      expired:
+        record.session.status !== "COMPLETED" &&
+        isExpired(record.session, this.clock()),
     };
   }
 
@@ -431,8 +435,15 @@ export class OnboardingService {
       profile_revision: confirmation?.profile_revision ?? null,
       confirmation_timestamp: confirmation?.confirmed_at_utc ?? null,
       current_plan_revision: plan?.row_revision ?? null,
-      google_connection_pending: true as const,
+      google_connection_pending: record.session.status !== "COMPLETED",
     };
+    if (record.session.status === "COMPLETED")
+      return {
+        ...base,
+        status: "completed",
+        oauth_state_binding: null,
+        blocked_reason: null,
+      };
     if (!confirmation)
       return {
         ...base,
@@ -487,7 +498,9 @@ export class OnboardingService {
 
   /** One onboarding state, as every caller sees it. */
   private async project(record: OnboardingRecord): Promise<OnboardingState> {
-    const expired = isExpired(record.session, this.clock());
+    const expired =
+      record.session.status !== "COMPLETED" &&
+      isExpired(record.session, this.clock());
     const catalog = new Map(
       (await this.catalog()).map((row) => [row.exercise_id, row]),
     );
@@ -523,12 +536,15 @@ export class OnboardingService {
       handoff,
       allowed_events: expired ? ["CANCEL"] : allowedEvents(machine),
       mode: this.mode,
+      google_connection_available:
+        this.options.googleConnectionAvailable ?? false,
       can_write_plan: Boolean(this.options.plans),
       resume: {
         durable: this.options.repository.durability !== "memory",
         cross_device: false,
-        note:
-          this.options.repository.durability === "memory"
+        note: this.options.googleConnectionAvailable
+          ? "Dein Einrichtungsstand bleibt gespeichert und kann in dieser verbundenen Sitzung fortgesetzt werden."
+          : this.options.repository.durability === "memory"
             ? "Dieser Einrichtungsstand gilt für die laufende Serversitzung. Eine Wiederaufnahme auf einem anderen Gerät ist erst mit der Google-Anbindung möglich."
             : "Dieser Einrichtungsstand bleibt auf diesem Server erhalten und kann mit demselben Sitzungsnachweis fortgesetzt werden. Eine Wiederaufnahme auf einem anderen Gerät ist erst mit der Google-Anbindung möglich.",
       },
@@ -1125,6 +1141,41 @@ export class OnboardingService {
     return { handoff, state: await this.project(record) };
   }
 
+  /** Trusted provisioning boundary; never registered as a client-callable tool. */
+  async completeProvisioning(
+    claim: { onboarding_session_id: string; session_token: string },
+    binding: string,
+    context: unknown,
+  ): Promise<void> {
+    const { record, principal } = await this.open(claim, context);
+    if (record.session.status === "COMPLETED") return;
+    const confirmed = record.session.confirmed_plan_reference;
+    if (
+      !this.options.googleConnectionAvailable ||
+      !confirmed ||
+      isExpired(record.session, this.clock()) ||
+      oauthStateBinding(record, confirmed.row_revision) !== binding ||
+      record.session.profile.revision !== confirmed.profile_revision
+    )
+      throw fail(
+        "HANDOFF_SUPERSEDED",
+        "Die Planbestätigung ist nicht mehr gültig.",
+      );
+    await this.commit(
+      record,
+      { type: "GOOGLE_CONNECTED", provisioning_verified: true },
+      {
+        principal,
+        operationId: `provision-${binding}`,
+        auditEvent: "ONBOARDING_COMPLETED",
+        mutate: (next) => ({
+          ...next,
+          session: { ...next.session, handoff_status: "completed" },
+        }),
+      },
+    );
+  }
+
   /** Ends a setup deliberately. Always possible, never an error. */
   async cancelOnboarding(
     raw: unknown,
@@ -1194,6 +1245,7 @@ export class OnboardingService {
       const input = OnboardingToolInputs[operation].parse(raw) as ReturnType<
         (typeof OnboardingToolInputs)[K]["parse"]
       >;
+      await this.options.beforeMutation?.();
       const { state, token, replayed } = await action(input);
       return OnboardingResponseSchema.parse({
         ok: true,

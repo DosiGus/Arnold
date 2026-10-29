@@ -44,6 +44,9 @@ import { InMemoryIdentityRepository } from "../src/server/identity/repository.js
 import { ARNOLD_SCOPES } from "../src/server/auth/scopes.js";
 import { isAuthError } from "../src/server/auth/errors.js";
 import { TEST_AUDIENCE, TEST_ISSUER } from "./fixtures/arnold-auth.js";
+import { registerGoogleTools } from "../src/server/connected/mcp-google.js";
+import type { ConnectedArnoldRuntime } from "../src/server/connected/runtime.js";
+import type { GoogleBrowserFlow } from "../src/server/connected/google-browser.js";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -160,8 +163,19 @@ describe("every published tool is classified", () => {
       ),
     );
 
+    const googleServer = new McpServer({
+      name: "google-registration-probe",
+      version: "1",
+    });
+    // Discovery only: none of the deferred handlers runs in this inventory test.
+    registerGoogleTools(
+      googleServer,
+      {} as ConnectedArnoldRuntime,
+      {} as GoogleBrowserFlow,
+    );
+    const google = new Set(await publishedTools(googleServer));
     const orphans = Object.keys(TOOL_ACCESS).filter(
-      (tool) => !widest.has(tool) && !v1.has(tool),
+      (tool) => !widest.has(tool) && !v1.has(tool) && !google.has(tool),
     );
     expect(orphans).toEqual([]);
   });
@@ -391,6 +405,94 @@ describe("guarded registration", () => {
     await invoke(server, "get_arnold_dashboard_v2");
     // Cleared again afterwards, so a later unguarded path cannot read a stale
     // identity and act as that user.
+    expect(currentArnoldContext()).toBeUndefined();
+  });
+
+  it("keeps two users isolated across interleaved asynchronous tool handlers", async () => {
+    const releases: (() => void)[] = [];
+    const started: Promise<void>[] = [];
+    const connections: { server: McpServer; client: Client }[] = [];
+    for (const userId of ["usr_alice", "usr_bob"]) {
+      let markStarted!: () => void;
+      started.push(
+        new Promise<void>((resolve) => {
+          markStarted = resolve;
+        }),
+      );
+      const gate = new Promise<void>((resolve) => releases.push(resolve));
+      const guard = new ArnoldToolGuard({
+        mode: "open",
+        resolver: resolver(),
+        openModeContext: {
+          userId,
+          actorId: userId,
+          scopes: [ARNOLD_SCOPES.read],
+          issuer: TEST_ISSUER,
+          audience: TEST_AUDIENCE,
+          clientId: "interleaving-probe",
+          authSessionId: undefined,
+          firstSeen: false,
+        },
+      });
+      const server = guardToolRegistrations(
+        new McpServer({ name: userId, version: "1" }),
+        guard,
+      );
+      server.registerTool(
+        "get_dashboard_data",
+        { inputSchema: z.object({}) },
+        async () => {
+          const before = currentArnoldContext()?.userId;
+          markStarted();
+          await gate;
+          return {
+            content: [{ type: "text", text: "context" }],
+            structuredContent: {
+              before,
+              after: currentArnoldContext()?.userId,
+            },
+          };
+        },
+      );
+      const [clientTransport, serverTransport] =
+        InMemoryTransport.createLinkedPair();
+      const client = new Client({ name: "interleaving-probe", version: "1" });
+      await Promise.all([
+        server.connect(serverTransport),
+        client.connect(clientTransport),
+      ]);
+      connections.push({ server, client });
+    }
+    try {
+      const first = connections[0].client.callTool({
+        name: "get_dashboard_data",
+        arguments: {},
+      });
+      await started[0];
+      const second = connections[1].client.callTool({
+        name: "get_dashboard_data",
+        arguments: {},
+      });
+      await started[1];
+      releases[0]();
+      expect((await first).structuredContent).toEqual({
+        before: "usr_alice",
+        after: "usr_alice",
+      });
+      releases[1]();
+      expect((await second).structuredContent).toEqual({
+        before: "usr_bob",
+        after: "usr_bob",
+      });
+    } finally {
+      releases.forEach((release) => release());
+      await Promise.all(
+        connections.map(async ({ client, server }) => {
+          await client.close();
+          await server.close();
+        }),
+      );
+    }
     expect(currentArnoldContext()).toBeUndefined();
   });
 

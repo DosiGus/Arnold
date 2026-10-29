@@ -1,6 +1,8 @@
 # Arnold Auth Architecture
 
-**Status: Task 007-A and 007-B implemented and unit/integration-verified. Not staging-verified, not production-verified.**
+**Status 2026-10-29: authentication, Google routes and personal tracker provisioning are locally integration-verified in the explicit single-instance Connected development profile. Not verified against real Google, a real OIDC provider or the ChatGPT host. Not production-verified.**
+
+Current end-to-end setup and limitations: [ARNOLD-CONNECTED-E2E.md](ARNOLD-CONNECTED-E2E.md). Anonymous fixture sessions remain separate; the connected journey authenticates before creating durable onboarding state.
 
 This document describes the authentication that exists in the code today. Anything
 not yet built is marked **NOT IMPLEMENTED** with the work package that owns it.
@@ -14,12 +16,12 @@ connection, or a real Google account — see [Verification status](#verification
 Arnold needs two unrelated authorizations, and conflating them is the single most
 dangerous mistake available in this design.
 
-|                | Layer A                                 | Layer B                                           |
-| -------------- | --------------------------------------- | ------------------------------------------------- |
-| **Question**   | Which Arnold user is this MCP call for? | May Arnold touch this person's Google Drive?      |
-| **Direction**  | ChatGPT → Arnold                        | Arnold → Google                                   |
-| **Credential** | Arnold access token (bearer, JWT)       | Google refresh/access token                       |
-| **Status**     | **Implemented (007-A)**                 | **Service implemented (007-B); routes not wired** |
+|                | Layer A                                 | Layer B                                                        |
+| -------------- | --------------------------------------- | -------------------------------------------------------------- |
+| **Question**   | Which Arnold user is this MCP call for? | May Arnold touch this person's Google Drive?                   |
+| **Direction**  | ChatGPT → Arnold                        | Arnold → Google                                                |
+| **Credential** | Arnold access token (bearer, JWT)       | Google refresh/access token                                    |
+| **Status**     | **Implemented, with startup discovery** | **Service + routes + development tracker runtime implemented** |
 
 The rule, from Task 007 §4:
 
@@ -310,15 +312,19 @@ The write tools (Task 004), plan write tools (Task 005) and onboarding tools
 `registerWorkoutTools` returns early when logging is absent or `disabled`, and
 `registerPlanTools` returns early when plans are `disabled`.
 
-`createHttpApp` injects a runtime from the environment in exactly one case:
-`ARNOLD_WRITE_MODE=fixture` with no storage or Arnold source supplied, which
-yields `createFixtureLogging()` — synthetic data, no Google calls. Every other
-environment-driven configuration publishes **read tools only**.
+`createHttpApp` injects the full synthetic onboarding/planning/logging runtime for
+`STORAGE_MODE=arnold_fixture` and `ARNOLD_WRITE_MODE=fixture`. Separately,
+`main.ts` calls asynchronous `createConfiguredHttpApp`: it discovers OIDC metadata
+and, for `STORAGE_MODE=arnold_connected`, injects a per-user authenticated runtime
+and Google browser routes. The connected profile requires development mode,
+OIDC and file identity persistence. Other storage profiles remain read-only.
 
-So the current exposure is: reads behind the bearer gate and the guard; writes
-reachable only under an explicitly synthetic runtime or an explicit injection in
-tests. Task 004's own guards still apply underneath (`production` write mode is
-rejected outright, and `test_sheet` demands an authenticated actor kind).
+Connected writes use the `connected` repository mode with authenticated actors,
+per-user tracker resolution and durable local journals. Its onboarding tools are
+reclassified from preview to `PLAN_WRITE`; its Google tools use
+`ACCOUNT_MANAGEMENT`. The module-global context was replaced by AsyncLocalStorage
+and is tested with interleaved users. `production` write mode remains rejected,
+and `test_sheet` retains its dedicated-workbook restrictions.
 
 ### Known gap: scope refusals are not audited
 
@@ -381,13 +387,15 @@ credential in a log line.
 
 ## 9. HTTP surface
 
-| Route                                                    | Auth   | Status                                                                             |
-| -------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------- |
-| `/.well-known/oauth-protected-resource[/mcp]`            | public | implemented (`oidc` mode only)                                                     |
-| `/.well-known/oauth-authorization-server`                | public | implemented (`oidc` mode only)                                                     |
-| `/health`                                                | public | reports `auth` mode, no secrets                                                    |
-| `/mcp`                                                   | bearer | implemented                                                                        |
-| `/auth/google/start` `/callback` `/status` `/disconnect` | bearer | **NOT WIRED.** `GoogleConnectionService` implements the logic; no route mounts it. |
+| Route                                         | Auth                                               | Status                                                               |
+| --------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------- |
+| `/.well-known/oauth-protected-resource[/mcp]` | public                                             | implemented (`oidc` mode only)                                       |
+| `/.well-known/oauth-authorization-server`     | public                                             | implemented (`oidc` mode only)                                       |
+| `/health`                                     | public                                             | reports `auth` mode, no secrets                                      |
+| `/mcp`                                        | bearer                                             | implemented                                                          |
+| `/auth/google/start` `/status` `/disconnect`  | bearer + account scope                             | connected development profile only                                   |
+| `/auth/google/launch`                         | one-use ticket                                     | binds browser to the authenticated start                             |
+| `/auth/google/callback`                       | state + browser cookie + verified pending identity | validates the confirmed revision and provisions the personal tracker |
 
 Discovery is mounted before everything else: an unauthenticated client must be able
 to read the protected-resource document in order to learn how to authenticate.
@@ -420,16 +428,14 @@ exercises Arnold's side of the protocol and proves nothing about any real provid
 1. **Choose and provision an authorization server.** Not chosen.
 2. **Confirm ChatGPT's client registration requirement** (CIMD vs DCR) against
    current OpenAI documentation.
-3. **Mount the `/auth/google/*` routes.** The service exists; nothing exposes it.
+3. **Verify the implemented `/auth/google/*` routes against real Google.** Local HTTP/browser coverage uses simulated endpoints.
 4. **Create and configure a Google Cloud project** — OAuth client, consent
    screen, Drive and Sheets APIs, redirect URIs, test users. A deployment gate,
    not a code task.
 5. **Implement the PostgreSQL identity store** (007-D). `IDENTITY_STORE=postgres`
    currently throws, and the pending-authorization store is single-instance.
-6. **Move the onboarding→authenticated handoff into place** (007-A2). Task 006's
-   `oauthStateBinding()` is carried through the Google flow, but the step that
-   adopts a confirmed anonymous draft into a verified user does not exist.
-7. Tracker provisioning (007-C) and the end-to-end journey (007-E) — not started.
+6. **Decide whether anonymous draft adoption is needed.** The connected profile authenticates before onboarding; it does not adopt sessions from the anonymous synthetic fixture.
+7. **Run the implemented tracker provisioning and end-to-end journey against real Google and ChatGPT.** Local proof covers isolated users, restart, retries, revocation and the browser flow. Distributed persistence and production operations are still missing.
 
 ---
 
@@ -459,6 +465,8 @@ expired/not-yet-valid/future-issued/over-long tokens, a missing `aud`, an ID tok
 presented as an access token, and cross-user isolation with two synthetic
 identities.
 
-**Not covered**, because the mechanisms do not exist yet: OAuth redirect validation,
-`state` tampering, authorization-code replay, PKCE verifier mismatch (all 007-B),
-and every provisioning and write-safety case (007-C/D).
+The connected journey now additionally covers callback-cookie/state replay,
+PKCE/nonce verification, stale confirmations, personal provisioning, two concurrent
+users, server restart, lost responses and account reconnection. Google transport is
+simulated. Distributed persistence, real provider acceptance and production
+operations remain unverified; see the current end-to-end report.
