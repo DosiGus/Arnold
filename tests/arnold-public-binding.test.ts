@@ -12,7 +12,6 @@
 import { describe, expect, it } from "vitest";
 import {
   isPublicBinding,
-  requireLoopbackOnly,
   requireSafeArnoldBinding,
 } from "../src/server/storage-config";
 import { createHttpApp } from "../src/server/http";
@@ -148,28 +147,6 @@ describe("the binding rule for Arnold sources", () => {
       expect(message).toMatch(/AUTH_MODE=oidc/);
       expect(message).toMatch(/arnold_fixture/);
     }
-  });
-});
-
-describe("the legacy Sheets rule is unchanged", () => {
-  it("still refuses any public binding", () => {
-    expect(() =>
-      requireLoopbackOnly(
-        PUBLIC.host,
-        PUBLIC.allowedHosts,
-        PUBLIC.allowedOrigins,
-      ),
-    ).toThrow(/Loopback/);
-  });
-
-  it("still allows loopback", () => {
-    expect(() =>
-      requireLoopbackOnly(
-        LOOPBACK.host,
-        LOOPBACK.allowedHosts,
-        LOOPBACK.allowedOrigins,
-      ),
-    ).not.toThrow();
   });
 });
 

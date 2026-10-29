@@ -46,8 +46,9 @@ export const ALL_ARNOLD_SCOPES: readonly ArnoldScope[] =
  * - `PUBLIC` may only return information identical for every caller.
  *
  * - `SYNTHETIC_SANDBOX` writes, but only to process-local synthetic demo data
- *   with no user association. These are the Task 001–003 demo tools, which
- *   exist only when storage is the synthetic JSON fixture. The guard refuses
+ *   with no user association. No tool is declared with this class; a server
+ *   running the synthetic fixture reclassifies its write tools to it (see
+ *   `syntheticWrites` in guarded-server.ts). The guard refuses
  *   this class outright in `enforced` mode, so it cannot become a way to write
  *   without authentication in a real deployment.
  *

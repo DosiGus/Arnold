@@ -73,24 +73,6 @@ function v2Payload(generatedAt: string) {
   return buildDashboardView(fullDataset(), { generatedAt });
 }
 
-/** A v1 demo payload, to prove the guard is contract-aware. */
-const v1Payload = {
-  synthetic: true,
-  source: "local_demo" as const,
-  totals: {
-    workouts: 1,
-    sets: 1,
-    volume: 100,
-    daysPerWeek: 1,
-    trainingDays: 1,
-  },
-  period: { start: "2026-10-01", end: "2026-10-01" },
-  exercises: [{ id: "bench-press", name: "Bankdrücken", split: "Push" }],
-  workouts: [],
-  weeks: [],
-  records: [],
-};
-
 async function bootClient() {
   // Imported lazily so the mocked bridge is in place first.
   const { ArnoldClient } = await import("../src/ui/client");
@@ -168,19 +150,6 @@ describe("replayed tool results on reopening a chat", () => {
     expect(asV2(payloads.at(-1)!).source.generated_at).toBe(
       "2026-10-25T09:00:00Z",
     );
-  });
-
-  it("re-asks with the tool that matches the replayed contract", async () => {
-    // A replayed v1 demo payload must be refreshed with the v1 tool.
-    fake.responses.set("get_dashboard_data", () => okResult(v1Payload));
-    const { client, payloads } = await bootClient();
-    await client.connect();
-
-    fake.ontoolresult!(okResult(v1Payload));
-    await vi.waitFor(() => expect(payloads.length).toBe(1));
-
-    expect(fake.calls.map((c) => c.name)).toEqual(["get_dashboard_data"]);
-    expect(payloads[0].contract).toBe("v1");
   });
 
   it("applies the guard only to the first result, not to later ones", async () => {

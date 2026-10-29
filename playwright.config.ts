@@ -6,7 +6,7 @@ export default defineConfig({
   reporter: "list",
   timeout: 30000,
   use: {
-    baseURL: "http://127.0.0.1:8790",
+    baseURL: "http://127.0.0.1:8792",
     headless: true,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
@@ -15,23 +15,6 @@ export default defineConfig({
     {
       command: "npx tsx tests/fixtures/connected-server.ts",
       url: "http://127.0.0.1:8803/health",
-      reuseExistingServer: false,
-    },
-    {
-      command: "node dist/server/main.js",
-      url: "http://127.0.0.1:8790/health",
-      reuseExistingServer: false,
-      env: {
-        PORT: "8790",
-        DEMO_DATA_FILE: "test-results/e2e-demo.json",
-        STORAGE_MODE: "demo",
-        ALLOWED_HOSTS: "localhost,127.0.0.1,[::1]",
-        ALLOWED_ORIGINS: "",
-      },
-    },
-    {
-      command: "npx tsx tests/fixtures/sheets-server.ts",
-      url: "http://127.0.0.1:8791/health",
       reuseExistingServer: false,
     },
     {

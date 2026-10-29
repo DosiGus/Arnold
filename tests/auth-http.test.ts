@@ -14,15 +14,11 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createServer, type Server } from "node:http";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import {
   Client,
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
 import { createHttpApp } from "../src/server/http.js";
-import { JsonStorageAdapter } from "../src/server/storage.js";
 import { loadAuthConfig } from "../src/server/auth/config.js";
 import { buildAuthSurface } from "../src/server/auth/router.js";
 import { fetchAuthorizationServerMetadata } from "../src/server/auth/discovery.js";
@@ -42,7 +38,6 @@ let issuer: string;
 let arnold: Server;
 let base: string;
 let resource: string;
-let directory: string;
 let jwksRequests = 0;
 const guardEvents: GuardEvent[] = [];
 
@@ -91,8 +86,6 @@ beforeAll(async () => {
   issuerServer = await startIssuer();
   issuer = `http://127.0.0.1:${portOf(issuerServer)}/`;
 
-  directory = await mkdtemp(join(tmpdir(), "arnold-auth-http-"));
-
   // A real app, configured as a protected resource. The port is not known
   // until Arnold listens, so the resource identifier is pinned first and the
   // listener bound to the same port afterwards.
@@ -123,7 +116,7 @@ beforeAll(async () => {
   });
 
   arnold = createHttpApp({
-    storage: new JsonStorageAdapter(join(directory, "demo.json")),
+    env: {},
     auth,
   }).listen(port, "127.0.0.1");
   await listen(arnold);
@@ -138,7 +131,6 @@ afterAll(async () => {
     issuerServer?.close(() => resolve());
     issuerServer?.closeAllConnections();
   });
-  await rm(directory, { recursive: true, force: true });
 });
 
 const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
@@ -292,12 +284,12 @@ describe("the /mcp gate", () => {
     );
 
     const before = guardEvents.length;
-    await client.callTool({ name: "get_dashboard_data", arguments: {} });
+    await client.callTool({ name: "get_arnold_dashboard_v2", arguments: {} });
     await client.close();
 
     const granted = guardEvents
       .slice(before)
-      .find((event) => event.tool === "get_dashboard_data");
+      .find((event) => event.tool === "get_arnold_dashboard_v2");
     expect(granted?.kind).toBe("granted");
     expect(granted?.access).toBe("AUTHENTICATED_READ");
     expect(granted?.userId).toMatch(/^usr_/);
@@ -316,7 +308,7 @@ describe("the /mcp gate", () => {
 
     const before = guardEvents.length;
     const result = (await client
-      .callTool({ name: "get_dashboard_data", arguments: {} })
+      .callTool({ name: "get_arnold_dashboard_v2", arguments: {} })
       .catch((error: unknown) => ({ thrown: error }))) as {
       isError?: boolean;
       thrown?: unknown;
@@ -338,27 +330,6 @@ describe("the /mcp gate", () => {
     // §26 asks to monitor. Closing it needs the challenge path reported too.
     expect(guardEvents.slice(before)).toEqual([]);
   });
-
-  it("refuses the synthetic demo writes in an authenticating deployment", async () => {
-    // log_demo_set writes invented data and is classified SYNTHETIC_SANDBOX,
-    // which the guard refuses outright once authentication is enforced — so
-    // the demo write path cannot ride along into a real deployment.
-    const token = signJwt(
-      key,
-      claimsFor({ scope: "arnold.read arnold.write" }),
-    );
-    const client = new Client({ name: "arnold-auth-tests", version: "1.0.0" });
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL(resource), {
-        requestInit: { headers: bearer(token) },
-      }),
-    );
-    const { tools } = await client.listTools();
-    await client.close();
-
-    // It is published (demo storage), and calling it is refused.
-    expect(tools.map((t) => t.name)).toContain("log_demo_set");
-  });
 });
 
 describe("open mode keeps the pre-Task-007 profiles working", () => {
@@ -374,7 +345,7 @@ describe("open mode keeps the pre-Task-007 profiles working", () => {
       repository: new InMemoryIdentityRepository(),
     });
     openServer = createHttpApp({
-      storage: new JsonStorageAdapter(join(directory, "open.json")),
+      env: {},
       auth,
     }).listen(0, "127.0.0.1");
     await listen(openServer);

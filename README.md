@@ -9,7 +9,7 @@ TypeScript, Express, `@modelcontextprotocol/*` 2.x, React 19, Recharts, Zod 4, V
 ```bash
 npm ci
 npm run build
-npm start          # synthetische Demo auf http://localhost:8787
+npm start          # synthetische Daten auf http://localhost:8787
 ```
 
 | Adresse                  | Zweck                                                  |
@@ -36,14 +36,13 @@ npm start          # synthetische Demo auf http://localhost:8787
 
 Der Server wählt über `STORAGE_MODE` (und `AUTH_MODE`) eine Betriebsart. Details und Variablen: [docs/GUIDE.md](docs/GUIDE.md).
 
-| Modus              | Daten                                       | Anmeldung | Zweck                          |
-| ------------------ | ------------------------------------------- | --------- | ------------------------------ |
-| `demo` (Standard)  | Synthetisch, JSON-Datei                     | keine     | Erste Schritte, UI-Entwicklung |
-| `arnold_fixture`   | Synthetisch, im Arbeitsspeicher, alle Tools | keine     | Test in ChatGPT per Tunnel     |
-| `arnold_sheets`    | Eigene Google-Tabelle, nur lesend           | privat    | Lokale Auswertung              |
-| `arnold_connected` | Pro Nutzer eine eigene Google-Tabelle       | OIDC      | Ende-zu-Ende-Entwicklung       |
+| Modus                       | Daten                                       | Anmeldung | Zweck                                                   |
+| --------------------------- | ------------------------------------------- | --------- | ------------------------------------------------------- |
+| `arnold_fixture` (Standard) | Synthetisch, im Arbeitsspeicher, alle Tools | keine     | Erste Schritte, UI-Entwicklung, ChatGPT-Test per Tunnel |
+| `arnold_sheets`             | Eigene Google-Tabelle, nur lesend           | privat    | Lokale Auswertung                                       |
+| `arnold_connected`          | Pro Nutzer eine eigene Google-Tabelle       | OIDC      | Ende-zu-Ende-Entwicklung                                |
 
-`google_sheets` ist der ältere Lesemodus für das Push/Pull/Legs-Format. Echte Daten gehen nie über einen öffentlichen Tunnel ohne Anmeldung; der Server weigert sich zu starten.
+Echte Daten gehen nie über einen öffentlichen Tunnel ohne Anmeldung; der Server weigert sich zu starten.
 
 ## Dokumentation
 

@@ -6,7 +6,6 @@ import {
   StreamableHTTPClientTransport,
   type CallToolResult,
 } from "@modelcontextprotocol/client";
-import { DashboardSchema, type Dashboard } from "../shared/schemas";
 import {
   ArnoldDashboardViewSchema,
   type ArnoldDashboardView,
@@ -19,11 +18,10 @@ import {
 import { readStoredClaim } from "./client/onboarding-claim";
 
 /**
- * What the app is currently showing. The two contracts are kept apart so a v1
- * demo payload can never be read with v2 field names, or the other way round.
+ * What the app is currently showing. The contracts are kept apart so a
+ * dashboard payload can never be read as a setup state, or the other way round.
  */
 export type ArnoldPayload =
-  | { contract: "v1"; dashboard: Dashboard }
   | { contract: "v2"; dashboard: ArnoldDashboardView }
   /** The setup wizard. Its own contract, so it never renders dashboard data. */
   | { contract: "onboarding"; onboarding: OnboardingView };
@@ -42,7 +40,7 @@ export class ArnoldClient {
    */
   onStale?: (stale: boolean) => void;
 
-  /** Recognises any of the three contracts; returns null for anything else. */
+  /** Recognises either contract; returns null for anything else. */
   private interpret(content: unknown): ArnoldPayload | null {
     if (!content || typeof content !== "object") return null;
     // Checked first and by its own contract field: an onboarding payload must
@@ -51,13 +49,7 @@ export class ArnoldClient {
     if (onboarding.success)
       return { contract: "onboarding", onboarding: onboarding.data };
     const v2 = ArnoldDashboardViewSchema.safeParse(content);
-    if (v2.success) return { contract: "v2", dashboard: v2.data };
-    const unwrapped =
-      "dashboard" in content
-        ? (content as { dashboard: unknown }).dashboard
-        : content;
-    const v1 = DashboardSchema.safeParse(unwrapped);
-    return v1.success ? { contract: "v1", dashboard: v1.data } : null;
+    return v2.success ? { contract: "v2", dashboard: v2.data } : null;
   }
 
   /**
@@ -105,9 +97,7 @@ export class ArnoldClient {
    */
   private refreshTool(payload: ArnoldPayload | null) {
     if (payload?.contract === "onboarding") return null;
-    return payload?.contract === "v2"
-      ? "get_arnold_dashboard_v2"
-      : "get_dashboard_data";
+    return "get_arnold_dashboard_v2";
   }
 
   async connect() {

@@ -1,7 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { useEffect, useState } from "react";
 import { ArnoldClient, type ArnoldPayload } from "./client";
-import { ArnoldApp } from "./App";
 import { ArnoldDashboardApp } from "./ArnoldDashboardApp";
 import { ArnoldMcpClient } from "./client/ArnoldMcpClient";
 import { OnboardingView } from "./views/OnboardingView";
@@ -10,10 +9,9 @@ import "./style.css";
 /**
  * Boots the app and picks the interface for the contract the server speaks.
  *
- * The demo path (v1), the Arnold path (v2) and the setup wizard are deliberately
- * separate components: their data models disagree about what they describe, so
- * one component serving all three would have to guess. The contract in the
- * payload decides, which keeps the existing demo mode working untouched.
+ * The dashboard and the setup wizard are deliberately separate components:
+ * their data models disagree about what they describe, so one component
+ * serving both would have to guess. The contract in the payload decides.
  */
 function Boot() {
   const [client] = useState(() => new ArnoldClient());
@@ -82,15 +80,13 @@ function Boot() {
       />
     );
 
-  return payload.contract === "v2" ? (
+  return (
     <ArnoldDashboardApp
       client={mcp}
       initial={payload.dashboard}
       bridgeError={error}
       stale={stale}
     />
-  ) : (
-    <ArnoldApp client={client} data={payload.dashboard} bridgeError={error} />
   );
 }
 
