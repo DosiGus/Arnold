@@ -1,6 +1,6 @@
 # Arnold – Aufbau und Betrieb
 
-Teil 1 erklärt, wie Arnold gebaut ist und welche Regeln gelten. Teil 2 beschreibt Konfiguration, ChatGPT-Test und das Connected-Profil. Tests: `npm run check` (Stand 30.10.2026: 1.199 Unit- und 50 Browser-Tests grün, alles gegen simulierte Anbieter; Browser-Tests brauchen lokale TCP-Listener und laufen auf den Ports 8790–8804).
+Teil 1 erklärt, wie Arnold gebaut ist und welche Regeln gelten. Teil 2 beschreibt Konfiguration, ChatGPT-Test und das Connected-Profil. Tests: `npm run check` (Stand 30.10.2026: 1.205 Unit- und 50 Browser-Tests grün, alles gegen simulierte Anbieter; Browser-Tests brauchen lokale TCP-Listener und laufen auf den Ports 8790–8804).
 
 # Teil 1 – Aufbau
 

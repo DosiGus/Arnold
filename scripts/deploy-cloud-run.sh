@@ -117,6 +117,7 @@ env_vars() {
     "AUTH_JWKS_URI=$JWKS"
     "AUTH_SCOPE_CLAIM=$SCOPE_CLAIM"
     TRUST_PROXY=1
+    ARNOLD_TOOL_LOG=json
     "ALLOWED_HOSTS=$1"
   )
   if [[ "$PROFILE" == connected ]]; then

@@ -174,6 +174,44 @@ describe("collecting the profile", () => {
     expect(second.state!.session.profile.days_per_week).toBe(4);
   });
 
+  it("records the first open question after a save without a step", async () => {
+    // Found live in ChatGPT: the step stayed "goal" after the goal was saved,
+    // and the model kept saving goal and experience again and again.
+    const service = createFixtureOnboarding().onboarding;
+    const { claim } = await startSetup(service);
+    const goal = await service.updateProfile({
+      request_id: rid(),
+      ...claim,
+      profile: { primary_goal: "muscle_gain", experience: "intermediate" },
+    });
+    expect(goal.state!.session.current_step).toBe("availability");
+    const availability = await service.updateProfile({
+      request_id: rid(),
+      ...claim,
+      profile: { days_per_week: 3, session_minutes: 60, environment: "gym" },
+    });
+    expect(availability.state!.session.current_step).toBe("preferences");
+    const done = await service.updateProfile({
+      request_id: rid(),
+      ...claim,
+      profile: { starting_point: "new_plan" },
+    });
+    expect(done.state!.session.status).toBe("PROFILE_READY");
+    expect(done.state!.session.current_step).toBe("summary");
+  });
+
+  it("keeps an explicit step from the wizard", async () => {
+    const service = createFixtureOnboarding().onboarding;
+    const { claim } = await startSetup(service);
+    const saved = await service.updateProfile({
+      request_id: rid(),
+      ...claim,
+      profile: { primary_goal: "strength" },
+      step: "goal",
+    });
+    expect(saved.state!.session.current_step).toBe("goal");
+  });
+
   it("updates a single answer from a later turn", async () => {
     const service = createFixtureOnboarding().onboarding;
     const { claim } = await withProfile(service);
