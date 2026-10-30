@@ -426,6 +426,8 @@ export function useOnboarding(
     planValidation: state?.plan_validation ?? null,
     handoff: state?.handoff,
     goToStep,
+    /** Shows a step without recording it; for a save that already did. */
+    showStep: (next: OnboardingStep) => setStep(next),
     saveProfile,
     choosePath,
     requestPlan,

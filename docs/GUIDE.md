@@ -1,6 +1,6 @@
 # Arnold – Aufbau und Betrieb
 
-Teil 1 erklärt, wie Arnold gebaut ist und welche Regeln gelten. Teil 2 beschreibt Konfiguration, ChatGPT-Test und das Connected-Profil. Tests: `npm run check` (Stand 30.10.2026: 1.199 Unit- und 50 Browser-Tests grün, alles gegen simulierte Anbieter; Browser-Tests brauchen lokale TCP-Listener und laufen auf den Ports 8790–8804).
+Teil 1 erklärt, wie Arnold gebaut ist und welche Regeln gelten. Teil 2 beschreibt Konfiguration, ChatGPT-Test und das Connected-Profil. Tests: `npm run check` (Stand 30.10.2026: 1.205 Unit- und 50 Browser-Tests grün, alles gegen simulierte Anbieter; Browser-Tests brauchen lokale TCP-Listener und laufen auf den Ports 8790–8804).
 
 # Teil 1 – Aufbau
 
@@ -305,6 +305,26 @@ Gesetzte Variablen: `ARNOLD_ENV=development`, `STORAGE_MODE=arnold_fixture`, `AR
 - `.gcloudignore` hält `.env*`, `data/`, Schlüssel und `.git` aus dem hochgeladenen Quellarchiv.
 
 Für echte Nutzerdaten fehlen weiterhin ein mehrinstanztauglicher Zustandsspeicher (statt `data/connected` im Container), ein `staging`-taugliches Connected-Profil mit Google-OAuth-Client und eine Zugangsbeschränkung pro Nutzer statt eines Templates für alle.
+
+## Hosting mit echten Google-Tabellen (Connected-Profil auf Cloud Run)
+
+Standard von `npm run deploy:cloud-run` (`ARNOLD_PROFILE=connected`; `fixture` bleibt wählbar). Ablauf für Nutzer wie im Abschnitt Connected-Profil: WorkOS-Login, Einrichtung, Planbestätigung, Google-Freigabe (`drive.file`), Arnold legt eine eigene Tabelle im Drive des Nutzers an. Die Struktur des „Arnold Master“ (sechs Tabs) steckt im Code; die Masterdatei wird nie gelesen oder kopiert, mit `drive.file` dürfte Arnold das auch nicht.
+
+Einmalig, in dieser Reihenfolge:
+
+1. Google Auth Platform im Projekt: Branding „Arnold“, Zielgruppe „Extern“ im Status **Testen**, Testnutzer eintragen, OAuth-Client „Webanwendung“ mit Weiterleitungs-URI `<BASE_URL>/auth/google/callback`, JSON herunterladen.
+2. `npm run setup:google-secrets` legt `arnold-token-encryption-key` (einmalig, nie überschrieben), `arnold-google-client-id` und `arnold-google-client-secret` in Secret Manager ab, ohne sie auszugeben.
+3. `npm run setup:cloud-infra` legt das Dienstkonto `arnold-runtime` (keine Projektrollen) und den Bucket `gs://<projekt>-state` an (europe-west1, privat, hierarchischer Namespace für atomare Umbenennungen) und gibt `arnold-runtime` nur Objektzugriff auf den Bucket und Lesezugriff auf die drei Geheimnisse. Außerdem `roles/run.builder` für das Build-Konto.
+4. WorkOS-JWT-Template um `arnold.account` ergänzen (`connect_google_account`).
+
+Laufzeit: Der Bucket ist per Cloud Storage FUSE als `/app/data` eingebunden (uid/gid 1000, Dateien 600). Identitäten, verschlüsselte Refresh-Tokens, Einrichtungsentwürfe und Tracker-Zuordnung überleben so Neustarts und das Einschlafen. Geheimnisse kommen als Umgebungsvariablen aus Secret Manager.
+
+Grenzen dieser Stufe:
+
+- **Ein Prozess pro Zustandsordner** gilt weiter. `--max-instances 1` sichert das im Betrieb; während eines Deployments können alte und neue Revision einige Sekunden gleichzeitig laufen. Deployments daher in ruhigen Momenten.
+- Im Google-Status **Testen** laufen Refresh-Tokens nach sieben Tagen ab; danach meldet Arnold `REAUTH_REQUIRED` und der Nutzer verbindet Google neu. Abhilfe: App veröffentlichen (`drive.file` ist kein sensibler Scope).
+- Höchstens 100 Testnutzer bei Google; WorkOS-Template gibt jedem angemeldeten Nutzer alle Scopes.
+- Für Mehrinstanzbetrieb fehlt weiterhin eine Datenbank (Task 007-D).
 
 ## Backup
 

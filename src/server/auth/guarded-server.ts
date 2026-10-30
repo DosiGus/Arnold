@@ -27,6 +27,7 @@ import { requireToolAccess } from "./tool-access.js";
 import { scopeChallengeFor, type ArnoldToolGuard } from "./tool-guard.js";
 import type { AuthenticatedArnoldContext } from "./identity.js";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { describeResult, logToolCall, toolLogEnabled } from "../tool-log.js";
 
 /**
  * The verified context for the call currently being handled.
@@ -123,8 +124,51 @@ export function guardToolRegistrations(
     // last argument, so it is read from the end rather than by position.
     const guardedHandler = async (...args: unknown[]) => {
       const ctx = args[args.length - 1] as ServerContext;
-      const context = await guard.authorize(name, access, ctx);
-      return activeContext.run(context, () => handler(...args));
+      const started = Date.now();
+      let context: AuthenticatedArnoldContext | undefined;
+      try {
+        context = await guard.authorize(name, access, ctx);
+      } catch (error) {
+        logToolCall({
+          tool: name,
+          access,
+          outcome: "refused",
+          ms: Date.now() - started,
+          code: (error as { code?: string }).code ?? "AUTH_REFUSED",
+        });
+        throw error;
+      }
+      try {
+        const result = await activeContext.run(context, () => handler(...args));
+        if (toolLogEnabled()) {
+          const described = describeResult(result);
+          logToolCall({
+            tool: name,
+            access,
+            outcome: described.isError ? "error" : "ok",
+            ms: Date.now() - started,
+            ...(context ? { user: context.userId } : {}),
+            ...(described.code ? { code: described.code } : {}),
+            ...(described.onboarding
+              ? { onboarding: described.onboarding }
+              : {}),
+          });
+        }
+        return result;
+      } catch (error) {
+        logToolCall({
+          tool: name,
+          access,
+          outcome: "thrown",
+          ms: Date.now() - started,
+          ...(context ? { user: context.userId } : {}),
+          code:
+            (error as { code?: string }).code ??
+            (error as Error).name ??
+            "Error",
+        });
+        throw error;
+      }
     };
 
     return (original as unknown as (...a: unknown[]) => unknown)(

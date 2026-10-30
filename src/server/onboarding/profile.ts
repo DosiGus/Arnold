@@ -66,6 +66,20 @@ export function missingRequiredFields(
   );
 }
 
+/**
+ * The first collection step that still lacks a required answer.
+ *
+ * Recorded after a save without an explicit step, so the stored position says
+ * what to ask next. Left at "goal" after the goal was answered, a chat client
+ * reads it as "the goal is still open" and asks — and saves — it again.
+ */
+export function firstOpenStep(
+  profile: OnboardingProfile,
+): OnboardingStep | undefined {
+  const field = missingRequiredFields(profile)[0];
+  return field ? FIELD_STEP[field] : undefined;
+}
+
 export const isProfileComplete = (profile: OnboardingProfile) =>
   profile.path !== null && missingRequiredFields(profile).length === 0;
 

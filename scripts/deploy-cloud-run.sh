@@ -1,33 +1,45 @@
 #!/usr/bin/env bash
-# Deploys Arnold to Google Cloud Run: synthetic data, behind a login.
+# Deploys Arnold to Google Cloud Run behind a WorkOS login.
 #
 #   npm run deploy:cloud-run -- <project-id> <authkit-domain>
-#   e.g. npm run deploy:cloud-run -- arnold-513219 https://example-123.authkit.app
+#   e.g. npm run deploy:cloud-run -- arnold-513219 example-123.authkit.app
+#
+# Profiles (ARNOLD_PROFILE):
+#   connected (default)  each user's own Google Sheet, created in their Drive
+#                        after Google consent (drive.file). State lives in the
+#                        bucket gs://<project>-state mounted at /app/data;
+#                        Google client and encryption key come from Secret
+#                        Manager. Needs `npm run setup:google-secrets` and
+#                        `npm run setup:cloud-infra` once.
+#   fixture              invented data, one in-memory sandbox per user.
 #
 # What it does, in order:
 #   1. reads the login provider's OAuth metadata (issuer, JWKS) and checks it,
-#   2. turns on the Cloud Run, Cloud Build and Artifact Registry APIs,
-#   3. lets the default build account build Cloud Run images,
-#   4. builds the Dockerfile in Cloud Build and deploys it (no local Docker),
-#   5. pins ALLOWED_HOSTS to the service's own run.app hostnames,
-#   6. checks /health, the protected-resource document and that /mcp refuses
+#   2. turns on the APIs it needs,
+#   3. builds the Dockerfile in Cloud Build and deploys it (no local Docker),
+#   4. pins ALLOWED_HOSTS to the service's own run.app hostnames,
+#   5. checks /health, the protected-resource document and that /mcp refuses
 #      a request without a token.
 #
-# Every signed-in user gets their own invented dataset in memory. Arnold's
-# scopes come from the provider's JWT template in the claim urn:arnold:scopes.
-# There is deliberately no way to deploy without a login from this script.
+# Arnold's scopes come from the provider's JWT template in the claim
+# urn:arnold:scopes. There is deliberately no way to deploy without a login.
 set -euo pipefail
 
 PROJECT="${1:-}"
 AUTHKIT="${2:-${ARNOLD_AUTH_DOMAIN:-}}"
+PROFILE="${ARNOLD_PROFILE:-connected}"
 REGION="${ARNOLD_REGION:-europe-west1}"
 SERVICE="${ARNOLD_SERVICE:-arnold}"
-# 0 = sleeps when idle (nearly free, test data resets), 1 = always awake.
+# 0 = sleeps when idle (nearly free), 1 = always awake.
 MIN_INSTANCES="${ARNOLD_MIN_INSTANCES:-0}"
 SCOPE_CLAIM="urn:arnold:scopes"
 
 if [[ -z "$PROJECT" || -z "$AUTHKIT" ]]; then
   echo "Aufruf: npm run deploy:cloud-run -- <projekt-id> <authkit-domain>" >&2
+  exit 1
+fi
+if [[ "$PROFILE" != connected && "$PROFILE" != fixture ]]; then
+  echo "ARNOLD_PROFILE muss connected oder fixture sein." >&2
   exit 1
 fi
 AUTHKIT="${AUTHKIT%/}"
@@ -49,7 +61,7 @@ read -r ISSUER JWKS < <(node -e '
 ' "$METADATA" "$AUTHKIT")
 echo "  issuer: $ISSUER"
 
-echo "› Projekt $PROJECT, Region $REGION, Dienst $SERVICE"
+echo "› Projekt $PROJECT, Region $REGION, Dienst $SERVICE, Profil $PROFILE"
 gcloud config set project "$PROJECT" >/dev/null
 NUMBER="$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')"
 
@@ -57,10 +69,39 @@ echo "› APIs einschalten"
 gcloud services enable run.googleapis.com cloudbuild.googleapis.com \
   artifactregistry.googleapis.com --quiet
 
-echo "› Build-Konto berechtigen"
-gcloud projects add-iam-policy-binding "$PROJECT" \
-  --member="serviceAccount:${NUMBER}-compute@developer.gserviceaccount.com" \
-  --role=roles/run.builder --condition=None --quiet >/dev/null
+RUNTIME_SA="arnold-runtime@$PROJECT.iam.gserviceaccount.com"
+BUCKET="$PROJECT-state"
+EXTRA=()
+if [[ "$PROFILE" == connected ]]; then
+  gcloud services enable drive.googleapis.com sheets.googleapis.com \
+    secretmanager.googleapis.com storage.googleapis.com --quiet
+  gcloud iam service-accounts describe "$RUNTIME_SA" --project "$PROJECT" >/dev/null 2>&1 &&
+    gcloud storage buckets describe "gs://$BUCKET" >/dev/null 2>&1 || {
+    echo "Dienstkonto oder Speicher fehlt. Zuerst: npm run setup:cloud-infra" >&2
+    exit 1
+  }
+  for secret in arnold-google-client-id arnold-google-client-secret arnold-token-encryption-key; do
+    gcloud secrets describe "$secret" --project "$PROJECT" >/dev/null 2>&1 || {
+      echo "Geheimnis $secret fehlt. Zuerst: npm run setup:google-secrets" >&2
+      exit 1
+    }
+  done
+  EXTRA+=(
+    --service-account "$RUNTIME_SA"
+    --execution-environment gen2
+    --set-secrets "GOOGLE_CLIENT_ID=arnold-google-client-id:latest,GOOGLE_CLIENT_SECRET=arnold-google-client-secret:latest,TOKEN_ENCRYPTION_KEY=arnold-token-encryption-key:latest"
+  )
+  # The node user in the image is uid/gid 1000; the bucket is mounted as its
+  # data directory. Added only once, a second --add-volume would be refused.
+  VOLUMES="$(gcloud run services describe "$SERVICE" --region "$REGION" \
+    --format='value(spec.template.spec.volumes[].name)' 2>/dev/null || true)"
+  if [[ "$VOLUMES" != *state* ]]; then
+    EXTRA+=(
+      --add-volume "name=state,type=cloud-storage,bucket=$BUCKET,mount-options=uid=1000;gid=1000;file-mode=600;dir-mode=700"
+      --add-volume-mount "volume=state,mount-path=/app/data"
+    )
+  fi
+fi
 
 # The deterministic run.app hostname is known before the first deploy, so the
 # first revision already accepts its own address and names it as the MCP
@@ -68,20 +109,30 @@ gcloud projects add-iam-policy-binding "$PROJECT" \
 PRIMARY_HOST="${SERVICE}-${NUMBER}.${REGION}.run.app"
 URL="https://${PRIMARY_HOST}"
 env_vars() {
-  # '^@^' switches gcloud's list separator to '@' so ALLOWED_HOSTS keeps commas.
   local vars=(
     ARNOLD_ENV=development
-    STORAGE_MODE=arnold_fixture
-    ARNOLD_WRITE_MODE=fixture
     AUTH_MODE=oidc
     "ARNOLD_PUBLIC_BASE_URL=$URL"
     "AUTH_ISSUER=$ISSUER"
     "AUTH_JWKS_URI=$JWKS"
     "AUTH_SCOPE_CLAIM=$SCOPE_CLAIM"
-    IDENTITY_STORE=memory
     TRUST_PROXY=1
+    ARNOLD_TOOL_LOG=json
     "ALLOWED_HOSTS=$1"
   )
+  if [[ "$PROFILE" == connected ]]; then
+    vars+=(
+      STORAGE_MODE=arnold_connected
+      ARNOLD_WRITE_MODE=disabled
+      IDENTITY_STORE=file
+      IDENTITY_STORE_FILE=data/connected/identities.json
+      ARNOLD_STATE_DIRECTORY=data/connected
+      "GOOGLE_REDIRECT_URI=$URL/auth/google/callback"
+    )
+  else
+    vars+=(STORAGE_MODE=arnold_fixture ARNOLD_WRITE_MODE=fixture IDENTITY_STORE=memory)
+  fi
+  # '^@^' switches gcloud's list separator to '@' so ALLOWED_HOSTS keeps commas.
   local IFS=@
   echo "^@^${vars[*]}"
 }
@@ -96,7 +147,8 @@ gcloud run deploy "$SERVICE" \
   --cpu 1 --memory 512Mi --cpu-boost \
   --concurrency 80 --timeout 300 \
   --set-env-vars "$(env_vars "$PRIMARY_HOST")" \
-  --labels app=arnold,profile=fixture-oidc \
+  --labels "app=arnold,profile=$PROFILE" \
+  ${EXTRA[@]+"${EXTRA[@]}"} \
   --quiet
 
 HOSTS="$(gcloud run services describe "$SERVICE" --region "$REGION" \
@@ -104,7 +156,9 @@ HOSTS="$(gcloud run services describe "$SERVICE" --region "$REGION" \
   tr -d '[]" ' | tr ',' '\n' | sed -E 's#^https://##' | grep . | sort -u |
   paste -sd, -)"
 HOSTS="$(printf '%s\n%s\n' "$PRIMARY_HOST" "${HOSTS//,/$'\n'}" | grep . | sort -u | paste -sd, -)"
-if [[ "$HOSTS" != "$PRIMARY_HOST" ]]; then
+CURRENT="$(gcloud run services describe "$SERVICE" --region "$REGION" \
+  --format='value(spec.template.spec.containers[0].env)' | grep -o "ALLOWED_HOSTS[^;]*" || true)"
+if [[ "$HOSTS" != "$PRIMARY_HOST" && "$CURRENT" != *"$HOSTS"* ]]; then
   echo "› ALLOWED_HOSTS auf alle Dienstadressen setzen: $HOSTS"
   gcloud run services update "$SERVICE" --region "$REGION" \
     --update-env-vars "$(env_vars "$HOSTS")" --quiet >/dev/null
@@ -113,8 +167,9 @@ fi
 echo "› Prüfen: $URL"
 HEALTH="$(curl -fsS "$URL/health")"
 echo "  health: $HEALTH"
-grep -q '"synthetic":true' <<<"$HEALTH" && grep -q '"auth":"oidc"' <<<"$HEALTH" || {
-  echo "Health meldet nicht synthetisch + oidc. Abbruch." >&2
+EXPECT_SYNTHETIC=$([[ "$PROFILE" == fixture ]] && echo true || echo false)
+grep -q "\"synthetic\":$EXPECT_SYNTHETIC" <<<"$HEALTH" && grep -q '"auth":"oidc"' <<<"$HEALTH" || {
+  echo "Health passt nicht zum Profil $PROFILE (synthetic=$EXPECT_SYNTHETIC, auth=oidc). Abbruch." >&2
   exit 1
 }
 PRM="$(curl -fsS "$URL/.well-known/oauth-protected-resource/mcp")"
@@ -133,4 +188,4 @@ echo "  /mcp ohne Token: $STATUS"
 }
 
 echo
-echo "Fertig. ChatGPT-Connector-Adresse: $URL/mcp (Anmeldung: OAuth)"
+echo "Fertig. ChatGPT-Connector-Adresse: $URL/mcp (Anmeldung: OAuth, Profil $PROFILE)"

@@ -79,6 +79,7 @@ import {
   buildProgress,
   exerciseChoices,
   isProfileComplete,
+  firstOpenStep,
   validateProfile,
   validateProposalAgainstProfile,
 } from "./profile.js";
@@ -952,7 +953,11 @@ export class OnboardingService {
         principal,
         operationId: input.request_id,
         auditEvent: "ONBOARDING_PROFILE_UPDATED",
-        step: input.step,
+        // A save without a step moves the recorded position to the first
+        // question still open; an explicit step (the wizard's) wins.
+        step:
+          input.step ??
+          (patch && !complete ? firstOpenStep(profile) : undefined),
         fields,
         mutate: (next) => ({
           ...next,
