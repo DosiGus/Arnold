@@ -7,3 +7,10 @@ playwright-report
 .git
 .codex
 .agents
+secrets
+credentials
+*.pem
+*.key
+service-account*.json
+service_account*.json
+*-credentials.json

@@ -70,6 +70,24 @@ function withDefaultProfile(options: ServerOptions): NodeJS.ProcessEnv {
     ARNOLD_WRITE_MODE: "fixture",
   };
 }
+/**
+ * How many reverse proxies in front of Arnold may set `X-Forwarded-*`.
+ *
+ * Behind a TLS-terminating platform (Cloud Run, a load balancer) the request
+ * reaches Node as plain HTTP, so without this the same-origin check below
+ * compares `https://…` from the browser against `http://…` and refuses the
+ * server's own preview. Off by default: trusting forwarded headers on a
+ * directly exposed process would let any client claim to be HTTPS. Anything
+ * but a small whole number stops the start.
+ */
+export function parseTrustProxy(value: string | undefined): number {
+  if (value === undefined || value === "") return 0;
+  if (!/^\d+$/.test(value) || Number(value) > 10)
+    throw new Error(
+      "TRUST_PROXY muss die Zahl der vorgeschalteten Proxys sein (0 bis 10, Cloud Run: 1).",
+    );
+  return Number(value);
+}
 export function createHttpApp(options: ServerOptions = {}) {
   const root = options.root ?? process.cwd();
   const env = withDefaultProfile(options);
@@ -152,6 +170,8 @@ export function createHttpApp(options: ServerOptions = {}) {
     ],
   });
   app.disable("x-powered-by");
+  const trustProxy = parseTrustProxy(env.TRUST_PROXY);
+  if (trustProxy > 0) app.set("trust proxy", trustProxy);
   app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "no-store");

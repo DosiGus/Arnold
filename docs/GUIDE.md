@@ -1,6 +1,6 @@
 # Arnold – Aufbau und Betrieb
 
-Teil 1 erklärt, wie Arnold gebaut ist und welche Regeln gelten. Teil 2 beschreibt Konfiguration, ChatGPT-Test und das Connected-Profil. Tests: `npm run check` (Stand 29.10.2026: 1.174 Unit- und 50 Browser-Tests grün, alles gegen simulierte Anbieter; Browser-Tests brauchen lokale TCP-Listener und laufen auf den Ports 8790–8804).
+Teil 1 erklärt, wie Arnold gebaut ist und welche Regeln gelten. Teil 2 beschreibt Konfiguration, ChatGPT-Test und das Connected-Profil. Tests: `npm run check` (Stand 30.10.2026: 1.183 Unit- und 50 Browser-Tests grün, alles gegen simulierte Anbieter; Browser-Tests brauchen lokale TCP-Listener und laufen auf den Ports 8790–8804).
 
 # Teil 1 – Aufbau
 
@@ -264,9 +264,28 @@ Schnittstellen: Tools `connect_google_account`, `finish_arnold_setup`, `get_goog
 
 **Daten und Backup:** `data/connected` enthält Konto- und Tracker-Zuordnung, verschlüsselte Refresh-Tokens, Einrichtungsentwürfe, Audit und Operations-Snapshots (können Trainingsinhalte enthalten). Zustandsordner und `TOKEN_ENCRYPTION_KEY` gehören zusammen in ein verschlüsseltes Backup, der Schlüssel getrennt gelagert. Genau ein Prozess pro Zustandsordner. Aufbewahrung und Löschung der Journale sind offen.
 
-## Hosting und Backup
+## Hosting auf Google Cloud Run (synthetisch)
 
-Es gibt kein Deployment. Das `Dockerfile` (Node 24, Port 8787, `HOST=0.0.0.0`, dann Servicehostname in `ALLOWED_HOSTS`) ist ungebaut. Nächster Testweg wäre ein Container (z. B. Cloud Run) mit persistentem Speicher; Workers brauchen anderen Transport und Speicher. Echte Nutzerdaten erst mit `AUTH_MODE=oidc` und einem mehrinstanztauglichen Zustandsspeicher.
+Feste, öffentliche HTTPS-Adresse für ChatGPT-Tests, ohne laufenden Mac. Profil `arnold_fixture`, keine Anmeldung, erfundene Daten im Arbeitsspeicher.
+
+Einmalig: Google-Cloud-Projekt mit Abrechnung, `gcloud` installiert (`brew install --cask gcloud-cli`), `gcloud auth login`. Dann:
+
+```bash
+npm run deploy:cloud-run -- <projekt-id>
+```
+
+Das Skript (`scripts/deploy-cloud-run.sh`) schaltet die APIs ein, baut das `Dockerfile` in Cloud Build (kein lokales Docker nötig), veröffentlicht den Dienst `arnold` in `europe-west1` und prüft `/health` und die Tool-Liste über die öffentliche Adresse. Am Ende steht die Connector-Adresse `https://arnold-<projektnummer>.europe-west1.run.app/mcp`; sie bleibt über alle weiteren Deployments gleich.
+
+Gesetzte Variablen: `ARNOLD_ENV=development`, `STORAGE_MODE=arnold_fixture`, `ARNOLD_WRITE_MODE=fixture`, `TRUST_PROXY=1` (TLS endet bei Google, sonst scheitert die Same-Origin-Prüfung von `/preview`), `ALLOWED_HOSTS` = die `run.app`-Adressen des Dienstes.
+
+- **Genau eine Instanz** (`--max-instances 1`): Der Fixture-Zustand liegt im Prozess; zwei Instanzen hätten zwei verschiedene Datenstände.
+- **Schläft bei Ruhe** (`ARNOLD_MIN_INSTANCES=0`, Standard): fast kostenlos, erste Anfrage nach einer Pause einige Sekunden langsamer, Testdaten danach wieder im Anfangszustand. `ARNOLD_MIN_INSTANCES=1 npm run deploy:cloud-run -- <projekt-id>` hält die Instanz wach (grob 10 € im Monat).
+- Jedes Deployment und jede Variablenänderung startet eine neue Revision und setzt die Testdaten zurück.
+- `.gcloudignore` hält `.env*`, `data/`, Schlüssel und `.git` aus dem hochgeladenen Quellarchiv.
+
+Für echte Nutzerdaten fehlen weiterhin `AUTH_MODE=oidc` mit gewähltem Anbieter, ein mehrinstanztauglicher Zustandsspeicher (statt `data/connected` im Container) und ein `staging`-taugliches Connected-Profil. Workers bräuchten anderen Transport und Speicher.
+
+## Backup
 
 Nur Commit und Push sichern Änderungen. Nicht versioniert: `.env*` (außer `.env.example`), `data/`, `secrets/`, `credentials/`, Schlüssel, `node_modules/`, `dist/`, `test-results/`.
 
