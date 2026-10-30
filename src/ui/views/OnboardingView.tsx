@@ -19,13 +19,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ChevronLeft, Info, RefreshCw } from "lucide-react";
 import type {
-  ExperienceLevel,
   OnboardingProfilePatch,
   OnboardingState,
   OnboardingStep,
   StartingPoint,
   TrainingEnvironment,
-  TrainingGoal,
 } from "../../shared/onboarding-contract";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
 import { useOnboarding } from "../hooks/useOnboarding";
@@ -74,6 +72,13 @@ export function OnboardingView({
   /** Errors are shown once a step has been submitted, not while typing. */
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [confirming, setConfirming] = useState(false);
+  /**
+   * Answers picked but not yet saved. A choice stays local until "Weiter":
+   * inside a chat host every save is a round trip through the host (seconds,
+   * not milliseconds), and saving on every click made the wizard wait after
+   * each tap and drop taps made while it waited.
+   */
+  const [pending, setPending] = useState<OnboardingProfilePatch>({});
   const [drafts, setDrafts] = useState<Drafts>({
     preferred: "",
     avoided: "",
@@ -174,14 +179,53 @@ export function OnboardingView({
   const shows = (fields: readonly string[]) =>
     fields.some((field) => touched[field]);
 
-  /** Saves a patch and moves on only once the server has stored it. */
+  /**
+   * Saves a patch together with the step it leads to, and moves on only once
+   * the server has stored it. One round trip: the step travels with the save.
+   */
   const saveAnd = async (
     patch: OnboardingProfilePatch,
     nextStep: OnboardingStep,
   ) => {
     const response = await onb.saveProfile(patch, nextStep);
-    if (response?.ok) onb.goToStep(nextStep);
+    if (response?.ok) onb.showStep(nextStep);
     return response;
+  };
+
+  /** What the screen shows: the stored profile with local picks on top. */
+  const answers = { ...profile, ...pending } as typeof profile;
+  const pick = (patch: OnboardingProfilePatch) =>
+    setPending((previous) => ({ ...previous, ...patch }));
+
+  /**
+   * "Weiter" on a question step: checks the required answers locally, then
+   * saves this step's picks in one write. Nothing picked means nothing to
+   * save, and the step change alone is recorded.
+   */
+  const advance = async (
+    fields: readonly (keyof OnboardingProfilePatch & keyof typeof profile)[],
+    nextStep: OnboardingStep,
+    extra: OnboardingProfilePatch = {},
+  ) => {
+    if (fields.some((field) => answers[field] === null)) {
+      mark(fields);
+      return;
+    }
+    const patch: OnboardingProfilePatch = { ...extra };
+    for (const field of fields)
+      if (field in pending && pending[field] !== profile[field])
+        Object.assign(patch, { [field]: pending[field] });
+    if (!Object.keys(patch).length) {
+      onb.goToStep(nextStep);
+      return;
+    }
+    const response = await saveAnd(patch, nextStep);
+    if (response?.ok)
+      setPending((previous) => {
+        const rest = { ...previous };
+        for (const field of fields) delete rest[field];
+        return rest;
+      });
   };
 
   const banner = (
@@ -364,9 +408,9 @@ export function OnboardingView({
       case "availability":
         return (
           <AvailabilityStep
-            days={profile.days_per_week}
-            minutes={profile.session_minutes}
-            environment={profile.environment}
+            days={answers.days_per_week}
+            minutes={answers.session_minutes}
+            environment={answers.environment}
             validation={validation}
             busy={onb.busy}
             showErrors={shows([
@@ -374,24 +418,21 @@ export function OnboardingView({
               "session_minutes",
               "environment",
             ])}
-            onChange={(patch) => void onb.saveProfile(patch)}
+            onChange={pick}
             onBack={() => onb.goToStep("goal")}
-            onNext={() => {
-              mark(["days_per_week", "session_minutes", "environment"]);
-              if (
-                profile.days_per_week !== null &&
-                profile.session_minutes !== null &&
-                profile.environment !== null
+            onNext={() =>
+              void advance(
+                ["days_per_week", "session_minutes", "environment"],
+                "preferences",
               )
-                onb.goToStep("preferences");
-            }}
+            }
           />
         );
 
       case "preferences":
         return (
           <PreferencesStep
-            startingPoint={profile.starting_point}
+            startingPoint={answers.starting_point}
             preferred={drafts.preferred}
             avoided={drafts.avoided}
             equipment={drafts.equipment}
@@ -401,17 +442,15 @@ export function OnboardingView({
             showErrors={shows(["starting_point"])}
             onChange={(patch) => {
               if (patch.starting_point)
-                void onb.saveProfile({ starting_point: patch.starting_point });
+                pick({ starting_point: patch.starting_point });
               const { starting_point: _ignored, ...rest } = patch;
               if (Object.keys(rest).length)
                 setDrafts((previous) => ({ ...previous, ...rest }));
             }}
             onBack={() => onb.goToStep("availability")}
             onNext={({ skipOptional }) => {
-              mark(["starting_point"]);
-              if (profile.starting_point === null) return;
               if (skipOptional) {
-                onb.goToStep("summary");
+                void advance(["starting_point"], "summary");
                 return;
               }
               // Optional answers are only sent when there is something to send,
@@ -428,9 +467,11 @@ export function OnboardingView({
                   : {}),
                 ...(drafts.notes.trim() ? { notes: drafts.notes.trim() } : {}),
               };
-              if (Object.keys(next).length)
-                void saveAnd({ preferences: next }, "summary");
-              else onb.goToStep("summary");
+              void advance(
+                ["starting_point"],
+                "summary",
+                Object.keys(next).length ? { preferences: next } : {},
+              );
             }}
           />
         );
@@ -470,24 +511,15 @@ export function OnboardingView({
       default:
         return (
           <GoalStep
-            goal={profile.primary_goal}
-            experience={profile.experience}
+            goal={answers.primary_goal}
+            experience={answers.experience}
             validation={validation}
             busy={onb.busy}
             showErrors={shows(["primary_goal", "experience"])}
-            onChange={(patch) =>
-              void onb.saveProfile(
-                patch as {
-                  primary_goal?: TrainingGoal;
-                  experience?: ExperienceLevel;
-                },
-              )
+            onChange={pick}
+            onNext={() =>
+              void advance(["primary_goal", "experience"], "availability")
             }
-            onNext={() => {
-              mark(["primary_goal", "experience"]);
-              if (profile.primary_goal !== null && profile.experience !== null)
-                onb.goToStep("availability");
-            }}
           />
         );
     }
