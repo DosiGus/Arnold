@@ -42,9 +42,12 @@ async function start() {
     content.mimeType !== RESOURCE_MIME_TYPE
   )
     throw new Error("Ungültige MCP Apps UI-Ressource.");
+  // `?card=week` opens that card, the way the model passes `card`.
+  const card = new URLSearchParams(location.search).get("card");
+  const args = card && name === "show_arnold_dashboard" ? { card } : {};
   const initial = (await client.callTool({
     name: tool!.name,
-    arguments: {},
+    arguments: args,
   })) as CallToolResult;
   const bridge = new AppBridge(
     client,
@@ -52,6 +55,9 @@ async function start() {
     {
       serverTools: {},
       serverResources: {},
+      // Like ChatGPT: the app may post messages and update the model context.
+      message: { text: {} },
+      updateModelContext: { text: {} },
     },
     {
       hostContext: {
@@ -64,10 +70,27 @@ async function start() {
     },
   );
   bridge.oninitialized = async () => {
-    await bridge.sendToolInput({ arguments: {} });
+    await bridge.sendToolInput({ arguments: args });
     await bridge.sendToolResult(initial);
     status.textContent = `MCP Apps verbunden · ${tools.length} Tools · offizieller AppBridge · sandboxed iframe`;
     status.dataset.initialized = "true";
+  };
+  // What a real chat would show and hand to the model, made visible here.
+  const messages = document.querySelector<HTMLOListElement>("#host-messages")!;
+  const context = document.querySelector<HTMLPreElement>("#host-context")!;
+  const text = (content: readonly { type: string }[] | undefined) =>
+    (content ?? [])
+      .map((block) => ("text" in block ? String(block.text) : ""))
+      .join("\n");
+  bridge.onmessage = async ({ content }) => {
+    const item = document.createElement("li");
+    item.textContent = text(content);
+    messages.append(item);
+    return {};
+  };
+  bridge.onupdatemodelcontext = async ({ content }) => {
+    context.textContent = text(content);
+    return {};
   };
   bridge.onsizechange = ({ height }) => {
     if (height)

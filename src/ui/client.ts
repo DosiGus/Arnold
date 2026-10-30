@@ -209,6 +209,29 @@ export class ArnoldClient {
     else window.open(url, "_blank", "noopener,noreferrer");
   }
 
+  private lastModelContext?: string;
+
+  /**
+   * Tells the model what the app shows, without starting a turn. The host
+   * keeps only the latest update and hands it to the model with the user's
+   * next message. Skipped where the host does not offer it, and when nothing
+   * changed since the last update.
+   */
+  async updateModelContext(text: string): Promise<boolean> {
+    if (!this.app || text === this.lastModelContext) return false;
+    if (!this.app.getHostCapabilities()?.updateModelContext) return false;
+    this.lastModelContext = text;
+    try {
+      await this.app.updateModelContext({
+        content: [{ type: "text", text }],
+      });
+      return true;
+    } catch {
+      this.lastModelContext = undefined;
+      return false;
+    }
+  }
+
   /**
    * Posts a message into the chat as the user, so a button can hand the turn
    * to ChatGPT ("Plan erstellen" → the model builds the plan). Returns false

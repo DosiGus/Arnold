@@ -16,6 +16,8 @@ import { ExerciseProgressView } from "./views/ExerciseProgressView";
 import { TrainingPlanEditorView } from "./views/TrainingPlanEditorView";
 import { dateTimeLabel } from "./format";
 import { parseCard, type CardId } from "./cards";
+import { useModelContext } from "./hooks/useModelContext";
+import { pageContext, weekContext } from "./model-context";
 
 const PAGE_LABEL: Partial<Record<CardId, string>> = {
   progress: "Fortschritt",
@@ -91,6 +93,15 @@ export function ArnoldDashboardApp({
       : loaded;
   }, [dashboard.data, initial]);
   const showStale = stale && view === initial;
+  // The training card reports its own state; the others are reported here.
+  useModelContext(
+    client,
+    card === "today"
+      ? undefined
+      : card === "week"
+        ? weekContext(view)
+        : pageContext(card),
+  );
 
   const notes = (
     <>

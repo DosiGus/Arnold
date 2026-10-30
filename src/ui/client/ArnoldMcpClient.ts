@@ -108,6 +108,10 @@ export class ArnoldMcpClient {
   async openDashboard() {
     await this.client.call("show_arnold_dashboard");
   }
+  /** Tells the model what the app shows, without starting a chat turn. */
+  async tellModel(text: string) {
+    return this.client.updateModelContext(text);
+  }
   /** Hands the next turn to the chat, as if the user had typed `text`. */
   async askChat(text: string) {
     return (await this.client.sendChatMessage?.(text)) ?? false;

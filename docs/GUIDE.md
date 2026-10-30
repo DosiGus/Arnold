@@ -52,7 +52,9 @@ Arnold zeigt im Chat Karten, keine App: kein Logo, kein Menü, kein Hell-Dunkel-
 - Bausteine: `src/ui/components/cards.tsx`, Stil in `src/ui/cards.css` (Farben aus `glass.css`).
 - `today` ist eine Karte für das ganze Training: Plan des Tages, dann Satz für Satz, dann die Zusammenfassung mit Zahlen aus der Engine. Startwerte kommen aus dem letzten Satz, sonst aus dem letzten Training (`get_arnold_workouts`), sonst aus dem Plan.
 - `progress`, `history` und `plan` zeigen vorerst die bisherigen Ansichten ohne App-Rahmen.
-- In `/preview` wählt `?card=week` die Karte.
+- In `/preview` und `/host` wählt `?card=week` die Karte.
+
+**Chat-Brücke** (`src/ui/model-context.ts`): Jede Karte meldet dem Modell still über `ui/update-model-context`, was sie zeigt, bei laufendem Training mit allen gespeicherten Sätzen samt `set_id`. So kann der Nutzer im Chat nachfragen oder korrigieren („der letzte Satz waren 10 Wdh.“). Nur „Training beenden“ schickt eine sichtbare Nachricht (`ui/message`, „Training beendet: …“ mit den Zahlen der Engine), einmal und nur nach einem Tipp in der Karte, nie beim Wiederöffnen. Mehr Nachrichten würden die Karte während des Trainings aus dem Blick scrollen. Der Test-Host `/host` zeigt beides unter dem iframe an.
 
 Es gibt keine Abhängigkeit von `window.openai`. `/preview` nutzt denselben Server über einen normalen MCP-Client ohne iframe, `/host` über `AppBridge`. Beides sind Entwicklungswerkzeuge, kein Ersatz für einen echten Host.
 

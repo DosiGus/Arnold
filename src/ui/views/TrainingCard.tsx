@@ -10,6 +10,13 @@ import type { ArnoldDashboardView } from "../../shared/arnold-view";
 import type { WorkoutContext } from "../../shared/workout-contract";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
 import { useWorkoutLogger } from "../hooks/useWorkoutLogger";
+import { useModelContext } from "../hooks/useModelContext";
+import {
+  finishMessage,
+  summaryContext,
+  todayContext,
+  workoutContext,
+} from "../model-context";
 import {
   ArnoldCard,
   CardActions,
@@ -50,6 +57,9 @@ export function TrainingCard({
   const logger = useWorkoutLogger(client, onChanged);
   const data = logger.data;
   const workout = data?.workout ?? null;
+  // Set when the user finishes a workout here, so only that finish is posted
+  // to the chat, never one replayed when the chat is reopened.
+  const finished = useRef<string | undefined>(undefined);
 
   // An unfinished workout is continued rather than started a second time.
   const resumed = useRef(false);
@@ -81,12 +91,27 @@ export function TrainingCard({
         logger={logger}
         data={data}
         workout={workout}
+        onFinish={() => {
+          finished.current = workout.workout_id;
+        }}
       />
     );
   if (workout?.status === "completed")
-    return <SummaryCard workout={workout} view={view} onOpen={onOpen} />;
+    return (
+      <SummaryCard
+        client={client}
+        workout={workout}
+        view={view}
+        onOpen={onOpen}
+        announce={finished.current === workout.workout_id}
+        onAnnounced={() => {
+          finished.current = undefined;
+        }}
+      />
+    );
   return (
     <TodayCard
+      client={client}
       logger={logger}
       data={data}
       view={view}
@@ -149,12 +174,14 @@ function sessionItems(
 }
 
 function TodayCard({
+  client,
   logger,
   data,
   view,
   onOpen,
   cancelled,
 }: {
+  client: ArnoldMcpClient;
   logger: Logger;
   data: WorkoutContext;
   view: ArnoldDashboardView;
@@ -201,6 +228,22 @@ function TodayCard({
         : {}),
       source: "ui",
     });
+
+  useModelContext(
+    client,
+    todayContext({
+      sessionName: session?.session_name ?? "Freies Training",
+      planName: plan && session ? plan.name : undefined,
+      day: session
+        ? { order: session.session_order, of: sessions.length }
+        : undefined,
+      exercises: items.map((item) => ({
+        name: exercises.get(item.exercise_id)?.name_de ?? "Übung",
+        target: targetLine(item, exercises.get(item.exercise_id)),
+      })),
+      canWrite: data.can_write,
+    }),
+  );
 
   const label = `Heute · ${WEEKDAY.format(new Date())}`;
   const notes = (
@@ -359,11 +402,13 @@ function SetLogger({
   logger,
   data,
   workout,
+  onFinish,
 }: {
   client: ArnoldMcpClient;
   logger: Logger;
   data: WorkoutContext;
   workout: ArnoldWorkout;
+  onFinish: () => void;
 }) {
   const items = sessionItems(data, workout.plan_version_id, workout.session_id);
   const exercises = new Map(data.exercises.map((e) => [e.exercise_id, e]));
@@ -484,6 +529,18 @@ function SetLogger({
   const disabled = logger.busy || !!logger.pending;
   const bodyweight = rules.load_basis === "bodyweight_only";
   const position = items.findIndex((i) => i.exercise_id === exerciseId);
+
+  useModelContext(
+    client,
+    workoutContext({
+      workout,
+      sets: data.sets,
+      exercises,
+      items,
+      current: exerciseId,
+      pending: !!logger.pending,
+    }),
+  );
 
   async function save() {
     if (!exerciseId) return;
@@ -754,11 +811,13 @@ function SetLogger({
           secondary={{
             label: "Training beenden",
             disabled: disabled || !sets.length,
-            onClick: () =>
+            onClick: () => {
+              onFinish();
               void logger.write("complete_workout", {
                 workout_id: workout.workout_id,
                 expected_row_revision: workout.row_revision,
-              }),
+              });
+            },
           }}
         />
       )}
@@ -779,25 +838,51 @@ function SetLogger({
 /* ---------------------------------------------------------------- summary */
 
 function SummaryCard({
+  client,
   workout,
   view,
   onOpen,
+  announce,
+  onAnnounced,
 }: {
+  client: ArnoldMcpClient;
   workout: ArnoldWorkout;
   view: ArnoldDashboardView;
   onOpen: (card: CardId) => void;
+  /** True right after the user finished this workout in this card. */
+  announce: boolean;
+  onAnnounced: () => void;
 }) {
   // Every number here comes from the analytics engine via the dashboard view;
   // until that has caught up with the save, the card says so instead of
   // counting on its own.
+  // Only the summary of the finished workout counts: the view loaded before
+  // the finish still lists it as running, with partial numbers.
   const summary = view.recent_workouts.find(
-    (w) => w.workout_id === workout.workout_id,
+    (w) => w.workout_id === workout.workout_id && w.status === "completed",
   );
   const records = view.records.filter(
     (r) => r.workout_id === workout.workout_id && r.kind === "improvement",
   );
   const record =
     records.find((r) => r.metric === "max_load") ?? records[0] ?? undefined;
+  useModelContext(client, summaryContext({ workout, summary, record }));
+
+  // Finishing hands the turn to the chat once, with the engine's numbers. If
+  // they do not arrive in time, the message goes without them.
+  useEffect(() => {
+    if (!announce) return;
+    const post = () => {
+      onAnnounced();
+      void client.askChat(finishMessage({ workout, summary, record }));
+    };
+    if (summary) {
+      post();
+      return;
+    }
+    const timer = setTimeout(post, 4000);
+    return () => clearTimeout(timer);
+  }, [announce, summary, record]);
   return (
     <ArnoldCard
       label={

@@ -128,7 +128,7 @@ test("recovers a lost response across reload with the same operation ID and no d
   );
 });
 
-test("MCP App bridge can write inside an opaque sandbox without browser storage", async ({
+test("MCP App bridge writes in a sandbox and tells the chat what happened", async ({
   page,
 }) => {
   await page.goto(`${URL}/host`);
@@ -137,9 +137,34 @@ test("MCP App bridge can write inside an opaque sandbox without browser storage"
     "true",
   );
   const frame = page.frameLocator("iframe");
+  const context = page.locator("#host-context");
+  const messages = page.locator("#host-messages li");
+
+  // Today's card is described to the model without starting a chat turn.
+  await expect(context).toContainText("Heute-Karte");
+  await expect(context).toContainText("Demo Push");
   await start(frame);
+  // Writes go through the bridge, with no browser storage in the sandbox.
   await frame.getByLabel("Gewicht", { exact: true }).fill("40");
   await frame.getByLabel("Wiederholungen", { exact: true }).fill("10");
   await button(frame, "Satz speichern").click();
   await expect(saved(frame)).toHaveCount(1);
+
+  // A saved set reaches the model with its id, so the chat can correct it.
+  await expect(context).toContainText("laufendes Training");
+  await expect(context).toContainText("Demo Bankdrücken: Satz 1 40 kg × 10");
+  await expect(context).toContainText("set_id");
+  // Logging stays in the card: no chat message per set.
+  await expect(messages).toHaveCount(0);
+
+  // Finishing posts exactly one message, with the engine's numbers.
+  await button(frame, "Training beenden").click();
+  await expect(messages).toHaveCount(1);
+  await expect(messages.first()).toHaveText(
+    // Volume is the engine's: a number, or "–" when it calls it unknown.
+    /^Training beendet: Demo Push · 1 Übung, 1 Arbeitssatz, (\d[\d.]*|–) kg Volumen( · neuer Rekord: .+)?\.$/,
+  );
+  await expect(context).toContainText("abgeschlossenes Training");
+  await page.waitForTimeout(500);
+  await expect(messages).toHaveCount(1);
 });
