@@ -663,9 +663,7 @@ test("the existing dashboard still opens and shows no onboarding", async ({
   page,
 }) => {
   await page.goto(DASHBOARD_URL);
-  await expect(
-    page.getByRole("navigation", { name: "Hauptnavigation" }),
-  ).toBeVisible();
+  await expect(page.locator("main.arnold-cards")).toBeVisible();
   // The empty state deliberately carries no onboarding affordance, and the
   // wizard must not mount on the dashboard route at all. (The dashboard's own
   // "Willkommen bei Arnold" empty-state heading predates Task 006 and stays.)

@@ -1,115 +1,86 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page, type FrameLocator } from "@playwright/test";
 const URL = "http://127.0.0.1:8795";
-function nav(page: Page, name: string) {
-  return page
-    .getByRole("navigation", { name: "Hauptnavigation" })
-    .getByRole("button", { name, exact: true });
-}
-async function open(page: Page, session = "Demo Push") {
-  await page.goto(`${URL}/preview`);
-  await nav(page, "Training").click();
-  await page.getByLabel("Trainingseinheit", { exact: true }).fill(session);
-  await page
-    .getByRole("button", { name: "Workout starten", exact: true })
-    .click();
+
+/** The fixture's plan has one session, "Demo Push": bench press, then incline. */
+async function start(page: Page | FrameLocator) {
+  const card = page.locator(".ac").first();
+  await expect(card).toContainText("Demo Push");
+  await card.getByRole("button", { name: "Training starten" }).click();
   await expect(
-    page.getByText("Gespeichert und bestätigt.", { exact: true }),
+    page.getByRole("heading", { name: "Demo Bankdrücken" }),
   ).toBeVisible();
 }
-test("writes confirmed sets, preserves defaults, corrects, validates and completes with updated dashboard", async ({
+const saved = (page: Page | FrameLocator) => page.locator(".ac-chip.done");
+const button = (page: Page | FrameLocator, name: string) =>
+  page.getByRole("button", { name, exact: true });
+
+test("starts today's session, logs with plus and minus, corrects and completes", async ({
   page,
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await open(page);
-  await page
-    .getByRole("combobox", { name: "Übung", exact: true })
-    .selectOption("fixture-incline");
-  await expect(
-    page.getByRole("combobox", { name: "Gewichtsdefinition", exact: true }),
-  ).toHaveValue("per_implement");
-  await expect(page.getByLabel("Anzahl Geräte", { exact: true })).toHaveValue(
-    "2",
-  );
-  await page.getByLabel("Gewicht (kg)", { exact: true }).fill("20");
-  await page.getByLabel("Wiederholungen", { exact: true }).fill("10");
-  await page
-    .getByRole("button", { name: "Satz speichern", exact: true })
-    .dblclick();
-  await expect(page.locator(".confirmed-sets li")).toHaveCount(1);
-  await page.getByLabel("Gewicht (kg)", { exact: true }).fill("22");
-  await page.getByLabel("Wiederholungen", { exact: true }).fill("8");
-  await page
-    .getByRole("button", { name: "Satz speichern", exact: true })
-    .click();
-  await expect(page.locator(".confirmed-sets li")).toHaveCount(2);
-  await page
-    .getByRole("button", { name: "Satz 1 korrigieren", exact: true })
-    .click();
-  await page.getByLabel("Gewicht (kg)", { exact: true }).fill("25");
-  await page
-    .getByRole("button", { name: "Korrektur speichern", exact: true })
-    .click();
-  await expect(page.locator(".confirmed-sets li").first()).toContainText(
-    "25 kg pro Hantel",
-  );
-  await expect(page.locator(".confirmed-sets li").first()).not.toContainText(
-    "20 kg pro Hantel",
-  );
-  await page.getByLabel("Gewicht (kg)", { exact: true }).fill("-5");
-  await page.getByLabel("Wiederholungen", { exact: true }).fill("7");
-  await page
-    .getByRole("button", { name: "Satz speichern", exact: true })
-    .click();
-  expect(
-    await page
-      .getByLabel("Gewicht (kg)", { exact: true })
-      .evaluate((el: HTMLInputElement) => el.validity.valid),
-  ).toBe(false);
-  await expect(page.locator(".confirmed-sets li")).toHaveCount(2);
-  await page.getByLabel("Gewicht (kg)", { exact: true }).fill("20");
-  await page
-    .getByRole("combobox", { name: "Wiederholungsbasis", exact: true })
-    .selectOption("per_side");
-  await page
-    .getByRole("button", { name: "Satz speichern", exact: true })
-    .click();
-  await expect(page.getByRole("alert")).toContainText("VALIDATION_ERROR");
+  await page.goto(`${URL}/preview`);
+  await start(page);
+
+  // No target weight in the plan: the first value is typed once, then reused.
+  await page.getByLabel("Gewicht", { exact: true }).fill("60");
   await expect(page.getByLabel("Wiederholungen", { exact: true })).toHaveValue(
-    "7",
+    "12",
   );
+  // A double tap saves one set, not two.
+  await button(page, "Satz speichern").dblclick();
+  await expect(saved(page)).toHaveCount(1);
+  await expect(saved(page).first()).toContainText("60 kg × 12");
+
+  // The next set starts from the last one; plus and minus adjust it.
+  await button(page, "Gewicht erhöhen").click();
+  await button(page, "Wiederholungen verringern").click();
+  await button(page, "Satz speichern").click();
+  await expect(saved(page)).toHaveCount(2);
+  await expect(saved(page).nth(1)).toContainText("62,5 kg × 11");
+
+  // Tapping a saved set corrects it in place.
+  await page.getByRole("button", { name: /^Satz 1 korrigieren/ }).click();
+  await page.getByLabel("Gewicht", { exact: true }).fill("65");
+  await button(page, "Korrektur speichern").click();
+  await expect(saved(page).first()).toContainText("65 kg × 12");
+  await expect(saved(page).first()).not.toContainText("60 kg");
+
+  // The dumbbell exercise carries its own convention from the plan.
   await page
-    .getByRole("combobox", { name: "Wiederholungsbasis", exact: true })
-    .selectOption("total");
-  await page
-    .getByRole("button", { name: "Training abschließen", exact: true })
+    .getByRole("group", { name: "Übung" })
+    .getByRole("button", { name: "Demo Schrägbankdrücken" })
     .click();
-  await expect(page.locator(".workout-logger")).toContainText("Abgeschlossen");
-  await page
-    .getByRole("button", { name: "Satz 1 korrigieren", exact: true })
-    .click();
-  await page.getByLabel("Gewicht (kg)", { exact: true }).fill("26");
-  await page
-    .getByLabel("Korrekturbegründung", { exact: true })
-    .fill("Synthetischer Tippfehler");
-  await page
-    .getByRole("button", { name: "Korrektur speichern", exact: true })
-    .click();
-  await expect(page.locator(".confirmed-sets li").first()).toContainText(
-    "26 kg pro Hantel",
-  );
-  await nav(page, "Überblick").click();
   await expect(
-    page
-      .locator(".stat-card")
-      .filter({ has: page.getByText("Trainings", { exact: true }) }),
-  ).toContainText("1");
+    page.getByLabel("Gewicht pro Hantel", { exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("Gewicht pro Hantel", { exact: true }).fill("20");
+  await page
+    .getByRole("group", { name: "Wie schwer war der Satz?" })
+    .getByRole("button", { name: "Passt" })
+    .click();
+  await button(page, "Satz speichern").click();
+  await expect(saved(page)).toHaveCount(1);
+  await expect(saved(page).first()).toContainText("20 kg pro Hantel");
+
+  // Finishing shows the engine's own numbers for this workout.
+  await button(page, "Training beenden").click();
+  const summary = page.locator(".ac").first();
+  await expect(summary).toContainText("Training gespeichert");
+  await expect(
+    summary.locator(".ac-stat").filter({ hasText: "Arbeitssätze" }),
+  ).toContainText("3");
+  await button(page, "Überblick").click();
+  await expect(page.locator(".ac").first()).toContainText("Zuletzt: Demo Push");
+  await expect(page.locator("body")).not.toContainText("per_implement");
   expect(errors).toEqual([]);
 });
+
 test("recovers a lost response across reload with the same operation ID and no duplicate", async ({
   page,
 }) => {
-  await open(page, "Netzwerk Demo");
+  await page.goto(`${URL}/preview`);
+  await start(page);
   let lose = true;
   const ids: string[] = [];
   await page.route("**/mcp", async (route) => {
@@ -128,34 +99,35 @@ test("recovers a lost response across reload with the same operation ID and no d
     }
     await route.continue();
   });
-  await page.getByLabel("Gewicht (kg)", { exact: true }).fill("55");
+  await page.getByLabel("Gewicht", { exact: true }).fill("55");
   await page.getByLabel("Wiederholungen", { exact: true }).fill("9");
-  await page
-    .getByRole("button", { name: "Satz speichern", exact: true })
-    .click();
+  await button(page, "Satz speichern").click();
   await expect(page.getByRole("alert")).toContainText("Status unklar");
-  await expect(page.getByLabel("Gewicht (kg)", { exact: true })).toHaveValue(
-    "55",
-  );
+  // Nothing new can be saved while the outcome is unknown.
+  await expect(button(page, "Satz speichern")).toHaveCount(0);
+
+  // After a reload the open workout is resumed and the check is offered.
   await page.reload();
-  await nav(page, "Training").click();
-  await expect(page.getByRole("alert")).toContainText("unbestätigter Vorgang");
-  await page
-    .getByRole("button", {
-      name: "Vorgang prüfen / erneut versuchen",
-      exact: true,
-    })
-    .click();
-  await expect(page.getByRole("status")).toHaveText(
-    "Bereits gespeichert · keine doppelte Änderung.",
-  );
-  await expect(page.locator(".confirmed-sets li")).toHaveCount(1);
+  await expect(
+    page.getByRole("heading", { name: "Demo Bankdrücken" }),
+  ).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText("nicht bestätigt");
+  await button(page, "Erneut prüfen").click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Bereits" }),
+  ).toHaveText("Bereits gespeichert · keine doppelte Änderung.");
+  await expect(saved(page)).toHaveCount(1);
+  await expect(saved(page).first()).toContainText("55 kg × 9");
   expect(new Set(ids).size).toBe(1);
-  await page
-    .getByRole("button", { name: "Training abbrechen", exact: true })
-    .click();
-  await expect(page.locator(".workout-logger")).toContainText("Abgebrochen");
+
+  // Cancelling asks first, then says what happened.
+  await button(page, "Training abbrechen").click();
+  await button(page, "Ja, abbrechen").click();
+  await expect(page.locator(".ac").first()).toContainText(
+    "Das Training wurde abgebrochen.",
+  );
 });
+
 test("MCP App bridge can write inside an opaque sandbox without browser storage", async ({
   page,
 }) => {
@@ -165,20 +137,9 @@ test("MCP App bridge can write inside an opaque sandbox without browser storage"
     "true",
   );
   const frame = page.frameLocator("iframe");
-  await frame
-    .getByRole("navigation", { name: "Hauptnavigation" })
-    .getByRole("button", { name: "Training", exact: true })
-    .click();
-  await frame
-    .getByLabel("Trainingseinheit", { exact: true })
-    .fill("Bridge Demo");
-  await frame
-    .getByRole("button", { name: "Workout starten", exact: true })
-    .click();
-  await frame.getByLabel("Gewicht (kg)", { exact: true }).fill("40");
+  await start(frame);
+  await frame.getByLabel("Gewicht", { exact: true }).fill("40");
   await frame.getByLabel("Wiederholungen", { exact: true }).fill("10");
-  await frame
-    .getByRole("button", { name: "Satz speichern", exact: true })
-    .click();
-  await expect(frame.locator(".confirmed-sets li")).toHaveCount(1);
+  await button(frame, "Satz speichern").click();
+  await expect(saved(frame)).toHaveCount(1);
 });

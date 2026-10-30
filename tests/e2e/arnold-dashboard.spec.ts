@@ -13,13 +13,13 @@ const WITH_HISTORY = "http://127.0.0.1:8792";
 const EMPTY_TRACKER = "http://127.0.0.1:8793";
 const UNAVAILABLE = "http://127.0.0.1:8794";
 
-/** Fails the test on any uncaught page error, so a broken render is not missed. */
-/** Addresses the main navigation, never a same-named control inside a view. */
-function nav(page: Page, label: string) {
-  return page
-    .getByRole("navigation", { name: "Hauptnavigation" })
-    .getByRole("button", { name: label, exact: true });
+/** Opens one card directly, the way the model does with `card`. */
+async function openCard(page: Page, base: string, card: string) {
+  await page.goto(`${base}/preview?card=${card}`);
+  await expect(page.locator(`main[data-card="${card}"]`)).toBeVisible();
 }
+
+/** Fails the test on any uncaught page error, so a broken render is not missed. */
 
 function trackErrors(page: Page) {
   const errors: string[] = [];
@@ -27,43 +27,53 @@ function trackErrors(page: Page) {
   return errors;
 }
 
-test("opens the dashboard with engine metrics and switches between views", async ({
+test("opens the week card with engine numbers and leads on to other cards", async ({
   page,
 }) => {
   const errors = trackErrors(page);
+  await openCard(page, WITH_HISTORY, "week");
+
+  // Numbers come from the analytics engine's week row, not from the browser.
+  const card = page.locator(".ac").first();
+  await expect(card).toContainText("Arbeitssätze");
+  await expect(card).toContainText("kg Volumen");
+  await expect(card).toContainText("Letzter Rekord");
+  // There is no app frame inside the chat: no menu, logo or page title.
+  await expect(page.getByRole("navigation")).toHaveCount(0);
+  await expect(page.locator("h1")).toHaveCount(0);
+  // At most two buttons per card.
+  await expect(card.locator(".ac-actions button")).toHaveCount(2);
+
+  await card.getByRole("button", { name: "Verlauf", exact: true }).click();
+  await expect(page.locator('main[data-card="history"]')).toBeVisible();
+  await page.getByRole("button", { name: "Zurück", exact: true }).click();
+  await page
+    .locator(".ac")
+    .first()
+    .getByRole("button", { name: "Fortschritt", exact: true })
+    .click();
+  await expect(page.locator('main[data-card="progress"]')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("opens on today's planned session by default", async ({ page }) => {
+  const errors = trackErrors(page);
   await page.goto(`${WITH_HISTORY}/preview`);
-
+  await expect(page.locator('main[data-card="today"]')).toBeVisible();
+  const card = page.locator(".ac").first();
+  await expect(card).toContainText("Heute");
+  await expect(card).toContainText("Testplan Oberkörper v2");
+  // A read-only connection never offers a start that cannot be saved.
+  await expect(card).toContainText("Nur Ansicht");
   await expect(
-    page.getByRole("heading", { name: "Dein Überblick." }),
-  ).toBeVisible();
-  // KPI values come from the analytics engine, not from the browser.
-  await expect(page.getByText("Trainings", { exact: true })).toBeVisible();
-  await expect(
-    page
-      .locator(".stat-card")
-      .filter({ has: page.getByText("Trainings", { exact: true }) }),
-  ).toContainText("5");
-  await expect(page.locator(".performance-strip .stat-card")).toHaveCount(3);
-  await expect(page.locator(".source-note")).toHaveCount(0);
-  await expect(
-    page.getByRole("img", { name: /Einheiten pro Woche/ }),
-  ).toBeVisible();
-
-  await nav(page, "Verlauf").click();
-  await expect(
-    page.getByRole("heading", { name: "Deine Trainings." }),
-  ).toBeVisible();
-  await nav(page, "Fortschritt").click();
-  await expect(
-    page.getByRole("heading", { name: "Dein Fortschritt." }),
-  ).toBeVisible();
+    card.getByRole("button", { name: "Training starten" }),
+  ).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
 test("filters the workout history and opens one session", async ({ page }) => {
   const errors = trackErrors(page);
-  await page.goto(`${WITH_HISTORY}/preview`);
-  await nav(page, "Verlauf").click();
+  await openCard(page, WITH_HISTORY, "history");
 
   await expect(page.getByText("5 Einheiten gefunden")).toBeVisible();
 
@@ -116,8 +126,7 @@ test("shows a progress chart and an empty state for an untrained exercise", asyn
   page,
 }) => {
   const errors = trackErrors(page);
-  await page.goto(`${WITH_HISTORY}/preview`);
-  await nav(page, "Fortschritt").click();
+  await openCard(page, WITH_HISTORY, "progress");
 
   await page.getByLabel("Übung", { exact: true }).selectOption(EXERCISES.bench);
   await expect(
@@ -156,7 +165,7 @@ test("shows the welcome state for an empty tracker with no fake workouts", async
   page,
 }) => {
   const errors = trackErrors(page);
-  await page.goto(`${EMPTY_TRACKER}/preview`);
+  await openCard(page, EMPTY_TRACKER, "week");
 
   await expect(page.getByText("Willkommen bei Arnold")).toBeVisible();
   await expect(
@@ -170,7 +179,7 @@ test("shows the welcome state for an empty tracker with no fake workouts", async
   ).toHaveCount(0);
 
   // The history view is usable and empty rather than broken.
-  await nav(page, "Verlauf").click();
+  await openCard(page, EMPTY_TRACKER, "history");
   await expect(page.getByText("0 Einheiten gefunden")).toBeVisible();
   expect(errors).toEqual([]);
 });
@@ -194,18 +203,17 @@ test("renders on a mobile viewport without horizontal scrolling", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`${WITH_HISTORY}/preview`);
-  await expect(
-    page.getByRole("heading", { name: "Dein Überblick." }),
-  ).toBeVisible();
-  expect(
-    await page
-      .locator("body")
-      .evaluate((el) => el.scrollWidth <= window.innerWidth + 1),
-  ).toBe(true);
+  for (const card of ["today", "week"]) {
+    await openCard(page, WITH_HISTORY, card);
+    expect(
+      await page
+        .locator("body")
+        .evaluate((el) => el.scrollWidth <= window.innerWidth + 1),
+    ).toBe(true);
+  }
 
   // The set table scrolls inside its own container, not the page.
-  await nav(page, "Verlauf").click();
+  await openCard(page, WITH_HISTORY, "history");
   await page.locator(".history-row").first().click();
   expect(
     await page
@@ -215,26 +223,32 @@ test("renders on a mobile viewport without horizontal scrolling", async ({
 });
 
 test("supports the light and the dark host theme", async ({ page }) => {
-  await page.goto(`${WITH_HISTORY}/preview`);
+  await openCard(page, WITH_HISTORY, "week");
+  const looks: string[] = [];
   for (const theme of ["dark", "light"] as const) {
     await page.evaluate((value) => {
       document.documentElement.dataset.theme = value;
     }, theme);
-    const colors = await page.evaluate(() => {
-      const style = getComputedStyle(document.body);
-      return { background: style.backgroundColor, text: style.color };
-    });
-    // Both themes must paint an explicit, non-transparent ground.
-    expect(colors.background).not.toBe("rgba(0, 0, 0, 0)");
-    expect(colors.text).not.toBe(colors.background);
+    const colors = await page
+      .locator(".ac")
+      .first()
+      .evaluate((card) => {
+        const style = getComputedStyle(card);
+        return { surface: style.backgroundColor, text: style.color };
+      });
+    // The chat paints the page; each card brings its own visible surface.
+    expect(colors.surface).not.toBe("rgba(0, 0, 0, 0)");
+    expect(colors.text).not.toBe(colors.surface);
+    looks.push(colors.text);
   }
+  expect(looks[0]).not.toBe(looks[1]);
 });
 
 test("meets accessibility checks on every view", async ({ page }) => {
-  await page.goto(`${WITH_HISTORY}/preview`);
-  for (const view of ["Überblick", "Verlauf", "Fortschritt"]) {
-    await nav(page, view).click();
-    await expect(page.locator("#main-content")).toBeVisible();
+  // Measured at rest: the cards' short entrance fade would skew contrast.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  for (const view of ["today", "week", "history", "progress"]) {
+    await openCard(page, WITH_HISTORY, view);
     const results = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa"])
       .analyze();
@@ -245,7 +259,7 @@ test("meets accessibility checks on every view", async ({ page }) => {
 });
 
 test("is keyboard navigable with a visible focus ring", async ({ page }) => {
-  await page.goto(`${WITH_HISTORY}/preview`);
+  await openCard(page, WITH_HISTORY, "week");
   await page.keyboard.press("Tab");
   const focus = await page.evaluate(() => {
     const active = document.activeElement as HTMLElement | null;
@@ -256,12 +270,11 @@ test("is keyboard navigable with a visible focus ring", async ({ page }) => {
   });
   expect(focus.tag).toBeTruthy();
 
-  // Navigation is reachable and operable from the keyboard alone.
-  await nav(page, "Verlauf").focus();
+  // A card's buttons are reachable and operable from the keyboard alone.
+  await openCard(page, WITH_HISTORY, "week");
+  await page.getByRole("button", { name: "Verlauf", exact: true }).focus();
   await page.keyboard.press("Enter");
-  await expect(
-    page.getByRole("heading", { name: "Deine Trainings." }),
-  ).toBeVisible();
+  await expect(page.locator('main[data-card="history"]')).toBeVisible();
 });
 
 test("drives the dashboard through the MCP Apps bridge in the test host", async ({
@@ -277,11 +290,8 @@ test("drives the dashboard through the MCP Apps bridge in the test host", async 
   await page.goto(`${WITH_HISTORY}/host`);
   const app = page.frameLocator("iframe");
 
-  await expect(
-    app.getByRole("heading", { name: "Dein Überblick." }),
-  ).toBeVisible();
-  await expect(app.locator(".performance-strip .stat-card")).toHaveCount(3);
-  await expect(app.locator(".source-note")).toHaveCount(0);
+  await expect(app.locator('main[data-card="today"]')).toBeVisible();
+  await expect(app.locator(".ac").first()).toContainText("Heute");
 
   // The app opened through show_arnold_dashboard and then revalidated, which is
   // the guard against a replayed result from chat history.
@@ -290,16 +300,12 @@ test("drives the dashboard through the MCP Apps bridge in the test host", async 
     .poll(() => calls.filter((c) => c === "get_arnold_dashboard").length)
     .toBeGreaterThanOrEqual(1);
 
-  // Views fetch their own data through the bridge.
-  await app
-    .getByRole("navigation", { name: "Hauptnavigation" })
-    .getByRole("button", { name: "Verlauf", exact: true })
-    .click();
+  // Cards lead on to views that fetch their own data through the bridge.
+  await app.getByRole("button", { name: "Überblick", exact: true }).click();
+  await app.getByRole("button", { name: "Verlauf", exact: true }).click();
   await expect.poll(() => calls.includes("get_arnold_workouts")).toBe(true);
-  await app
-    .getByRole("navigation", { name: "Hauptnavigation" })
-    .getByRole("button", { name: "Fortschritt", exact: true })
-    .click();
+  await app.getByRole("button", { name: "Zurück", exact: true }).click();
+  await app.getByRole("button", { name: "Fortschritt", exact: true }).click();
   await expect
     .poll(() => calls.includes("get_arnold_exercise_progress"))
     .toBe(true);

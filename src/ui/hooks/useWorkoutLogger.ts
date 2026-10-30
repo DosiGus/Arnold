@@ -43,7 +43,7 @@ export function useWorkoutLogger(client: ArnoldMcpClient, changed: () => void) {
           if (saved) {
             setPending(saved);
             setError(
-              "Ein unbestätigter Vorgang ist vorhanden. Mit derselben Operations-ID prüfen.",
+              "Eine Speicherung ist noch nicht bestätigt. Prüfe sie, bevor du weitermachst.",
             );
           }
         } catch {
@@ -78,8 +78,11 @@ export function useWorkoutLogger(client: ArnoldMcpClient, changed: () => void) {
           throw new Error(`${response.error.code}: ${response.error.message}`);
         setPending(undefined);
         if (tracker) client.clearPending(tracker);
+        // The server's own words; the code stays out of the user's way.
         setError(
-          `${response.error?.code}: ${response.error?.message} ${response.error?.details.join("; ")}`,
+          [response.error?.message, ...(response.error?.details ?? [])]
+            .filter(Boolean)
+            .join(" "),
         );
         return response;
       }

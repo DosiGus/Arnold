@@ -1,0 +1,487 @@
+/* Arnold's card system for the chat.
+
+   One card answers one question. A card has a head line, a title, at most four
+   numbers and at most two buttons at the bottom. Colour tokens come from
+   glass.css (--bg, --text, --muted, --card, --soft, --border, --ink, --on-ink),
+   so light and dark mode follow the host without extra rules here. */
+:root {
+  --ac-radius: 20px;
+  --ac-radius-inner: 14px;
+  --ac-pad: 16px;
+  --ac-tap: 44px;
+  --ac-faint: rgb(36 38 46 / 0.38);
+  --ac-good: #2e7a4f;
+  --ac-bad: #b2463d;
+}
+:root[data-theme="dark"] {
+  --ac-faint: rgb(255 255 255 / 0.36);
+  --ac-good: #6cc792;
+  --ac-bad: #ec8a80;
+}
+
+/* The chat paints the background; the card brings its own surface. */
+:root:has(.arnold-cards),
+body:has(.arnold-cards) {
+  background: transparent;
+}
+.arnold-cards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  padding: 4px 4px 12px;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.arnold-cards :where(h2, h3, p) {
+  margin: 0;
+}
+
+/* Card */
+.ac {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  min-width: 0;
+  padding: var(--ac-pad);
+  border: 1px solid var(--border);
+  border-radius: var(--ac-radius);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+.ac-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 20px;
+}
+.ac-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.ac-title {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  text-wrap: balance;
+}
+.ac-sub {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.ac-text {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* Buttons: one primary, at most one secondary. */
+.ac-actions {
+  display: flex;
+  gap: 8px;
+}
+.ac-actions > .ac-btn {
+  flex: 1;
+}
+.arnold-cards .ac-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: var(--ac-tap);
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  transition:
+    transform 120ms,
+    background 160ms,
+    opacity 160ms;
+}
+.arnold-cards .ac-btn:active {
+  transform: scale(0.97);
+}
+.arnold-cards .ac-btn.primary {
+  background: var(--ink);
+  color: var(--on-ink);
+}
+.arnold-cards .ac-btn.secondary {
+  background: var(--soft);
+  color: var(--text);
+}
+.arnold-cards .ac-btn.secondary:hover {
+  background: var(--hover);
+}
+.arnold-cards .ac-btn.danger {
+  background: var(--ac-bad);
+  color: #fff;
+}
+.arnold-cards .ac-link {
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.arnold-cards .ac-link:hover {
+  color: var(--text);
+}
+.arnold-cards button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
+/* Chips: pick one by tapping. */
+.ac-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ac-chips.scroll {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 0 calc(var(--ac-pad) * -1);
+  padding: 0 var(--ac-pad) 2px;
+}
+.ac-chips.scroll::-webkit-scrollbar {
+  display: none;
+}
+.arnold-cards .ac-chip {
+  flex: none;
+  min-height: 40px;
+  padding: 0 15px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.arnold-cards .ac-chip:hover {
+  background: var(--soft);
+}
+.arnold-cards .ac-chip[aria-pressed="true"] {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--on-ink);
+}
+.arnold-cards .ac-chip.done {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  padding: 0 11px;
+  border-color: transparent;
+  background: var(--soft);
+  font-size: 12px;
+}
+
+/* Plus/minus regulator. */
+.ac-steppers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+}
+.ac-stepper {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 10px;
+  border-radius: var(--ac-radius-inner);
+  background: var(--soft);
+}
+.ac-stepper-label {
+  color: var(--muted);
+  font-size: 12px;
+}
+.ac-stepper-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-width: 0;
+  gap: 4px;
+}
+.ac-stepper-value {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  min-width: 0;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  text-align: center;
+}
+.arnold-cards .ac-stepper-input {
+  min-width: 1ch;
+  max-width: 100%;
+  min-height: 0;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.arnold-cards .ac-stepper-input:focus {
+  background: var(--surface-strong);
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.ac-stepper-value small {
+  margin-left: 3px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.arnold-cards .ac-round {
+  display: grid;
+  place-items: center;
+  width: var(--ac-tap);
+  height: var(--ac-tap);
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface-strong);
+  color: var(--text);
+}
+.arnold-cards .ac-round:active {
+  transform: scale(0.94);
+}
+
+/* Numbers */
+.ac-big {
+  font-size: 40px;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1;
+}
+.ac-big small {
+  margin-left: 3px;
+  color: var(--muted);
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.ac-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 8px;
+}
+.ac-stat {
+  display: grid;
+  gap: 1px;
+  padding: 10px 12px;
+  border-radius: var(--ac-radius-inner);
+  background: var(--soft);
+}
+.ac-stat strong {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.ac-stat span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Rows: label left, value right. */
+.ac-rows {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ac-rows > li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+}
+.ac-rows > li:first-child {
+  border-top: 0;
+}
+.ac-rows > li > span:last-child {
+  color: var(--muted);
+  text-align: right;
+}
+
+/* Progress dots for sets. */
+.ac-dots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ac-dots i {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+}
+.ac-dots i.done {
+  background: var(--ink);
+}
+.ac-dots i.now {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--ink);
+}
+
+/* Week strip */
+.ac-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  text-align: center;
+}
+.ac-week li {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.ac-week li.today {
+  color: var(--text);
+  font-weight: 600;
+}
+.ac-week i {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--soft);
+  color: var(--on-ink);
+}
+.ac-week i.done {
+  background: var(--ink);
+}
+
+/* Highlight line, e.g. a new record. */
+.ac-highlight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--ac-radius-inner);
+  background: var(--soft);
+  font-size: 14px;
+}
+.ac-medal {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+/* Messages inside a card. */
+.ac-note {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: var(--ac-radius-inner);
+  background: var(--soft);
+  font-size: 13px;
+}
+.ac-note.error {
+  color: var(--ac-bad);
+  background: color-mix(in srgb, var(--ac-bad) 10%, transparent);
+}
+.ac-note svg {
+  flex: none;
+  margin-top: 1px;
+}
+.ac-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.ac-good {
+  color: var(--ac-good);
+}
+
+/* Loading placeholder instead of a spinner. */
+.ac-skeleton {
+  display: grid;
+  gap: 10px;
+}
+.ac-skeleton i {
+  display: block;
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--soft), var(--hover), var(--soft));
+  background-size: 200% 100%;
+  animation: ac-shimmer 1.4s infinite linear;
+}
+@keyframes ac-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* Larger views that have not been turned into single cards yet keep their own
+   layout; this only removes the old page frame around them. */
+.ac-page {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.ac-page > .ac-head {
+  padding: 0 4px;
+}
+
+@keyframes ac-rise {
+  from {
+    transform: translateY(6px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.ac-enter {
+  animation: ac-rise 220ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ac-skeleton i,
+  .ac-enter {
+    animation: none;
+  }
+  .arnold-cards .ac-btn,
+  .arnold-cards .ac-round {
+    transition: none;
+  }
+}

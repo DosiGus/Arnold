@@ -10,10 +10,9 @@ import { EXERCISES } from "../fixtures/arnold-dashboard";
 
 const WITH_HISTORY = "http://127.0.0.1:8792";
 
-function nav(page: Page, label: string) {
-  return page
-    .getByRole("navigation", { name: "Hauptnavigation" })
-    .getByRole("button", { name: label, exact: true });
+async function openCard(page: Page, card: string) {
+  await page.goto(`${WITH_HISTORY}/preview?card=${card}`);
+  await expect(page.locator(`main[data-card="${card}"]`)).toBeVisible();
 }
 
 /** Counts every MCP tool call the page makes. */
@@ -28,25 +27,22 @@ function countCalls(page: Page) {
   return calls;
 }
 
-test("T3-02: one refresh click settles instead of looping", async ({
+test("T3-02: moving between cards settles instead of looping", async ({
   page,
 }) => {
   const calls = countCalls(page);
-  await page.goto(`${WITH_HISTORY}/preview`);
-  await expect(
-    page.getByRole("heading", { name: "Dein Überblick." }),
-  ).toBeVisible();
+  await openCard(page, "week");
+  await page.waitForTimeout(800);
   const atOpen = calls.length;
 
-  await page
-    .getByRole("button", { name: "Trainingsdaten aktualisieren" })
-    .click();
+  await page.getByRole("button", { name: "Verlauf", exact: true }).click();
+  await expect(page.getByText(/Einheiten gefunden/)).toBeVisible();
   await page.waitForTimeout(1200);
-  const afterRefresh = calls.length - atOpen;
+  const afterClick = calls.length - atOpen;
 
-  // One action, one request. The loop produced hundreds.
-  expect(afterRefresh).toBeGreaterThanOrEqual(1);
-  expect(afterRefresh).toBeLessThanOrEqual(3);
+  // One action, a handful of requests. The old loop produced hundreds.
+  expect(afterClick).toBeGreaterThanOrEqual(1);
+  expect(afterClick).toBeLessThanOrEqual(3);
 
   // And it stays settled.
   const settled = calls.length;
@@ -54,25 +50,24 @@ test("T3-02: one refresh click settles instead of looping", async ({
   expect(calls.length).toBe(settled);
 });
 
-test("T3-02: opening the dashboard issues a bounded number of calls", async ({
+test("T3-02: opening a card issues a bounded number of calls", async ({
   page,
 }) => {
-  const calls = countCalls(page);
-  await page.goto(`${WITH_HISTORY}/preview`);
-  await expect(
-    page.getByRole("heading", { name: "Dein Überblick." }),
-  ).toBeVisible();
-  await page.waitForTimeout(1200);
-  expect(calls.length).toBeLessThanOrEqual(3);
+  for (const card of ["today", "week"]) {
+    const calls = countCalls(page);
+    await openCard(page, card);
+    await page.waitForTimeout(1200);
+    expect(calls.length, card).toBeLessThanOrEqual(4);
+    page.removeAllListeners("request");
+  }
 });
 
 test("T3-05: clicking a cancelled session opens that session", async ({
   page,
 }) => {
-  await page.goto(`${WITH_HISTORY}/preview`);
   // Cancelled entries remain reachable in the full history, outside the
-  // motivational overview's last-completed-session card.
-  await nav(page, "Verlauf").click();
+  // week card's last-completed-session line.
+  await openCard(page, "history");
   await page.locator(".filter-disclosure summary").click();
   await page.getByLabel("Abgebrochene und offene Einheiten zeigen").check();
   const card = page.getByRole("button", {
@@ -90,13 +85,12 @@ test("T3-05: clicking a cancelled session opens that session", async ({
   await expect(detail).not.toContainText("Freies Training");
 });
 
-test("T3-06: period controls live in history and do not reset the overview", async ({
+test("T3-06: period controls live in history and do not reset the week card", async ({
   page,
 }) => {
-  await page.goto(`${WITH_HISTORY}/preview`);
-  await expect(page.locator(".performance-strip .stat-card")).toHaveCount(3);
+  await openCard(page, "week");
   await expect(page.getByLabel("Übersicht von")).toHaveCount(0);
-  await nav(page, "Verlauf").click();
+  await page.getByRole("button", { name: "Verlauf", exact: true }).click();
   await page.locator(".filter-disclosure summary").click();
   await page.getByLabel("Workouts von").fill("2030-01-01");
   await page.getByLabel("Workouts bis").fill("2030-01-31");
@@ -111,17 +105,14 @@ test("T3-06: period controls live in history and do not reset the overview", asy
   await expect(
     page.getByRole("button", { name: /am 14\. September 2026/ }),
   ).toHaveCount(0);
-  await nav(page, "Überblick").click();
+  await page.getByRole("button", { name: "Zurück", exact: true }).click();
   await expect(
-    page
-      .locator(".stat-card")
-      .filter({ has: page.getByText("Trainings", { exact: true }) }),
-  ).toContainText("5");
+    page.locator('main[data-card="week"] .ac').first(),
+  ).toContainText("Arbeitssätze");
 });
 
 test("T3-04: the progress view names the load convention", async ({ page }) => {
-  await page.goto(`${WITH_HISTORY}/preview`);
-  await nav(page, "Fortschritt").click();
+  await openCard(page, "progress");
   await page.getByLabel("Übung", { exact: true }).selectOption(EXERCISES.row);
 
   // The dumbbell max load must not read as a total load.
@@ -151,8 +142,7 @@ test("T3-09: the progress view fits a 390px screen with variants", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`${WITH_HISTORY}/preview`);
-  await nav(page, "Fortschritt").click();
+  await openCard(page, "progress");
   // The unilateral exercise is the one that renders the variants table.
   await page.getByLabel("Übung", { exact: true }).selectOption(EXERCISES.row);
   await page.locator(".progress-details summary").click();

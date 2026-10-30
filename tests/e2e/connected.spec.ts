@@ -124,34 +124,17 @@ test("onboarding, Google consent, personal tracker, first set, and browser reloa
     }),
   ).toBeVisible();
   await wizard.getByRole("button", { name: "Zum Training" }).click();
-  const navigation = page.getByRole("navigation", { name: "Hauptnavigation" });
-  await navigation
-    .getByRole("button", { name: "Training", exact: true })
-    .click();
-  await page.getByLabel("Trainingseinheit", { exact: true }).fill("Einheit 1");
-  await page
-    .getByRole("button", { name: "Workout starten", exact: true })
-    .click();
-  await expect(
-    page.getByText("Gespeichert und bestätigt.", { exact: true }),
-  ).toBeVisible();
-  await page
-    .getByRole("combobox", { name: "Übung", exact: true })
-    .selectOption("bench-press");
-  await page.getByLabel("Gewicht (kg)", { exact: true }).fill("60");
+  // The new plan's first day is waiting on today's card.
+  await page.getByRole("button", { name: "Training starten" }).click();
+  await expect(page.locator(".ac-steppers")).toBeVisible();
   await page.getByLabel("Wiederholungen", { exact: true }).fill("10");
   await page
     .getByRole("button", { name: "Satz speichern", exact: true })
     .click();
-  await expect(page.locator(".confirmed-sets li")).toHaveCount(1);
+  await expect(page.locator(".ac-chip.done")).toHaveCount(1);
+  // A reload resumes the open workout with its saved set.
   await page.goto(`${base}/preview`);
-  await navigation
-    .getByRole("button", { name: "Training", exact: true })
-    .click();
-  await page
-    .getByRole("combobox", { name: "Offenes Workout", exact: true })
-    .selectOption({ index: 1 });
-  await expect(page.locator(".confirmed-sets li")).toHaveCount(1);
+  await expect(page.locator(".ac-chip.done")).toHaveCount(1);
   await page.screenshot({
     path: "test-results/connected-logger.png",
     fullPage: true,

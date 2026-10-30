@@ -16,10 +16,11 @@ const EMPTY_URL = "http://127.0.0.1:8797";
 const ACTIVATE_URL = "http://127.0.0.1:8798";
 const CONFLICT_URL = "http://127.0.0.1:8799";
 
-const nav = (page: Page, name: string) =>
-  page
-    .getByRole("navigation", { name: "Hauptnavigation" })
-    .getByRole("button", { name, exact: true });
+/** Opens one card directly, the way the model does with `card`. */
+async function openCard(page: Page, url: string, card: string) {
+  await page.goto(`${url}/preview?card=${card}`);
+  await expect(page.locator(`main[data-card="${card}"]`)).toBeVisible();
+}
 
 const button = (page: Page, name: string) =>
   page.getByRole("button", { name, exact: true });
@@ -42,9 +43,7 @@ async function pickExercise(page: Page, query: string, name: RegExp) {
 
 /** Opens the editor on the active plan. */
 async function openEditor(page: Page, url = PLAN_URL) {
-  await page.goto(`${url}/preview`);
-  await nav(page, "Plan").click();
-  await expect(page.getByRole("heading", { name: "Dein Plan." })).toBeVisible();
+  await openCard(page, url, "plan");
 }
 
 /**
@@ -298,14 +297,11 @@ test("reviews an invalid draft, fixes it, then confirms and activates", async ({
   await expect(page.getByText("Aktiv", { exact: true }).first()).toBeVisible();
   await expect(button(page, "Entwurf verwerfen")).toHaveCount(0);
 
-  // The dashboard picks up the newly activated plan.
-  await nav(page, "Überblick").click();
-  await expect(
-    page.getByRole("heading", { name: "Dein Überblick." }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Push Pull Legs angepasst").first(),
-  ).toBeVisible();
+  // Today's card picks up the newly activated plan.
+  await openCard(page, ACTIVATE_URL, "today");
+  await expect(page.locator(".ac").first()).toContainText(
+    "Push Pull Legs angepasst",
+  );
 });
 
 test("navigation alone never activates a plan", async ({ page }) => {
@@ -322,8 +318,8 @@ test("navigation alone never activates a plan", async ({ page }) => {
   await expect(
     page.getByRole("dialog", { name: "Trainingsplan aktivieren" }),
   ).toHaveCount(0);
-  await nav(page, "Überblick").click();
-  await nav(page, "Plan").click();
+  await openCard(page, PLAN_URL, "week");
+  await openCard(page, PLAN_URL, "plan");
 
   // Nothing was activated: the editor is back on the unchanged active plan and
   // the draft is still waiting, offered explicitly rather than applied.
@@ -468,7 +464,10 @@ test("works on a narrow mobile viewport", async ({ page }) => {
 
 test("renders in the dark theme", async ({ page }) => {
   await openDraft(page);
-  await page.getByRole("button", { name: "Farbschema wechseln" }).click();
+  // The host decides the theme; the app has no switch of its own.
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = "dark";
+  });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   const card = page.getByRole("region", { name: "Trainingseinheit Push" });
   await expect(card).toBeVisible();

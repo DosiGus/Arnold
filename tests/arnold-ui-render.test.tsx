@@ -12,7 +12,7 @@ import {
   buildExerciseProgressView,
   buildWorkoutHistoryView,
 } from "../src/server/arnold-presenter";
-import { OverviewView } from "../src/ui/views/OverviewView";
+import { WeekCard } from "../src/ui/views/WeekCard";
 import { MetricCard, RecordRow, SetList } from "../src/ui/components";
 import {
   WeeklyTrendChart,
@@ -42,33 +42,33 @@ const text = (node: Parameters<typeof renderToStaticMarkup>[0]) =>
 
 const noop = () => {};
 
-describe("overview renders an engine payload", () => {
+describe("week card renders an engine payload", () => {
   const view = buildDashboardView(fullDataset(), CONTEXT);
 
-  it("shows a focused selection of engine KPIs with their values", () => {
-    const output = text(
-      <OverviewView view={view} onOpenWorkout={noop} onOpenProgress={noop} />,
+  it("shows the engine's week numbers and no more than two actions", () => {
+    const markup = render(
+      <WeekCard view={view} canWrite={false} onOpen={noop} />,
     );
-    expect(output).toContain("Trainings");
+    const output = text(
+      <WeekCard view={view} canWrite={false} onOpen={noop} />,
+    );
+    expect(output).toMatch(/\d+ (von \d+ )?Trainings?/);
     expect(output).toContain("Arbeitssätze");
-    expect(output).toContain("Volumen");
-    expect(output).not.toContain("Trainingstage pro Woche");
-    expect(output).not.toContain("Vergleichbares Volumen");
-    // Five completed sessions out of six workouts.
-    expect(output).toMatch(/Trainings\s+5/);
+    expect(output).toContain("kg Volumen");
+    expect(markup.match(/class="ac-btn /g)).toHaveLength(2);
   });
 
-  it("shows the active plan and recent training", () => {
+  it("shows the most recent training and the latest record", () => {
     const output = text(
-      <OverviewView view={view} onOpenWorkout={noop} onOpenProgress={noop} />,
+      <WeekCard view={view} canWrite={false} onOpen={noop} />,
     );
-    expect(output).toContain("Testplan Oberkörper v2");
-    expect(output).toContain("Zuletzt trainiert");
+    expect(output).toContain("Zuletzt:");
+    expect(output).toContain("Letzter Rekord");
   });
 
   it("never renders an internal identifier as user-facing text", () => {
     const output = text(
-      <OverviewView view={view} onOpenWorkout={noop} onOpenProgress={noop} />,
+      <WeekCard view={view} canWrite={false} onOpen={noop} />,
     );
     for (const token of [
       "per_implement",
@@ -88,10 +88,10 @@ describe("empty and template states in the UI", () => {
   it("welcomes a new tracker without example workouts or a dead button", () => {
     const view = buildDashboardView(emptyTrackerDataset(), CONTEXT);
     const markup = render(
-      <OverviewView view={view} onOpenWorkout={noop} onOpenProgress={noop} />,
+      <WeekCard view={view} canWrite={false} onOpen={noop} />,
     );
     const output = text(
-      <OverviewView view={view} onOpenWorkout={noop} onOpenProgress={noop} />,
+      <WeekCard view={view} canWrite={false} onOpen={noop} />,
     );
     expect(output).toContain("Willkommen bei Arnold");
     expect(output).toContain("Dein erstes Training ist der Anfang.");
@@ -103,7 +103,7 @@ describe("empty and template states in the UI", () => {
   it("labels the master template instead of showing a personal account", () => {
     const view = buildDashboardView(masterTemplateDataset(), CONTEXT);
     const output = text(
-      <OverviewView view={view} onOpenWorkout={noop} onOpenProgress={noop} />,
+      <WeekCard view={view} canWrite={false} onOpen={noop} />,
     );
     expect(output).toContain("Master-Vorlage");
     expect(output).toContain("keine persönlichen Trainingsdaten");

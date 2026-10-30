@@ -6,6 +6,8 @@ import { ArnoldMcpClient } from "./client/ArnoldMcpClient";
 import { OnboardingView } from "./views/OnboardingView";
 import "./style.css";
 import "./glass.css";
+import "./cards.css";
+import { parseCard, type CardId } from "./cards";
 
 /**
  * Boots the app and picks the interface for the contract the server speaks.
@@ -20,6 +22,7 @@ function Boot() {
   const [payload, setPayload] = useState<ArnoldPayload>();
   const [error, setError] = useState("");
   const [stale, setStale] = useState(false);
+  const [card, setCard] = useState<CardId>();
 
   useEffect(() => {
     document.documentElement.dataset.theme = matchMedia(
@@ -45,6 +48,8 @@ function Boot() {
     };
     client.onError = setError;
     client.onStale = setStale;
+    // The model picks the card through the tool's `card` argument.
+    client.onInput = (args) => setCard(parseCard(args.card));
     void client.connect().catch((e) => setError(e.message));
     return () => {
       void client.close();
@@ -87,6 +92,7 @@ function Boot() {
       initial={payload.dashboard}
       bridgeError={error}
       stale={stale}
+      card={card}
     />
   );
 }

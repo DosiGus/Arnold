@@ -1,6 +1,7 @@
 import { registerWorkoutTools } from "./mcp-workout.js";
 import { registerPlanTools } from "./mcp-plan.js";
 import { registerOnboardingTools } from "./mcp-onboarding.js";
+import { DashboardCardSchema } from "../shared/dashboard-cards.js";
 import { guardToolRegistrations } from "./auth/guarded-server.js";
 import type { ArnoldToolGuard } from "./auth/tool-guard.js";
 import type { TrainingPlanService } from "./plan/service.js";
@@ -247,8 +248,8 @@ export function createArnoldMcpServer(
     "show_arnold_dashboard",
     {
       title: "Arnold öffnen",
-      description: `Öffnet den interaktiven Trainingsbegleiter Arnold. Quelle: ${sourceLabel}. Liefert den Dashboard-Vertrag arnold.dashboard/2. Verwenden, wenn der Nutzer Arnold oder seinen Trainingsüberblick öffnen möchte.`,
-      inputSchema: z.object({}),
+      description: `Öffnet Arnold als Karte im Chat. Quelle: ${sourceLabel}. Liefert den Dashboard-Vertrag arnold.dashboard/2. Mit card die passende Karte wählen: today, wenn der Nutzer trainieren oder Sätze eintragen will oder fragt, was heute ansteht; week für den Wochenüberblick; progress für den Fortschritt einer Übung; history für vergangene Trainings; plan zum Ansehen oder Bearbeiten des Trainingsplans. Die Karte zeigt die Zahlen selbst; im Chat danach nur kurz einordnen und nichts wiederholen.`,
+      inputSchema: z.object({ card: DashboardCardSchema.optional() }),
       outputSchema: ArnoldDashboardViewSchema,
       annotations: readOnly,
       _meta: { ui: { resourceUri: ARNOLD_RESOURCE_URI } },

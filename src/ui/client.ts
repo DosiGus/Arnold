@@ -33,6 +33,8 @@ export class ArnoldClient {
   onPayload?: (payload: ArnoldPayload) => void;
   onTheme?: (theme: "light" | "dark") => void;
   onError?: (message: string) => void;
+  /** The arguments the model passed to the tool that opened this app. */
+  onInput?: (args: Record<string, unknown>) => void;
   /**
    * Fired when a payload came from a replayed tool result that could not be
    * revalidated against the server. Such data is shown only when it is also
@@ -139,6 +141,8 @@ export class ArnoldClient {
           this.onError?.((e as Error).message);
         }
       };
+      this.app.ontoolinput = ({ arguments: args }) =>
+        this.onInput?.(args ?? {});
       this.app.ontoolcancelled = ({ reason }) =>
         this.onError?.(reason ?? "Tool-Aufruf abgebrochen.");
       this.app.onhostcontextchanged = (context) => {
@@ -148,6 +152,7 @@ export class ArnoldClient {
         this.onPayload = undefined;
         this.onTheme = undefined;
         this.onStale = undefined;
+        this.onInput = undefined;
         return {};
       };
       this.app.onerror = (error) => this.onError?.(error.message);

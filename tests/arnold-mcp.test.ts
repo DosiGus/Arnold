@@ -112,6 +112,23 @@ describe("Arnold v2 MCP surface", () => {
     expect(view.source.read_only).toBe(true);
     expect(view.source.synthetic).toBe(false);
   });
+
+  it("lets the model pick a card, and only a card the app knows", async () => {
+    const { tools } = await client.listTools();
+    const schema = tools.find((t) => t.name === "show_arnold_dashboard")
+      ?.inputSchema as { properties?: { card?: { enum?: string[] } } };
+    expect(schema.properties?.card?.enum).toEqual([
+      "today",
+      "week",
+      "progress",
+      "history",
+      "plan",
+    ]);
+    const week = await call("show_arnold_dashboard", { card: "week" });
+    expect(week.isError).not.toBe(true);
+    const unknown = await call("show_arnold_dashboard", { card: "settings" });
+    expect(unknown.isError).toBe(true);
+  });
 });
 
 describe("dashboard DTO over MCP", () => {

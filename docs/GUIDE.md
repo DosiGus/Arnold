@@ -44,6 +44,16 @@ Vite bündelt `dashboard.html` (App) und `host.html` (Test-Host) zu je einer Dat
 4. Die UI registriert ihre Handler (`ontoolresult`, Theme, Teardown) **vor** `App.connect()` und lädt aktuelle Daten per `callServerTool`. ChatGPT kann beim Wiederöffnen einen alten Snapshot liefern; deshalb liest die UI vor dem ersten Anzeigen neu nach.
 5. Schreibende UI-Aktionen laufen über `callServerTool`; das Ergebnis ersetzt den angezeigten Stand.
 
+## Karten im Chat
+
+Arnold zeigt im Chat Karten, keine App: kein Logo, kein Menü, kein Hell-Dunkel-Schalter (das liefert der Host). Das Modell wählt die Karte über das Argument `card` von `show_arnold_dashboard` (`today`, `week`, `progress`, `history`, `plan`; Liste in `src/shared/dashboard-cards.ts`), die UI liest es über `ontoolinput`. Buttons einer Karte dürfen zur nächsten führen, „Zurück“ geht einen Schritt zurück.
+
+- Regeln: eine Karte, ein Gedanke; höchstens zwei Buttons unten; höchstens vier Zahlen; Eingaben per Chips und Plus/Minus statt Formular. Alles, was Sprache braucht, geht in den Chat.
+- Bausteine: `src/ui/components/cards.tsx`, Stil in `src/ui/cards.css` (Farben aus `glass.css`).
+- `today` ist eine Karte für das ganze Training: Plan des Tages, dann Satz für Satz, dann die Zusammenfassung mit Zahlen aus der Engine. Startwerte kommen aus dem letzten Satz, sonst aus dem letzten Training (`get_arnold_workouts`), sonst aus dem Plan.
+- `progress`, `history` und `plan` zeigen vorerst die bisherigen Ansichten ohne App-Rahmen.
+- In `/preview` wählt `?card=week` die Karte.
+
 Es gibt keine Abhängigkeit von `window.openai`. `/preview` nutzt denselben Server über einen normalen MCP-Client ohne iframe, `/host` über `AppBridge`. Beides sind Entwicklungswerkzeuge, kein Ersatz für einen echten Host.
 
 ## Datenmodell
