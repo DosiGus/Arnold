@@ -1,6 +1,6 @@
 # Arnold – Aufbau und Betrieb
 
-Teil 1 erklärt, wie Arnold gebaut ist und welche Regeln gelten. Teil 2 beschreibt Konfiguration, ChatGPT-Test und das Connected-Profil. Tests: `npm run check` (Stand 30.10.2026: 1.183 Unit- und 50 Browser-Tests grün, alles gegen simulierte Anbieter; Browser-Tests brauchen lokale TCP-Listener und laufen auf den Ports 8790–8804).
+Teil 1 erklärt, wie Arnold gebaut ist und welche Regeln gelten. Teil 2 beschreibt Konfiguration, ChatGPT-Test und das Connected-Profil. Tests: `npm run check` (Stand 30.10.2026: 1.199 Unit- und 50 Browser-Tests grün, alles gegen simulierte Anbieter; Browser-Tests brauchen lokale TCP-Listener und laufen auf den Ports 8790–8804).
 
 # Teil 1 – Aufbau
 
@@ -264,26 +264,33 @@ Schnittstellen: Tools `connect_google_account`, `finish_arnold_setup`, `get_goog
 
 **Daten und Backup:** `data/connected` enthält Konto- und Tracker-Zuordnung, verschlüsselte Refresh-Tokens, Einrichtungsentwürfe, Audit und Operations-Snapshots (können Trainingsinhalte enthalten). Zustandsordner und `TOKEN_ENCRYPTION_KEY` gehören zusammen in ein verschlüsseltes Backup, der Schlüssel getrennt gelagert. Genau ein Prozess pro Zustandsordner. Aufbewahrung und Löschung der Journale sind offen.
 
-## Hosting auf Google Cloud Run (synthetisch)
+## Hosting auf Google Cloud Run (synthetisch, mit Login)
 
-Feste, öffentliche HTTPS-Adresse für ChatGPT-Tests, ohne laufenden Mac. Profil `arnold_fixture`, keine Anmeldung, erfundene Daten im Arbeitsspeicher.
+Feste, öffentliche HTTPS-Adresse für ChatGPT-Tests, ohne laufenden Mac. Profil `arnold_fixture` hinter `AUTH_MODE=oidc`: Wer sich anmeldet, bekommt **einen eigenen erfundenen Datenstand** im Arbeitsspeicher (`src/server/fixture-sandboxes.ts`, höchstens 200, der am längsten unbenutzte fällt zuerst weg). Ohne Token antwortet `/mcp` mit 401. `/preview` und `/host` haben keinen Login und zeigen hier nur die Hülle.
 
-Einmalig: Google-Cloud-Projekt mit Abrechnung, `gcloud` installiert (`brew install --cask gcloud-cli`), `gcloud auth login`. Dann:
+Login-Anbieter ist **WorkOS AuthKit** (Authorization Server, Arnold prüft nur). Einmalig im WorkOS-Dashboard:
+
+- **Connect → Configuration:** „Client ID Metadata Document“ und „Dynamic Client Registration“ einschalten (ChatGPT registriert sich selbst).
+- **Resource Indicator:** `https://arnold-<projektnummer>.europe-west1.run.app/mcp` anlegen und als Standard setzen; sonst steht im `aud` die Client-ID der Umgebung.
+- **JWT-Template:** `{"urn:arnold:scopes": "arnold.read arnold.write arnold.plan"}`. AuthKit gibt dynamisch registrierten Clients nur `openid profile email offline_access`; Arnolds Scopes kommen deshalb aus diesem Claim (`AUTH_SCOPE_CLAIM`). Ist der Claim gesetzt, zählt **nur** er, der Standard-Claim `scope` wird für Arnold ignoriert. Das Protected-Resource-Dokument bewirbt dann die Scopes des Anbieters, nicht `arnold.*`, weil AuthKit unbekannte Scopes ablehnt.
+- Google-Anmeldung aktivieren (in der Staging-Umgebung mit den WorkOS-Testzugangsdaten).
+
+Einmalig bei Google: Projekt mit Abrechnung, `gcloud` installiert (`brew install --cask gcloud-cli`), `gcloud auth login`. Dann:
 
 ```bash
-npm run deploy:cloud-run -- <projekt-id>
+npm run deploy:cloud-run -- <projekt-id> <authkit-domain>
 ```
 
-Das Skript (`scripts/deploy-cloud-run.sh`) schaltet die APIs ein, baut das `Dockerfile` in Cloud Build (kein lokales Docker nötig), veröffentlicht den Dienst `arnold` in `europe-west1` und prüft `/health` und die Tool-Liste über die öffentliche Adresse. Am Ende steht die Connector-Adresse `https://arnold-<projektnummer>.europe-west1.run.app/mcp`; sie bleibt über alle weiteren Deployments gleich.
+Das Skript (`scripts/deploy-cloud-run.sh`) liest Issuer und JWKS aus den OAuth-Metadaten des Anbieters, schaltet die APIs ein, baut das `Dockerfile` in Cloud Build (kein lokales Docker nötig), veröffentlicht den Dienst `arnold` in `europe-west1` und prüft `/health`, das Protected-Resource-Dokument und die 401 ohne Token. Ohne Login-Anbieter verweigert es den Start. Connector-Adresse: `https://arnold-<projektnummer>.europe-west1.run.app/mcp`, Authentifizierung OAuth; sie bleibt über alle Deployments gleich.
 
-Gesetzte Variablen: `ARNOLD_ENV=development`, `STORAGE_MODE=arnold_fixture`, `ARNOLD_WRITE_MODE=fixture`, `TRUST_PROXY=1` (TLS endet bei Google, sonst scheitert die Same-Origin-Prüfung von `/preview`), `ALLOWED_HOSTS` = die `run.app`-Adressen des Dienstes.
+Gesetzte Variablen: `ARNOLD_ENV=development`, `STORAGE_MODE=arnold_fixture`, `ARNOLD_WRITE_MODE=fixture`, `AUTH_MODE=oidc`, `ARNOLD_PUBLIC_BASE_URL`, `AUTH_ISSUER`, `AUTH_JWKS_URI`, `AUTH_SCOPE_CLAIM=urn:arnold:scopes`, `IDENTITY_STORE=memory`, `TRUST_PROXY=1` (TLS endet bei Google), `ALLOWED_HOSTS` = die `run.app`-Adressen des Dienstes.
 
-- **Genau eine Instanz** (`--max-instances 1`): Der Fixture-Zustand liegt im Prozess; zwei Instanzen hätten zwei verschiedene Datenstände.
-- **Schläft bei Ruhe** (`ARNOLD_MIN_INSTANCES=0`, Standard): fast kostenlos, erste Anfrage nach einer Pause einige Sekunden langsamer, Testdaten danach wieder im Anfangszustand. `ARNOLD_MIN_INSTANCES=1 npm run deploy:cloud-run -- <projekt-id>` hält die Instanz wach (grob 10 € im Monat).
-- Jedes Deployment und jede Variablenänderung startet eine neue Revision und setzt die Testdaten zurück.
+- **Genau eine Instanz** (`--max-instances 1`): Sandboxes und Identitäten liegen im Prozess.
+- **Schläft bei Ruhe** (`ARNOLD_MIN_INSTANCES=0`, Standard): fast kostenlos, erste Anfrage nach einer Pause einige Sekunden langsamer, Testdaten danach wieder im Anfangszustand. `ARNOLD_MIN_INSTANCES=1` hält die Instanz wach (grob 10 € im Monat).
+- Jedes Deployment und jede Variablenänderung startet eine neue Revision und setzt alle Testdaten zurück.
 - `.gcloudignore` hält `.env*`, `data/`, Schlüssel und `.git` aus dem hochgeladenen Quellarchiv.
 
-Für echte Nutzerdaten fehlen weiterhin `AUTH_MODE=oidc` mit gewähltem Anbieter, ein mehrinstanztauglicher Zustandsspeicher (statt `data/connected` im Container) und ein `staging`-taugliches Connected-Profil. Workers bräuchten anderen Transport und Speicher.
+Für echte Nutzerdaten fehlen weiterhin ein mehrinstanztauglicher Zustandsspeicher (statt `data/connected` im Container), ein `staging`-taugliches Connected-Profil mit Google-OAuth-Client und eine Zugangsbeschränkung pro Nutzer statt eines Templates für alle.
 
 ## Backup
 

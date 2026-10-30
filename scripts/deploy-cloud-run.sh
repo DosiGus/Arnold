@@ -1,33 +1,53 @@
 #!/usr/bin/env bash
-# Deploys Arnold to Google Cloud Run in the synthetic fixture profile.
+# Deploys Arnold to Google Cloud Run: synthetic data, behind a login.
 #
-#   npm run deploy:cloud-run -- <project-id>
+#   npm run deploy:cloud-run -- <project-id> <authkit-domain>
+#   e.g. npm run deploy:cloud-run -- arnold-513219 https://example-123.authkit.app
 #
 # What it does, in order:
-#   1. turns on the Cloud Run, Cloud Build and Artifact Registry APIs,
-#   2. lets the default build account build Cloud Run images,
-#   3. builds the Dockerfile in Cloud Build and deploys it (no local Docker),
-#   4. pins ALLOWED_HOSTS to the service's own run.app hostnames,
-#   5. checks /health and the tool list over the public address.
+#   1. reads the login provider's OAuth metadata (issuer, JWKS) and checks it,
+#   2. turns on the Cloud Run, Cloud Build and Artifact Registry APIs,
+#   3. lets the default build account build Cloud Run images,
+#   4. builds the Dockerfile in Cloud Build and deploys it (no local Docker),
+#   5. pins ALLOWED_HOSTS to the service's own run.app hostnames,
+#   6. checks /health, the protected-resource document and that /mcp refuses
+#      a request without a token.
 #
-# Synthetic data only, no login: the instance is public and holds invented
-# data in memory. Real data needs AUTH_MODE=oidc and is not done here.
+# Every signed-in user gets their own invented dataset in memory. Arnold's
+# scopes come from the provider's JWT template in the claim urn:arnold:scopes.
+# There is deliberately no way to deploy without a login from this script.
 set -euo pipefail
 
-PROJECT="${1:-$(gcloud config get-value project 2>/dev/null || true)}"
+PROJECT="${1:-}"
+AUTHKIT="${2:-${ARNOLD_AUTH_DOMAIN:-}}"
 REGION="${ARNOLD_REGION:-europe-west1}"
 SERVICE="${ARNOLD_SERVICE:-arnold}"
 # 0 = sleeps when idle (nearly free, test data resets), 1 = always awake.
 MIN_INSTANCES="${ARNOLD_MIN_INSTANCES:-0}"
+SCOPE_CLAIM="urn:arnold:scopes"
 
-if [[ -z "$PROJECT" ]]; then
-  echo "Projekt-ID fehlt: npm run deploy:cloud-run -- <project-id>" >&2
+if [[ -z "$PROJECT" || -z "$AUTHKIT" ]]; then
+  echo "Aufruf: npm run deploy:cloud-run -- <projekt-id> <authkit-domain>" >&2
   exit 1
 fi
+AUTHKIT="${AUTHKIT%/}"
+[[ "$AUTHKIT" == https://* ]] || AUTHKIT="https://$AUTHKIT"
 if ! gcloud auth list --filter=status:ACTIVE --format='value(account)' | grep -q .; then
   echo "Nicht bei Google angemeldet. Zuerst: gcloud auth login" >&2
   exit 1
 fi
+
+echo "› Login-Anbieter prüfen: $AUTHKIT"
+METADATA="$(curl -fsS "$AUTHKIT/.well-known/oauth-authorization-server")"
+read -r ISSUER JWKS < <(node -e '
+  const m = JSON.parse(process.argv[1]);
+  const base = new URL(process.argv[2]).origin;
+  if (!m.issuer || new URL(m.issuer).origin !== base) throw new Error("issuer passt nicht zur Domain: " + m.issuer);
+  if (!m.jwks_uri || !m.jwks_uri.startsWith("https://")) throw new Error("jwks_uri fehlt oder ist nicht https");
+  if (!(m.code_challenge_methods_supported || []).includes("S256")) throw new Error("PKCE S256 fehlt");
+  console.log(m.issuer, m.jwks_uri);
+' "$METADATA" "$AUTHKIT")
+echo "  issuer: $ISSUER"
 
 echo "› Projekt $PROJECT, Region $REGION, Dienst $SERVICE"
 gcloud config set project "$PROJECT" >/dev/null
@@ -43,11 +63,27 @@ gcloud projects add-iam-policy-binding "$PROJECT" \
   --role=roles/run.builder --condition=None --quiet >/dev/null
 
 # The deterministic run.app hostname is known before the first deploy, so the
-# very first revision already accepts its own address. Others are added below.
+# first revision already accepts its own address and names it as the MCP
+# resource. Other hostnames of the service are added to ALLOWED_HOSTS below.
 PRIMARY_HOST="${SERVICE}-${NUMBER}.${REGION}.run.app"
+URL="https://${PRIMARY_HOST}"
 env_vars() {
   # '^@^' switches gcloud's list separator to '@' so ALLOWED_HOSTS keeps commas.
-  echo "^@^ARNOLD_ENV=development@STORAGE_MODE=arnold_fixture@ARNOLD_WRITE_MODE=fixture@TRUST_PROXY=1@ALLOWED_HOSTS=$1"
+  local vars=(
+    ARNOLD_ENV=development
+    STORAGE_MODE=arnold_fixture
+    ARNOLD_WRITE_MODE=fixture
+    AUTH_MODE=oidc
+    "ARNOLD_PUBLIC_BASE_URL=$URL"
+    "AUTH_ISSUER=$ISSUER"
+    "AUTH_JWKS_URI=$JWKS"
+    "AUTH_SCOPE_CLAIM=$SCOPE_CLAIM"
+    IDENTITY_STORE=memory
+    TRUST_PROXY=1
+    "ALLOWED_HOSTS=$1"
+  )
+  local IFS=@
+  echo "^@^${vars[*]}"
 }
 
 echo "› Bauen und veröffentlichen (dauert einige Minuten)"
@@ -60,7 +96,7 @@ gcloud run deploy "$SERVICE" \
   --cpu 1 --memory 512Mi --cpu-boost \
   --concurrency 80 --timeout 300 \
   --set-env-vars "$(env_vars "$PRIMARY_HOST")" \
-  --labels app=arnold,profile=fixture \
+  --labels app=arnold,profile=fixture-oidc \
   --quiet
 
 HOSTS="$(gcloud run services describe "$SERVICE" --region "$REGION" \
@@ -74,20 +110,27 @@ if [[ "$HOSTS" != "$PRIMARY_HOST" ]]; then
     --update-env-vars "$(env_vars "$HOSTS")" --quiet >/dev/null
 fi
 
-URL="https://${PRIMARY_HOST}"
 echo "› Prüfen: $URL"
 HEALTH="$(curl -fsS "$URL/health")"
 echo "  health: $HEALTH"
-grep -q '"synthetic":true' <<<"$HEALTH" || {
-  echo "Health meldet keine synthetischen Daten. Abbruch." >&2
+grep -q '"synthetic":true' <<<"$HEALTH" && grep -q '"auth":"oidc"' <<<"$HEALTH" || {
+  echo "Health meldet nicht synthetisch + oidc. Abbruch." >&2
   exit 1
 }
-TOOLS="$(curl -fsS -X POST "$URL/mcp" \
+PRM="$(curl -fsS "$URL/.well-known/oauth-protected-resource/mcp")"
+grep -q "\"resource\":\"$URL/mcp\"" <<<"$PRM" || {
+  echo "Protected-Resource-Dokument nennt nicht $URL/mcp: $PRM" >&2
+  exit 1
+}
+STATUS="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/mcp" \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' |
-  node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).result.tools.length))')"
-echo "  tools: $TOOLS"
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')"
+echo "  /mcp ohne Token: $STATUS"
+[[ "$STATUS" == 401 ]] || {
+  echo "/mcp antwortet ohne Token nicht mit 401. Abbruch." >&2
+  exit 1
+}
 
 echo
-echo "Fertig. ChatGPT-Connector-Adresse: $URL/mcp"
+echo "Fertig. ChatGPT-Connector-Adresse: $URL/mcp (Anmeldung: OAuth)"

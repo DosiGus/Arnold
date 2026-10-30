@@ -189,7 +189,10 @@ export function createArnoldMcpServer(
   // data, so its writes are sandbox writes rather than writes to a real user.
   const server = guard
     ? guardToolRegistrations(bare, guard, {
-        syntheticWrites: logging?.mode === "fixture",
+        // Behind a login the fixture's writes keep their declared classes
+        // and need arnold.write / arnold.plan like any other write; each user
+        // then has their own fixture (see FixtureSandboxes in http.ts).
+        syntheticWrites: logging?.mode === "fixture" && guard.mode === "open",
         authenticatedOnboarding: logging?.mode === "connected",
       })
     : bare;

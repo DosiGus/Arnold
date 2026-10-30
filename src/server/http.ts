@@ -22,6 +22,7 @@ import type { ConnectedArnoldRuntime } from "./connected/runtime.js";
 import type { GoogleBrowserFlow } from "./connected/google-browser.js";
 import { registerGoogleTools } from "./connected/mcp-google.js";
 import { withArnoldContext } from "./auth/guarded-server.js";
+import { FixtureSandboxes } from "./fixture-sandboxes.js";
 
 export interface ServerOptions {
   env?: NodeJS.ProcessEnv;
@@ -152,6 +153,16 @@ export function createHttpApp(options: ServerOptions = {}) {
     throw new Error(
       "Connected-Runtime und HTTP-Endpunkt benötigen dieselbe aktive Authentifizierung.",
     );
+  // A synthetic fixture behind a login: one invented dataset per user rather
+  // than one shared by everyone who signs in. Only for the fixture this file
+  // built itself; an injected runtime is used exactly as given.
+  const sandboxes =
+    auth.summary.mode === "oidc" &&
+    !options.workoutRuntime &&
+    !options.connected &&
+    runtime?.service.mode === "fixture"
+      ? new FixtureSandboxes(auth)
+      : undefined;
   requireSafeArnoldBinding({
     synthetic: arnoldSource?.synthetic ?? false,
     authenticated: auth.summary.mode === "oidc",
@@ -255,7 +266,9 @@ export function createHttpApp(options: ServerOptions = {}) {
         ? await options.connected.runtime.forUser(
             await auth.resolveRequest(req),
           )
-        : runtime;
+        : sandboxes
+          ? await sandboxes.forUser(await auth.resolveRequest(req))
+          : runtime;
       const requestSource = userRuntime?.source ?? arnoldSource;
       const server = createArnoldMcpServer(
         requestSource!,
@@ -299,10 +312,10 @@ export function createHttpApp(options: ServerOptions = {}) {
           });
       }
     };
-    if (options.connected) {
+    const perUser = options.connected?.runtime ?? sandboxes;
+    if (perUser) {
       const context = await auth.resolveRequest(req);
-      if (req.method === "POST")
-        await options.connected.runtime.exclusive(context, handle);
+      if (req.method === "POST") await perUser.exclusive(context, handle);
       else await withArnoldContext(context, handle);
     } else await handle();
   });
