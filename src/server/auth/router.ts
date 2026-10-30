@@ -154,12 +154,20 @@ export function buildAuthSurface(options: AuthSurfaceOptions): AuthSurface {
     issuer: oidc.issuer,
     audience: oidc.audience,
     keys: new JwksCache({ jwksUri: oidc.jwksUri }),
+    ...(oidc.scopeClaim ? { scopeClaim: oidc.scopeClaim } : {}),
   });
+
+  // What a client is told to request. With Arnold's scopes in a separate
+  // claim, the issuer only knows its own scope names and refuses unknown ones
+  // (`invalid_scope`), so the advertised set is then the issuer's own.
+  const scopesSupported: readonly string[] = oidc.scopeClaim
+    ? (metadata.scopes_supported ?? [])
+    : ALL_ARNOLD_SCOPES;
 
   const metadataRouter = mcpAuthMetadataRouter({
     oauthMetadata: metadata,
     resourceServerUrl: config.resourceUrl,
-    scopesSupported: [...ALL_ARNOLD_SCOPES],
+    scopesSupported: [...scopesSupported],
   });
 
   const bearerGate = requireBearerAuth({
@@ -188,7 +196,7 @@ export function buildAuthSurface(options: AuthSurfaceOptions): AuthSurface {
     summary: {
       mode: "oidc",
       resource: config.resourceUrl.toString(),
-      scopesSupported: ALL_ARNOLD_SCOPES,
+      scopesSupported,
       identityStore: config.identityStore.kind,
     },
   };

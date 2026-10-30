@@ -9,6 +9,7 @@ npm run check        # vor jedem Merge: Build, Typecheck, Vitest, Playwright
 npm test             # nur Vitest
 npm run build:ui     # nach UI-Änderungen, bevor /preview oder /host neu geladen wird
 npm run format       # Prettier
+npm run deploy:cloud-run -- <projekt-id> <authkit-domain>   # Arnold mit Login auf Cloud Run (docs/GUIDE.md)
 ```
 
 ## Wo wird was geändert

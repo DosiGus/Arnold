@@ -76,7 +76,8 @@ export function authInfoOf(ctx: ServerContext): AuthInfo | undefined {
 }
 
 export class ArnoldToolGuard {
-  private readonly mode: GuardMode;
+  /** Read by the server factory: sandbox writes exist only in `open`. */
+  readonly mode: GuardMode;
   private readonly resolver: ArnoldIdentityResolver;
   private readonly openModeContext: AuthenticatedArnoldContext | undefined;
   private readonly onEvent: ((event: GuardEvent) => void) | undefined;

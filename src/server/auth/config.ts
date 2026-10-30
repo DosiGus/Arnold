@@ -65,6 +65,21 @@ const RawConfigSchema = z.object({
    * that only probes the resource origin still finds the AS.
    */
   AUTH_AUTHORIZATION_SERVER: urlString("AUTH_AUTHORIZATION_SERVER").optional(),
+  /**
+   * Where the token carries Arnold's scopes, when the authorization server
+   * cannot put them in the standard `scope` claim. WorkOS AuthKit, for one,
+   * grants dynamically registered clients only `openid profile email
+   * offline_access` and adds anything else through a per-environment JWT
+   * template. Must be a namespaced claim (`urn:arnold:scopes`) so it cannot
+   * collide with a registered JWT claim.
+   */
+  AUTH_SCOPE_CLAIM: z
+    .string()
+    .regex(
+      /^urn:[a-z0-9][a-z0-9-]*:[A-Za-z0-9._:-]+$/,
+      "AUTH_SCOPE_CLAIM muss ein URN-Claim wie urn:arnold:scopes sein.",
+    )
+    .optional(),
   IDENTITY_STORE: z.enum(IDENTITY_STORES).optional(),
   IDENTITY_STORE_FILE: z.string().optional(),
   DATABASE_URL: z.string().optional(),
@@ -84,6 +99,11 @@ export interface ArnoldAuthConfig {
         audience: string;
         jwksUri: string;
         authorizationServer: string;
+        /**
+         * The claim Arnold reads its scopes from. Undefined means the
+         * standard `scope`/`scp`; a URN means that claim only.
+         */
+        scopeClaim: string | undefined;
       }
     | undefined;
   identityStore:
@@ -180,12 +200,23 @@ export function loadAuthConfig(
     if (isProduction && issuerUrl.protocol !== "https:")
       fail("AUTH_ISSUER muss in production https sein.");
 
-    oidc = { issuer, audience, jwksUri, authorizationServer };
+    oidc = {
+      issuer,
+      audience,
+      jwksUri,
+      authorizationServer,
+      scopeClaim: raw.AUTH_SCOPE_CLAIM,
+    };
   } else {
     // Guard against the dangerous half-configuration: auth switched off while
     // issuer settings sit in the environment looking reassuring.
     const stray = (
-      ["AUTH_ISSUER", "AUTH_JWKS_URI", "AUTH_AUDIENCE"] as const
+      [
+        "AUTH_ISSUER",
+        "AUTH_JWKS_URI",
+        "AUTH_AUDIENCE",
+        "AUTH_SCOPE_CLAIM",
+      ] as const
     ).filter((key) => raw[key] !== undefined);
     if (stray.length > 0)
       fail(

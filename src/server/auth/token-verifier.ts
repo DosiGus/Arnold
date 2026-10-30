@@ -49,6 +49,13 @@ export interface TokenVerifierOptions {
    */
   maxLifetimeSec?: number | null;
   now?: () => number;
+  /**
+   * A namespaced claim (`urn:arnold:scopes`) to read Arnold's scopes from
+   * instead of `scope`/`scp`. When set, only this claim counts: the standard
+   * claim then holds the issuer's own scopes (`openid email …`), and mixing
+   * the two would let one source quietly widen the other.
+   */
+  scopeClaim?: string;
 }
 
 export const DEFAULT_CLOCK_TOLERANCE_SEC = 60;
@@ -79,7 +86,14 @@ function audienceList(aud: JwtClaims["aud"]): string[] {
  * Scopes may arrive as the space-delimited `scope` of RFC 8693, or as `scp`
  * (string or array), which several widely deployed issuers use instead.
  */
-function scopeList(claims: JwtClaims): string[] {
+function scopeList(claims: JwtClaims, scopeClaim?: string): string[] {
+  if (scopeClaim !== undefined) {
+    const value = (claims as Record<string, unknown>)[scopeClaim];
+    if (typeof value === "string") return value.split(" ").filter(Boolean);
+    if (Array.isArray(value))
+      return value.filter((v): v is string => typeof v === "string");
+    return [];
+  }
   if (typeof claims.scope === "string")
     return claims.scope.split(" ").filter(Boolean);
   if (typeof claims.scp === "string")
@@ -113,8 +127,10 @@ export class ArnoldTokenVerifier {
   private readonly clockToleranceSec: number;
   private readonly maxLifetimeSec: number | null;
   private readonly now: () => number;
+  private readonly scopeClaim: string | undefined;
 
   constructor(options: TokenVerifierOptions) {
+    this.scopeClaim = options.scopeClaim;
     this.issuer = options.issuer;
     this.audience = canonicalResource(options.audience);
     this.keys = options.keys;
@@ -215,7 +231,7 @@ export class ArnoldTokenVerifier {
         `Token ist für ${audiences.join(", ")} ausgestellt, nicht für ${this.audience}.`,
       );
 
-    const scopes = scopeList(claims);
+    const scopes = scopeList(claims, this.scopeClaim);
     const clientId =
       typeof claims.client_id === "string"
         ? claims.client_id

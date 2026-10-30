@@ -22,6 +22,7 @@ import type { ConnectedArnoldRuntime } from "./connected/runtime.js";
 import type { GoogleBrowserFlow } from "./connected/google-browser.js";
 import { registerGoogleTools } from "./connected/mcp-google.js";
 import { withArnoldContext } from "./auth/guarded-server.js";
+import { FixtureSandboxes } from "./fixture-sandboxes.js";
 
 export interface ServerOptions {
   env?: NodeJS.ProcessEnv;
@@ -69,6 +70,24 @@ function withDefaultProfile(options: ServerOptions): NodeJS.ProcessEnv {
     STORAGE_MODE: "arnold_fixture",
     ARNOLD_WRITE_MODE: "fixture",
   };
+}
+/**
+ * How many reverse proxies in front of Arnold may set `X-Forwarded-*`.
+ *
+ * Behind a TLS-terminating platform (Cloud Run, a load balancer) the request
+ * reaches Node as plain HTTP, so without this the same-origin check below
+ * compares `https://…` from the browser against `http://…` and refuses the
+ * server's own preview. Off by default: trusting forwarded headers on a
+ * directly exposed process would let any client claim to be HTTPS. Anything
+ * but a small whole number stops the start.
+ */
+export function parseTrustProxy(value: string | undefined): number {
+  if (value === undefined || value === "") return 0;
+  if (!/^\d+$/.test(value) || Number(value) > 10)
+    throw new Error(
+      "TRUST_PROXY muss die Zahl der vorgeschalteten Proxys sein (0 bis 10, Cloud Run: 1).",
+    );
+  return Number(value);
 }
 export function createHttpApp(options: ServerOptions = {}) {
   const root = options.root ?? process.cwd();
@@ -134,6 +153,16 @@ export function createHttpApp(options: ServerOptions = {}) {
     throw new Error(
       "Connected-Runtime und HTTP-Endpunkt benötigen dieselbe aktive Authentifizierung.",
     );
+  // A synthetic fixture behind a login: one invented dataset per user rather
+  // than one shared by everyone who signs in. Only for the fixture this file
+  // built itself; an injected runtime is used exactly as given.
+  const sandboxes =
+    auth.summary.mode === "oidc" &&
+    !options.workoutRuntime &&
+    !options.connected &&
+    runtime?.service.mode === "fixture"
+      ? new FixtureSandboxes(auth)
+      : undefined;
   requireSafeArnoldBinding({
     synthetic: arnoldSource?.synthetic ?? false,
     authenticated: auth.summary.mode === "oidc",
@@ -152,6 +181,8 @@ export function createHttpApp(options: ServerOptions = {}) {
     ],
   });
   app.disable("x-powered-by");
+  const trustProxy = parseTrustProxy(env.TRUST_PROXY);
+  if (trustProxy > 0) app.set("trust proxy", trustProxy);
   app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "no-store");
@@ -235,7 +266,9 @@ export function createHttpApp(options: ServerOptions = {}) {
         ? await options.connected.runtime.forUser(
             await auth.resolveRequest(req),
           )
-        : runtime;
+        : sandboxes
+          ? await sandboxes.forUser(await auth.resolveRequest(req))
+          : runtime;
       const requestSource = userRuntime?.source ?? arnoldSource;
       const server = createArnoldMcpServer(
         requestSource!,
@@ -279,10 +312,10 @@ export function createHttpApp(options: ServerOptions = {}) {
           });
       }
     };
-    if (options.connected) {
+    const perUser = options.connected?.runtime ?? sandboxes;
+    if (perUser) {
       const context = await auth.resolveRequest(req);
-      if (req.method === "POST")
-        await options.connected.runtime.exclusive(context, handle);
+      if (req.method === "POST") await perUser.exclusive(context, handle);
       else await withArnoldContext(context, handle);
     } else await handle();
   });
