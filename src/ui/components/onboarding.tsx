@@ -19,41 +19,64 @@ import { useId, useState } from "react";
 import {
   AlertTriangle,
   Check,
+  ChevronDown,
   ChevronLeft,
   CircleAlert,
   Info,
   LoaderCircle,
-  Pencil,
   Orbit,
+  Pencil,
   RefreshCw,
   Sparkles,
+  Upload,
 } from "lucide-react";
 import {
+  BODY_AREAS,
+  BODY_AREA_LABEL,
   DAYS_PER_WEEK_MAX,
   ENVIRONMENT_HINT,
   ENVIRONMENT_LABEL,
+  EQUIPMENT,
+  EQUIPMENT_LABEL,
   EXPERIENCE_HINT,
   EXPERIENCE_LABEL,
   EXPERIENCE_LEVELS,
   GOAL_HINT,
   GOAL_LABEL,
+  MUSCLE_GROUPS,
+  MUSCLE_GROUP_LABEL,
+  ONBOARDING_PATHS,
+  PERSON_BASICS,
+  PATH_HINT,
+  PATH_LABEL,
   PROFILE_STEPS,
   REQUIRED_FIELD_LABEL,
   SESSION_MINUTES_PRESETS,
-  STARTING_POINTS,
-  STARTING_POINT_HINT,
-  STARTING_POINT_LABEL,
+  SEXES,
+  SEX_LABEL,
+  SPLITS,
+  SPLIT_HINT,
+  SPLIT_LABEL,
   STEP_LABEL,
   TRAINING_ENVIRONMENTS,
   TRAINING_GOALS,
+  TRAINING_REQUIRED_FIELDS,
+  WEEKDAYS,
+  WEEKDAY_LABEL,
+  type ExerciseChoice,
   type ExperienceLevel,
+  type OnboardingPath,
+  type OnboardingProfile,
   type OnboardingProgress,
   type OnboardingStep,
   type OnboardingValidationIssue,
   type OnboardingValidationResult,
-  type StartingPoint,
+  type PersonPatch,
+  type Sex,
+  type Split,
   type TrainingEnvironment,
   type TrainingGoal,
+  type TrainingPatch,
 } from "../../shared/onboarding-contract";
 
 /* ------------------------------------------------------------------- layout */
@@ -427,39 +450,37 @@ export function OnboardingLoading({ text = "Einrichtung wird geladen …" }) {
 
 /* -------------------------------------------------------------------- steps */
 
+/**
+ * Welcome: who Arnold is, and the two ways in.
+ *
+ * Two equal buttons side by side, no form. Everything after this screen
+ * depends on the choice, so it is the only question asked here.
+ */
 export function WelcomeStep({
-  onStart,
+  onChoose,
   busy,
-  resumed,
   canWritePlan,
   googleAvailable = false,
 }: {
-  onStart: () => void;
+  onChoose: (path: OnboardingPath) => void;
   busy: boolean;
-  resumed: boolean;
   canWritePlan: boolean;
   googleAvailable?: boolean;
 }) {
   return (
     <OnboardingLayout
       title="Willkommen bei Arnold"
-      lead="Dein Training. In deinem Rhythmus."
+      lead="Dein persönlicher Trainingsbegleiter, direkt hier im Chat."
     >
       <div className="onb-welcome-visual" aria-hidden="true">
         <span>Dein Moment.</span>
         <img src={strengthSculpture} alt="" draggable={false} />
       </div>
-      <ol className="onb-intro">
-        <li>
-          <strong>Dein Ziel</strong>
-        </li>
-        <li>
-          <strong>Dein Plan</strong>
-        </li>
-        <li>
-          <strong>Dein Training</strong>
-        </li>
-      </ol>
+      <p className="onb-welcome-text">
+        Arnold baut dir einen Trainingsplan, der zu deinem Alltag passt,
+        schreibt beim Training deine Sätze und Gewichte mit und zeigt dir, wo du
+        stärker wirst. Deine Daten liegen in deinem eigenen Google Drive.
+      </p>
       {!googleAvailable && (
         <p className="onb-note">
           Google-Verbindung nicht verfügbar. Es wird keine Datei erstellt.
@@ -473,20 +494,28 @@ export function WelcomeStep({
           </p>
         </OnboardingNotice>
       )}
-      <div className="onb-actions">
-        <button
-          type="button"
-          className="primary onb-cta"
-          onClick={onStart}
-          disabled={busy}
-        >
-          {busy ? (
-            <LoaderCircle size={16} className="spin" aria-hidden="true" />
-          ) : (
-            <Sparkles size={16} aria-hidden="true" />
-          )}
-          {resumed ? "Einrichtung fortsetzen" : "Einrichtung starten"}
-        </button>
+      <div
+        className="onb-paths"
+        role="group"
+        aria-label="Wie möchtest du starten?"
+      >
+        {ONBOARDING_PATHS.map((path) => (
+          <button
+            key={path}
+            type="button"
+            className={`onb-path ${path === "arnold_plan" ? "primary" : "secondary"}`}
+            onClick={() => onChoose(path)}
+            disabled={busy}
+          >
+            {path === "arnold_plan" ? (
+              <Sparkles size={18} aria-hidden="true" />
+            ) : (
+              <Upload size={18} aria-hidden="true" />
+            )}
+            <strong>{PATH_LABEL[path]}</strong>
+            <span>{PATH_HINT[path]}</span>
+          </button>
+        ))}
       </div>
     </OnboardingLayout>
   );
@@ -507,12 +536,10 @@ const ENVIRONMENT_OPTIONS: readonly Option<TrainingEnvironment>[] =
     label: ENVIRONMENT_LABEL[environment],
     hint: ENVIRONMENT_HINT[environment],
   }));
-const STARTING_POINT_OPTIONS: readonly Option<StartingPoint>[] =
-  STARTING_POINTS.map((point) => ({
-    value: point,
-    label: STARTING_POINT_LABEL[point],
-    hint: STARTING_POINT_HINT[point],
-  }));
+const SEX_OPTIONS: readonly Option<Sex>[] = SEXES.map((sex) => ({
+  value: sex,
+  label: SEX_LABEL[sex],
+}));
 const DAY_OPTIONS: readonly Option<number>[] = Array.from(
   { length: DAYS_PER_WEEK_MAX },
   (_, index) => ({
@@ -525,452 +552,652 @@ const MINUTE_OPTIONS: readonly Option<number>[] = SESSION_MINUTES_PRESETS.map(
   (minutes) => ({ value: minutes, label: `${minutes}`, hint: "Minuten" }),
 );
 
-/** Goal and experience: the two answers that shape everything else. */
-export function GoalStep({
-  goal,
-  experience,
+/**
+ * A multiple-choice group rendered as toggle chips.
+ *
+ * Native checkboxes for the same reasons `ChoiceGroup` uses radios. `max`
+ * disables the unchosen chips once the limit is reached instead of refusing
+ * the tap after the fact.
+ */
+export function ChipGroup<T extends string>({
+  legend,
+  hint,
+  options,
+  values,
   onChange,
-  validation,
-  onNext,
-  busy,
-  showErrors,
+  max,
+  name,
 }: {
-  goal: TrainingGoal | null;
-  experience: ExperienceLevel | null;
-  onChange: (patch: {
-    primary_goal?: TrainingGoal;
-    experience?: ExperienceLevel;
-  }) => void;
-  validation: OnboardingValidationResult;
-  onNext: () => void;
-  busy: boolean;
-  showErrors: boolean;
+  legend: string;
+  hint?: string;
+  options: readonly Option<T>[];
+  values: readonly T[];
+  onChange: (values: T[]) => void;
+  max?: number;
+  name?: string;
 }) {
-  const errorFor = (field: string) =>
-    showErrors
-      ? validation.errors.find((issue) => issue.field === field)?.message
-      : undefined;
+  const generated = useId();
+  const group = name ?? generated;
+  const full = max !== undefined && values.length >= max;
   return (
-    <OnboardingLayout
-      title="Was möchtest du erreichen?"
-      footer={
-        <button
-          type="button"
-          className="primary"
-          onClick={onNext}
-          disabled={busy}
-        >
-          Weiter
-        </button>
-      }
-    >
-      <ChoiceGroup
-        legend="Dein wichtigstes Trainingsziel"
-        options={GOAL_OPTIONS}
-        value={goal}
-        onChange={(value) => onChange({ primary_goal: value })}
-        error={errorFor("primary_goal")}
-        name="primary_goal"
-      />
-      <ChoiceGroup
-        legend="Wie viel Krafttraining hast du schon gemacht?"
-        options={EXPERIENCE_OPTIONS}
-        value={experience}
-        onChange={(value) => onChange({ experience: value })}
-        error={errorFor("experience")}
-        name="experience"
-      />
-      <OnboardingIssues validation={validation} step="goal" />
-    </OnboardingLayout>
-  );
-}
-
-/** Days, minutes and environment: the three facts a plan must fit into. */
-export function AvailabilityStep({
-  days,
-  minutes,
-  environment,
-  onChange,
-  validation,
-  onNext,
-  onBack,
-  busy,
-  showErrors,
-}: {
-  days: number | null;
-  minutes: number | null;
-  environment: TrainingEnvironment | null;
-  onChange: (patch: {
-    days_per_week?: number;
-    session_minutes?: number;
-    environment?: TrainingEnvironment;
-  }) => void;
-  validation: OnboardingValidationResult;
-  onNext: () => void;
-  onBack: () => void;
-  busy: boolean;
-  showErrors: boolean;
-}) {
-  const errorFor = (field: string) =>
-    showErrors
-      ? validation.errors.find((issue) => issue.field === field)?.message
-      : undefined;
-  return (
-    <OnboardingLayout
-      title="Wie sieht dein Trainingsalltag aus?"
-      onBack={onBack}
-      footer={
-        <button
-          type="button"
-          className="primary"
-          onClick={onNext}
-          disabled={busy}
-        >
-          Weiter
-        </button>
-      }
-    >
-      <ChoiceGroup
-        legend="Wie oft möchtest du pro Woche trainieren?"
-        options={DAY_OPTIONS}
-        value={days}
-        onChange={(value) => onChange({ days_per_week: value })}
-        columns="compact"
-        error={errorFor("days_per_week")}
-        name="days_per_week"
-      />
-      <ChoiceGroup
-        legend="Wie viel Zeit hast du je Training?"
-        options={MINUTE_OPTIONS}
-        value={minutes}
-        onChange={(value) => onChange({ session_minutes: value })}
-        columns="compact"
-        error={errorFor("session_minutes")}
-        name="session_minutes"
-      />
-      <ChoiceGroup
-        legend="Wo trainierst du?"
-        options={ENVIRONMENT_OPTIONS}
-        value={environment}
-        onChange={(value) => onChange({ environment: value })}
-        error={errorFor("environment")}
-        name="environment"
-      />
-      <OnboardingIssues validation={validation} step="availability" />
-    </OnboardingLayout>
+    <fieldset className="onb-field">
+      <legend>{legend}</legend>
+      {hint && <p className="onb-hint">{hint}</p>}
+      <div className="onb-chips">
+        {options.map((option) => {
+          const checked = values.includes(option.value);
+          return (
+            <label
+              key={option.value}
+              className={`onb-chip ${checked ? "selected" : ""}`}
+            >
+              <input
+                type="checkbox"
+                name={group}
+                value={option.value}
+                checked={checked}
+                disabled={!checked && full}
+                aria-label={option.label}
+                onChange={() =>
+                  onChange(
+                    checked
+                      ? values.filter((value) => value !== option.value)
+                      : options
+                          .map((o) => o.value)
+                          .filter(
+                            (value) =>
+                              values.includes(value) || value === option.value,
+                          ),
+                  )
+                }
+              />
+              <span>{option.label}</span>
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
   );
 }
 
 /**
- * The optional step.
+ * A number answer that saves when the field is left.
  *
- * Everything here may be skipped, and the skip is a real button rather than a
- * greyed-out hint — §18 asks for optional questions to be genuinely optional.
+ * Typing "1", "18", "180" must not send three writes, and a half-typed value
+ * outside the band must not be refused mid-word. An emptied field removes
+ * the answer.
  */
-export function PreferencesStep({
-  startingPoint,
-  preferred,
-  avoided,
-  equipment,
-  notes,
-  onChange,
-  validation,
-  onNext,
-  onBack,
-  busy,
-  showErrors,
+function NumberField({
+  label,
+  unit,
+  value,
+  min,
+  max,
+  onSave,
 }: {
-  startingPoint: StartingPoint | null;
-  preferred: string;
-  avoided: string;
-  equipment: string;
-  notes: string;
-  onChange: (patch: {
-    starting_point?: StartingPoint;
-    preferred?: string;
-    avoided?: string;
-    equipment?: string;
-    notes?: string;
-  }) => void;
-  validation: OnboardingValidationResult;
-  onNext: (options: { skipOptional: boolean }) => void;
-  onBack: () => void;
-  busy: boolean;
-  showErrors: boolean;
+  label: string;
+  unit: string;
+  value: number | undefined;
+  min: number;
+  max: number;
+  onSave: (value: number | null) => void;
 }) {
-  const notesId = useId();
-  const error = showErrors
-    ? validation.errors.find((issue) => issue.field === "starting_point")
-        ?.message
-    : undefined;
+  const id = useId();
+  const [draft, setDraft] = useState(value === undefined ? "" : String(value));
+  const [invalid, setInvalid] = useState(false);
+  const commit = () => {
+    const trimmed = draft.trim().replace(",", ".");
+    if (trimmed === "") {
+      setInvalid(false);
+      if (value !== undefined) onSave(null);
+      return;
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+      setInvalid(true);
+      return;
+    }
+    setInvalid(false);
+    if (parsed !== value) onSave(parsed);
+  };
   return (
-    <OnboardingLayout
-      title="Hast du eigene Vorlieben?"
-      onBack={onBack}
-      footer={
-        <>
-          <button
-            type="button"
-            className="primary"
-            onClick={() => onNext({ skipOptional: false })}
-            disabled={busy}
-          >
-            Weiter
-          </button>
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => onNext({ skipOptional: true })}
-            disabled={busy}
-          >
-            Optionale Angaben überspringen
-          </button>
-        </>
-      }
-    >
-      <ChoiceGroup
-        legend="Wie möchtest du starten?"
-        options={STARTING_POINT_OPTIONS}
-        value={startingPoint}
-        onChange={(value) => onChange({ starting_point: value })}
-        error={error}
-        name="starting_point"
-      />
-      {startingPoint === "existing_plan" && (
-        <OnboardingNotice tone="info" title="Deinen Plan übernehmen">
-          <p>
-            Beschreibe deinen bestehenden Plan einfach im Chat – zum Beispiel
-            „Ich trainiere Push/Pull/Legs mit Bankdrücken, Klimmzügen und
-            Kniebeugen". Arnold strukturiert das und zeigt es dir hier als
-            bearbeitbaren Entwurf. Fehlende Sätze oder Wiederholungen kannst du
-            danach ergänzen.
-          </p>
-        </OnboardingNotice>
-      )}
-      <TagInput
-        label="Übungen, die du gern machst"
-        hint="Mit Komma trennen. Optional."
-        placeholder="z. B. Bankdrücken, Klimmzüge"
-        value={preferred}
-        onChange={(value) => onChange({ preferred: value })}
-      />
-      <TagInput
-        label="Übungen, die du vermeiden möchtest"
-        hint="Mit Komma trennen. Optional."
-        placeholder="z. B. Kniebeugen"
-        value={avoided}
-        onChange={(value) => onChange({ avoided: value })}
-      />
-      <TagInput
-        label="Geräte, die dir zur Verfügung stehen"
-        hint="Besonders hilfreich beim Training zuhause. Optional."
-        placeholder="z. B. Kurzhanteln, Klimmzugstange"
-        value={equipment}
-        onChange={(value) => onChange({ equipment: value })}
-      />
-      <div className="onb-field">
-        <label className="onb-label" htmlFor={notesId}>
-          Sonst noch etwas?
-        </label>
-        <p className="onb-hint">
-          Freitext, optional. Bitte keine Gesundheits- oder Krankheitsangaben –
-          Arnold gibt keine medizinischen Einschätzungen ab.
-        </p>
-        <textarea
-          id={notesId}
-          className="onb-textarea"
-          rows={3}
-          maxLength={600}
-          placeholder="z. B. Ich trainiere am liebsten morgens."
-          value={notes}
-          onChange={(event) => onChange({ notes: event.target.value })}
+    <div className={`onb-field onb-number ${invalid ? "invalid" : ""}`}>
+      <label className="onb-label" htmlFor={id}>
+        {label}
+      </label>
+      <div className="onb-number-input">
+        <input
+          id={id}
+          type="text"
+          inputMode="decimal"
+          className="onb-input"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={commit}
+          aria-invalid={invalid}
         />
+        <span>{unit}</span>
       </div>
-      <OnboardingIssues validation={validation} step="preferences" />
-    </OnboardingLayout>
+      {invalid && (
+        <p className="onb-error" role="alert">
+          <CircleAlert size={14} aria-hidden="true" />
+          Bitte einen Wert zwischen {min} und {max} angeben.
+        </p>
+      )}
+    </div>
   );
 }
 
-/** Everything the user said, each line editable at its own step. */
-export function ProfileSummaryStep({
+/** One of the two cards. The header button opens and closes its form. */
+function ProfileCard({
+  title,
   summary,
+  complete,
+  optional,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string;
+  summary: string;
+  complete: boolean;
+  optional?: boolean;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  const panel = useId();
+  return (
+    <div className={`onb-card ${open ? "open" : ""} ${complete ? "done" : ""}`}>
+      <button
+        type="button"
+        className="onb-card-toggle"
+        aria-expanded={open}
+        aria-controls={panel}
+        onClick={onToggle}
+      >
+        <span className="onb-card-check" aria-hidden="true">
+          {complete ? <Check size={14} /> : null}
+        </span>
+        <span className="onb-card-title">
+          <strong>{title}</strong>
+          <span>
+            {summary}
+            {optional ? " · freiwillig" : ""}
+          </span>
+        </span>
+        <ChevronDown
+          size={16}
+          aria-hidden="true"
+          className="onb-card-chevron"
+        />
+      </button>
+      {open && (
+        <div className="onb-card-body" id={panel}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type CardPatch = { person: PersonPatch; training: TrainingPatch };
+const NO_PATCH: CardPatch = { person: {}, training: {} };
+const isEmptyPatch = (patch: CardPatch) =>
+  !Object.keys(patch.person).length && !Object.keys(patch.training).length;
+
+/** Lays a patch over stored answers for display: null and [] remove. */
+function overlay<T extends object>(base: T, patch: object): T {
+  const next = { ...base } as Record<string, unknown>;
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) continue;
+    if (value === null || (Array.isArray(value) && value.length === 0))
+      delete next[key];
+    else next[key] = value;
+  }
+  return next as T;
+}
+
+/**
+ * The "Plan mit Arnold" screen: the cards Person and Training, then
+ * "Plan erstellen".
+ *
+ * Taps stay on the device and show at once; they are saved in one write when
+ * a card is closed, when going back, or with "Plan erstellen". Inside ChatGPT
+ * every save is a round trip of seconds, so saving per tap would make the
+ * cards wait after every choice. No choice is ever locked while saving.
+ */
+export function ProfileStep({
+  profile,
   progress,
   validation,
-  onEdit,
-  onRequestPlan,
+  exerciseChoices,
+  splitOptions,
   busy,
-  canRequestPlan,
   canWritePlan,
+  onSave,
+  onRequestPlan,
   onBack,
+  initiallyOpen = null,
 }: {
-  summary: {
-    goal: TrainingGoal | null;
-    experience: ExperienceLevel | null;
-    days: number | null;
-    minutes: number | null;
-    environment: TrainingEnvironment | null;
-    startingPoint: StartingPoint | null;
-    preferred: readonly string[];
-    avoided: readonly string[];
-    equipment: readonly string[];
-    notes?: string;
-  };
+  profile: OnboardingProfile;
   progress: OnboardingProgress;
   validation: OnboardingValidationResult;
-  onEdit: (step: OnboardingStep) => void;
-  onRequestPlan: () => void;
+  exerciseChoices: readonly ExerciseChoice[];
+  splitOptions: readonly Split[];
   busy: boolean;
-  canRequestPlan: boolean;
   canWritePlan: boolean;
+  /** Saves both cards' changes in one write; resolves to whether it stuck. */
+  onSave: (patch: {
+    person?: PersonPatch;
+    training?: TrainingPatch;
+  }) => Promise<boolean>;
+  onRequestPlan: () => void;
   onBack: () => void;
+  /** The card that starts open. Both start closed by default. */
+  initiallyOpen?: "person" | "training" | null;
 }) {
-  const rows: {
-    label: string;
-    value: string;
-    step: OnboardingStep;
-    missing?: boolean;
-  }[] = [
-    {
-      label: REQUIRED_FIELD_LABEL.primary_goal,
-      value: summary.goal ? GOAL_LABEL[summary.goal] : "Noch offen",
-      step: "goal",
-      missing: !summary.goal,
-    },
-    {
-      label: REQUIRED_FIELD_LABEL.experience,
-      value: summary.experience
-        ? EXPERIENCE_LABEL[summary.experience]
-        : "Noch offen",
-      step: "goal",
-      missing: !summary.experience,
-    },
-    {
-      label: REQUIRED_FIELD_LABEL.days_per_week,
-      value:
-        summary.days === null
-          ? "Noch offen"
-          : `${summary.days} ${summary.days === 1 ? "Tag" : "Tage"} pro Woche`,
-      step: "availability",
-      missing: summary.days === null,
-    },
-    {
-      label: REQUIRED_FIELD_LABEL.session_minutes,
-      value:
-        summary.minutes === null
-          ? "Noch offen"
-          : `${summary.minutes} Minuten je Training`,
-      step: "availability",
-      missing: summary.minutes === null,
-    },
-    {
-      label: REQUIRED_FIELD_LABEL.environment,
-      value: summary.environment
-        ? ENVIRONMENT_LABEL[summary.environment]
-        : "Noch offen",
-      step: "availability",
-      missing: !summary.environment,
-    },
-    {
-      label: REQUIRED_FIELD_LABEL.starting_point,
-      value: summary.startingPoint
-        ? STARTING_POINT_LABEL[summary.startingPoint]
-        : "Noch offen",
-      step: "preferences",
-      missing: !summary.startingPoint,
-    },
-  ];
-  const optional: { label: string; value: string }[] = [];
-  if (summary.preferred.length)
-    optional.push({
-      label: "Bevorzugte Übungen",
-      value: summary.preferred.join(", "),
+  const [open, setOpen] = useState<"person" | "training" | null>(initiallyOpen);
+  /** Taps not sent yet, and taps sent but not yet confirmed by the server. */
+  const [pending, setPending] = useState<CardPatch>(NO_PATCH);
+  const [inFlight, setInFlight] = useState<CardPatch>(NO_PATCH);
+
+  const person = overlay(
+    overlay(profile.person, inFlight.person),
+    pending.person,
+  );
+  const training = overlay(
+    overlay(profile.training, inFlight.training),
+    pending.training,
+  );
+
+  const changePerson = (patch: PersonPatch) =>
+    setPending((current) => ({
+      ...current,
+      person: { ...current.person, ...patch },
+    }));
+  const changeTraining = (patch: TrainingPatch) =>
+    setPending((current) => {
+      const next: TrainingPatch = { ...current.training, ...patch };
+      // Fixed weekdays decide the count; a different count drops them. The
+      // server applies the same rule; this keeps the screen in step with it.
+      if (patch.training_days?.length)
+        next.days_per_week = patch.training_days.length;
+      else if (
+        patch.days_per_week !== undefined &&
+        (training.training_days?.length ?? 0) > 0 &&
+        training.training_days!.length !== patch.days_per_week
+      )
+        next.training_days = [];
+      return { ...current, training: next };
     });
-  if (summary.avoided.length)
-    optional.push({
-      label: "Zu vermeidende Übungen",
-      value: summary.avoided.join(", "),
+
+  /** Sends what is pending. Taps made meanwhile stay pending, never lost. */
+  const flush = async () => {
+    if (isEmptyPatch(pending)) return true;
+    const sent = pending;
+    setInFlight(sent);
+    setPending(NO_PATCH);
+    const ok = await onSave({
+      ...(Object.keys(sent.person).length ? { person: sent.person } : {}),
+      ...(Object.keys(sent.training).length ? { training: sent.training } : {}),
     });
-  if (summary.equipment.length)
-    optional.push({
-      label: "Verfügbare Geräte",
-      value: summary.equipment.join(", "),
-    });
-  if (summary.notes) optional.push({ label: "Notiz", value: summary.notes });
+    setInFlight(NO_PATCH);
+    if (!ok)
+      setPending((current) => ({
+        person: { ...sent.person, ...current.person },
+        training: { ...sent.training, ...current.training },
+      }));
+    return ok;
+  };
+
+  const toggle = (card: "person" | "training") => {
+    void flush();
+    setOpen((current) => (current === card ? null : card));
+  };
+
+  const missing = TRAINING_REQUIRED_FIELDS.filter(
+    (field) => training[field] === null || training[field] === undefined,
+  );
+  const trainingComplete = missing.length === 0;
+  const personComplete = PERSON_BASICS.every(
+    (field) => person[field] !== undefined,
+  );
+  const notesId = useId();
+  const [notes, setNotes] = useState(training.notes ?? "");
+
+  const personSummary =
+    [
+      person.age_years !== undefined ? `${person.age_years} Jahre` : null,
+      person.sex ? SEX_LABEL[person.sex] : null,
+      person.height_cm !== undefined ? `${person.height_cm} cm` : null,
+      person.body_weight_kg !== undefined
+        ? `${person.body_weight_kg} kg`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || "Alter, Geschlecht, Größe, Gewicht";
+  const trainingSummary = trainingComplete
+    ? [
+        training.primary_goal ? GOAL_LABEL[training.primary_goal] : null,
+        training.days_per_week !== null
+          ? `${training.days_per_week} × pro Woche`
+          : null,
+        training.session_minutes !== null
+          ? `${training.session_minutes} Min.`
+          : null,
+        training.environment ? ENVIRONMENT_LABEL[training.environment] : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : `Ziel, Tage, Zeit, Ort · noch ${missing.length} offen`;
+
+  const splitChoices = SPLITS.filter(
+    (split) => splitOptions.includes(split) || split === training.split,
+  ).map((split) => ({
+    value: split,
+    label: SPLIT_LABEL[split],
+    hint: SPLIT_HINT[split],
+  }));
+  const groups = MUSCLE_GROUPS.map((group) => ({
+    group,
+    exercises: exerciseChoices.filter(
+      (choice) => choice.muscle_group === group,
+    ),
+  })).filter((entry) => entry.exercises.length);
+  const preferred = training.preferred_exercise_ids ?? [];
 
   return (
     <OnboardingLayout
-      title="Passt das so?"
+      title="Erzähl Arnold von dir"
+      lead="Zwei kurze Bereiche. Alles wird sofort gespeichert."
       progress={progress}
-      onBack={onBack}
+      onBack={() => void flush().then(() => onBack())}
       footer={
         <button
           type="button"
           className="primary onb-cta"
-          onClick={onRequestPlan}
-          disabled={busy || !canRequestPlan || !canWritePlan}
+          onClick={() =>
+            void flush().then((ok) => {
+              if (ok) onRequestPlan();
+            })
+          }
+          disabled={busy || !trainingComplete || !canWritePlan}
         >
           {busy ? (
             <LoaderCircle size={16} className="spin" aria-hidden="true" />
           ) : (
             <Sparkles size={16} aria-hidden="true" />
           )}
-          Trainingsplan vorschlagen lassen
+          Plan erstellen
         </button>
       }
     >
-      <dl className="onb-summary">
-        {rows.map((row) => (
-          <div key={row.label} className={row.missing ? "missing" : ""}>
-            <dt>{row.label}</dt>
-            <dd>
-              <span>{row.value}</span>
-              <button
-                type="button"
-                className="onb-edit"
-                onClick={() => onEdit(row.step)}
-                aria-label={`${row.label} ändern`}
-              >
-                <Pencil size={13} aria-hidden="true" />
-                Ändern
-              </button>
-            </dd>
+      <div className="onb-cards">
+        <ProfileCard
+          title="Person"
+          summary={personSummary}
+          complete={personComplete}
+          optional
+          open={open === "person"}
+          onToggle={() => toggle("person")}
+        >
+          <div className="onb-number-row">
+            <NumberField
+              label="Alter"
+              unit="Jahre"
+              value={person.age_years}
+              min={14}
+              max={100}
+              onSave={(value) => changePerson({ age_years: value })}
+            />
+            <NumberField
+              label="Größe"
+              unit="cm"
+              value={person.height_cm}
+              min={120}
+              max={230}
+              onSave={(value) => changePerson({ height_cm: value })}
+            />
+            <NumberField
+              label="Gewicht"
+              unit="kg"
+              value={person.body_weight_kg}
+              min={30}
+              max={300}
+              onSave={(value) => changePerson({ body_weight_kg: value })}
+            />
           </div>
-        ))}
-        {optional.map((row) => (
-          <div key={row.label} className="optional">
-            <dt>{row.label}</dt>
-            <dd>
-              <span>{row.value}</span>
-              <button
-                type="button"
-                className="onb-edit"
-                onClick={() => onEdit("preferences")}
-                aria-label={`${row.label} ändern`}
-              >
-                <Pencil size={13} aria-hidden="true" />
-                Ändern
-              </button>
-            </dd>
+          <ChoiceGroup
+            legend="Geschlecht"
+            options={SEX_OPTIONS}
+            value={person.sex ?? null}
+            onChange={(value) => changePerson({ sex: value })}
+            columns="compact"
+            name="sex"
+          />
+          <ChipGroup
+            legend="Gibt es Bereiche, die du schonen möchtest?"
+            hint="Arnold wählt dafür schonendere Übungen. Keine Diagnose nötig."
+            options={BODY_AREAS.map((area) => ({
+              value: area,
+              label: BODY_AREA_LABEL[area],
+            }))}
+            values={person.protect_areas ?? []}
+            onChange={(values) => changePerson({ protect_areas: values })}
+            name="protect_areas"
+          />
+        </ProfileCard>
+
+        <ProfileCard
+          title="Training"
+          summary={trainingSummary}
+          complete={trainingComplete}
+          open={open === "training"}
+          onToggle={() => toggle("training")}
+        >
+          <ChoiceGroup
+            legend="Was ist dein Ziel?"
+            options={GOAL_OPTIONS}
+            value={training.primary_goal}
+            onChange={(value) => changeTraining({ primary_goal: value })}
+            name="primary_goal"
+          />
+          <ChoiceGroup
+            legend="Wie lange trainierst du schon?"
+            options={EXPERIENCE_OPTIONS}
+            value={training.experience}
+            onChange={(value) => changeTraining({ experience: value })}
+            name="experience"
+          />
+          <ChipGroup
+            legend="An welchen Tagen kannst du trainieren?"
+            hint="Feste Tage antippen – oder unten nur die Anzahl wählen."
+            options={WEEKDAYS.map((day) => ({
+              value: day,
+              label: WEEKDAY_LABEL[day],
+            }))}
+            values={training.training_days ?? []}
+            onChange={(values) => changeTraining({ training_days: values })}
+            name="training_days"
+          />
+          <ChoiceGroup
+            legend="Wie oft pro Woche?"
+            options={DAY_OPTIONS}
+            value={training.days_per_week}
+            onChange={(value) => changeTraining({ days_per_week: value })}
+            columns="compact"
+            name="days_per_week"
+          />
+          <ChoiceGroup
+            legend="Wie viel Zeit hast du pro Training?"
+            options={MINUTE_OPTIONS}
+            value={training.session_minutes}
+            onChange={(value) => changeTraining({ session_minutes: value })}
+            columns="compact"
+            name="session_minutes"
+          />
+          <ChoiceGroup
+            legend="Wo trainierst du?"
+            options={ENVIRONMENT_OPTIONS}
+            value={training.environment}
+            onChange={(value) => changeTraining({ environment: value })}
+            name="environment"
+          />
+          {(training.environment === "home" ||
+            training.environment === "outdoor") && (
+            <ChipGroup
+              legend="Welche Geräte hast du?"
+              hint="Ohne Auswahl plant Arnold mit dem eigenen Körpergewicht."
+              options={EQUIPMENT.map((item) => ({
+                value: item,
+                label: EQUIPMENT_LABEL[item],
+              }))}
+              values={training.equipment ?? []}
+              onChange={(values) => changeTraining({ equipment: values })}
+              name="equipment"
+            />
+          )}
+          <ChoiceGroup
+            legend="Bevorzugst du eine Aufteilung?"
+            options={splitChoices}
+            value={training.split ?? "auto"}
+            onChange={(value) => changeTraining({ split: value })}
+            name="split"
+          />
+          <ChipGroup
+            legend="Worauf soll der Schwerpunkt liegen?"
+            hint="Bis zu drei Muskelgruppen. Optional."
+            options={MUSCLE_GROUPS.map((group) => ({
+              value: group,
+              label: MUSCLE_GROUP_LABEL[group],
+            }))}
+            values={training.focus_muscle_groups ?? []}
+            onChange={(values) =>
+              changeTraining({ focus_muscle_groups: values })
+            }
+            max={3}
+            name="focus_muscle_groups"
+          />
+          {groups.length > 0 && (
+            <fieldset className="onb-field onb-exercises">
+              <legend>Welche Übungen machst du gern?</legend>
+              <p className="onb-hint">
+                Antippen, was in deinen Plan soll. Optional.
+              </p>
+              {groups.map(({ group, exercises }) => (
+                <ChipGroup
+                  key={group}
+                  legend={MUSCLE_GROUP_LABEL[group]}
+                  options={exercises.map((exercise) => ({
+                    value: exercise.exercise_id,
+                    label: exercise.name_de,
+                  }))}
+                  values={preferred.filter((id) =>
+                    exercises.some((exercise) => exercise.exercise_id === id),
+                  )}
+                  onChange={(values) =>
+                    changeTraining({
+                      preferred_exercise_ids: [
+                        ...preferred.filter(
+                          (id) =>
+                            !exercises.some(
+                              (exercise) => exercise.exercise_id === id,
+                            ),
+                        ),
+                        ...values,
+                      ],
+                    })
+                  }
+                  name={`preferred-${group}`}
+                />
+              ))}
+            </fieldset>
+          )}
+          <div className="onb-field">
+            <label className="onb-label" htmlFor={notesId}>
+              Sonst noch etwas?
+            </label>
+            <p className="onb-hint">Freitext, optional.</p>
+            <textarea
+              id={notesId}
+              className="onb-textarea"
+              rows={2}
+              maxLength={600}
+              placeholder="z. B. Ich trainiere am liebsten morgens."
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              onBlur={() => {
+                const next = notes.trim();
+                if (next !== (training.notes ?? ""))
+                  changeTraining({ notes: next || null });
+              }}
+            />
           </div>
-        ))}
-      </dl>
-      {!progress.profile_complete && (
-        <OnboardingNotice tone="warning" title="Es fehlen noch Angaben">
-          <p>
-            Für einen Planvorschlag fehlen:{" "}
-            {progress.missing_fields
-              .map(
-                (field) =>
-                  REQUIRED_FIELD_LABEL[
-                    field as keyof typeof REQUIRED_FIELD_LABEL
-                  ] ?? field,
-              )
-              .join(", ")}
-            .
-          </p>
-        </OnboardingNotice>
+        </ProfileCard>
+      </div>
+      {!trainingComplete && (
+        <p className="onb-note">
+          Für deinen Plan fehlt noch:{" "}
+          {missing
+            .map((field) => REQUIRED_FIELD_LABEL[`training.${field}`])
+            .join(", ")}
+          .
+        </p>
       )}
-      <OnboardingIssues validation={validation} />
+      <OnboardingIssues validation={validation} step="profile" />
+    </OnboardingLayout>
+  );
+}
+
+/**
+ * The "Eigener Plan" screen. The plan arrives through the chat — as text or a
+ * photo — so this screen only says so and waits for the draft.
+ */
+export function OwnPlanStep({
+  onBack,
+  onAskChat,
+  onReload,
+  busy,
+}: {
+  onBack: () => void;
+  onAskChat: () => void;
+  onReload: () => void;
+  busy: boolean;
+}) {
+  return (
+    <OnboardingLayout
+      title="Deinen Plan übernehmen"
+      lead="Schreib deinen Plan in den Chat oder schick ein Foto davon."
+      onBack={onBack}
+    >
+      <OnboardingNotice tone="info" title="So geht es">
+        <p>
+          Zum Beispiel: „Montag Brust und Trizeps: Bankdrücken 3×8, Dips 3×10 …"
+          oder ein Foto von deinem Zettel. Arnold überträgt den Plan und zeigt
+          ihn dir hier als Entwurf. Fehlende Sätze oder Wiederholungen kannst du
+          danach ergänzen.
+        </p>
+      </OnboardingNotice>
+      <div className="onb-actions">
+        <button
+          type="button"
+          className="primary"
+          onClick={onAskChat}
+          disabled={busy}
+        >
+          Im Chat weitermachen
+        </button>
+        <button
+          type="button"
+          className="secondary"
+          onClick={onReload}
+          disabled={busy}
+        >
+          <RefreshCw size={14} aria-hidden="true" />
+          Nach dem Plan suchen
+        </button>
+      </div>
     </OnboardingLayout>
   );
 }
@@ -989,19 +1216,19 @@ export function ProfileSummaryStep({
 export function PlanGenerationStep({
   daysPerWeek,
   minutes,
-  startingPoint,
+  path,
   onBack,
   onReload,
   busy,
 }: {
   daysPerWeek: number | null;
   minutes: number | null;
-  startingPoint: StartingPoint | null;
+  path: OnboardingPath | null;
   onBack: () => void;
   onReload: () => void;
   busy: boolean;
 }) {
-  const existing = startingPoint === "existing_plan";
+  const existing = path === "own_plan";
   return (
     <OnboardingLayout
       title="Jetzt entsteht dein Plan"
@@ -1010,8 +1237,8 @@ export function PlanGenerationStep({
     >
       <OnboardingNotice tone="info" title="So geht es weiter">
         <p>
-          Wechsle in den Chat und schreibe Arnold, dass dein Plan erstellt
-          werden soll. Zum Beispiel:
+          Arnold arbeitet im Chat an deinem Plan. Falls dort nichts passiert,
+          schreib zum Beispiel:
         </p>
         <p className="onb-quote">
           {existing
@@ -1033,8 +1260,8 @@ export function PlanGenerationStep({
           <span>Minuten je Einheit</span>
         </li>
         <li>
-          <strong>{existing ? "Übernahme" : "Neuer Plan"}</strong>
-          <span>Ausgangssituation</span>
+          <strong>{existing ? "Eigener Plan" : "Plan von Arnold"}</strong>
+          <span>Weg</span>
         </li>
       </ul>
       <p className="onb-note">

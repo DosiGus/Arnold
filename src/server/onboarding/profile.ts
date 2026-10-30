@@ -12,24 +12,30 @@
  * rewrite an answer it finds unusual — an implausible number is refused at the
  * schema boundary and everything inside the band is the user's call.
  *
- * Nothing in this module makes a health claim. Physical limitations a user
- * mentions voluntarily stay free text in `preferences.notes`, are passed
- * through as user data, and never become a medical assessment or a training
- * clearance.
+ * Nothing in this module makes a health claim. Body areas a user wants to go
+ * easy on are passed on as a training preference ("load carefully"), never as
+ * a diagnosis, an assessment or a training clearance.
  */
 import type { ArnoldExercise } from "../../shared/arnold-schema-v1.js";
 import {
+  BODY_AREA_LABEL,
   ENVIRONMENT_LABEL,
+  EQUIPMENT_LABEL,
   EXPERIENCE_LABEL,
   FIELD_STEP,
   GOAL_LABEL,
   MISSING_FIELD_CODE,
+  MUSCLE_GROUP_LABEL,
   ONBOARDING_CONTRACT,
-  PROFILE_STEPS,
-  REQUIRED_PROFILE_FIELDS,
+  PERSON_BASICS,
   REQUIRED_FIELD_LABEL,
   SESSION_MINUTES_MAX,
   SESSION_MINUTES_MIN,
+  SPLIT_LABEL,
+  WEEKDAY_LABEL,
+  requiredFieldsFor,
+  splitsForDays,
+  type ExerciseChoice,
   type OnboardingBrief,
   type OnboardingProfile,
   type OnboardingProgress,
@@ -39,16 +45,47 @@ import {
   type RequiredProfileField,
   type TrainingSessionInputLike,
 } from "../../shared/onboarding-contract.js";
+import {
+  exercisesFor,
+  starterExercise,
+} from "../../shared/exercise-starter-catalog.js";
+
+/** The value behind a required field name. */
+function valueOf(profile: OnboardingProfile, field: RequiredProfileField) {
+  if (field === "path") return profile.path;
+  const key = field.slice("training.".length) as keyof typeof profile.training;
+  return profile.training[key] ?? null;
+}
 
 /** The required answers that are still missing, in asking order. */
 export function missingRequiredFields(
   profile: OnboardingProfile,
 ): RequiredProfileField[] {
-  return REQUIRED_PROFILE_FIELDS.filter((field) => profile[field] === null);
+  return requiredFieldsFor(profile.path).filter(
+    (field) => valueOf(profile, field) === null,
+  );
+}
+
+/**
+ * The first collection step that still lacks a required answer.
+ *
+ * Recorded after a save without an explicit step, so the stored position says
+ * what to ask next. Left at "goal" after the goal was answered, a chat client
+ * reads it as "the goal is still open" and asks — and saves — it again.
+ */
+export function firstOpenStep(
+  profile: OnboardingProfile,
+): OnboardingStep | undefined {
+  const field = missingRequiredFields(profile)[0];
+  return field ? FIELD_STEP[field] : undefined;
 }
 
 export const isProfileComplete = (profile: OnboardingProfile) =>
-  missingRequiredFields(profile).length === 0;
+  profile.path !== null && missingRequiredFields(profile).length === 0;
+
+/** The Person card's check mark: all four basics answered. */
+export const isPersonComplete = (profile: OnboardingProfile) =>
+  PERSON_BASICS.every((field) => profile.person[field] !== undefined);
 
 const issue = (
   severity: OnboardingValidationIssue["severity"],
@@ -63,7 +100,6 @@ const issue = (
  */
 export function validateProfile(
   profile: OnboardingProfile,
-  catalog: ReadonlyMap<string, ArnoldExercise> = new Map(),
 ): OnboardingValidationResult {
   const found: OnboardingValidationIssue[] = [];
 
@@ -71,115 +107,134 @@ export function validateProfile(
     found.push(
       issue("error", {
         code: MISSING_FIELD_CODE[field],
-        message: `${REQUIRED_FIELD_LABEL[field]} fehlt noch.`,
+        message:
+          field === "path"
+            ? "Wähle zuerst, ob Arnold deinen Plan erstellt oder du deinen eigenen Plan übernimmst."
+            : `${REQUIRED_FIELD_LABEL[field]} fehlt noch.`,
         field,
         step: FIELD_STEP[field],
       }),
     );
 
+  // The rest is about the Training card, which only the Arnold path fills.
+  if (profile.path !== "arnold_plan") return result(found);
+
+  const training = profile.training;
+
   // Inside the accepted band, an unusual combination is information, never a
   // refusal. Outside it, the schema has already rejected the value.
-  if (profile.session_minutes !== null) {
+  if (training.session_minutes !== null) {
     if (
-      profile.session_minutes < SESSION_MINUTES_MIN ||
-      profile.session_minutes > SESSION_MINUTES_MAX
+      training.session_minutes < SESSION_MINUTES_MIN ||
+      training.session_minutes > SESSION_MINUTES_MAX
     )
       found.push(
         issue("error", {
           code: "IMPLAUSIBLE_SESSION_MINUTES",
           message: `Die Trainingsdauer sollte zwischen ${SESSION_MINUTES_MIN} und ${SESSION_MINUTES_MAX} Minuten liegen.`,
-          field: "session_minutes",
-          step: "availability",
+          field: "training.session_minutes",
+          step: "profile",
         }),
       );
-    else if (profile.session_minutes <= 30)
+    else if (training.session_minutes <= 30)
       found.push(
         issue("recommendation", {
           code: "IMPLAUSIBLE_SESSION_MINUTES",
           message:
             "Bei 30 Minuten pro Einheit bleiben wenige Übungen pro Training. Der Plan wird entsprechend kompakt.",
-          field: "session_minutes",
-          step: "availability",
+          field: "training.session_minutes",
+          step: "profile",
         }),
       );
   }
 
-  if (profile.days_per_week !== null && profile.days_per_week >= 6)
+  if (training.days_per_week !== null && training.days_per_week >= 6)
     found.push(
       issue("recommendation", {
         code: "IMPLAUSIBLE_DAYS_PER_WEEK",
         message:
           "Sechs oder sieben Trainingstage pro Woche lassen wenig Zeit zur Erholung. Das ist möglich, braucht aber eine durchdachte Aufteilung.",
-        field: "days_per_week",
-        step: "availability",
+        field: "training.days_per_week",
+        step: "profile",
       }),
     );
 
-  const preferences = profile.preferences;
-
-  // A starting weight without its load convention is not usable: the same
-  // number means different things per dumbbell and on a machine display. The
-  // schema enforces the fields, so what is left to check is the reference.
-  for (const load of preferences.known_starting_loads ?? []) {
-    const exercise = catalog.get(load.exercise_id);
-    if (!exercise)
-      found.push(
-        issue("warning", {
-          code: "UNKNOWN_EXERCISE_REFERENCE",
-          message: `Für das angegebene Startgewicht ist die Übung "${load.exercise_id}" nicht im Übungskatalog. Das Gewicht wird nicht übernommen.`,
-          field: "preferences.known_starting_loads",
-          step: "preferences",
-        }),
-      );
-    else if (exercise.default_load_basis !== load.load_basis)
-      found.push(
-        issue("warning", {
-          code: "INCOMPLETE_STARTING_LOAD",
-          message: `Das Startgewicht für ${exercise.name_de} ist als "${load.load_basis}" angegeben, die Übung wird aber üblicherweise als "${exercise.default_load_basis}" erfasst. Bitte prüfen, damit der Vergleich später stimmt.`,
-          field: "preferences.known_starting_loads",
-          step: "preferences",
-        }),
-      );
-  }
-
-  // An existing routine is rarely complete. Saying so is more useful than
-  // quietly inventing the sets and reps the user never mentioned.
-  for (const day of preferences.existing_routine ?? []) {
-    if (!day.exercises?.length)
-      found.push(
-        issue("warning", {
-          code: "EXISTING_ROUTINE_INCOMPLETE",
-          message: `Für "${day.session_name}" sind noch keine Übungen genannt. Diese Einheit muss vor der Bestätigung ergänzt werden.`,
-          field: "preferences.existing_routine",
-          step: "preferences",
-        }),
-      );
-    for (const exercise of day.exercises ?? [])
-      if (exercise.target_sets === undefined || exercise.rep_min === undefined)
-        found.push(
-          issue("warning", {
-            code: "EXISTING_ROUTINE_INCOMPLETE",
-            message: `Für "${exercise.name}" in "${day.session_name}" fehlen Sätze oder Wiederholungen. Offene Angaben bleiben leer und können im Editor ergänzt werden.`,
-            field: "preferences.existing_routine",
-            step: "preferences",
-          }),
-        );
-  }
+  // A split that does not fit the days is the user's call, but worth a word:
+  // push/pull/legs on two days leaves a muscle group untrained for a week.
+  if (
+    training.split &&
+    training.split !== "auto" &&
+    training.days_per_week !== null &&
+    !splitsForDays(training.days_per_week).includes(training.split)
+  )
+    found.push(
+      issue("recommendation", {
+        code: "SPLIT_DAYS_MISMATCH",
+        message: `${SPLIT_LABEL[training.split]} passt nicht gut zu ${training.days_per_week} Trainingstagen. Arnold plant so, dass jede Muskelgruppe trotzdem regelmäßig drankommt.`,
+        field: "training.split",
+        step: "profile",
+      }),
+    );
 
   if (
-    profile.environment === "home" &&
-    (preferences.available_equipment?.length ?? 0) === 0
+    (training.environment === "home" || training.environment === "outdoor") &&
+    (training.equipment?.length ?? 0) === 0
   )
     found.push(
       issue("recommendation", {
         code: "EQUIPMENT_ENVIRONMENT_MISMATCH",
         message:
-          "Für ein Training zuhause hilft es zu wissen, welche Geräte vorhanden sind. Ohne Angabe plant Arnold zurückhaltend.",
-        field: "preferences.available_equipment",
-        step: "preferences",
+          training.environment === "home"
+            ? "Für ein Training zuhause hilft es zu wissen, welche Geräte vorhanden sind. Ohne Angabe plant Arnold mit dem eigenen Körpergewicht."
+            : "Ohne eigene Geräte plant Arnold draußen mit Körpergewicht, Klimmzugstange und Barren.",
+        field: "training.equipment",
+        step: "profile",
       }),
     );
 
+  // A favourite the user cannot do where they train is kept, not dropped —
+  // they may train elsewhere sometimes — but they should know.
+  if (training.environment !== null) {
+    const possible = new Set(
+      exercisesFor(training.environment, training.equipment ?? []).map(
+        (exercise) => exercise.exercise_id,
+      ),
+    );
+    const unavailable = (training.preferred_exercise_ids ?? []).filter(
+      (exercise) => !possible.has(exercise),
+    );
+    if (unavailable.length)
+      found.push(
+        issue("warning", {
+          code: "PREFERRED_EXERCISE_UNAVAILABLE",
+          message: `${unavailable
+            .map((exercise) => starterExercise(exercise)?.name_de ?? exercise)
+            .join(
+              ", ",
+            )} ${unavailable.length === 1 ? "ist" : "sind"} mit deinem Trainingsort und deinen Geräten nicht möglich und ${unavailable.length === 1 ? "wird" : "werden"} nur eingeplant, wenn es eine Alternative gibt.`,
+          field: "training.preferred_exercise_ids",
+          step: "profile",
+        }),
+      );
+  }
+
+  if (!isPersonComplete(profile))
+    found.push(
+      issue("recommendation", {
+        code: "PERSON_INCOMPLETE",
+        message:
+          "Alter, Geschlecht, Größe und Gewicht sind freiwillig. Mit ihnen kann Arnold Umfang und Übungsauswahl besser anpassen.",
+        field: "person",
+        step: "profile",
+      }),
+    );
+
+  return result(found);
+}
+
+function result(
+  found: OnboardingValidationIssue[],
+): OnboardingValidationResult {
   const errors = found.filter((f) => f.severity === "error");
   return {
     valid: errors.length === 0,
@@ -191,14 +246,11 @@ export function validateProfile(
 
 /** Which collection steps already have all of their answers. */
 function completedSteps(profile: OnboardingProfile): OnboardingStep[] {
-  const missing = new Set(
-    missingRequiredFields(profile).map((f) => FIELD_STEP[f]),
-  );
-  const done = PROFILE_STEPS.filter(
-    (step) => step !== "summary" && !missing.has(step),
-  );
-  // The summary is "done" only once every answer behind it is in.
-  return missing.size === 0 ? [...done, "summary"] : [...done];
+  if (profile.path === null) return [];
+  const done: OnboardingStep[] = ["welcome"];
+  if (isProfileComplete(profile))
+    done.push(profile.path === "own_plan" ? "own_plan" : "profile");
+  return done;
 }
 
 /**
@@ -215,24 +267,44 @@ export function buildProgress(
     can_confirm_plan: boolean;
   },
 ): OnboardingProgress {
+  const required = requiredFieldsFor(profile.path);
   const missing = missingRequiredFields(profile);
-  const answered = REQUIRED_PROFILE_FIELDS.length - missing.length;
-  const complete = missing.length === 0;
+  // The path itself counts as the first answer, so choosing a button moves the
+  // bar. The own-plan path has no further questions.
+  const total = required.length + (profile.path === null ? 0 : 1);
+  const answered = total - missing.length;
+  const complete = isProfileComplete(profile);
   // The bar covers the whole setup, not just the questions: answers are the
   // first 70%, the plan and its confirmation the rest.
-  const base = Math.round((answered / REQUIRED_PROFILE_FIELDS.length) * 70);
+  const base =
+    total === 0 ? 0 : Math.round((answered / Math.max(total, 1)) * 70);
   const tail = context.can_confirm_plan ? 20 : complete ? 10 : 0;
   return {
     current_step: context.step,
     completed_steps: completedSteps(profile),
     answered_required: answered,
-    total_required: REQUIRED_PROFILE_FIELDS.length,
+    total_required: total,
     profile_complete: complete,
+    person_complete: isPersonComplete(profile),
+    training_complete: profile.path === "arnold_plan" && missing.length === 0,
     missing_fields: missing,
     percent: Math.min(100, base + tail),
     can_request_plan: context.can_request_plan,
     can_confirm_plan: context.can_confirm_plan,
   };
+}
+
+/** The picker tiles for where the user trains, in catalog order. */
+export function exerciseChoices(profile: OnboardingProfile): ExerciseChoice[] {
+  return exercisesFor(
+    profile.training.environment,
+    profile.training.equipment ?? [],
+  ).map((exercise) => ({
+    exercise_id: exercise.exercise_id,
+    name_de: exercise.name_de,
+    muscle_group: exercise.muscle_group,
+    muscle_group_label: MUSCLE_GROUP_LABEL[exercise.muscle_group],
+  }));
 }
 
 /**
@@ -251,11 +323,11 @@ export function exerciseBudget(minutes: number): { min: number; max: number } {
 /**
  * The brief.
  *
- * Everything a plan proposal needs and nothing that identifies a person. The
- * `constraints` and `must_not_invent` lists are written for a model to follow
- * literally, because they are the difference between a plausible plan and a
- * fabricated one: unknown loads stay empty, exercise ids come from the catalog,
- * and the day count matches what the user said.
+ * Everything a plan proposal needs. The `constraints` and `must_not_invent`
+ * lists are written for a model to follow literally, because they are the
+ * difference between a plausible plan and a fabricated one: unknown loads stay
+ * empty, exercise ids come from the catalog, and the day count matches what
+ * the user said.
  */
 export function buildBrief(
   profile: OnboardingProfile,
@@ -266,96 +338,67 @@ export function buildBrief(
   },
 ): OnboardingBrief {
   // Guarded by the caller: a brief is only built for a complete profile.
-  if (
-    profile.primary_goal === null ||
-    profile.experience === null ||
-    profile.days_per_week === null ||
-    profile.session_minutes === null ||
-    profile.environment === null ||
-    profile.starting_point === null
-  )
+  if (!isProfileComplete(profile) || profile.path === null)
     throw new Error("Brief setzt ein vollständiges Profil voraus.");
 
-  const budget = exerciseBudget(profile.session_minutes);
-  const preferences = profile.preferences;
+  const person = profile.person;
+  const training = profile.training;
+  const catalog = input.exercises.filter(
+    (exercise) => exercise.status === "active",
+  );
+  const inCatalog = new Set(catalog.map((exercise) => exercise.exercise_id));
+  const reference = (exercise_id: string) => ({
+    exercise_id,
+    name_de: starterExercise(exercise_id)?.name_de ?? exercise_id,
+    in_catalog: inCatalog.has(exercise_id),
+  });
+  const preferred = (training.preferred_exercise_ids ?? []).map(reference);
+  const avoided = (training.avoided_exercise_ids ?? []).map(reference);
+  const protect = person.protect_areas ?? [];
 
   // Free text is collected separately and labelled, so a model treats it as a
   // preference the user expressed and not as an instruction to the server.
   const statements: { field: string; text: string }[] = [];
-  if (preferences.notes)
-    statements.push({ field: "preferences.notes", text: preferences.notes });
-  for (const day of preferences.existing_routine ?? [])
-    for (const exercise of day.exercises ?? [])
-      if (exercise.notes)
-        statements.push({
-          field: `preferences.existing_routine.${day.session_name}.${exercise.name}`,
-          text: exercise.notes,
-        });
+  if (training.notes)
+    statements.push({ field: "training.notes", text: training.notes });
 
-  const constraints = [
-    `Genau ${profile.days_per_week} Trainingstage pro Woche planen.`,
-    `Jede Einheit soll in etwa ${profile.session_minutes} Minuten durchführbar sein: ${budget.min} bis ${budget.max} Übungen pro Einheit.`,
+  const shared = [
     "Jede Trainingseinheit braucht mindestens eine Übung.",
     "Nur exercise_id-Werte aus exercise_catalog verwenden.",
     "Satzanzahl zwischen 1 und 20, Wiederholungsbereich mit rep_min <= rep_max und beides zwischen 1 und 100.",
-    "Trainingseinheiten frei benennen; es gibt keinen vorgeschriebenen Split.",
-    profile.environment === "home"
-      ? "Nur Übungen vorschlagen, die mit dem genannten Equipment zuhause durchführbar sind."
-      : profile.environment === "mixed"
-        ? "Übungen bevorzugen, die sich sowohl im Studio als auch zuhause umsetzen lassen."
-        : "Die volle Geräteauswahl eines Fitnessstudios darf genutzt werden.",
     "Ausschließlich Krafttraining. Kein Cardio, keine Ernährung, keine medizinischen Hinweise.",
   ];
-  if (preferences.avoided_exercises?.length)
-    constraints.push(
-      `Diese Übungen meiden: ${preferences.avoided_exercises.join(", ")}.`,
-    );
-  if (preferences.preferred_exercises?.length)
-    constraints.push(
-      `Diese Übungen bevorzugt einplanen, wenn sie fachlich passen: ${preferences.preferred_exercises.join(", ")}.`,
-    );
-  if (preferences.preferred_split)
-    constraints.push(
-      `Gewünschte Aufteilung, soweit sinnvoll umsetzbar: ${preferences.preferred_split}.`,
-    );
-  if (profile.starting_point === "existing_plan")
-    constraints.push(
-      "Die bestehende Routine aus preferences.existing_routine übernehmen und nur fehlende Angaben ergänzen. Die Struktur des Nutzers nicht ohne Not ersetzen.",
+  if (protect.length)
+    shared.push(
+      `Der Nutzer möchte diese Bereiche schonen: ${protect.map((area) => BODY_AREA_LABEL[area]).join(", ")}. Übungen, die diese Bereiche stark belasten, zurückhaltend einsetzen oder durch schonendere Varianten ersetzen. Das ist eine Trainingsvorliebe, keine Diagnose; keine medizinischen Aussagen dazu machen.`,
     );
 
-  return {
-    onboarding_contract: ONBOARDING_CONTRACT,
+  const personFacts = {
+    age_years: person.age_years ?? null,
+    sex: person.sex ?? null,
+    height_cm: person.height_cm ?? null,
+    body_weight_kg: person.body_weight_kg ?? null,
+    protect_areas: protect,
+  };
+
+  const base = {
+    onboarding_contract: ONBOARDING_CONTRACT as typeof ONBOARDING_CONTRACT,
     onboarding_session_id: input.onboarding_session_id,
     profile_revision: profile.revision,
-    goal: {
-      primary: profile.primary_goal,
-      primary_label: GOAL_LABEL[profile.primary_goal],
-      secondary: preferences.secondary_goals ?? [],
-    },
-    experience: profile.experience,
-    experience_label: EXPERIENCE_LABEL[profile.experience],
-    availability: {
-      days_per_week: profile.days_per_week,
-      session_minutes: profile.session_minutes,
-      suggested_exercises_per_session: budget,
-    },
-    environment: profile.environment,
-    environment_label: ENVIRONMENT_LABEL[profile.environment],
-    starting_point: profile.starting_point,
-    preferences,
+    person: personFacts,
+    focus_muscle_groups: training.focus_muscle_groups ?? [],
+    preferred_exercises: preferred,
+    avoided_exercises: avoided,
     user_statements: statements,
-    exercise_catalog: input.exercises
-      .filter((exercise) => exercise.status === "active")
-      .map((exercise) => ({
-        exercise_id: exercise.exercise_id,
-        name_de: exercise.name_de,
-        equipment: exercise.equipment,
-        primary_muscle: exercise.primary_muscle,
-        default_load_basis: exercise.default_load_basis,
-        default_execution_mode: exercise.default_execution_mode,
-        default_implement_count: exercise.default_implement_count,
-      })),
-    constraints,
+    exercise_catalog: catalog.map((exercise) => ({
+      exercise_id: exercise.exercise_id,
+      name_de: exercise.name_de,
+      equipment: exercise.equipment,
+      primary_muscle: exercise.primary_muscle,
+      default_load_basis: exercise.default_load_basis,
+      default_execution_mode: exercise.default_execution_mode,
+      default_implement_count: exercise.default_implement_count,
+    })),
     must_not_invent: [
       "Keine Trainingsgewichte erfinden. target_load_kg nur setzen, wenn der Nutzer das Gewicht genannt hat; sonst weglassen.",
       "Keine Übungs-IDs erfinden. Unbekannte Übungen nicht als gültige exercise_id ausgeben.",
@@ -365,6 +408,101 @@ export function buildBrief(
       "Den Plan nicht als aktiviert oder gespeichert darstellen, bevor der Nutzer ihn bestätigt hat.",
     ],
     generated_at_utc: input.now,
+  };
+
+  if (profile.path === "own_plan")
+    return {
+      ...base,
+      path: "own_plan",
+      task: "Den Trainingsplan übernehmen, den der Nutzer im Chat beschrieben oder als Bild geschickt hat, und mit submit_onboarding_plan_proposal (origin existing_routine) als Entwurf übergeben.",
+      goal: null,
+      experience: null,
+      experience_label: null,
+      availability: null,
+      environment: null,
+      environment_label: null,
+      equipment: [],
+      split: null,
+      constraints: [
+        "Den Plan des Nutzers so übernehmen, wie er ist: dieselben Trainingstage, Übungen, Sätze und Wiederholungen. Die Struktur nicht verbessern oder ersetzen.",
+        "Fehlt dem Nutzer noch ein Plan im Chat, zuerst darum bitten, ihn als Text einzufügen oder ein Foto davon zu schicken.",
+        "Jede genannte Übung der passenden exercise_id aus exercise_catalog zuordnen. Gibt es keine passende Übung, sie weglassen und in open_questions nennen.",
+        "Nicht genannte Sätze oder Wiederholungen nicht erfinden: offen lassen und in open_questions nennen; der Nutzer ergänzt sie im Editor.",
+        ...shared,
+      ],
+    };
+
+  // Guarded by isProfileComplete: the Arnold path has every required answer.
+  const goal = training.primary_goal!;
+  const experience = training.experience!;
+  const days = training.days_per_week!;
+  const minutes = training.session_minutes!;
+  const environment = training.environment!;
+  const budget = exerciseBudget(minutes);
+  const split = training.split ?? "auto";
+  const fitting = splitsForDays(days);
+  const weekdays = training.training_days ?? [];
+
+  const constraints = [
+    `Genau ${days} Trainingseinheiten pro Woche planen${weekdays.length ? ` (an ${weekdays.map((day) => WEEKDAY_LABEL[day]).join(", ")})` : ""}.`,
+    `Jede Einheit soll in etwa ${minutes} Minuten durchführbar sein: ${budget.min} bis ${budget.max} Übungen pro Einheit.`,
+    split === "auto"
+      ? `Die Aufteilung frei wählen, passend zu ${days} Trainingstagen (sinnvoll: ${fitting
+          .filter((option) => option !== "auto")
+          .map((option) => SPLIT_LABEL[option])
+          .join(
+            ", ",
+          )}). Jede Muskelgruppe soll mindestens einmal pro Woche trainiert werden.`
+      : `Gewünschte Aufteilung: ${SPLIT_LABEL[split]}${fitting.includes(split) ? "" : `. Sie passt nicht ideal zu ${days} Tagen; so umsetzen, dass jede Muskelgruppe trotzdem regelmäßig drankommt`}.`,
+    environment === "gym"
+      ? "Die volle Geräteauswahl eines Fitnessstudios darf genutzt werden."
+      : environment === "mixed"
+        ? "Übungen bevorzugen, die sich sowohl im Studio als auch zuhause umsetzen lassen."
+        : `Nur Übungen planen, die ${environment === "home" ? "zuhause" : "draußen"} mit ${
+            training.equipment?.length
+              ? `diesen Geräten möglich sind: ${training.equipment.map((item) => EQUIPMENT_LABEL[item]).join(", ")}${environment === "outdoor" ? ", Klimmzugstange, Barren" : ""}`
+              : environment === "outdoor"
+                ? "Körpergewicht, Klimmzugstange und Barren möglich sind"
+                : "dem eigenen Körpergewicht möglich sind"
+          }.`,
+    experience === "beginner"
+      ? "Für Anfänger: überwiegend Grundübungen, eher wenige Sätze pro Übung (2–3) und leicht erlernbare Varianten."
+      : experience === "advanced"
+        ? "Für Erfahrene: mehr Trainingsvolumen und gezielte Isolationsübungen sind angemessen."
+        : "Für Fortgeschrittene: Grundübungen plus ergänzende Isolationsübungen.",
+    ...shared,
+  ];
+  if (training.focus_muscle_groups?.length)
+    constraints.push(
+      `Schwerpunkt auf ${training.focus_muscle_groups.map((group) => MUSCLE_GROUP_LABEL[group]).join(", ")}: diese Muskelgruppen etwas häufiger oder mit mehr Sätzen trainieren, ohne die übrigen zu vernachlässigen.`,
+    );
+  if (preferred.length)
+    constraints.push(
+      `Diese Übungen bevorzugt einplanen, wenn sie fachlich passen: ${preferred.map((ref) => ref.name_de).join(", ")}.`,
+    );
+  if (avoided.length)
+    constraints.push(
+      `Diese Übungen nicht einplanen: ${avoided.map((ref) => ref.name_de).join(", ")}.`,
+    );
+
+  return {
+    ...base,
+    path: "arnold_plan",
+    task: "Aus diesen Angaben einen Trainingsplan erstellen und mit submit_onboarding_plan_proposal (origin ai_proposal) als Entwurf übergeben.",
+    goal: { primary: goal, primary_label: GOAL_LABEL[goal] },
+    experience,
+    experience_label: EXPERIENCE_LABEL[experience],
+    availability: {
+      days_per_week: days,
+      training_days: weekdays,
+      session_minutes: minutes,
+      suggested_exercises_per_session: budget,
+    },
+    environment,
+    environment_label: ENVIRONMENT_LABEL[environment],
+    equipment: training.equipment ?? [],
+    split: { preference: split, label: SPLIT_LABEL[split], fitting },
+    constraints,
   };
 }
 
@@ -405,26 +543,23 @@ export function validateProposalAgainstProfile(
 
   // The day count is a warning, not an error: the user may well accept a plan
   // that groups their three days differently, and the editor lets them change
-  // it. Blocking it here would refuse a plan the user might want.
+  // it. Blocking it here would refuse a plan the user might want. An own plan
+  // has no stated day count to compare against.
+  const days = profile.training.days_per_week;
   if (
-    profile.days_per_week !== null &&
+    profile.path === "arnold_plan" &&
+    days !== null &&
     sessions.length &&
-    sessions.length !== profile.days_per_week
+    sessions.length !== days
   )
     found.push(
       issue("warning", {
         code: "PROPOSAL_DAYS_MISMATCH",
-        message: `Der Vorschlag hat ${sessions.length} Trainingseinheiten, gewünscht waren ${profile.days_per_week} Trainingstage pro Woche. Im Editor lässt sich das anpassen.`,
+        message: `Der Vorschlag hat ${sessions.length} Trainingseinheiten, gewünscht waren ${days} Trainingstage pro Woche. Im Editor lässt sich das anpassen.`,
         field: "sessions",
         step: "plan_review",
       }),
     );
 
-  const errors = found.filter((f) => f.severity === "error");
-  return {
-    valid: errors.length === 0,
-    errors,
-    warnings: found.filter((f) => f.severity === "warning"),
-    recommendations: found.filter((f) => f.severity === "recommendation"),
-  };
+  return result(found);
 }

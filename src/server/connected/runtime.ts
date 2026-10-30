@@ -294,6 +294,10 @@ export class ConnectedUserRuntime {
           : this.draft.read(),
       audit,
       googleConnectionAvailable: true,
+      // The account's setup is resumed across chats, so it may take days.
+      sessionTtlMs: 30 * 24 * 60 * 60 * 1000,
+      // Set up means: the personal Google file exists and was verified.
+      setupComplete: async () => (await this.manifest.read()).phase === "ready",
       beforeMutation: async () => {
         const phase = (await this.manifest.read()).phase;
         if (phase !== "draft")

@@ -49,14 +49,14 @@ async function tempDir() {
   return dir;
 }
 
-const COMPLETE = {
+const TRAINING = {
   primary_goal: "muscle_gain",
   experience: "intermediate",
   days_per_week: 3,
   session_minutes: 60,
   environment: "gym",
-  starting_point: "new_plan",
 } as const;
+const COMPLETE = { path: "arnold_plan", training: TRAINING } as const;
 
 /** A synthetic stored record, for the repository tests. */
 function record(
@@ -72,20 +72,22 @@ function record(
     session: {
       onboarding_session_id: id,
       status: "COLLECTING_PROFILE",
-      current_step: "goal",
+      current_step: "welcome",
       schema_version: ONBOARDING_SCHEMA_VERSION,
       created_at_utc: "2026-05-01T10:00:00Z",
       updated_at_utc: "2026-05-01T10:00:00Z",
       expires_at_utc: overrides.expiresAt ?? "2026-05-02T10:00:00Z",
       revision: overrides.revision ?? 1,
       profile: {
-        primary_goal: null,
-        experience: null,
-        days_per_week: null,
-        session_minutes: null,
-        environment: null,
-        starting_point: null,
-        preferences: {},
+        path: null,
+        person: {},
+        training: {
+          primary_goal: null,
+          experience: null,
+          days_per_week: null,
+          session_minutes: null,
+          environment: null,
+        },
         revision: 0,
         updated_at_utc: null,
       },
@@ -230,20 +232,23 @@ describe("two separate setups", () => {
     await service.updateProfile({
       request_id: rid(),
       ...claimA,
-      profile: { ...COMPLETE, days_per_week: 3 },
+      profile: { ...COMPLETE, training: { ...TRAINING, days_per_week: 3 } },
     });
     await service.updateProfile({
       request_id: rid(),
       ...claimB,
-      profile: { ...COMPLETE, days_per_week: 6, primary_goal: "strength" },
+      profile: {
+        ...COMPLETE,
+        training: { ...TRAINING, days_per_week: 6, primary_goal: "strength" },
+      },
     });
 
     const stateA = await service.getOnboardingState(claimA);
     const stateB = await service.getOnboardingState(claimB);
-    expect(stateA.session.profile.days_per_week).toBe(3);
-    expect(stateA.session.profile.primary_goal).toBe("muscle_gain");
-    expect(stateB.session.profile.days_per_week).toBe(6);
-    expect(stateB.session.profile.primary_goal).toBe("strength");
+    expect(stateA.session.profile.training.days_per_week).toBe(3);
+    expect(stateA.session.profile.training.primary_goal).toBe("muscle_gain");
+    expect(stateB.session.profile.training.days_per_week).toBe(6);
+    expect(stateB.session.profile.training.primary_goal).toBe("strength");
   });
 
   it("keeps their plan drafts apart", async () => {
@@ -319,7 +324,7 @@ describe("two separate setups", () => {
     const update = await service.updateProfile({
       request_id: rid(),
       ...claim,
-      profile: { days_per_week: 3 },
+      profile: { training: { days_per_week: 3 } },
     });
     expect(update.session_token).toBeNull();
     const resumed = await service.startOnboarding({
@@ -498,8 +503,8 @@ describe("the file repository", () => {
     // A brand-new runtime over the same journal: the answers are still there.
     const second = createFixtureOnboarding({ storeFile: path });
     const resumed = await second.onboarding.getOnboardingState(claim);
-    expect(resumed.session.profile.days_per_week).toBe(3);
-    expect(resumed.session.profile.primary_goal).toBe("muscle_gain");
+    expect(resumed.session.profile.training.days_per_week).toBe(3);
+    expect(resumed.session.profile.training.primary_goal).toBe("muscle_gain");
     expect(resumed.progress.profile_complete).toBe(true);
     expect(resumed.resume.durable).toBe(true);
     // Still never promised across devices: that needs a verified identity.

@@ -55,14 +55,14 @@ const write = async (
 ): Promise<OnboardingResponse> =>
   OnboardingResponseSchema.parse((await call(name, args)).structuredContent);
 
-const COMPLETE = {
+const TRAINING = {
   primary_goal: "muscle_gain",
   experience: "intermediate",
   days_per_week: 3,
   session_minutes: 60,
   environment: "gym",
-  starting_point: "new_plan",
 } as const;
+const COMPLETE = { path: "arnold_plan", training: TRAINING } as const;
 
 async function listen() {
   runtime = createFixtureOnboarding({ dataset: planFixtureDataset("empty") });
@@ -194,6 +194,13 @@ describe("tool discovery", () => {
     expect(byName.get("show_arnold_onboarding")!.description).toMatch(
       /einrichten|Einrichtung/i,
     );
+    // New users go here first, and the app offers the two paths.
+    expect(byName.get("show_arnold_onboarding")!.description).toMatch(
+      /IMMER zuerst/,
+    );
+    expect(byName.get("show_arnold_onboarding")!.description).toMatch(
+      /Eigenen Plan übernehmen/,
+    );
     expect(byName.get("start_arnold_onboarding")!.description).toMatch(
       /fortgesetzt|resume_session/i,
     );
@@ -210,8 +217,29 @@ describe("tool discovery", () => {
       /ausdrücklich/i,
     );
     expect(byName.get("get_onboarding_handoff")!.description).toMatch(
-      /noch nicht implementiert/i,
+      /keine Google-Datei/i,
     );
+  });
+
+  it("tells every conversation that the onboarding comes first", async () => {
+    expect(client.getInstructions()).toMatch(/show_arnold_onboarding/);
+    expect(client.getInstructions()).toMatch(/SETUP_REQUIRED/);
+    expect(client.getInstructions()).toMatch(/nur einmal/);
+  });
+
+  it("tells the chat what comes next after every step", async () => {
+    const claim = await startSetup();
+    const welcome = await call("get_onboarding_state", claim);
+    expect(textOf(welcome)).toMatch(/zwei Buttons/);
+    const own = await write("update_onboarding_profile", {
+      request_id: rid(),
+      ...claim,
+      profile: { path: "own_plan" },
+    });
+    expect(own.ok).toBe(true);
+    const text = textOf(await call("get_onboarding_state", claim));
+    expect(text).toMatch(/Foto/);
+    expect(text).toMatch(/existing_routine/);
   });
 
   it("marks reads read-only and writes not", async () => {
@@ -278,7 +306,7 @@ describe("show_arnold_onboarding", () => {
     expect(view.state.session.onboarding_session_id).toBe(
       claim.onboarding_session_id,
     );
-    expect(view.state.session.profile.days_per_week).toBe(3);
+    expect(view.state.session.profile.training.days_per_week).toBe(3);
   });
 
   it("refuses a session id without its credential", async () => {
@@ -295,7 +323,7 @@ describe("show_arnold_onboarding", () => {
     expect(view.state.session.onboarding_session_id).not.toBe(
       claim.onboarding_session_id,
     );
-    expect(view.state.session.profile.days_per_week).toBeNull();
+    expect(view.state.session.profile.training.days_per_week).toBeNull();
   });
 });
 
@@ -307,7 +335,7 @@ describe("input validation", () => {
     const result = await call("update_onboarding_profile", {
       request_id: rid(),
       ...claim,
-      profile: { primary_goal: "bodybuilding" },
+      profile: { training: { primary_goal: "bodybuilding" } },
     });
     expect(result.isError).toBe(true);
   });
@@ -317,7 +345,7 @@ describe("input validation", () => {
     const result = await call("update_onboarding_profile", {
       request_id: rid(),
       ...claim,
-      profile: { days_per_week: 9 },
+      profile: { training: { days_per_week: 9 } },
     });
     expect(result.isError).toBe(true);
   });
@@ -346,7 +374,7 @@ describe("input validation", () => {
     const claim = await startSetup();
     const result = await call("update_onboarding_profile", {
       ...claim,
-      profile: { days_per_week: 3 },
+      profile: { training: { days_per_week: 3 } },
     });
     expect(result.isError).toBe(true);
   });
@@ -406,41 +434,50 @@ describe("the flow a chat turn drives", () => {
       request_id: rid(),
       ...claim,
       profile: {
-        experience: "intermediate",
-        days_per_week: 4,
-        environment: "gym",
+        path: "arnold_plan",
+        training: {
+          experience: "intermediate",
+          days_per_week: 4,
+          environment: "gym",
+        },
       },
     });
     expect(first.ok).toBe(true);
-    expect(first.state!.progress.missing_fields).toContain("primary_goal");
+    expect(first.state!.progress.missing_fields).toContain(
+      "training.primary_goal",
+    );
 
     // "Ich will Muskeln aufbauen."
     const second = await write("update_onboarding_profile", {
       request_id: rid(),
       ...claim,
-      profile: { primary_goal: "muscle_gain" },
+      profile: { training: { primary_goal: "muscle_gain" } },
     });
-    expect(second.state!.session.profile.days_per_week).toBe(4);
-    expect(second.state!.session.profile.primary_goal).toBe("muscle_gain");
+    expect(second.state!.session.profile.training.days_per_week).toBe(4);
+    expect(second.state!.session.profile.training.primary_goal).toBe(
+      "muscle_gain",
+    );
 
     // "Eigentlich möchte ich lieber nur dreimal die Woche trainieren."
     const third = await write("update_onboarding_profile", {
       request_id: rid(),
       ...claim,
-      profile: { days_per_week: 3 },
+      profile: { training: { days_per_week: 3 } },
     });
-    expect(third.state!.session.profile.days_per_week).toBe(3);
-    expect(third.state!.session.profile.experience).toBe("intermediate");
+    expect(third.state!.session.profile.training.days_per_week).toBe(3);
+    expect(third.state!.session.profile.training.experience).toBe(
+      "intermediate",
+    );
   });
 
   it("answers 'show me my setup' with the stored state", async () => {
     const claim = await withProfile();
     const result = await call("get_onboarding_state", claim);
     const state = OnboardingStateSchema.parse(result.structuredContent);
-    expect(state.session.profile.primary_goal).toBe("muscle_gain");
+    expect(state.session.profile.training.primary_goal).toBe("muscle_gain");
     expect(state.progress.profile_complete).toBe(true);
     // The summary line is readable without exposing ids or secrets.
-    expect(textOf(result)).toContain("Muskelaufbau");
+    expect(textOf(result)).toContain("Muskeln aufbauen");
     expect(textOf(result)).not.toContain(claim.session_token);
     expect(textOf(result)).not.toContain(claim.onboarding_session_id);
   });
@@ -450,7 +487,7 @@ describe("the flow a chat turn drives", () => {
     await write("request_onboarding_plan", { request_id: rid(), ...claim });
     const result = await call("get_onboarding_brief", claim);
     const brief = OnboardingBriefSchema.parse(result.structuredContent);
-    expect(brief.availability.days_per_week).toBe(3);
+    expect(brief.availability!.days_per_week).toBe(3);
     expect(brief.exercise_catalog.length).toBeGreaterThan(0);
     expect(brief.must_not_invent.length).toBeGreaterThan(0);
     expect(textOf(result)).toContain("Randbedingungen");
@@ -626,15 +663,15 @@ describe("no duplicate operations", () => {
     const first = await write("update_onboarding_profile", {
       request_id: requestId,
       ...claim,
-      profile: { days_per_week: 3 },
+      profile: { training: { days_per_week: 3 } },
     });
     const second = await write("update_onboarding_profile", {
       request_id: requestId,
       ...claim,
-      profile: { days_per_week: 7 },
+      profile: { training: { days_per_week: 7 } },
     });
     expect(second.replayed).toBe(true);
-    expect(second.state!.session.profile.days_per_week).toBe(3);
+    expect(second.state!.session.profile.training.days_per_week).toBe(3);
     expect(second.state!.session.revision).toBe(first.state!.session.revision);
   });
 
@@ -706,7 +743,7 @@ describe("cancelling over MCP", () => {
     const result = await call("update_onboarding_profile", {
       request_id: rid(),
       ...claim,
-      profile: { days_per_week: 5 },
+      profile: { training: { days_per_week: 5 } },
     });
     expect(result.isError).toBe(true);
     expect(textOf(result)).toContain("SESSION_CANCELLED");

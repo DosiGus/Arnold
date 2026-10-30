@@ -37,6 +37,7 @@ import { GoogleBrowserFlow } from "../src/server/connected/google-browser.js";
 import {
   OnboardingResponseSchema,
   OnboardingStateSchema,
+  OnboardingViewSchema,
 } from "../src/shared/onboarding-contract.js";
 import {
   WriteResponseSchema,
@@ -215,12 +216,14 @@ async function setup(subject = "alice") {
         ...claim,
         request_id: randomUUID(),
         profile: {
-          primary_goal: "strength",
-          experience: "intermediate",
-          days_per_week: 3,
-          session_minutes: 60,
-          environment: "gym",
-          starting_point: "new_plan",
+          path: "arnold_plan",
+          training: {
+            primary_goal: "strength",
+            experience: "intermediate",
+            days_per_week: 3,
+            session_minutes: 60,
+            environment: "gym",
+          },
         },
       })
     ).structuredContent,
@@ -359,18 +362,50 @@ describe("connected end-to-end journey (Google simulated, real HTTP and MCP)", (
   it("refuses an unauthenticated endpoint and writes before provisioning", async () => {
     expect((await fetch(`${base}/mcp`, { method: "POST" })).status).toBe(401);
     expect((await fetch(`${base}/auth/google/status`)).status).toBe(401);
-    const response = WriteResponseSchema.parse(
-      (
-        await call("alice", "start_workout", {
-          request_id: "early",
-          workout_date_local: "2026-10-29",
-          timezone: "Europe/Berlin",
-          session_name: "Too early",
-        })
-      ).structuredContent,
-    );
-    expect(response.ok).toBe(false);
+    const response = await call("alice", "start_workout", {
+      request_id: "early",
+      workout_date_local: "2026-10-29",
+      timezone: "Europe/Berlin",
+      session_name: "Too early",
+    });
+    expect(response.isError).toBe(true);
+    expect(JSON.stringify(response.content)).toContain("SETUP_REQUIRED");
     expect(google.creates).toBe(0);
+  });
+  it("sends a new user to the onboarding first, from any tracker tool", async () => {
+    for (const name of ["show_arnold_dashboard", "get_arnold_dashboard"]) {
+      const result = await call("alice", name, {});
+      expect(result.isError, name).toBe(true);
+      expect(JSON.stringify(result.content)).toContain(
+        "show_arnold_onboarding",
+      );
+    }
+    const opened = OnboardingViewSchema.parse(
+      (await call("alice", "show_arnold_onboarding", {})).structuredContent,
+    );
+    expect(opened.state.session.current_step).toBe("welcome");
+    expect(opened.state.resume.cross_device).toBe(true);
+    expect(opened.session_token).toBeTruthy();
+  });
+  it("resumes the same setup in a new chat and never runs it twice", async () => {
+    const first = OnboardingViewSchema.parse(
+      (await call("alice", "show_arnold_onboarding", {})).structuredContent,
+    );
+    // A later chat: no session id, no secret — still the same setup.
+    const again = OnboardingViewSchema.parse(
+      (await call("alice", "show_arnold_onboarding", {})).structuredContent,
+    );
+    expect(again.resumed).toBe(true);
+    expect(again.state.session.onboarding_session_id).toBe(
+      first.state.session.onboarding_session_id,
+    );
+    // Bob does not get Alice's setup.
+    const bob = OnboardingViewSchema.parse(
+      (await call("bob", "show_arnold_onboarding", {})).structuredContent,
+    );
+    expect(bob.state.session.onboarding_session_id).not.toBe(
+      first.state.session.onboarding_session_id,
+    );
   });
   it("creates exactly one personal tracker, completes onboarding, and keeps the confirmed plan", async () => {
     const { claim, plan } = await connected();
@@ -386,6 +421,25 @@ describe("connected end-to-end journey (Google simulated, real HTTP and MCP)", (
     expect(state.plan?.status).toBe("active");
     await call("alice", "finish_arnold_setup", claim);
     expect(google.creates).toBe(1);
+    // Set up for good: the onboarding does not start again, and the tracker
+    // tools are open.
+    const restart = OnboardingResponseSchema.parse(
+      (
+        await call("alice", "start_arnold_onboarding", {
+          request_id: randomUUID(),
+        })
+      ).structuredContent,
+    );
+    expect(restart.ok).toBe(false);
+    expect(restart.error?.code).toBe("ONBOARDING_ALREADY_COMPLETED");
+    const shown = OnboardingViewSchema.parse(
+      (await call("alice", "show_arnold_onboarding", {})).structuredContent,
+    );
+    expect(shown.state.session.status).toBe("COMPLETED");
+    expect(shown.session_token ?? null).toBeNull();
+    expect(
+      (await call("alice", "show_arnold_dashboard", {})).isError ?? false,
+    ).toBe(false);
     const stored = await readFile(join(directory, "connections.json"), "utf8");
     expect(stored).not.toContain("refresh_alice");
     expect(stored).not.toContain("access_alice");
@@ -498,7 +552,7 @@ describe("connected end-to-end journey (Google simulated, real HTTP and MCP)", (
     await call("alice", "update_onboarding_profile", {
       ...claim,
       request_id: "change",
-      profile: { days_per_week: 2 },
+      profile: { training: { days_per_week: 2 } },
     });
     const callback = `${base}/auth/google/callback?${new URLSearchParams({ code: google.authorize(flow.authorization, "alice"), state: new URL(flow.authorization).searchParams.get("state")! })}`;
     expect(

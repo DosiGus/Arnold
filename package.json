@@ -12,6 +12,8 @@
     "build": "npm run typecheck && npm run build:ui && tsc -p tsconfig.server.json",
     "start": "node dist/server/main.js",
     "deploy:cloud-run": "bash scripts/deploy-cloud-run.sh",
+    "setup:google-secrets": "bash scripts/setup-google-secrets.sh",
+    "setup:cloud-infra": "bash scripts/setup-cloud-infra.sh",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
