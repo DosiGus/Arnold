@@ -50,6 +50,14 @@ export interface OnboardingPrincipal {
 
 export interface OnboardingAccessControl {
   readonly mode: "fixture" | "production";
+  /**
+   * True when the principal is a verified account. Then a setup belongs to
+   * that account: there is at most one open setup per user, it is found again
+   * in any new chat without the secret, and a completed setup is never started
+   * again. False for anonymous guards, where a shared subject must never be
+   * enough to find someone else's session.
+   */
+  readonly perOwner: boolean;
   /** The principal allowed to create a new session, or a refusal. */
   establish(context: unknown): Promise<OnboardingPrincipal>;
   /**
@@ -89,6 +97,7 @@ export function tokenMatches(fingerprint: string, presented: string): boolean {
  */
 export class FixtureOnboardingAccessControl implements OnboardingAccessControl {
   readonly mode = "fixture" as const;
+  readonly perOwner = false;
   constructor(private subject = "synthetic-onboarding-fixture") {}
 
   private principal(): OnboardingPrincipal {
@@ -136,6 +145,7 @@ export class FixtureOnboardingAccessControl implements OnboardingAccessControl {
  */
 export class DenyOnboardingAccessControl implements OnboardingAccessControl {
   readonly mode = "production" as const;
+  readonly perOwner = false;
   private deny(): never {
     throw new OnboardingAccessError(
       "AUTH_REQUIRED",
@@ -157,6 +167,7 @@ export class DenyOnboardingAccessControl implements OnboardingAccessControl {
 /** A verified Arnold account plus the existing session secret are both required. */
 export class AuthenticatedOnboardingAccessControl implements OnboardingAccessControl {
   readonly mode = "production" as const;
+  readonly perOwner = true;
   constructor(private userId: string) {}
   async establish(context?: unknown): Promise<OnboardingPrincipal> {
     const caller = (context ?? currentArnoldContext()) as

@@ -22,8 +22,11 @@
  *   - a confirmation binds one plan version *and* one revision, and is void the
  *     moment the draft moves on — including when it is moved by the plan editor
  *     without onboarding being involved;
- *   - `COMPLETED` is never reported. No Google file is created, no token is
- *     stored, and the handoff says `ready_for_google_connection` at most.
+ *   - `COMPLETED` is reached only through verified Google provisioning
+ *     (`completeProvisioning`), never through a client call;
+ *   - where the caller is a verified account (`access.perOwner`), the setup
+ *     belongs to that account: one open setup per user, found again in any
+ *     new chat, and never started again once it is completed.
  *
  * Onboarding state lives in its own repository, never in the six Arnold tables
  * (`CONFIG.onboarding_storage = BACKEND_ONLY`).
@@ -39,11 +42,15 @@ import {
   OnboardingResponseSchema,
   OnboardingStateSchema,
   OnboardingToolInputs,
-  STEP_FOR_STATUS,
+  WEEKDAYS,
+  splitsForDays,
+  stepForStatus,
   type HandoffStatus,
+  type OnboardingClaim,
   type OnboardingErrorCode,
   type OnboardingHandoff,
   type OnboardingProfile,
+  type OnboardingProfilePatch,
   type OnboardingResponse,
   type OnboardingState,
   type OnboardingStep,
@@ -70,6 +77,7 @@ import {
 import {
   buildBrief,
   buildProgress,
+  exerciseChoices,
   isProfileComplete,
   validateProfile,
   validateProposalAgainstProfile,
@@ -121,6 +129,12 @@ export interface OnboardingServiceOptions {
   audit?: AuditLogRepository;
   /** Session lifetime. Default 24 hours. */
   sessionTtlMs?: number;
+  /**
+   * The authoritative "this account is set up" check, where the deployment
+   * has one (the connected runtime: the personal Google file is ready).
+   * Without it, a completed onboarding session is the evidence.
+   */
+  setupComplete?: () => Promise<boolean>;
   clock?: () => Date;
   id?: () => string;
 }
@@ -132,16 +146,79 @@ export const DEFAULT_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const APPLIED_LIMIT = 64;
 
 const emptyProfile = (): OnboardingProfile => ({
-  primary_goal: null,
-  experience: null,
-  days_per_week: null,
-  session_minutes: null,
-  environment: null,
-  starting_point: null,
-  preferences: {},
+  path: null,
+  person: {},
+  training: {
+    primary_goal: null,
+    experience: null,
+    days_per_week: null,
+    session_minutes: null,
+    environment: null,
+  },
   revision: 0,
   updated_at_utc: null,
 });
+
+/** Lists keep weekday order and hold each value once. */
+const ordered = <T extends string>(values: readonly T[], order: readonly T[]) =>
+  order.filter((value) => values.includes(value));
+const unique = <T>(values: readonly T[]) => [...new Set(values)];
+
+/**
+ * Applies a patch to a profile.
+ *
+ * Absent keys stay, `null` removes an optional answer, an empty list removes
+ * a list. Two rules keep the answers consistent instead of contradictory:
+ * fixed weekdays decide the number of days, and an exercise is either
+ * preferred or avoided, never both — the newer choice wins.
+ */
+export function mergeProfile(
+  before: OnboardingProfile,
+  patch: OnboardingProfilePatch,
+): Omit<OnboardingProfile, "revision" | "updated_at_utc"> {
+  const person: Record<string, unknown> = { ...before.person };
+  for (const [key, value] of Object.entries(patch.person ?? {})) {
+    if (value === undefined) continue;
+    if (value === null || (Array.isArray(value) && value.length === 0))
+      delete person[key];
+    else person[key] = Array.isArray(value) ? unique(value) : value;
+  }
+
+  const training: Record<string, unknown> = { ...before.training };
+  for (const [key, value] of Object.entries(patch.training ?? {})) {
+    if (value === undefined) continue;
+    if (value === null || (Array.isArray(value) && value.length === 0))
+      delete training[key];
+    else training[key] = Array.isArray(value) ? unique(value) : value;
+  }
+
+  const days = patch.training?.training_days;
+  if (days?.length) {
+    training.training_days = ordered(days, WEEKDAYS);
+    training.days_per_week = (training.training_days as unknown[]).length;
+  } else if (
+    patch.training?.days_per_week !== undefined &&
+    Array.isArray(training.training_days) &&
+    training.training_days.length !== patch.training.days_per_week
+  )
+    // "Flexibel, vier Tage" replaces three fixed weekdays.
+    delete training.training_days;
+
+  const drop = (key: string, ids: readonly string[] | undefined) => {
+    if (!ids?.length || !Array.isArray(training[key])) return;
+    const rest = (training[key] as string[]).filter((id) => !ids.includes(id));
+    if (rest.length) training[key] = rest;
+    else delete training[key];
+  };
+  drop("avoided_exercise_ids", patch.training?.preferred_exercise_ids);
+  drop("preferred_exercise_ids", patch.training?.avoided_exercise_ids);
+
+  return {
+    path: patch.path ?? before.path,
+    person: person as OnboardingProfile["person"],
+    training: training as OnboardingProfile["training"],
+  };
+}
 
 export class OnboardingService {
   readonly mode: "fixture" | "production";
@@ -218,6 +295,7 @@ export class OnboardingService {
     return {
       status: record.session.status,
       step: record.session.current_step,
+      path: record.session.profile.path,
       profile_complete: isProfileComplete(record.session.profile),
       has_plan_draft: record.session.plan_draft_reference !== null,
       has_confirmation: record.session.confirmed_plan_reference !== null,
@@ -501,9 +579,6 @@ export class OnboardingService {
     const expired =
       record.session.status !== "COMPLETED" &&
       isExpired(record.session, this.clock());
-    const catalog = new Map(
-      (await this.catalog()).map((row) => [row.exercise_id, row]),
-    );
     const { plan, validation } = await this.referencedPlan(record);
     const handoff = this.handoffFor(record, plan);
     const machine = this.machineState(record);
@@ -530,23 +605,25 @@ export class OnboardingService {
           allowedEvents(machine).includes("CONFIRM_PLAN") &&
           (validation?.valid ?? false),
       }),
-      validation: validateProfile(session.profile, catalog),
+      validation: validateProfile(session.profile),
       plan,
       plan_validation: validation,
       handoff,
       allowed_events: expired ? ["CANCEL"] : allowedEvents(machine),
+      exercise_choices: exerciseChoices(session.profile),
+      split_options: splitsForDays(session.profile.training.days_per_week),
       mode: this.mode,
       google_connection_available:
         this.options.googleConnectionAvailable ?? false,
       can_write_plan: Boolean(this.options.plans),
       resume: {
         durable: this.options.repository.durability !== "memory",
-        cross_device: false,
-        note: this.options.googleConnectionAvailable
-          ? "Dein Einrichtungsstand bleibt gespeichert und kann in dieser verbundenen Sitzung fortgesetzt werden."
+        cross_device: this.options.access.perOwner,
+        note: this.options.access.perOwner
+          ? "Deine Einrichtung ist mit deinem Konto gespeichert. Du kannst in jedem neuen Chat genau hier weitermachen."
           : this.options.repository.durability === "memory"
-            ? "Dieser Einrichtungsstand gilt für die laufende Serversitzung. Eine Wiederaufnahme auf einem anderen Gerät ist erst mit der Google-Anbindung möglich."
-            : "Dieser Einrichtungsstand bleibt auf diesem Server erhalten und kann mit demselben Sitzungsnachweis fortgesetzt werden. Eine Wiederaufnahme auf einem anderen Gerät ist erst mit der Google-Anbindung möglich.",
+            ? "Dieser Einrichtungsstand gilt für die laufende Serversitzung."
+            : "Dieser Einrichtungsstand bleibt auf diesem Server erhalten und kann mit demselben Sitzungsnachweis fortgesetzt werden.",
       },
       generated_at_utc: this.now(),
     });
@@ -560,80 +637,223 @@ export class OnboardingService {
    * Resuming is tried first and deliberately falls back to a fresh session when
    * the old one is gone or expired: "Ich möchte Arnold einrichten" must never
    * end in an error because a previous attempt timed out.
+   *
+   * Behind a login the setup belongs to the account. An open setup is resumed
+   * even without its secret (a new chat has none) and handed a fresh one; a
+   * completed setup is refused with `ONBOARDING_ALREADY_COMPLETED`, because the
+   * onboarding runs exactly once per user.
    */
   async startOnboarding(
     raw: unknown,
     context?: unknown,
   ): Promise<OnboardingResponse> {
-    return this.run("start_arnold_onboarding", raw, async (input) => {
-      if (input.resume_session) {
-        const existing = await this.options.repository
-          .getSession(input.resume_session.onboarding_session_id)
-          .catch(() => undefined);
-        if (existing) {
-          const { record, principal } = await this.open(
-            input.resume_session,
-            context,
+    return this.run(
+      "start_arnold_onboarding",
+      raw,
+      async (input) => {
+        const begun = await this.begin(input, context);
+        return { state: begun.state, token: begun.token };
+      },
+      () => this.assertNotCompleted(context),
+    );
+  }
+
+  private async begin(
+    input: { request_id: string; resume_session?: OnboardingClaim },
+    context: unknown,
+  ): Promise<{
+    state: OnboardingState;
+    token: string | null;
+    resumed: boolean;
+  }> {
+    if (input.resume_session) {
+      const existing = await this.options.repository
+        .getSession(input.resume_session.onboarding_session_id)
+        .catch(() => undefined);
+      if (existing) {
+        const { record, principal } = await this.open(
+          input.resume_session,
+          context,
+        );
+        if (record.session.status === "COMPLETED") throw this.alreadyDone();
+        if (this.resumable(record)) {
+          const stored = await this.commit(
+            record,
+            { type: "START" },
+            {
+              principal,
+              operationId: input.request_id,
+              auditEvent: "ONBOARDING_RESUMED",
+            },
           );
-          if (
-            !isExpired(record.session, this.clock()) &&
-            record.session.status !== "CANCELLED" &&
-            record.session.status !== "EXPIRED"
-          ) {
-            const stored = await this.commit(
-              record,
-              { type: "START" },
-              {
-                principal,
-                operationId: input.request_id,
-                auditEvent: "ONBOARDING_RESUMED",
-              },
-            );
-            return { state: await this.project(stored), token: null };
-          }
+          return {
+            state: await this.project(stored),
+            token: null,
+            resumed: true,
+          };
         }
       }
+    }
 
-      const principal = await this.establish(context);
-      const token = createSessionToken();
-      const now = this.now();
-      const record: OnboardingRecord = {
-        session: {
-          onboarding_session_id: `onb-${this.newId()}`,
-          status: "COLLECTING_PROFILE",
-          current_step: STEP_FOR_STATUS.COLLECTING_PROFILE,
-          schema_version: ONBOARDING_SCHEMA_VERSION,
-          created_at_utc: now,
-          updated_at_utc: now,
-          expires_at_utc: new Date(
-            this.clock().getTime() +
-              (this.options.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS),
-          ).toISOString(),
-          revision: 1,
-          profile: emptyProfile(),
-          plan_draft_reference: null,
-          confirmed_plan_reference: null,
-          handoff_status: "not_ready",
-          last_error: null,
-          tracker_id: this.options.trackerId,
-        },
-        token_fingerprint: fingerprintToken(token),
-        owner_subject: principal.subject,
-        applied: { [input.request_id]: 1 },
-      };
-      // Old sessions are collected on the way in rather than by a background
-      // job, so an abandoned setup cannot pile up unnoticed.
-      await this.options.repository.purge(this.clock()).catch(() => 0);
-      const stored = await this.options.repository.createSession(record);
-      await this.audit(
-        "ONBOARDING_STARTED",
-        stored,
-        input.request_id,
-        principal,
-        { previous: null, next: stored.session.revision },
+    const principal = await this.establish(context);
+
+    if (this.options.access.perOwner) {
+      const latest = await this.options.repository.findLatestByOwner(
+        principal.subject,
       );
-      return { state: await this.project(stored), token };
-    });
+      if (latest?.session.status === "COMPLETED") throw this.alreadyDone();
+      if (latest && this.resumable(latest)) {
+        // The owner is verified; the secret only names this session. A new
+        // chat has lost it, so it is replaced rather than asked for.
+        const token = createSessionToken();
+        const reissued = await this.options.repository.reissueToken(
+          latest.session.onboarding_session_id,
+          fingerprintToken(token),
+          latest.session.revision,
+        );
+        const stored = await this.commit(
+          reissued,
+          { type: "START" },
+          {
+            principal,
+            operationId: input.request_id,
+            auditEvent: "ONBOARDING_RESUMED",
+          },
+        );
+        return { state: await this.project(stored), token, resumed: true };
+      }
+    }
+
+    const token = createSessionToken();
+    const now = this.now();
+    const profile = emptyProfile();
+    const record: OnboardingRecord = {
+      session: {
+        onboarding_session_id: `onb-${this.newId()}`,
+        status: "COLLECTING_PROFILE",
+        current_step: stepForStatus("COLLECTING_PROFILE", profile.path),
+        schema_version: ONBOARDING_SCHEMA_VERSION,
+        created_at_utc: now,
+        updated_at_utc: now,
+        expires_at_utc: new Date(
+          this.clock().getTime() +
+            (this.options.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS),
+        ).toISOString(),
+        revision: 1,
+        profile,
+        plan_draft_reference: null,
+        confirmed_plan_reference: null,
+        handoff_status: "not_ready",
+        last_error: null,
+        tracker_id: this.options.trackerId,
+      },
+      token_fingerprint: fingerprintToken(token),
+      owner_subject: principal.subject,
+      applied: { [input.request_id]: 1 },
+    };
+    // Old sessions are collected on the way in rather than by a background
+    // job, so an abandoned setup cannot pile up unnoticed.
+    await this.options.repository.purge(this.clock()).catch(() => 0);
+    const stored = await this.options.repository.createSession(record);
+    await this.audit(
+      "ONBOARDING_STARTED",
+      stored,
+      input.request_id,
+      principal,
+      { previous: null, next: stored.session.revision },
+    );
+    return { state: await this.project(stored), token, resumed: false };
+  }
+
+  private resumable(record: OnboardingRecord) {
+    return (
+      !isExpired(record.session, this.clock()) &&
+      record.session.status !== "CANCELLED" &&
+      record.session.status !== "EXPIRED"
+    );
+  }
+
+  /** Refuses with ONBOARDING_ALREADY_COMPLETED when the account is set up. */
+  private async assertNotCompleted(context?: unknown) {
+    if (!this.options.access.perOwner) return;
+    const principal = await this.establish(context);
+    const latest = await this.options.repository.findLatestByOwner(
+      principal.subject,
+    );
+    if (latest?.session.status === "COMPLETED") throw this.alreadyDone();
+  }
+
+  private alreadyDone() {
+    return fail(
+      "ONBOARDING_ALREADY_COMPLETED",
+      "Arnold ist für dieses Konto bereits eingerichtet. Die Einrichtung läuft nur einmal; Trainingsplan und Übungen lassen sich jederzeit über den Plan-Editor ändern.",
+    );
+  }
+
+  /**
+   * What "open Arnold's setup" shows for this caller.
+   *
+   * The account's open setup, or a new one, with the secret the app needs.
+   * A completed setup is shown as completed — read-only, no secret — so the
+   * app can send the user on to the dashboard instead of starting over.
+   */
+  async openOnboarding(context?: unknown): Promise<{
+    state: OnboardingState;
+    token: string | null;
+    resumed: boolean;
+  }> {
+    if (this.options.access.perOwner) {
+      const principal = await this.establish(context);
+      const latest = await this.options.repository.findLatestByOwner(
+        principal.subject,
+      );
+      if (latest?.session.status === "COMPLETED")
+        return {
+          state: await this.project(latest),
+          token: null,
+          resumed: true,
+        };
+      if (latest && this.resumable(latest)) {
+        // Opening is a read plus a new secret, so it also works while the
+        // Google file is being created and every setup write is locked.
+        const token = createSessionToken();
+        const reissued = await this.options.repository.reissueToken(
+          latest.session.onboarding_session_id,
+          fingerprintToken(token),
+          latest.session.revision,
+        );
+        return { state: await this.project(reissued), token, resumed: true };
+      }
+    }
+    try {
+      await this.options.beforeMutation?.();
+      return await this.begin({ request_id: `show-${this.newId()}` }, context);
+    } catch (error) {
+      throw this.normalize(error);
+    }
+  }
+
+  /**
+   * Whether this caller still has to go through the onboarding before the
+   * tracker opens. Only a verified account can be "not set up yet"; anonymous
+   * and fixture deployments have their data already and answer false.
+   *
+   * Fails closed: if the account cannot be established, the answer is "set up
+   * first", never a tracker for an unknown caller.
+   */
+  async setupRequired(context?: unknown): Promise<boolean> {
+    if (!this.options.access.perOwner) return false;
+    try {
+      if (this.options.setupComplete)
+        return !(await this.options.setupComplete());
+      const principal = await this.establish(context);
+      const latest = await this.options.repository.findLatestByOwner(
+        principal.subject,
+      );
+      return latest?.session.status !== "COMPLETED";
+    } catch {
+      return true;
+    }
   }
 
   private async establish(context: unknown): Promise<OnboardingPrincipal> {
@@ -686,30 +906,30 @@ export class OnboardingService {
       const patch = input.profile;
       const profile: OnboardingProfile = patch
         ? {
-            ...before,
-            ...patch,
-            preferences: patch.preferences
-              ? { ...before.preferences, ...patch.preferences }
-              : before.preferences,
+            ...mergeProfile(before, patch),
             revision: before.revision + 1,
             updated_at_utc: this.now(),
           }
         : before;
 
-      // Only field names and enum or numeric values reach the audit trail.
-      // Free-text preferences are personal data and are recorded as "changed",
-      // never quoted into a log line.
+      // Only field names and enum or numeric training answers reach the audit
+      // trail. Person data and free text are personal and are recorded as
+      // "changed", never quoted into a log line.
       const fields: Record<string, { before: unknown; after: unknown }> = {};
-      for (const key of Object.keys(patch ?? {}) as (keyof typeof patch)[]) {
-        if (key === "preferences") {
-          fields.preferences = {
-            before: Object.keys(before.preferences).length,
-            after: Object.keys(profile.preferences).length,
-          };
-          continue;
-        }
-        fields[key] = { before: before[key], after: profile[key] };
-      }
+      if (patch?.path !== undefined)
+        fields.path = { before: before.path, after: profile.path };
+      for (const key of Object.keys(patch?.person ?? {}))
+        fields[`person.${key}`] = { before: "…", after: "…" };
+      for (const key of Object.keys(
+        patch?.training ?? {},
+      ) as (keyof typeof profile.training)[])
+        fields[`training.${key}`] =
+          key === "notes"
+            ? { before: "…", after: "…" }
+            : {
+                before: before.training[key] ?? null,
+                after: profile.training[key] ?? null,
+              };
       if (input.step && !patch)
         fields.current_step = {
           before: record.session.current_step,
@@ -718,9 +938,14 @@ export class OnboardingService {
 
       const complete = isProfileComplete(profile);
       // A step-only call is navigation; the machine decides whether moving back
-      // is allowed from here. A patch is a save, which may complete the profile.
+      // is allowed from here. A patch is a save, which may complete the profile
+      // and, by choosing a path, decides the next screen.
       const event: OnboardingEvent = patch
-        ? { type: "SAVE_PROFILE", profile_complete: complete }
+        ? {
+            type: "SAVE_PROFILE",
+            profile_complete: complete,
+            path: profile.path,
+          }
         : { type: "GO_BACK", step: input.step! };
 
       const stored = await this.commit(record, event, {
@@ -748,10 +973,7 @@ export class OnboardingService {
         "Diese Einrichtungssitzung ist abgelaufen. Starte die Einrichtung neu.",
       );
     const profile = record.session.profile;
-    const validation = validateProfile(
-      profile,
-      new Map((await this.catalog()).map((row) => [row.exercise_id, row])),
-    );
+    const validation = validateProfile(profile);
     if (!isProfileComplete(profile))
       throw fail(
         "PROFILE_INCOMPLETE",
@@ -843,6 +1065,30 @@ export class OnboardingService {
           fit.errors.map((issue) => `${issue.code}: ${issue.message}`),
         );
 
+      // "Plan erstellen" and a pasted own plan go straight to a proposal: the
+      // proposal phase is opened on the way instead of needing its own call.
+      // Done before the plan write, so a refused transition leaves no draft.
+      let current = record;
+      if (current.session.status === "PROFILE_READY")
+        current = await this.commit(
+          current,
+          { type: "REQUEST_PLAN" },
+          {
+            principal,
+            operationId: `${input.request_id}:request`,
+            auditEvent: "ONBOARDING_PLAN_REQUESTED",
+          },
+        );
+      if (
+        current.session.status !== "WAITING_FOR_PLAN_PROPOSAL" &&
+        current.session.status !== "REVIEWING_PLAN"
+      )
+        throw fail(
+          "INVALID_STATE_TRANSITION",
+          "In diesem Schritt kann kein neuer Planvorschlag übernommen werden. Für Änderungen am bestätigten Plan zuerst revise_onboarding_plan verwenden.",
+        );
+
+      const training = current.session.profile.training;
       // One plan write per onboarding request id, so a retried submission
       // reconciles in the plan ledger instead of creating a second draft.
       const response = await this.options.plans.createTrainingPlan(
@@ -851,11 +1097,11 @@ export class OnboardingService {
           name: input.name,
           origin: input.origin === "manual" ? "manual" : "ai_proposal",
           ...(input.split_key ? { split_key: input.split_key } : {}),
-          ...(record.session.profile.days_per_week !== null
-            ? { days_per_week: record.session.profile.days_per_week }
+          ...(training.days_per_week !== null
+            ? { days_per_week: training.days_per_week }
             : {}),
-          ...(record.session.profile.primary_goal !== null
-            ? { goal_key: record.session.profile.primary_goal }
+          ...(training.primary_goal !== null
+            ? { goal_key: training.primary_goal }
             : {}),
           sessions: input.sessions,
         },
@@ -871,7 +1117,7 @@ export class OnboardingService {
 
       const version = response.result.plan.version;
       const stored = await this.commit(
-        record,
+        current,
         { type: "PLAN_PROPOSED" },
         {
           principal,
@@ -1236,6 +1482,7 @@ export class OnboardingService {
       token: string | null;
       replayed?: boolean;
     }>,
+    precheck?: () => Promise<void>,
   ): Promise<OnboardingResponse> {
     const requestId =
       raw && typeof raw === "object" && "request_id" in raw
@@ -1245,6 +1492,9 @@ export class OnboardingService {
       const input = OnboardingToolInputs[operation].parse(raw) as ReturnType<
         (typeof OnboardingToolInputs)[K]["parse"]
       >;
+      // Refusals that explain more than the deployment's write lock run first:
+      // a finished account learns it is finished, not that writes are locked.
+      await precheck?.();
       await this.options.beforeMutation?.();
       const { state, token, replayed } = await action(input);
       return OnboardingResponseSchema.parse({

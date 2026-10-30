@@ -108,6 +108,10 @@ export class ArnoldMcpClient {
   async openDashboard() {
     await this.client.call("show_arnold_dashboard");
   }
+  /** Hands the next turn to the chat, as if the user had typed `text`. */
+  async askChat(text: string) {
+    return (await this.client.sendChatMessage?.(text)) ?? false;
+  }
   getPending(tracker: string) {
     let saved = this.pendingWrites.get(tracker);
     try {

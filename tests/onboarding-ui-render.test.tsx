@@ -14,25 +14,28 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
-  AvailabilityStep,
+  ChipGroup,
   ChoiceGroup,
-  GoalStep,
   GoogleConnectionHandoffStep,
   OnboardingErrorState,
   OnboardingIssues,
   OnboardingProgressBar,
   OnboardingResumeState,
+  OwnPlanStep,
   PlanConfirmationDialog,
   PlanGenerationStep,
-  PreferencesStep,
-  ProfileSummaryStep,
+  ProfileStep,
   WelcomeStep,
   parseList,
 } from "../src/ui/components/onboarding";
 import { createFixtureOnboarding } from "../src/server/onboarding/fixture";
 import {
+  BODY_AREAS,
+  EQUIPMENT,
   EXPERIENCE_LEVELS,
-  STARTING_POINTS,
+  ONBOARDING_PATHS,
+  SEXES,
+  SPLITS,
   TRAINING_ENVIRONMENTS,
   TRAINING_GOALS,
   type OnboardingState,
@@ -60,12 +63,14 @@ const text = (node: Parameters<typeof renderToStaticMarkup>[0]) =>
     .trim();
 
 const COMPLETE = {
-  primary_goal: "muscle_gain",
-  experience: "intermediate",
-  days_per_week: 3,
-  session_minutes: 60,
-  environment: "gym",
-  starting_point: "new_plan",
+  path: "arnold_plan",
+  training: {
+    primary_goal: "muscle_gain",
+    experience: "intermediate",
+    days_per_week: 3,
+    session_minutes: 60,
+    environment: "gym",
+  },
 } as const;
 
 /** Real server state, so the components are tested against the real contract. */
@@ -73,6 +78,8 @@ async function realState(): Promise<{
   proposed: OnboardingState;
   confirmed: OnboardingState;
   fresh: OnboardingState;
+  started: OnboardingState;
+  ready: OnboardingState;
 }> {
   const runtime = createFixtureOnboarding();
   const service = runtime.onboarding;
@@ -81,7 +88,12 @@ async function realState(): Promise<{
     onboarding_session_id: started.state!.session.onboarding_session_id,
     session_token: started.session_token!,
   };
-  await service.updateProfile({
+  const started2 = await service.updateProfile({
+    request_id: rid(),
+    ...claim,
+    profile: { path: "arnold_plan" },
+  });
+  const ready = await service.updateProfile({
     request_id: rid(),
     ...claim,
     profile: COMPLETE,
@@ -113,6 +125,8 @@ async function realState(): Promise<{
   });
   return {
     fresh: started.state!,
+    started: started2.state!,
+    ready: ready.state!,
     proposed: submitted.state!,
     confirmed: confirmed.state!,
   };
@@ -123,32 +137,32 @@ const states = await realState();
 /* ------------------------------------------------------------- the welcome */
 
 describe("the welcome step", () => {
-  it("explains the setup without promising Google", () => {
-    const output = text(
-      <WelcomeStep onStart={noop} busy={false} resumed={false} canWritePlan />,
-    );
+  const node = (
+    <WelcomeStep onChoose={noop} busy={false} canWritePlan googleAvailable />
+  );
+
+  it("says who Arnold is and offers exactly the two ways in", () => {
+    const output = text(node);
     expect(output).toContain("Willkommen bei Arnold");
-    expect(output).toContain("Einrichtung starten");
-    // Said up front, not discovered at the end: the Google step is named *and*
-    // explicitly negated, so a reader cannot take it as already done.
+    expect(output).toContain("Trainingsbegleiter");
+    expect(output).toContain("Plan mit Arnold erstellen");
+    expect(output).toContain("Eigenen Plan übernehmen");
+    const markup = render(node);
+    expect(markup.match(/class="onb-path /g)).toHaveLength(2);
+    expect(markup).toContain('role="group"');
+  });
+
+  it("does not promise Google where it is unavailable", () => {
+    const output = text(
+      <WelcomeStep onChoose={noop} busy={false} canWritePlan />,
+    );
     expect(output).toContain("Google-Verbindung nicht verfügbar");
     expect(output).toMatch(/keine Datei erstellt/i);
   });
 
-  it("offers to continue when answers already exist", () => {
-    expect(
-      text(<WelcomeStep onStart={noop} busy={false} resumed canWritePlan />),
-    ).toContain("Einrichtung fortsetzen");
-  });
-
   it("says so when a plan cannot be stored at all", () => {
     const output = text(
-      <WelcomeStep
-        onStart={noop}
-        busy={false}
-        resumed={false}
-        canWritePlan={false}
-      />,
+      <WelcomeStep onChoose={noop} busy={false} canWritePlan={false} />,
     );
     expect(output).toMatch(/Eingeschränkte Umgebung/i);
     expect(output).toMatch(/kein Planentwurf gespeichert/i);
@@ -175,16 +189,36 @@ describe("choices", () => {
     expect(markup).toContain("<legend>");
     expect(markup).toContain('type="radio"');
     expect(markup).toContain('name="days_per_week"');
-    // The chosen option is marked for the browser and for assistive tech.
     expect(markup).toContain("checked");
     expect(markup).toContain("selected");
+  });
+
+  it("renders multiple choices as checkbox chips and respects a limit", () => {
+    const markup = render(
+      <ChipGroup
+        legend="Schwerpunkt"
+        options={[
+          { value: "a", label: "Brust" },
+          { value: "b", label: "Rücken" },
+          { value: "c", label: "Beine" },
+        ]}
+        values={["a", "b"]}
+        onChange={noop}
+        max={2}
+        name="focus"
+      />,
+    );
+    expect(markup).toContain('type="checkbox"');
+    expect(markup.match(/checked=""/g)).toHaveLength(2);
+    // The third chip cannot be added once the limit is reached.
+    expect(markup.match(/disabled=""/g)).toHaveLength(1);
   });
 
   it("anchors a validation message at the group that caused it", () => {
     const markup = render(
       <ChoiceGroup
         legend="Dein Ziel"
-        options={[{ value: "muscle_gain", label: "Muskelaufbau" }]}
+        options={[{ value: "muscle_gain", label: "Muskeln aufbauen" }]}
         value={null}
         onChange={noop}
         error="Trainingsziel fehlt noch."
@@ -193,7 +227,6 @@ describe("choices", () => {
     );
     expect(markup).toContain('role="alert"');
     expect(markup).toContain("aria-describedby");
-    expect(markup).toContain("invalid");
     expect(text(markup)).toContain("Trainingsziel fehlt noch.");
   });
 
@@ -206,6 +239,124 @@ describe("choices", () => {
   });
 });
 
+/* ------------------------------------------------------ the profile cards */
+
+const cards = (
+  state: OnboardingState,
+  open: "person" | "training" | null,
+  overrides: Partial<Parameters<typeof ProfileStep>[0]> = {},
+) => (
+  <ProfileStep
+    profile={state.session.profile}
+    progress={state.progress}
+    validation={state.validation}
+    exerciseChoices={state.exercise_choices}
+    splitOptions={state.split_options}
+    busy={false}
+    canWritePlan
+    onSave={async () => true}
+    onRequestPlan={noop}
+    onBack={noop}
+    initiallyOpen={open}
+    {...overrides}
+  />
+);
+
+describe("the profile cards", () => {
+  it("shows the two cards as closed buttons with their state", () => {
+    const markup = render(cards(states.proposed, null));
+    expect(markup.match(/aria-expanded="false"/g)).toHaveLength(2);
+    const output = text(markup);
+    expect(output).toContain("Person");
+    expect(output).toContain("freiwillig");
+    expect(output).toContain("Training");
+    // The finished Training card summarises its answers.
+    expect(output).toContain("Muskeln aufbauen");
+    expect(output).toContain("3 × pro Woche");
+  });
+
+  it("opens one card at a time", () => {
+    const markup = render(cards(states.proposed, "training"));
+    expect(markup.match(/aria-expanded="true"/g)).toHaveLength(1);
+    expect(text(markup)).toContain("Was ist dein Ziel?");
+    expect(text(markup)).not.toContain("Bereiche, die du schonen möchtest");
+  });
+
+  it("asks for the person's basics and body areas, without a diagnosis", () => {
+    const output = text(cards(states.proposed, "person"));
+    for (const label of ["Alter", "Größe", "Gewicht", "Geschlecht"])
+      expect(output).toContain(label);
+    expect(output).toContain("Bereiche, die du schonen möchtest");
+    expect(output).toContain("Knie");
+    expect(output).toContain("Keine Diagnose nötig");
+    expect(output).not.toMatch(/Verletzung|Krankheit|Medikament/i);
+  });
+
+  it("asks the trainer's questions on the Training card", () => {
+    const output = text(cards(states.proposed, "training"));
+    for (const question of [
+      "Was ist dein Ziel?",
+      "Wie lange trainierst du schon?",
+      "An welchen Tagen kannst du trainieren?",
+      "Wie oft pro Woche?",
+      "Wie viel Zeit hast du pro Training?",
+      "Wo trainierst du?",
+      "Bevorzugst du eine Aufteilung?",
+      "Worauf soll der Schwerpunkt liegen?",
+      "Welche Übungen machst du gern?",
+    ])
+      expect(output).toContain(question);
+    expect(output).toContain("Draußen");
+    expect(output).toContain("Arnold entscheidet");
+  });
+
+  it("offers only the splits that fit the days", () => {
+    // Three days: full body or push/pull/legs, not upper/lower.
+    const output = text(cards(states.proposed, "training"));
+    expect(output).toContain("Push / Pull / Beine");
+    expect(output).not.toContain("Oberkörper / Unterkörper");
+  });
+
+  it("groups the exercise picker by muscle group", () => {
+    const output = text(cards(states.proposed, "training"));
+    for (const group of ["Brust", "Rücken", "Beine", "Bauch"])
+      expect(output).toContain(group);
+    expect(output).toContain("Bankdrücken");
+    expect(output).toContain("Kniebeugen");
+  });
+
+  it("asks about equipment only away from the gym", () => {
+    expect(text(cards(states.proposed, "training"))).not.toContain(
+      "Welche Geräte hast du?",
+    );
+    const home = {
+      ...states.proposed.session.profile,
+      training: {
+        ...states.proposed.session.profile.training,
+        environment: "home" as const,
+      },
+    };
+    expect(
+      text(cards(states.proposed, "training", { profile: home })),
+    ).toContain("Welche Geräte hast du?");
+  });
+
+  it("names what is missing and keeps 'Plan erstellen' disabled until then", () => {
+    const markup = render(cards(states.started, "training"));
+    expect(text(markup)).toContain("Für deinen Plan fehlt noch");
+    expect(text(markup)).toContain("Trainingsziel");
+    expect(markup).toMatch(/disabled=""[^>]*>[^<]*<svg[^>]*>.*?Plan erstellen/);
+  });
+
+  it("enables 'Plan erstellen' once the Training card is complete", () => {
+    const ready = render(cards(states.ready, null));
+    expect(text(ready)).toContain("Plan erstellen");
+    expect(ready).not.toMatch(
+      /disabled=""[^>]*>[^<]*<svg[^>]*>.*?Plan erstellen/,
+    );
+  });
+});
+
 /* --------------------------------------------------------------- no enums */
 
 describe("no storage value is ever shown", () => {
@@ -213,90 +364,33 @@ describe("no storage value is ever shown", () => {
     ...TRAINING_GOALS,
     ...EXPERIENCE_LEVELS,
     ...TRAINING_ENVIRONMENTS,
-    ...STARTING_POINTS,
+    ...ONBOARDING_PATHS,
+    ...SPLITS.filter((split) => split !== "auto"),
+    ...SEXES,
+    ...BODY_AREAS,
+    ...EQUIPMENT,
   ];
 
-  const screens = () => {
-    const profile = states.proposed.session.profile;
-    return [
-      text(
-        <GoalStep
-          goal={profile.primary_goal}
-          experience={profile.experience}
-          validation={states.proposed.validation}
-          onChange={noop}
-          onNext={noop}
-          busy={false}
-          showErrors={false}
-        />,
-      ),
-      text(
-        <AvailabilityStep
-          days={profile.days_per_week}
-          minutes={profile.session_minutes}
-          environment={profile.environment}
-          validation={states.proposed.validation}
-          onChange={noop}
-          onNext={noop}
-          onBack={noop}
-          busy={false}
-          showErrors={false}
-        />,
-      ),
-      text(
-        <PreferencesStep
-          startingPoint={profile.starting_point}
-          preferred=""
-          avoided=""
-          equipment=""
-          notes=""
-          validation={states.proposed.validation}
-          onChange={noop}
-          onNext={noop}
-          onBack={noop}
-          busy={false}
-          showErrors={false}
-        />,
-      ),
-      text(
-        <ProfileSummaryStep
-          summary={{
-            goal: profile.primary_goal,
-            experience: profile.experience,
-            days: profile.days_per_week,
-            minutes: profile.session_minutes,
-            environment: profile.environment,
-            startingPoint: profile.starting_point,
-            preferred: [],
-            avoided: [],
-            equipment: [],
-          }}
-          progress={states.proposed.progress}
-          validation={states.proposed.validation}
-          onEdit={noop}
-          onRequestPlan={noop}
-          onBack={noop}
-          busy={false}
-          canRequestPlan
-          canWritePlan
-        />,
-      ),
-    ];
-  };
+  const screens = () => [
+    text(<WelcomeStep onChoose={noop} busy={false} canWritePlan />),
+    text(cards(states.proposed, "person")),
+    text(cards(states.proposed, "training")),
+    text(
+      <OwnPlanStep
+        onBack={noop}
+        onAskChat={noop}
+        onReload={noop}
+        busy={false}
+      />,
+    ),
+  ];
 
   it("shows German labels instead of enum keys", () => {
     for (const output of screens())
       for (const value of forbidden)
-        expect(output, `"${value}" leaked into the interface`).not.toContain(
-          value,
+        expect(output, `"${value}" leaked into the interface`).not.toMatch(
+          new RegExp(`\\b${value}\\b`),
         );
-  });
-
-  it("shows the German label for the chosen values", () => {
-    const output = screens().join(" ");
-    expect(output).toContain("Muskelaufbau");
-    expect(output).toContain("Fortgeschritten");
-    expect(output).toContain("Fitnessstudio");
   });
 
   it("never shows a technical identifier", () => {
@@ -304,6 +398,7 @@ describe("no storage value is ever shown", () => {
     expect(output).not.toContain(states.proposed.session.onboarding_session_id);
     expect(output).not.toContain(states.proposed.plan!.plan_version_id);
     expect(output).not.toContain(states.proposed.session.tracker_id);
+    expect(output).not.toContain("bench-press");
   });
 });
 
@@ -316,123 +411,34 @@ describe("progress", () => {
     );
     expect(markup).toContain('role="progressbar"');
     expect(markup).toContain("aria-valuenow");
-    expect(markup).toContain("aria-label");
     expect(text(markup)).toContain("Angaben vollständig.");
   });
 
   it("counts an incomplete profile honestly", () => {
     const output = text(
-      <OnboardingProgressBar
-        progress={{
-          ...states.fresh.progress,
-          answered_required: 2,
-          total_required: 6,
-          profile_complete: false,
-        }}
-      />,
+      <OnboardingProgressBar progress={states.started.progress} />,
     );
-    expect(output).toContain("2 / 6");
+    expect(output).toContain("1 / 6");
   });
 });
 
-/* --------------------------------------------------------------- summary */
+/* ---------------------------------------------------------- the own plan */
 
-describe("the summary", () => {
-  const profile = states.proposed.session.profile;
-  const node = (
-    <ProfileSummaryStep
-      summary={{
-        goal: profile.primary_goal,
-        experience: profile.experience,
-        days: profile.days_per_week,
-        minutes: profile.session_minutes,
-        environment: profile.environment,
-        startingPoint: profile.starting_point,
-        preferred: ["Bankdrücken"],
-        avoided: ["Kniebeugen"],
-        equipment: [],
-        notes: "Am liebsten morgens.",
-      }}
-      progress={states.proposed.progress}
-      validation={states.proposed.validation}
-      onEdit={noop}
-      onRequestPlan={noop}
-      onBack={noop}
-      busy={false}
-      canRequestPlan
-      canWritePlan
-    />
+describe("taking over an own plan", () => {
+  const output = text(
+    <OwnPlanStep onBack={noop} onAskChat={noop} onReload={noop} busy={false} />,
   );
 
-  it("lists the answers with a change control each", () => {
-    const output = text(node);
-    expect(output).toContain("3 Tage pro Woche");
-    expect(output).toContain("60 Minuten je Training");
-    expect(output).toContain("Bankdrücken");
-    expect(output).toContain("Am liebsten morgens.");
-    // Every row is editable, which is what "alle Werte veränderbar" means.
-    const markup = render(node);
-    expect(markup.match(/ändern/gi)!.length).toBeGreaterThanOrEqual(6);
+  it("says the plan comes through the chat, as text or a photo", () => {
+    expect(output).toContain("Deinen Plan übernehmen");
+    expect(output).toMatch(/Chat/);
+    expect(output).toMatch(/Foto/);
+    expect(output).toMatch(/ergänzen/i);
   });
 
-  it("marks what is still missing rather than hiding it", () => {
-    const output = text(
-      <ProfileSummaryStep
-        summary={{
-          goal: null,
-          experience: profile.experience,
-          days: profile.days_per_week,
-          minutes: profile.session_minutes,
-          environment: profile.environment,
-          startingPoint: profile.starting_point,
-          preferred: [],
-          avoided: [],
-          equipment: [],
-        }}
-        progress={{
-          ...states.proposed.progress,
-          profile_complete: false,
-          missing_fields: ["primary_goal"],
-        }}
-        validation={states.proposed.validation}
-        onEdit={noop}
-        onRequestPlan={noop}
-        onBack={noop}
-        busy={false}
-        canRequestPlan={false}
-        canWritePlan
-      />,
-    );
-    expect(output).toContain("Noch offen");
-    expect(output).toContain("Es fehlen noch Angaben");
-    expect(output).toContain("Trainingsziel");
-  });
-
-  it("disables the plan request while answers are missing", () => {
-    const markup = render(
-      <ProfileSummaryStep
-        summary={{
-          goal: null,
-          experience: null,
-          days: null,
-          minutes: null,
-          environment: null,
-          startingPoint: null,
-          preferred: [],
-          avoided: [],
-          equipment: [],
-        }}
-        progress={{ ...states.fresh.progress, profile_complete: false }}
-        validation={states.fresh.validation}
-        onEdit={noop}
-        onRequestPlan={noop}
-        onBack={noop}
-        busy={false}
-        canRequestPlan={false}
-        canWritePlan
-      />,
-    );
-    expect(markup).toContain("disabled");
+  it("offers to continue in the chat and a real reload", () => {
+    expect(output).toContain("Im Chat weitermachen");
+    expect(output).toContain("Nach dem Plan suchen");
   });
 });
 
@@ -443,7 +449,7 @@ describe("the plan generation step", () => {
     <PlanGenerationStep
       daysPerWeek={3}
       minutes={60}
-      startingPoint="new_plan"
+      path="arnold_plan"
       onBack={noop}
       onReload={noop}
       busy={false}
@@ -463,13 +469,13 @@ describe("the plan generation step", () => {
     expect(text(node)).toMatch(/erfindet keine Trainingsgewichte/i);
   });
 
-  it("adapts the wording for an existing routine", () => {
+  it("adapts the wording for an own plan", () => {
     expect(
       text(
         <PlanGenerationStep
           daysPerWeek={3}
           minutes={60}
-          startingPoint="existing_plan"
+          path="own_plan"
           onBack={noop}
           onReload={noop}
           busy={false}
@@ -606,11 +612,11 @@ describe("error and resume states", () => {
           errors: [],
           warnings: [
             {
-              code: "EXISTING_ROUTINE_INCOMPLETE",
+              code: "PREFERRED_EXERCISE_UNAVAILABLE",
               severity: "warning",
-              message: "Für Push fehlen Sätze.",
+              message: "Beinpresse ist zuhause nicht möglich.",
               field: null,
-              step: "preferences",
+              step: "profile",
             },
           ],
           recommendations: [
@@ -619,91 +625,25 @@ describe("error and resume states", () => {
               severity: "recommendation",
               message: "Sieben Tage lassen wenig Erholung.",
               field: null,
-              step: "preferences",
+              step: "profile",
             },
           ],
         }}
-        step="preferences"
+        step="profile"
       />,
     );
     const output = text(markup);
-    expect(output).toContain("Für Push fehlen Sätze.");
+    expect(output).toContain("Beinpresse ist zuhause nicht möglich.");
     expect(output).toContain("Sieben Tage lassen wenig Erholung.");
     // A recommendation is not an alert.
     expect(markup).toContain('role="status"');
   });
 });
 
-/* ------------------------------------------------- the existing-plan path */
-
-describe("taking over an existing plan", () => {
-  it("explains how to describe a routine in the chat", () => {
-    const output = text(
-      <PreferencesStep
-        startingPoint="existing_plan"
-        preferred=""
-        avoided=""
-        equipment=""
-        notes=""
-        validation={states.proposed.validation}
-        onChange={noop}
-        onNext={noop}
-        onBack={noop}
-        busy={false}
-        showErrors={false}
-      />,
-    );
-    expect(output).toContain("Push/Pull/Legs");
-    expect(output).toMatch(/strukturiert/i);
-    expect(output).toMatch(/ergänzen/i);
-  });
-
-  it("offers a genuine skip for the optional questions", () => {
-    const output = text(
-      <PreferencesStep
-        startingPoint="new_plan"
-        preferred=""
-        avoided=""
-        equipment=""
-        notes=""
-        validation={states.proposed.validation}
-        onChange={noop}
-        onNext={noop}
-        onBack={noop}
-        busy={false}
-        showErrors={false}
-      />,
-    );
-    expect(output).toContain("Optionale Angaben überspringen");
-  });
-
-  it("asks for no health information and says so", () => {
-    const output = text(
-      <PreferencesStep
-        startingPoint="new_plan"
-        preferred=""
-        avoided=""
-        equipment=""
-        notes=""
-        validation={states.proposed.validation}
-        onChange={noop}
-        onNext={noop}
-        onBack={noop}
-        busy={false}
-        showErrors={false}
-      />,
-    );
-    expect(output).toMatch(/keine Gesundheits-/i);
-    expect(output).toMatch(/keine medizinischen/i);
-    // And no field invites a diagnosis.
-    expect(output).not.toMatch(/Verletzung|Diagnose|Krankheit[^s]/i);
-  });
-});
-
 /* ----------------------------------------------------- no fake affordances */
 
 describe("no misleading claims anywhere", () => {
-  it("never reports a completed setup in Task 006", () => {
+  it("never reports a completed setup before Google", () => {
     const plan = states.confirmed.plan!;
     const screens = [
       text(
@@ -716,14 +656,7 @@ describe("no misleading claims anywhere", () => {
           busy={false}
         />,
       ),
-      text(
-        <WelcomeStep
-          onStart={noop}
-          busy={false}
-          resumed={false}
-          canWritePlan
-        />,
-      ),
+      text(<WelcomeStep onChoose={noop} busy={false} canWritePlan />),
     ].join(" ");
     expect(screens).not.toMatch(/Einrichtung (ist )?abgeschlossen/i);
     expect(screens).not.toMatch(/Tracker (wurde )?erstellt/i);

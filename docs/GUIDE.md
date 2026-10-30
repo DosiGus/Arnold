@@ -100,7 +100,21 @@ Ablauf: `start_workout` → `log_workout_sets` / `update_set` / `void_set` → `
 
 ### Einrichtung (`src/server/onboarding`)
 
-Ein Zustandsautomat führt von Profil über Planvorschlag zur **ausdrücklichen Bestätigung genau einer Planrevision**; erst danach darf Google verbunden werden. Chat-Turns und die Wizard-Oberfläche arbeiten auf demselben Serverzustand (kein zweiter Profilspeicher im Chat). Vor der Anmeldung schützt ein eigenes 256-Bit-Sitzungsgeheimnis den Entwurf.
+Der Ablauf aus Nutzersicht:
+
+1. **Begrüßung** mit zwei Buttons: „Plan mit Arnold erstellen“ oder „Eigenen Plan übernehmen“ (`profile.path`).
+2. **Plan mit Arnold:** zwei aufklappbare Karten auf einem Bildschirm. _Person_ (Alter, Geschlecht, Größe, Gewicht, Bereiche schonen) ist freiwillig. _Training_ verlangt Ziel, Erfahrung, Tage (Anzahl oder feste Wochentage), Minuten und Ort; Split, Schwerpunkt, Geräte und Lieblingsübungen sind optional. „Plan erstellen“ öffnet die Planphase und schickt eine Nachricht in den Chat, damit ChatGPT den Plan aus dem Briefing baut.
+3. **Eigener Plan:** keine Fragen. Der Nutzer schickt seinen Plan als Text oder Foto in den Chat; ChatGPT überträgt ihn mit `origin: existing_routine`.
+4. Prüfen, im Editor oder per Chat ändern, **ausdrücklich genau eine Planrevision bestätigen**; erst danach Google verbinden.
+
+Weitere Regeln:
+
+- Chat-Turns und Oberfläche arbeiten auf demselben Serverzustand. Der Text jedes Einrichtungs-Tools sagt ChatGPT, was als Nächstes zu tun ist.
+- Die Übungsauswahl und der Katalog einer neuen Trainingsdatei kommen aus derselben Grundübungsliste (`src/shared/exercise-starter-catalog.ts`).
+- **Hinter einem Login gehört die Einrichtung dem Konto** (`OnboardingAccessControl.perOwner`): höchstens eine offene Einrichtung pro Nutzer, sie wird in jedem neuen Chat fortgesetzt (mit neu ausgestelltem Sitzungsgeheimnis), und nach dem Abschluss startet sie nie wieder (`ONBOARDING_ALREADY_COMPLETED`). Solange ein Konto nicht eingerichtet ist, antworten Dashboard- und Workout-Tools mit `SETUP_REQUIRED` (`onboarding/setup-gate.ts`); Plan-, Einrichtungs- und Google-Tools bleiben offen.
+- Ohne Login (Fixture) bleibt die Einrichtung anonym und wird nur durch das 256-Bit-Sitzungsgeheimnis geschützt.
+- Bereiche schonen ist eine Trainingsvorliebe, keine Diagnose; Gesundheitsdaten werden nicht erfragt.
+- Gespeicherte Einrichtungen im alten Format (1.0.0) werden beim Lesen übernommen (`migrateLegacyRecord`).
 
 ## Authentifizierung und Zugriff
 
@@ -301,4 +315,5 @@ Nur Commit und Push sichern Änderungen. Nicht versioniert: `.env*` (außer `.en
 - Echte Google-/OIDC-/ChatGPT-Abnahme des Connected-Profils.
 - Mehrinstanzbetrieb, Postgres-Speicher, verteilte Sperren, echte Google-Quoten, Lasttests, Restore auf neuer Instanz, Monitoring, Aufbewahrung der lokalen Journale.
 - Safari, Firefox, echte Mobilgeräte, manuelle Accessibility-Prüfung, Prompt-/Modell-Evaluation.
-- Geräteübergreifende Wiederaufnahme der Einrichtung.
+- Geräteübergreifende Wiederaufnahme der Einrichtung ohne Login (mit Login gelöst: die Einrichtung gehört dem Konto).
+- Eigener Plan mit Übungen, die nicht im Grundkatalog stehen: Sie landen bisher nur in `open_questions`, weil eigene Übungen erst nach der Google-Einrichtung angelegt werden können.

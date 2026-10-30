@@ -24,12 +24,19 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
+  OnboardingPath,
   OnboardingProfilePatch,
   OnboardingState,
   OnboardingStep,
 } from "../../shared/onboarding-contract";
 import { PROFILE_STEPS } from "../../shared/onboarding-contract";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
+
+/** What the buttons say in the chat on the user's behalf. Short, first person. */
+export const PLAN_REQUEST_MESSAGE =
+  "Meine Angaben sind fertig. Bitte erstelle jetzt meinen Trainingsplan.";
+export const OWN_PLAN_MESSAGE =
+  "Ich habe schon einen Trainingsplan und möchte ihn übernehmen.";
 
 const newRequestId = () =>
   typeof crypto !== "undefined" && crypto.randomUUID
@@ -67,13 +74,11 @@ export function useOnboarding(
    * it is shown while nothing has been answered yet, and skipped the moment a
    * setup actually has answers to come back to.
    */
+  // The server knows the screen: the welcome until a path is chosen, then the
+  // path's own step. The client only follows it.
   const openingStep = (next: OnboardingState): OnboardingStep =>
-    next.progress.answered_required === 0 &&
-    next.session.status === "COLLECTING_PROFILE"
-      ? "welcome"
-      : next.session.current_step;
+    next.session.current_step;
 
-  /** The step on screen. Follows the server unless the user navigated. */
   const [step, setStep] = useState<OnboardingStep>(
     initial ? openingStep(initial) : "welcome",
   );
@@ -257,16 +262,44 @@ export function useOnboarding(
     [adopt, client],
   );
 
-  const requestPlan = useCallback(
-    () =>
-      send(
+  /**
+   * "Plan erstellen": opens the proposal phase, then hands the turn to the
+   * chat so ChatGPT builds the plan right away instead of waiting to be asked.
+   */
+  const requestPlan = useCallback(async () => {
+    const response = await send(
+      (revision) =>
+        client.requestOnboardingPlan({
+          request_id: newRequestId(),
+          expected_revision: revision,
+        }),
+      { busyState: "REQUESTING_PLAN" },
+    );
+    if (response?.ok) await client.askChat(PLAN_REQUEST_MESSAGE);
+    return response;
+  }, [client, send]);
+
+  /**
+   * One of the two welcome buttons. The own-plan path continues in the chat,
+   * so it also posts a message that tells ChatGPT to ask for the plan.
+   */
+  const choosePath = useCallback(
+    async (path: OnboardingPath) => {
+      const response = await send(
         (revision) =>
-          client.requestOnboardingPlan({
+          client.saveOnboardingProfile({
             request_id: newRequestId(),
             expected_revision: revision,
+            profile: { path },
           }),
-        { busyState: "REQUESTING_PLAN" },
-      ),
+        { busyState: "SAVING" },
+      );
+      if (response?.ok && response.state) {
+        setStep(response.state.session.current_step);
+        if (path === "own_plan") await client.askChat(OWN_PLAN_MESSAGE);
+      }
+      return response;
+    },
     [client, send],
   );
 
@@ -394,6 +427,7 @@ export function useOnboarding(
     handoff: state?.handoff,
     goToStep,
     saveProfile,
+    choosePath,
     requestPlan,
     confirmPlan,
     revisePlan,

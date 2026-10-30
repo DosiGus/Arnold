@@ -24,6 +24,7 @@ const base = (
 ): OnboardingMachineState => ({
   status: "NOT_STARTED",
   step: "welcome",
+  path: null,
   profile_complete: false,
   has_plan_draft: false,
   has_confirmation: false,
@@ -52,22 +53,31 @@ function reject(state: OnboardingMachineState, event: OnboardingEvent) {
 }
 
 describe("new session", () => {
-  it("starts collecting answers", () => {
+  it("starts collecting answers on the welcome screen", () => {
     const result = pass(base(), { type: "START" });
     expect(result.state.status).toBe("COLLECTING_PROFILE");
-    expect(result.state.step).toBe("goal");
+    // No path chosen yet: the two buttons come first.
+    expect(result.state.step).toBe("welcome");
   });
 
   it("continues an existing setup instead of discarding answers", () => {
-    const state = base({ status: "COLLECTING_PROFILE", step: "availability" });
+    const state = base({
+      status: "COLLECTING_PROFILE",
+      step: "profile",
+      path: "arnold_plan",
+    });
     const result = pass(state, { type: "START" });
     expect(result.state.status).toBe("COLLECTING_PROFILE");
-    expect(result.state.step).toBe("availability");
+    expect(result.state.step).toBe("profile");
   });
 
   it("refuses answers before the setup was started", () => {
     expect(
-      reject(base(), { type: "SAVE_PROFILE", profile_complete: false }).code,
+      reject(base(), {
+        type: "SAVE_PROFILE",
+        profile_complete: false,
+        path: "arnold_plan",
+      }).code,
     ).toBe("INVALID_STATE_TRANSITION");
   });
 });
@@ -77,6 +87,7 @@ describe("collecting the profile", () => {
     const result = pass(base({ status: "COLLECTING_PROFILE" }), {
       type: "SAVE_PROFILE",
       profile_complete: false,
+      path: "arnold_plan",
     });
     expect(result.state.status).toBe("COLLECTING_PROFILE");
   });
@@ -85,14 +96,32 @@ describe("collecting the profile", () => {
     const result = pass(base({ status: "COLLECTING_PROFILE" }), {
       type: "SAVE_PROFILE",
       profile_complete: true,
+      path: "arnold_plan",
     });
     expect(result.state.status).toBe("PROFILE_READY");
+    expect(result.state.step).toBe("profile");
+  });
+
+  it("follows the chosen path to its screen", () => {
+    const own = pass(base({ status: "COLLECTING_PROFILE" }), {
+      type: "SAVE_PROFILE",
+      profile_complete: true,
+      path: "own_plan",
+    });
+    expect(own.state.status).toBe("PROFILE_READY");
+    expect(own.state.step).toBe("own_plan");
+    const arnold = pass(base({ status: "COLLECTING_PROFILE" }), {
+      type: "SAVE_PROFILE",
+      profile_complete: false,
+      path: "arnold_plan",
+    });
+    expect(arnold.state.step).toBe("profile");
   });
 
   it("falls back to collecting when an answer is removed again", () => {
     const result = pass(
       base({ status: "PROFILE_READY", profile_complete: true }),
-      { type: "SAVE_PROFILE", profile_complete: false },
+      { type: "SAVE_PROFILE", profile_complete: false, path: "arnold_plan" },
     );
     expect(result.state.status).toBe("COLLECTING_PROFILE");
   });
@@ -102,11 +131,12 @@ describe("stepping back", () => {
   it("moves the step without changing the status", () => {
     const state = base({
       status: "PROFILE_READY",
-      step: "summary",
+      step: "profile",
+      path: "arnold_plan",
       profile_complete: true,
     });
-    const result = pass(state, { type: "GO_BACK", step: "goal" });
-    expect(result.state.step).toBe("goal");
+    const result = pass(state, { type: "GO_BACK", step: "welcome" });
+    expect(result.state.step).toBe("welcome");
     // The answers are still complete; the user is only looking at them again.
     expect(result.state.status).toBe("PROFILE_READY");
   });
@@ -127,7 +157,7 @@ describe("stepping back", () => {
       has_plan_draft: true,
       has_confirmation: true,
     });
-    expect(reject(state, { type: "GO_BACK", step: "goal" }).code).toBe(
+    expect(reject(state, { type: "GO_BACK", step: "welcome" }).code).toBe(
       "INVALID_STATE_TRANSITION",
     );
   });
@@ -275,6 +305,7 @@ describe("changing a plan after the confirmation", () => {
     const result = pass(confirmed, {
       type: "SAVE_PROFILE",
       profile_complete: true,
+      path: "arnold_plan",
     });
     expect(result.state.status).toBe("REVIEWING_PLAN");
     expect(result.effects).toContain("handoff_superseded");
@@ -387,7 +418,7 @@ describe("expiry and cancellation", () => {
       profile_complete: true,
     });
     for (const event of [
-      { type: "SAVE_PROFILE", profile_complete: true },
+      { type: "SAVE_PROFILE", profile_complete: true, path: "arnold_plan" },
       { type: "REQUEST_PLAN" },
       { type: "PLAN_PROPOSED" },
       { type: "CONFIRM_PLAN" },
@@ -491,9 +522,9 @@ describe("allowed events drive the UI", () => {
         for (const type of allowedEvents(state)) {
           const event = (
             type === "SAVE_PROFILE"
-              ? { type, profile_complete: complete }
+              ? { type, profile_complete: complete, path: "arnold_plan" }
               : type === "GO_BACK"
-                ? { type, step: "goal" }
+                ? { type, step: "welcome" }
                 : type === "GOOGLE_CONNECTED"
                   ? { type, provisioning_verified: false }
                   : { type }
