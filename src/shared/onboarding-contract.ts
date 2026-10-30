@@ -2,12 +2,24 @@
  * The onboarding contract: domain objects, the state vocabulary, the profile
  * schema and the input/output schemas of every onboarding MCP tool.
  *
+ * The flow it describes, as the user experiences it:
+ *
+ *   1. Welcome, with two buttons: "Plan mit Arnold erstellen" or "Eigenen
+ *      Plan übernehmen" (`path`).
+ *   2a. Arnold's plan: two cards, Person and Training, on one screen. Once the
+ *       Training card is complete, "Plan erstellen" hands over to the chat,
+ *       which builds the plan from the brief.
+ *   2b. Own plan: the user pastes or photographs their plan in the chat, and
+ *       the model transcribes it into a draft.
+ *   3. Review, change by chat or editor, confirm exactly one revision.
+ *   4. Connect Google; Arnold creates the personal file with that plan.
+ *
  * Four rules shape everything here.
  *
- * First, an `onboarding_session_id` is **not** a user account. Before Task 007
- * there is no verified Google identity, so a session is an anonymous, expiring
- * setup conversation. Nothing in this contract may be read as proof of who
- * someone is, and no field of it is allowed to become a `user_id`.
+ * First, an `onboarding_session_id` is **not** a user account. It identifies a
+ * setup. Where Arnold runs behind a login, the setup belongs to the verified
+ * account (one per user, resumed in every chat); without a login it is an
+ * anonymous, expiring setup conversation. No field of it becomes a `user_id`.
  *
  * Second, the bare session id is not a credential either. Every addressed
  * operation carries an `OnboardingClaim`, and the server stores only a hash of
@@ -15,15 +27,14 @@
  * guesses an id gets nothing.
  *
  * Third, onboarding owns no training plan logic. A proposal is handed to the
- * Task 005 `TrainingPlanService` and what comes back is referenced by
- * `plan_version_id` and `row_revision`. There is deliberately no plan structure
- * stored in an onboarding session: a second copy would be a second source of
- * truth and could disagree with the editor.
+ * `TrainingPlanService` and what comes back is referenced by `plan_version_id`
+ * and `row_revision`. There is deliberately no plan structure stored in an
+ * onboarding session: a second copy would be a second source of truth and
+ * could disagree with the editor.
  *
  * Fourth, a confirmation names one plan version *and* one revision. It means
- * "the user released this for setup", never "this is live in a Google file" —
- * the real provisioning is Task 007. `OnboardingHandoff.status` is therefore
- * `ready_for_google_connection` and never `completed`.
+ * "the user released this for setup", never "this is live in a Google file".
+ * Only the Google provisioning step can complete a setup.
  */
 import { z } from "zod";
 import {
@@ -33,13 +44,31 @@ import {
   ArnoldUtcTimestampSchema,
 } from "./arnold-schema-v1.js";
 import {
+  EQUIPMENT,
+  EQUIPMENT_LABEL,
+  MUSCLE_GROUPS,
+  MUSCLE_GROUP_LABEL,
+  STARTER_EXERCISE_IDS,
+  type Equipment,
+  type MuscleGroup,
+} from "./exercise-starter-catalog.js";
+import {
   PlanValidationResultSchema,
   TrainingPlanVersionSchema,
   TrainingSessionInputSchema,
 } from "./plan-contract.js";
 
-export const ONBOARDING_CONTRACT = "arnold.onboarding/1";
-export const ONBOARDING_SCHEMA_VERSION = "1.0.0";
+export {
+  EQUIPMENT,
+  EQUIPMENT_LABEL,
+  MUSCLE_GROUPS,
+  MUSCLE_GROUP_LABEL,
+  type Equipment,
+  type MuscleGroup,
+};
+
+export const ONBOARDING_CONTRACT = "arnold.onboarding/2";
+export const ONBOARDING_SCHEMA_VERSION = "2.0.0";
 
 const id = ArnoldIdSchema;
 const positiveInt = z.number().int().positive();
@@ -72,7 +101,7 @@ export const ONBOARDING_STATUSES = [
   "REVIEWING_PLAN",
   "PLAN_CONFIRMED",
   "AWAITING_GOOGLE_CONNECTION",
-  /** Reachable only through Task 007 provisioning. Never reported by Task 006. */
+  /** Reachable only through verified Google provisioning. */
   "COMPLETED",
   "CANCELLED",
   "EXPIRED",
@@ -80,13 +109,18 @@ export const ONBOARDING_STATUSES = [
 export const OnboardingStatusSchema = z.enum(ONBOARDING_STATUSES);
 export type OnboardingStatus = z.infer<typeof OnboardingStatusSchema>;
 
-/** The wizard steps. A step is a screen; a status is a server fact. */
+/**
+ * The wizard steps. A step is a screen; a status is a server fact.
+ *
+ * After the welcome the setup splits. "Plan mit Arnold" collects the two
+ * cards Person and Training on one screen (`profile`); "Eigener Plan" hands
+ * over to the chat, where the user pastes or photographs their plan
+ * (`own_plan`). Both meet again at the plan proposal.
+ */
 export const ONBOARDING_STEPS = [
   "welcome",
-  "goal",
-  "availability",
-  "preferences",
-  "summary",
+  "profile",
+  "own_plan",
   "plan_proposal",
   "plan_review",
   "confirmation",
@@ -96,26 +130,49 @@ export const ONBOARDING_STEPS = [
 export const OnboardingStepSchema = z.enum(ONBOARDING_STEPS);
 export type OnboardingStep = z.infer<typeof OnboardingStepSchema>;
 
-/** Which step a status opens on, so chat and UI never disagree about "where am I". */
-export const STEP_FOR_STATUS: Record<OnboardingStatus, OnboardingStep> = {
-  NOT_STARTED: "welcome",
-  COLLECTING_PROFILE: "goal",
-  PROFILE_READY: "summary",
-  WAITING_FOR_PLAN_PROPOSAL: "plan_proposal",
-  REVIEWING_PLAN: "plan_review",
-  PLAN_CONFIRMED: "confirmation",
-  AWAITING_GOOGLE_CONNECTION: "google_connection",
-  COMPLETED: "done",
-  CANCELLED: "welcome",
-  EXPIRED: "welcome",
-};
+/** The two ways into Arnold, chosen with the two buttons on the welcome screen. */
+export const ONBOARDING_PATHS = ["arnold_plan", "own_plan"] as const;
+export const OnboardingPathSchema = z.enum(ONBOARDING_PATHS);
+export type OnboardingPath = z.infer<typeof OnboardingPathSchema>;
 
-/** Steps that collect profile answers, in order. Backwards navigation is allowed. */
+/**
+ * Which step a status opens on, so chat and UI never disagree about "where am I".
+ *
+ * While answers are collected the step follows the chosen path; no path yet
+ * means the welcome screen with its two buttons.
+ */
+export function stepForStatus(
+  status: OnboardingStatus,
+  path: OnboardingPath | null,
+): OnboardingStep {
+  switch (status) {
+    case "COLLECTING_PROFILE":
+    case "PROFILE_READY":
+      return path === null
+        ? "welcome"
+        : path === "own_plan"
+          ? "own_plan"
+          : "profile";
+    case "WAITING_FOR_PLAN_PROPOSAL":
+      return "plan_proposal";
+    case "REVIEWING_PLAN":
+      return "plan_review";
+    case "PLAN_CONFIRMED":
+      return "confirmation";
+    case "AWAITING_GOOGLE_CONNECTION":
+      return "google_connection";
+    case "COMPLETED":
+      return "done";
+    default:
+      return "welcome";
+  }
+}
+
+/** Steps that collect answers. Going back to them is allowed until a plan exists. */
 export const PROFILE_STEPS = [
-  "goal",
-  "availability",
-  "preferences",
-  "summary",
+  "welcome",
+  "profile",
+  "own_plan",
 ] as const satisfies readonly OnboardingStep[];
 
 export const HANDOFF_STATUSES = [
@@ -125,7 +182,7 @@ export const HANDOFF_STATUSES = [
   "ready_for_google_connection",
   /** The plan moved on after the confirmation; it must be confirmed again. */
   "superseded",
-  /** Task 007 finished provisioning. Never set by Task 006. */
+  /** Google provisioning finished. */
   "completed",
 ] as const;
 export const HandoffStatusSchema = z.enum(HANDOFF_STATUSES);
@@ -133,11 +190,27 @@ export type HandoffStatus = z.infer<typeof HandoffStatusSchema>;
 
 /* ------------------------------------------------------------------ profile */
 
+/*
+ * The profile has two cards, as the user sees them.
+ *
+ * Person: age, sex, height, weight and body areas to go easy on. All of it is
+ * optional. It helps the plan (a 60-year-old beginner and a 20-year-old do not
+ * get the same volume), but nobody is kept from a plan for skipping it.
+ *
+ * Training: goal, experience, days, minutes and place are required for the
+ * "Plan mit Arnold" path, because a trainer cannot plan without them. Split,
+ * focus, equipment and favourite exercises are optional refinements.
+ *
+ * There is no diagnosis, condition or medication field anywhere. "Bereiche
+ * schonen" is a training preference (which joints to load carefully), not a
+ * medical statement, and the brief tells the model exactly that.
+ */
+
 export const TRAINING_GOALS = [
   "muscle_gain",
   "strength",
+  "fat_loss",
   "general_fitness",
-  "recomposition",
 ] as const;
 export const TrainingGoalSchema = z.enum(TRAINING_GOALS);
 export type TrainingGoal = z.infer<typeof TrainingGoalSchema>;
@@ -150,17 +223,71 @@ export const EXPERIENCE_LEVELS = [
 export const ExperienceLevelSchema = z.enum(EXPERIENCE_LEVELS);
 export type ExperienceLevel = z.infer<typeof ExperienceLevelSchema>;
 
-export const TRAINING_ENVIRONMENTS = ["gym", "home", "mixed"] as const;
+export const TRAINING_ENVIRONMENTS = [
+  "gym",
+  "home",
+  "outdoor",
+  "mixed",
+] as const;
 export const TrainingEnvironmentSchema = z.enum(TRAINING_ENVIRONMENTS);
 export type TrainingEnvironment = z.infer<typeof TrainingEnvironmentSchema>;
 
-export const STARTING_POINTS = [
-  "new_plan",
-  "existing_plan",
-  "undecided",
+export const SEXES = ["female", "male", "diverse"] as const;
+export const SexSchema = z.enum(SEXES);
+export type Sex = z.infer<typeof SexSchema>;
+
+/** Body areas a user wants to go easy on. A preference, never a diagnosis. */
+export const BODY_AREAS = [
+  "shoulder",
+  "elbow",
+  "wrist",
+  "neck",
+  "lower_back",
+  "hip",
+  "knee",
 ] as const;
-export const StartingPointSchema = z.enum(STARTING_POINTS);
-export type StartingPoint = z.infer<typeof StartingPointSchema>;
+export const BodyAreaSchema = z.enum(BODY_AREAS);
+export type BodyArea = z.infer<typeof BodyAreaSchema>;
+
+export const WEEKDAYS = [
+  "mon",
+  "tue",
+  "wed",
+  "thu",
+  "fri",
+  "sat",
+  "sun",
+] as const;
+export const WeekdaySchema = z.enum(WEEKDAYS);
+export type Weekday = z.infer<typeof WeekdaySchema>;
+
+/** `auto` is the default: Arnold picks the split that fits the days. */
+export const SPLITS = [
+  "auto",
+  "full_body",
+  "upper_lower",
+  "push_pull_legs",
+  "body_part",
+] as const;
+export const SplitSchema = z.enum(SPLITS);
+export type Split = z.infer<typeof SplitSchema>;
+
+/**
+ * Which splits make sense for a number of training days.
+ *
+ * A trainer's rule of thumb, not a law: two days of push/pull/legs leave a
+ * muscle group untrained for a week. The picker offers these; a different
+ * choice is accepted and only earns a note.
+ */
+export function splitsForDays(days: number | null): Split[] {
+  if (days === null) return [...SPLITS];
+  const fitting: Split[] = ["auto"];
+  if (days <= 4) fitting.push("full_body");
+  if (days === 2 || days === 4 || days === 6) fitting.push("upper_lower");
+  if (days === 3 || days >= 5) fitting.push("push_pull_legs");
+  if (days >= 4) fitting.push("body_part");
+  return fitting;
+}
 
 /**
  * Minutes per session.
@@ -186,86 +313,65 @@ export const DaysPerWeekSchema = z
   .min(DAYS_PER_WEEK_MIN)
   .max(DAYS_PER_WEEK_MAX);
 
-/**
- * A known starting load.
- *
- * Deliberately not a bare number. A load in Arnold is meaningless without the
- * convention it was measured in — 20 kg "per dumbbell" and 20 kg "on the
- * machine display" are different facts — so a starting weight is only stored
- * when the basis and the execution are stated too. Everything else stays empty
- * rather than becoming an invented prescription.
- */
-export const KnownStartingLoadSchema = z.strictObject({
-  exercise_id: id,
-  load_kg: z.number().positive().max(500),
-  load_basis: ArnoldLoadBasisSchema,
-  execution_mode: ArnoldExecutionModeSchema,
-  implement_count: positiveInt.max(10).optional(),
-  reps: positiveInt.max(100).optional(),
+export const AgeSchema = z.number().int().min(14).max(100);
+export const HeightSchema = z.number().int().min(120).max(230);
+export const BodyWeightSchema = z.number().min(30).max(300);
+
+const StarterExerciseIdSchema = z.enum(STARTER_EXERCISE_IDS);
+const EquipmentSchema = z.enum(EQUIPMENT);
+const MuscleGroupSchema = z.enum(MUSCLE_GROUPS);
+
+/** The Person card. Every field is optional. */
+export const PersonSchema = z.strictObject({
+  age_years: AgeSchema.optional(),
+  sex: SexSchema.optional(),
+  height_cm: HeightSchema.optional(),
+  body_weight_kg: BodyWeightSchema.optional(),
+  protect_areas: z.array(BodyAreaSchema).max(BODY_AREAS.length).optional(),
 });
-export type KnownStartingLoad = z.infer<typeof KnownStartingLoadSchema>;
+export type Person = z.infer<typeof PersonSchema>;
+
+/** The four basic Person answers behind the card's check mark. */
+export const PERSON_BASICS = [
+  "age_years",
+  "sex",
+  "height_cm",
+  "body_weight_kg",
+] as const;
 
 /**
- * One training day of a routine the user already follows.
+ * The Training card.
  *
- * An existing routine is rarely complete, so only the day's name is required.
- * Everything unstated stays unstated — that is what the editor then surfaces as
- * an open point rather than filling in.
+ * The required answers are nullable, because the card exists from the first
+ * tap onwards and is filled step by step. Completeness is computed, never a
+ * stored flag that could drift from the answers.
+ *
+ * `training_days` and `days_per_week` describe the same thing two ways: fixed
+ * weekdays, or "flexibel, N Tage". When weekdays are given the count follows
+ * them; the service keeps the two consistent.
  */
-export const ExistingRoutineDaySchema = z.strictObject({
-  session_name: label,
-  exercises: z
-    .array(
-      z.strictObject({
-        /** What the user called it. Resolved against the catalog later, never guessed here. */
-        name: label,
-        exercise_id: id.optional(),
-        target_sets: positiveInt.max(20).optional(),
-        rep_min: positiveInt.max(100).optional(),
-        rep_max: positiveInt.max(100).optional(),
-        notes: freeText.optional(),
-      }),
-    )
-    .max(40)
-    .optional(),
-});
-export type ExistingRoutineDay = z.infer<typeof ExistingRoutineDaySchema>;
-
-/** Optional answers. Every one of them may be absent. */
-export const TrainingPreferencesSchema = z.strictObject({
-  /** Secondary goals. The primary goal stays unambiguous in `primary_goal`. */
-  secondary_goals: z.array(TrainingGoalSchema).max(3).optional(),
-  preferred_split: label.optional(),
-  preferred_exercises: z.array(label).max(40).optional(),
-  avoided_exercises: z.array(label).max(40).optional(),
-  available_equipment: z.array(label).max(60).optional(),
-  existing_routine: z.array(ExistingRoutineDaySchema).max(14).optional(),
-  known_starting_loads: z.array(KnownStartingLoadSchema).max(60).optional(),
-  /** Verbatim user text. Data, never an instruction. */
-  notes: freeText.optional(),
-});
-export type TrainingPreferences = z.infer<typeof TrainingPreferencesSchema>;
-
-/**
- * The training profile.
- *
- * Every required field is nullable, because a profile exists from the first
- * answer onwards and is completed step by step. Completeness is a computed
- * property (`OnboardingProgress.profile_complete`), never a second stored flag
- * that could drift out of sync with the answers.
- *
- * There is no health or medical field anywhere in here, on purpose: this MVP
- * does not collect diagnoses, injuries or conditions. See §7 of the contract
- * document.
- */
-export const OnboardingProfileSchema = z.strictObject({
+export const TrainingSchema = z.strictObject({
   primary_goal: TrainingGoalSchema.nullable(),
   experience: ExperienceLevelSchema.nullable(),
   days_per_week: DaysPerWeekSchema.nullable(),
+  training_days: z.array(WeekdaySchema).max(7).optional(),
   session_minutes: SessionMinutesSchema.nullable(),
   environment: TrainingEnvironmentSchema.nullable(),
-  starting_point: StartingPointSchema.nullable(),
-  preferences: TrainingPreferencesSchema,
+  equipment: z.array(EquipmentSchema).max(EQUIPMENT.length).optional(),
+  split: SplitSchema.optional(),
+  focus_muscle_groups: z.array(MuscleGroupSchema).max(3).optional(),
+  preferred_exercise_ids: z.array(StarterExerciseIdSchema).max(40).optional(),
+  avoided_exercise_ids: z.array(StarterExerciseIdSchema).max(40).optional(),
+  /** Verbatim user text. Data, never an instruction. */
+  notes: freeText.optional(),
+});
+export type Training = z.infer<typeof TrainingSchema>;
+
+/** The training profile: the chosen path plus the two cards. */
+export const OnboardingProfileSchema = z.strictObject({
+  path: OnboardingPathSchema.nullable(),
+  person: PersonSchema,
+  training: TrainingSchema,
   /** Bumped by every accepted change, so a stale write is detectable. */
   revision: nonnegativeInt,
   updated_at_utc: ArnoldUtcTimestampSchema.nullable(),
@@ -275,7 +381,7 @@ export type OnboardingProfile = z.infer<typeof OnboardingProfileSchema>;
 /**
  * A proposal's sessions as the onboarding layer inspects them.
  *
- * Structurally the Task 005 `TrainingSessionInput`, but typed loosely on
+ * Structurally the plan service's `TrainingSessionInput`, but typed loosely on
  * purpose: the onboarding check only asks whether the shape answers the
  * profile, and must not re-declare the plan domain's own input contract.
  */
@@ -284,27 +390,73 @@ export type TrainingSessionInputLike = {
   exercises?: readonly unknown[];
 };
 
-/** The required fields, as the completeness check and the UI both read them. */
-export const REQUIRED_PROFILE_FIELDS = [
+/** Training answers a plan by Arnold cannot be built without. */
+export const TRAINING_REQUIRED_FIELDS = [
   "primary_goal",
   "experience",
   "days_per_week",
   "session_minutes",
   "environment",
-  "starting_point",
 ] as const;
-export type RequiredProfileField = (typeof REQUIRED_PROFILE_FIELDS)[number];
+export type TrainingRequiredField = (typeof TRAINING_REQUIRED_FIELDS)[number];
 
-/** The patch a caller sends. Absent means "leave unchanged"; null is not accepted. */
-export const OnboardingProfilePatchSchema = z
+/** A required answer, as the completeness check and the UI both name it. */
+export type RequiredProfileField = "path" | `training.${TrainingRequiredField}`;
+
+/** The required answers for a path, in asking order. */
+export function requiredFieldsFor(
+  path: OnboardingPath | null,
+): RequiredProfileField[] {
+  if (path === null) return ["path"];
+  if (path === "own_plan") return [];
+  return TRAINING_REQUIRED_FIELDS.map((field) => `training.${field}` as const);
+}
+
+/**
+ * The patch a caller sends. Absent means "leave unchanged".
+ *
+ * Person fields and notes accept `null` to remove an answer ("lieber doch kein
+ * Gewicht"); required training answers cannot be cleared, only changed. Lists
+ * replace the stored list, so sending `[]` clears one.
+ */
+export const PersonPatchSchema = z.strictObject({
+  age_years: AgeSchema.nullable().optional(),
+  sex: SexSchema.nullable().optional(),
+  height_cm: HeightSchema.nullable().optional(),
+  body_weight_kg: BodyWeightSchema.nullable().optional(),
+  protect_areas: z.array(BodyAreaSchema).max(BODY_AREAS.length).optional(),
+});
+export type PersonPatch = z.infer<typeof PersonPatchSchema>;
+
+export const TrainingPatchSchema = z
   .strictObject({
     primary_goal: TrainingGoalSchema.optional(),
     experience: ExperienceLevelSchema.optional(),
     days_per_week: DaysPerWeekSchema.optional(),
+    training_days: z.array(WeekdaySchema).max(7).optional(),
     session_minutes: SessionMinutesSchema.optional(),
     environment: TrainingEnvironmentSchema.optional(),
-    starting_point: StartingPointSchema.optional(),
-    preferences: TrainingPreferencesSchema.optional(),
+    equipment: z.array(EquipmentSchema).max(EQUIPMENT.length).optional(),
+    split: SplitSchema.optional(),
+    focus_muscle_groups: z.array(MuscleGroupSchema).max(3).optional(),
+    preferred_exercise_ids: z.array(StarterExerciseIdSchema).max(40).optional(),
+    avoided_exercise_ids: z.array(StarterExerciseIdSchema).max(40).optional(),
+    notes: freeText.nullable().optional(),
+  })
+  .refine(
+    (training) =>
+      !training.preferred_exercise_ids?.some((exercise) =>
+        training.avoided_exercise_ids?.includes(exercise),
+      ),
+    "Eine Übung kann nicht gleichzeitig bevorzugt und gemieden werden.",
+  );
+export type TrainingPatch = z.infer<typeof TrainingPatchSchema>;
+
+export const OnboardingProfilePatchSchema = z
+  .strictObject({
+    path: OnboardingPathSchema.optional(),
+    person: PersonPatchSchema.optional(),
+    training: TrainingPatchSchema.optional(),
   })
   .refine(
     (patch) => Object.keys(patch).length > 0,
@@ -317,18 +469,18 @@ export type OnboardingProfilePatch = z.infer<
 /* --------------------------------------------------------------- validation */
 
 export const ONBOARDING_VALIDATION_CODES = [
+  "MISSING_PATH",
   "MISSING_PRIMARY_GOAL",
   "MISSING_EXPERIENCE",
   "MISSING_DAYS_PER_WEEK",
   "MISSING_SESSION_MINUTES",
   "MISSING_ENVIRONMENT",
-  "MISSING_STARTING_POINT",
   "IMPLAUSIBLE_SESSION_MINUTES",
   "IMPLAUSIBLE_DAYS_PER_WEEK",
-  "INCOMPLETE_STARTING_LOAD",
-  "UNKNOWN_EXERCISE_REFERENCE",
-  "EXISTING_ROUTINE_INCOMPLETE",
+  "SPLIT_DAYS_MISMATCH",
   "EQUIPMENT_ENVIRONMENT_MISMATCH",
+  "PREFERRED_EXERCISE_UNAVAILABLE",
+  "PERSON_INCOMPLETE",
   "PROPOSAL_DAYS_MISMATCH",
   "PROPOSAL_NO_SESSION",
   "PROPOSAL_EMPTY_SESSION",
@@ -372,12 +524,15 @@ export type OnboardingValidationResult = z.infer<
 
 export const OnboardingProgressSchema = z.strictObject({
   current_step: OnboardingStepSchema,
-  /** Completed profile steps, for the progress indicator. */
+  /** Completed collection steps, for the progress indicator. */
   completed_steps: z.array(OnboardingStepSchema),
-  /** Of the six required answers. */
+  /** Of the required answers for the chosen path. */
   answered_required: nonnegativeInt,
-  total_required: positiveInt,
+  total_required: nonnegativeInt,
   profile_complete: z.boolean(),
+  /** The check marks on the two cards. Person counts its four basic answers. */
+  person_complete: z.boolean(),
+  training_complete: z.boolean(),
   /** Required fields still missing, in asking order. */
   missing_fields: z.array(z.string()),
   /** 0–100, for the bar. Derived, never stored. */
@@ -392,7 +547,7 @@ export type OnboardingProgress = z.infer<typeof OnboardingProgressSchema>;
 export const PLAN_PROPOSAL_ORIGINS = [
   /** Structured by the model from the profile. */
   "ai_proposal",
-  /** A routine the user already follows, structured from their description. */
+  /** A routine the user already follows, transcribed from their message or photo. */
   "existing_routine",
   /** Built by hand in the editor. */
   "manual",
@@ -439,12 +594,11 @@ export type OnboardingPlanConfirmation = z.infer<
 >;
 
 /**
- * What Task 007 receives.
+ * What the Google provisioning step receives.
  *
  * Only validated references, no session secret and no personal data: this
  * object travels into an OAuth flow, so everything in it is safe to log.
- * `oauth_state_binding` is the hook for Task 007 to tie a callback to this
- * session — Task 006 publishes the field and deliberately implements no OAuth.
+ * `oauth_state_binding` ties a callback to this session.
  */
 export const OnboardingHandoffSchema = z.strictObject({
   onboarding_session_id: id,
@@ -456,13 +610,13 @@ export const OnboardingHandoffSchema = z.strictObject({
   /** The draft's revision as of *now*. Differs from the confirmed one when superseded. */
   current_plan_revision: positiveInt.nullable(),
   /**
-   * Opaque value Task 007 binds an OAuth `state` to. Null until a confirmed
-   * plan exists; never a credential and never sufficient to read a session.
+   * Opaque value an OAuth `state` is bound to. Null until a confirmed plan
+   * exists; never a credential and never sufficient to read a session.
    */
   oauth_state_binding: z.string().min(1).nullable(),
   /** Why the handoff is not ready, when it is not. */
   blocked_reason: z.string().nullable(),
-  /** Always true in Task 006: nothing has been written to any Google file. */
+  /** True until provisioning has written the personal Google file. */
   google_connection_pending: z.boolean(),
 });
 export type OnboardingHandoff = z.infer<typeof OnboardingHandoffSchema>;
@@ -472,9 +626,7 @@ export type OnboardingHandoff = z.infer<typeof OnboardingHandoffSchema>;
 /**
  * The server-side onboarding session. The single authority for setup state.
  *
- * `onboarding_session_id` identifies a *setup*, not a person. It is anonymous,
- * it expires, and it is explicitly not a `user_id`: a durable user identity
- * arrives with Task 007.
+ * `onboarding_session_id` identifies a *setup*, not a person.
  */
 export const OnboardingSessionSchema = z.strictObject({
   onboarding_session_id: id,
@@ -498,12 +650,19 @@ export const OnboardingSessionSchema = z.strictObject({
       at: ArnoldUtcTimestampSchema,
     })
     .nullable(),
-  /** Which tracker the plan draft lives on. A fixture tracker before Task 007. */
+  /** Which tracker the plan draft lives on. */
   tracker_id: id,
 });
 export type OnboardingSession = z.infer<typeof OnboardingSessionSchema>;
 
 /* -------------------------------------------------------------------- brief */
+
+const BriefExerciseRefSchema = z.strictObject({
+  exercise_id: id,
+  name_de: z.string(),
+  /** Whether the id is in `exercise_catalog` and may be used as is. */
+  in_catalog: z.boolean(),
+});
 
 /**
  * The structured input ChatGPT builds a plan from.
@@ -511,31 +670,54 @@ export type OnboardingSession = z.infer<typeof OnboardingSessionSchema>;
  * It is a *brief*, not a prompt: facts the user stated, named constraints, and
  * explicit instructions about what must not be invented. Everything the user
  * wrote freely is grouped under `user_statements` and labelled as data.
+ *
+ * For the own-plan path most training facts are null: the plan comes from the
+ * user's message or photo, and the brief then says how to transcribe it.
  */
 export const OnboardingBriefSchema = z.strictObject({
   onboarding_contract: z.literal(ONBOARDING_CONTRACT),
   onboarding_session_id: id,
   profile_revision: nonnegativeInt,
-  goal: z.strictObject({
-    primary: TrainingGoalSchema,
-    primary_label: z.string(),
-    secondary: z.array(TrainingGoalSchema),
+  path: OnboardingPathSchema,
+  /** What to do, in one sentence, for the path the user chose. */
+  task: z.string(),
+  person: z.strictObject({
+    age_years: z.number().int().nullable(),
+    sex: SexSchema.nullable(),
+    height_cm: z.number().int().nullable(),
+    body_weight_kg: z.number().nullable(),
+    protect_areas: z.array(BodyAreaSchema),
   }),
-  experience: ExperienceLevelSchema,
-  experience_label: z.string(),
-  availability: z.strictObject({
-    days_per_week: DaysPerWeekSchema,
-    session_minutes: SessionMinutesSchema,
-    /** Rough budget in exercises per session, from the stated minutes. */
-    suggested_exercises_per_session: z.strictObject({
-      min: positiveInt,
-      max: positiveInt,
-    }),
-  }),
-  environment: TrainingEnvironmentSchema,
-  environment_label: z.string(),
-  starting_point: StartingPointSchema,
-  preferences: TrainingPreferencesSchema,
+  goal: z
+    .strictObject({ primary: TrainingGoalSchema, primary_label: z.string() })
+    .nullable(),
+  experience: ExperienceLevelSchema.nullable(),
+  experience_label: z.string().nullable(),
+  availability: z
+    .strictObject({
+      days_per_week: DaysPerWeekSchema,
+      training_days: z.array(WeekdaySchema),
+      session_minutes: SessionMinutesSchema,
+      /** Rough budget in exercises per session, from the stated minutes. */
+      suggested_exercises_per_session: z.strictObject({
+        min: positiveInt,
+        max: positiveInt,
+      }),
+    })
+    .nullable(),
+  environment: TrainingEnvironmentSchema.nullable(),
+  environment_label: z.string().nullable(),
+  equipment: z.array(EquipmentSchema),
+  split: z
+    .strictObject({
+      preference: SplitSchema,
+      label: z.string(),
+      fitting: z.array(SplitSchema),
+    })
+    .nullable(),
+  focus_muscle_groups: z.array(MuscleGroupSchema),
+  preferred_exercises: z.array(BriefExerciseRefSchema),
+  avoided_exercises: z.array(BriefExerciseRefSchema),
   /** Verbatim user text, explicitly marked as data and not as an instruction. */
   user_statements: z.array(
     z.strictObject({ field: z.string(), text: z.string() }),
@@ -562,6 +744,15 @@ export type OnboardingBrief = z.infer<typeof OnboardingBriefSchema>;
 
 /* -------------------------------------------------------------------- state */
 
+/** One tile of the "which exercises do you like?" picker. */
+export const ExerciseChoiceSchema = z.strictObject({
+  exercise_id: id,
+  name_de: z.string(),
+  muscle_group: MuscleGroupSchema,
+  muscle_group_label: z.string(),
+});
+export type ExerciseChoice = z.infer<typeof ExerciseChoiceSchema>;
+
 /**
  * One onboarding state as every caller sees it: the session, what is possible
  * next, and the referenced plan when there is one.
@@ -580,20 +771,27 @@ export const OnboardingStateSchema = z.strictObject({
   handoff: OnboardingHandoffSchema,
   /** Which events the state machine would accept right now. Drives the UI. */
   allowed_events: z.array(z.string()),
-  /** fixture while there is no verified identity; production needs Task 007. */
+  /**
+   * The exercises the picker offers, filtered by where the user trains. The
+   * UI renders these; it never filters the catalog itself.
+   */
+  exercise_choices: z.array(ExerciseChoiceSchema),
+  /** The splits that fit the chosen number of days, `auto` first. */
+  split_options: z.array(SplitSchema),
+  /** `production` when the setup belongs to a verified account. */
   mode: z.enum(["fixture", "production"]),
   google_connection_available: z.boolean().default(false),
   /** False when this deployment cannot write a plan draft at all. */
   can_write_plan: z.boolean(),
   /**
-   * Honest statement of what resumption can and cannot do today. Shown in the
-   * UI rather than promising cross-device continuation we cannot deliver.
+   * Honest statement of what resumption can and cannot do. Shown in the UI
+   * rather than promising continuation we cannot deliver.
    */
   resume: z.strictObject({
     /** True when the repository survives a server restart. */
     durable: z.boolean(),
-    /** True only once a verified identity can re-bind a session: Task 007. */
-    cross_device: z.literal(false),
+    /** True when the setup belongs to the account and opens in any new chat. */
+    cross_device: z.boolean(),
     note: z.string(),
   }),
   generated_at_utc: ArnoldUtcTimestampSchema,
@@ -604,8 +802,7 @@ export type OnboardingState = z.infer<typeof OnboardingStateSchema>;
  * The payload that opens the onboarding app.
  *
  * Carries its contract name so the React shell can tell an onboarding payload
- * from a dashboard payload without guessing, exactly as the v1/v2 dashboards
- * already do.
+ * from a dashboard payload without guessing.
  */
 export const OnboardingViewSchema = z.strictObject({
   onboarding_contract: z.literal(ONBOARDING_CONTRACT),
@@ -613,11 +810,11 @@ export const OnboardingViewSchema = z.strictObject({
   /** Shown once when a session was resumed rather than created. */
   resumed: z.boolean(),
   /**
-   * The secret for the session this payload opened, when it was just created.
+   * The secret for the session this payload opened.
    *
-   * The app needs it to act on that session at all. Present only on a fresh
-   * start, carried in structured content, and never written into a tool's text
-   * output — that text becomes chat transcript.
+   * The app needs it to act on that session at all. Carried in structured
+   * content only, and never written into a tool's text output — that text
+   * becomes chat transcript. Null once the setup is completed.
    */
   session_token: z.string().nullable().optional(),
   source: z.strictObject({
@@ -647,8 +844,10 @@ export const ONBOARDING_ERROR_CODES = [
   "CONFIRMATION_REQUIRED",
   "HANDOFF_NOT_READY",
   "HANDOFF_SUPERSEDED",
-  /** Reaching COMPLETED needs provisioning that only Task 007 provides. */
+  /** Reaching COMPLETED needs verified Google provisioning. */
   "OAUTH_NOT_IMPLEMENTED",
+  /** This account is already set up; the onboarding runs only once. */
+  "ONBOARDING_ALREADY_COMPLETED",
   "PLAN_WRITE_UNAVAILABLE",
   "STORAGE_UNAVAILABLE",
   "DUPLICATE_OPERATION",
@@ -682,7 +881,7 @@ const expected = {
 
 export const OnboardingToolInputs = {
   show_arnold_onboarding: z.strictObject({
-    /** Continue a known session; without it a new one is started. */
+    /** Continue a known session; without it the account's setup is opened or started. */
     onboarding_session_id: id.optional(),
     session_token: z.string().min(16).max(256).optional(),
   }),
@@ -695,9 +894,9 @@ export const OnboardingToolInputs = {
   /**
    * Saves answers, moves to a step, or both.
    *
-   * `step` alone is the backward navigation of §6: it changes where the setup
-   * is without touching an answer, so returning to an earlier question never
-   * costs data. One of `profile` or `step` must be present.
+   * `step` alone is backward navigation: it changes where the setup is without
+   * touching an answer, so returning to an earlier screen never costs data.
+   * One of `profile` or `step` must be present.
    */
   update_onboarding_profile: z
     .strictObject({
@@ -772,8 +971,8 @@ export const OnboardingResponseSchema = z.strictObject({
   replayed: z.boolean(),
   state: OnboardingStateSchema.nullable(),
   /**
-   * Returned exactly once, by the call that creates the session. Never echoed
-   * in tool text and never stored in plaintext on the server.
+   * Returned by the call that creates or reopens the session. Never echoed in
+   * tool text and never stored in plaintext on the server.
    */
   session_token: z.string().nullable(),
   error: z
@@ -790,19 +989,31 @@ export type OnboardingResponse = z.infer<typeof OnboardingResponseSchema>;
 /* ------------------------------------------------------------------- labels */
 
 /** German labels. Enum values are storage keys and are never shown raw. */
+export const PATH_LABEL: Record<OnboardingPath, string> = {
+  arnold_plan: "Plan mit Arnold erstellen",
+  own_plan: "Eigenen Plan übernehmen",
+};
+
+export const PATH_HINT: Record<OnboardingPath, string> = {
+  arnold_plan:
+    "Du beantwortest ein paar kurze Fragen, Arnold baut dir daraus deinen Plan.",
+  own_plan:
+    "Du hast schon einen Plan? Schreib ihn in den Chat oder lade ein Foto hoch.",
+};
+
 export const GOAL_LABEL: Record<TrainingGoal, string> = {
-  muscle_gain: "Muskelaufbau",
-  strength: "Kraftaufbau",
-  general_fitness: "Allgemeine Fitness",
-  recomposition: "Körperkomposition",
+  muscle_gain: "Muskeln aufbauen",
+  strength: "Stärker werden",
+  fat_loss: "Abnehmen und straffen",
+  general_fitness: "Fit und gesund bleiben",
 };
 
 export const GOAL_HINT: Record<TrainingGoal, string> = {
   muscle_gain: "Mehr Muskelmasse, moderate bis höhere Wiederholungen.",
   strength: "Schwerere Grundübungen, niedrigere Wiederholungen.",
+  fat_loss: "Muskeln halten und Körperfett reduzieren.",
   general_fitness:
     "Gesund und regelmäßig trainieren, ohne festes Leistungsziel.",
-  recomposition: "Muskeln aufbauen und gleichzeitig Körperfett reduzieren.",
 };
 
 export const EXPERIENCE_LABEL: Record<ExperienceLevel, string> = {
@@ -820,32 +1031,65 @@ export const EXPERIENCE_HINT: Record<ExperienceLevel, string> = {
 export const ENVIRONMENT_LABEL: Record<TrainingEnvironment, string> = {
   gym: "Fitnessstudio",
   home: "Zuhause",
+  outdoor: "Draußen",
   mixed: "Gemischt",
 };
 
 export const ENVIRONMENT_HINT: Record<TrainingEnvironment, string> = {
   gym: "Volle Geräteauswahl, Langhanteln und Maschinen.",
   home: "Eigenes Equipment, meist Kurzhanteln oder Körpergewicht.",
+  outdoor: "Park oder Calisthenics-Anlage: Stangen, Barren, Körpergewicht.",
   mixed: "Mal Studio, mal zuhause.",
 };
 
-export const STARTING_POINT_LABEL: Record<StartingPoint, string> = {
-  new_plan: "Neuer Trainingsplan",
-  existing_plan: "Ich habe schon einen Plan",
-  undecided: "Noch unentschieden",
+export const SEX_LABEL: Record<Sex, string> = {
+  female: "Weiblich",
+  male: "Männlich",
+  diverse: "Divers",
 };
 
-export const STARTING_POINT_HINT: Record<StartingPoint, string> = {
-  new_plan: "Arnold schlägt dir einen Plan auf Basis deiner Angaben vor.",
-  existing_plan: "Deine bestehende Routine wird übernommen und ergänzt.",
-  undecided: "Du kannst dich später entscheiden.",
+export const BODY_AREA_LABEL: Record<BodyArea, string> = {
+  shoulder: "Schulter",
+  elbow: "Ellbogen",
+  wrist: "Handgelenk",
+  neck: "Nacken",
+  lower_back: "Unterer Rücken",
+  hip: "Hüfte",
+  knee: "Knie",
+};
+
+export const WEEKDAY_LABEL: Record<Weekday, string> = {
+  mon: "Mo",
+  tue: "Di",
+  wed: "Mi",
+  thu: "Do",
+  fri: "Fr",
+  sat: "Sa",
+  sun: "So",
+};
+
+export const SPLIT_LABEL: Record<Split, string> = {
+  auto: "Arnold entscheidet",
+  full_body: "Ganzkörper",
+  upper_lower: "Oberkörper / Unterkörper",
+  push_pull_legs: "Push / Pull / Beine",
+  body_part: "Muskelgruppen-Split",
+};
+
+export const SPLIT_HINT: Record<Split, string> = {
+  auto: "Arnold wählt die Aufteilung, die zu deinen Tagen passt.",
+  full_body: "Jede Einheit trainiert den ganzen Körper. Ideal für 1–4 Tage.",
+  upper_lower: "Abwechselnd Oberkörper und Beine. Ideal für 2, 4 oder 6 Tage.",
+  push_pull_legs:
+    "Drücken, Ziehen, Beine im Wechsel. Ideal für 3 oder 5–6 Tage.",
+  body_part: "Ein bis zwei Muskelgruppen pro Tag. Ab 4 Tagen sinnvoll.",
 };
 
 export const STATUS_LABEL: Record<OnboardingStatus, string> = {
   NOT_STARTED: "Noch nicht begonnen",
   COLLECTING_PROFILE: "Angaben werden erfasst",
   PROFILE_READY: "Angaben vollständig",
-  WAITING_FOR_PLAN_PROPOSAL: "Warten auf den Planvorschlag",
+  WAITING_FOR_PLAN_PROPOSAL: "Plan wird erstellt",
   REVIEWING_PLAN: "Plan wird geprüft",
   PLAN_CONFIRMED: "Plan bestätigt",
   AWAITING_GOOGLE_CONNECTION: "Warten auf die Google-Verbindung",
@@ -856,10 +1100,8 @@ export const STATUS_LABEL: Record<OnboardingStatus, string> = {
 
 export const STEP_LABEL: Record<OnboardingStep, string> = {
   welcome: "Willkommen",
-  goal: "Dein Ziel",
-  availability: "Dein Trainingsalltag",
-  preferences: "Deine Vorlieben",
-  summary: "Zusammenfassung",
+  profile: "Person und Training",
+  own_plan: "Eigener Plan",
   plan_proposal: "Planvorschlag",
   plan_review: "Plan prüfen",
   confirmation: "Bestätigen",
@@ -868,12 +1110,12 @@ export const STEP_LABEL: Record<OnboardingStep, string> = {
 };
 
 export const REQUIRED_FIELD_LABEL: Record<RequiredProfileField, string> = {
-  primary_goal: "Trainingsziel",
-  experience: "Trainingserfahrung",
-  days_per_week: "Trainingstage pro Woche",
-  session_minutes: "Zeit pro Training",
-  environment: "Trainingsumgebung",
-  starting_point: "Ausgangssituation",
+  path: "Wie du starten möchtest",
+  "training.primary_goal": "Trainingsziel",
+  "training.experience": "Trainingserfahrung",
+  "training.days_per_week": "Trainingstage",
+  "training.session_minutes": "Zeit pro Training",
+  "training.environment": "Trainingsort",
 };
 
 /** The finding code raised when a required field is still missing. */
@@ -881,20 +1123,20 @@ export const MISSING_FIELD_CODE: Record<
   RequiredProfileField,
   OnboardingValidationCode
 > = {
-  primary_goal: "MISSING_PRIMARY_GOAL",
-  experience: "MISSING_EXPERIENCE",
-  days_per_week: "MISSING_DAYS_PER_WEEK",
-  session_minutes: "MISSING_SESSION_MINUTES",
-  environment: "MISSING_ENVIRONMENT",
-  starting_point: "MISSING_STARTING_POINT",
+  path: "MISSING_PATH",
+  "training.primary_goal": "MISSING_PRIMARY_GOAL",
+  "training.experience": "MISSING_EXPERIENCE",
+  "training.days_per_week": "MISSING_DAYS_PER_WEEK",
+  "training.session_minutes": "MISSING_SESSION_MINUTES",
+  "training.environment": "MISSING_ENVIRONMENT",
 };
 
 /** Which step collects which required field, for "fix it where it broke". */
 export const FIELD_STEP: Record<RequiredProfileField, OnboardingStep> = {
-  primary_goal: "goal",
-  experience: "goal",
-  days_per_week: "availability",
-  session_minutes: "availability",
-  environment: "availability",
-  starting_point: "preferences",
+  path: "welcome",
+  "training.primary_goal": "profile",
+  "training.experience": "profile",
+  "training.days_per_week": "profile",
+  "training.session_minutes": "profile",
+  "training.environment": "profile",
 };

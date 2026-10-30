@@ -30,8 +30,12 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
 import {
+  ONBOARDING_SCHEMA_VERSION,
   OnboardingSessionSchema,
+  stepForStatus,
+  type OnboardingPath,
   type OnboardingSession,
+  type OnboardingStatus,
 } from "../../shared/onboarding-contract.js";
 import { InProcessWriteCoordinator } from "../workout/infrastructure.js";
 
@@ -72,6 +76,21 @@ export interface OnboardingStateRepository {
   ): Promise<OnboardingRecord>;
   /** Marks a session expired. Idempotent. */
   expireSession(sessionId: string): Promise<OnboardingRecord | undefined>;
+  /**
+   * The owner's most recently updated session, of any status. Only meaningful
+   * where the owner is a verified account; see `OnboardingAccessControl.perOwner`.
+   */
+  findLatestByOwner(owner: string): Promise<OnboardingRecord | undefined>;
+  /**
+   * Replaces the stored secret fingerprint, so a verified owner who lost the
+   * secret (a new chat) can be handed a fresh one. The old secret stops
+   * working. Refuses when `expectedRevision` no longer matches.
+   */
+  reissueToken(
+    sessionId: string,
+    fingerprint: string,
+    expectedRevision: number,
+  ): Promise<OnboardingRecord>;
   /** Drops records whose retention window has passed. Returns how many. */
   purge(now: Date): Promise<number>;
 }
@@ -184,6 +203,44 @@ abstract class BaseOnboardingRepository implements OnboardingStateRepository {
     });
   }
 
+  async findLatestByOwner(owner: string) {
+    const mine = (await this.load()).filter(
+      (record) => record.owner_subject === owner,
+    );
+    const latest = mine.sort(
+      (a, b) =>
+        Date.parse(b.session.updated_at_utc) -
+          Date.parse(a.session.updated_at_utc) ||
+        b.session.revision - a.session.revision,
+    )[0];
+    return latest && structuredClone(latest);
+  }
+
+  async reissueToken(
+    sessionId: string,
+    fingerprint: string,
+    expectedRevision: number,
+  ) {
+    return this.queue.exclusive(this.lock, async () => {
+      const records = await this.load();
+      const index = records.findIndex(
+        (r) => r.session.onboarding_session_id === sessionId,
+      );
+      if (index < 0)
+        throw new RepositoryConflictError(
+          "Diese Einrichtungssitzung existiert nicht mehr.",
+        );
+      if (records[index].session.revision !== expectedRevision)
+        throw new RepositoryConflictError();
+      records[index] = OnboardingRecordSchema.parse({
+        ...records[index],
+        token_fingerprint: fingerprint,
+      });
+      await this.store(records);
+      return structuredClone(records[index]);
+    });
+  }
+
   async purge(now: Date) {
     return this.queue.exclusive(this.lock, async () => {
       const records = await this.load();
@@ -226,9 +283,10 @@ export class FileOnboardingRepository extends BaseOnboardingRepository {
   }
   protected async load(): Promise<OnboardingRecord[]> {
     try {
+      const raw = JSON.parse(await readFile(this.path, "utf8")) as unknown;
       const records = z
         .array(OnboardingRecordSchema)
-        .parse(JSON.parse(await readFile(this.path, "utf8")));
+        .parse(Array.isArray(raw) ? raw.map(migrateLegacyRecord) : raw);
       this.seenFile = true;
       return records;
     } catch (error) {
@@ -250,4 +308,73 @@ export class FileOnboardingRepository extends BaseOnboardingRepository {
     await rename(temp, this.path);
     this.seenFile = true;
   }
+}
+
+/* ---------------------------------------------------------------- migration */
+
+const LEGACY_PATH: Record<string, OnboardingPath | null> = {
+  new_plan: "arnold_plan",
+  existing_plan: "own_plan",
+  undecided: null,
+};
+const LEGACY_GOAL: Record<string, string> = { recomposition: "fat_loss" };
+
+/**
+ * Lifts a stored 1.0.0 session to the current profile shape.
+ *
+ * Deterministic and lossy only where the old shape had no counterpart (free
+ * text split names, starting loads): the answers a plan needs survive, so a
+ * user mid-setup does not have to start over. Anything that still does not
+ * parse afterwards fails the load, as before — a store is never silently
+ * treated as empty.
+ */
+export function migrateLegacyRecord(raw: unknown): unknown {
+  const record = raw as {
+    session?: {
+      schema_version?: string;
+      status?: OnboardingStatus;
+      current_step?: string;
+      profile?: Record<string, unknown> & {
+        preferences?: { notes?: string };
+      };
+    };
+  };
+  const session = record?.session;
+  if (!session || session.schema_version !== "1.0.0" || !session.profile)
+    return raw;
+  const old = session.profile;
+  const answered = [
+    "primary_goal",
+    "experience",
+    "days_per_week",
+    "session_minutes",
+    "environment",
+  ].some((key) => old[key] !== null && old[key] !== undefined);
+  const path =
+    LEGACY_PATH[String(old.starting_point)] ??
+    (answered ? "arnold_plan" : null);
+  const goal = old.primary_goal as string | null;
+  const status = session.status ?? "COLLECTING_PROFILE";
+  return {
+    ...record,
+    session: {
+      ...session,
+      schema_version: ONBOARDING_SCHEMA_VERSION,
+      current_step: stepForStatus(status, path),
+      profile: {
+        path,
+        person: {},
+        training: {
+          primary_goal: goal ? (LEGACY_GOAL[goal] ?? goal) : null,
+          experience: old.experience ?? null,
+          days_per_week: old.days_per_week ?? null,
+          session_minutes: old.session_minutes ?? null,
+          environment: old.environment ?? null,
+          ...(old.preferences?.notes ? { notes: old.preferences.notes } : {}),
+        },
+        revision: old.revision ?? 0,
+        updated_at_utc: old.updated_at_utc ?? null,
+      },
+    },
+  };
 }

@@ -1,6 +1,7 @@
 import { registerWorkoutTools } from "./mcp-workout.js";
 import { registerPlanTools } from "./mcp-plan.js";
 import { registerOnboardingTools } from "./mcp-onboarding.js";
+import { gateUntilSetUp } from "./onboarding/setup-gate.js";
 import { DashboardCardSchema } from "../shared/dashboard-cards.js";
 import { guardToolRegistrations } from "./auth/guarded-server.js";
 import type { ArnoldToolGuard } from "./auth/tool-guard.js";
@@ -173,6 +174,20 @@ function today(clock: ArnoldServerClock): string {
   return clock().toISOString().slice(0, 10);
 }
 
+/**
+ * What every ChatGPT conversation with Arnold is told up front.
+ *
+ * The onboarding runs once per account and comes first; the app collects
+ * answers by buttons, so the chat guides and does not interrogate.
+ */
+export const ARNOLD_INSTRUCTIONS = [
+  "Arnold ist ein Trainingsbegleiter für Krafttraining.",
+  "Neue Nutzer werden zuerst eingerichtet: Bei der ersten Nachricht eines Nutzers, der Arnold noch nicht eingerichtet hat, show_arnold_onboarding aufrufen – egal womit er beginnt. Antwortet ein Arnold-Werkzeug mit SETUP_REQUIRED, ebenfalls show_arnold_onboarding aufrufen.",
+  "Die Einrichtung läuft nur einmal pro Konto. Danach öffnet show_arnold_dashboard mit passendem card die Karte zur Frage (Training, Woche, Fortschritt, Verlauf, Plan); Planänderungen laufen über die übrigen Werkzeuge.",
+  "In der Einrichtung erfasst die App die Angaben per Button. Im Chat begleiten, kurz erklären und nur fragen, was die App nicht abfragt. Der Text jedes Einrichtungswerkzeugs sagt, was als Nächstes zu tun ist.",
+  "Einen Trainingsplan nie im Namen des Nutzers bestätigen.",
+].join(" ");
+
 export function createArnoldMcpServer(
   source: ArnoldDataSource,
   uiFile: string,
@@ -183,12 +198,15 @@ export function createArnoldMcpServer(
   onboarding?: OnboardingService,
   guard?: ArnoldToolGuard,
 ) {
-  const bare = new McpServer({ name: "arnold", version: "0.5.0" });
+  const bare = new McpServer(
+    { name: "arnold", version: "0.5.0" },
+    onboarding ? { instructions: ARNOLD_INSTRUCTIONS } : undefined,
+  );
   // Patched before any registration, so the tools registered here and the ones
   // added by registerWorkoutTools / registerPlanTools / registerOnboardingTools
   // are all classified and guarded. A fixture write runtime invents its own
   // data, so its writes are sandbox writes rather than writes to a real user.
-  const server = guard
+  const guarded = guard
     ? guardToolRegistrations(bare, guard, {
         // Behind a login the fixture's writes keep their declared classes
         // and need arnold.write / arnold.plan like any other write; each user
@@ -197,6 +215,11 @@ export function createArnoldMcpServer(
         authenticatedOnboarding: logging?.mode === "connected",
       })
     : bare;
+  // Onboarding first: a verified account that is not set up yet gets
+  // SETUP_REQUIRED from every tracker tool. Inert where there is no account.
+  const server = onboarding
+    ? gateUntilSetUp(guarded, onboarding, actorContext)
+    : guarded;
   const sourceLabel = source.label;
   const load = (): Promise<DatasetSnapshot> => source.load();
   const context = (snapshot: DatasetSnapshot) => ({

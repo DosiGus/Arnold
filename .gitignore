@@ -17,3 +17,4 @@ service-account*.json
 service_account*.json
 google-sheets-reader.json
 *-credentials.json
+.claude/worktrees/

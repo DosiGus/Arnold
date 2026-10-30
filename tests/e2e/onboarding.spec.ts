@@ -67,26 +67,38 @@ async function openWizard(page: Page, url = ONB_URL) {
   await expect(heading(page, "Willkommen bei Arnold")).toBeVisible();
 }
 
-/** Walks the six required answers and lands on the summary. */
+/** The card toggle, named by its title and current summary. */
+const card = (page: Page, title: "Person" | "Training") =>
+  wizard(page).getByRole("button", { name: new RegExp(`^${title}`) });
+
+/** Chooses "Plan mit Arnold" and opens the Training card. */
+async function startArnoldPlan(page: Page) {
+  await button(page, /Plan mit Arnold erstellen/).click();
+  await expect(heading(page, "Erzähl Arnold von dir")).toBeVisible();
+  await card(page, "Training").click();
+  await expect(card(page, "Training")).toHaveAttribute("aria-expanded", "true");
+}
+
+/** Fills the five required training answers. */
 async function fillProfile(page: Page, days = "3") {
-  await button(page, /Einrichtung (starten|fortsetzen)/).click();
-
-  await expect(heading(page, "Was möchtest du erreichen?")).toBeVisible();
-  await choose(page, /Trainingsziel/, "Muskelaufbau");
-  await choose(page, /Krafttraining/, "Fortgeschritten");
-  await button(page, "Weiter").click();
-
-  await expect(heading(page, /Trainingsalltag/)).toBeVisible();
-  await choose(page, /Wie oft/, days);
+  await startArnoldPlan(page);
+  await choose(page, /Was ist dein Ziel/, "Muskeln aufbauen");
+  await expect(
+    radio(page, /Was ist dein Ziel/, "Muskeln aufbauen"),
+  ).toBeChecked();
+  await choose(page, /Wie lange trainierst du/, "Fortgeschritten");
+  await expect(
+    radio(page, /Wie lange trainierst du/, "Fortgeschritten"),
+  ).toBeChecked();
+  await choose(page, /Wie oft pro Woche/, days);
+  await expect(radio(page, /Wie oft pro Woche/, days)).toBeChecked();
   await choose(page, /Wie viel Zeit/, "60");
+  await expect(radio(page, /Wie viel Zeit/, "60")).toBeChecked();
   await choose(page, /Wo trainierst du/, "Fitnessstudio");
-  await button(page, "Weiter").click();
-
-  await expect(heading(page, /eigene Vorlieben/)).toBeVisible();
-  await choose(page, /Wie möchtest du starten/, "Neuer Trainingsplan");
-  await button(page, "Optionale Angaben überspringen").click();
-
-  await expect(heading(page, "Passt das so?")).toBeVisible();
+  await expect(button(page, "Plan erstellen")).toBeEnabled();
+  // Picks stay local until the card closes; closing saves them in one write.
+  await card(page, "Training").click();
+  await expect(shows(page, "Angaben vollständig.")).toBeVisible();
 }
 
 /** The claim the app stored for the setup it currently holds. */
@@ -132,7 +144,7 @@ async function callTool(
 async function seedProposal(page: Page, url: string) {
   await openWizard(page, url);
   await fillProfile(page);
-  await button(page, "Trainingsplan vorschlagen lassen").click();
+  await button(page, "Plan erstellen").click();
   await expect(heading(page, "Jetzt entsteht dein Plan")).toBeVisible();
   const claim = await storedClaim(page);
   const brief = await callTool(page, "get_onboarding_brief", claim);
@@ -163,71 +175,47 @@ test("a new user walks the whole setup up to the Google handoff", async ({
 }) => {
   await openWizard(page);
 
-  // Step 1: the welcome names what is and is not available.
+  // The welcome: who Arnold is, the two ways in, and what is not available.
+  await expect(shows(page, /Trainingsbegleiter/).first()).toBeVisible();
+  await expect(button(page, /Plan mit Arnold erstellen/)).toBeVisible();
+  await expect(button(page, /Eigenen Plan übernehmen/)).toBeVisible();
   await expect(shows(page, /Google-Verbindung nicht verfügbar/)).toBeVisible();
-  await expect(shows(page, /Es wird keine Datei erstellt/)).toBeVisible();
 
   await fillProfile(page);
 
-  // Step 5: the summary shows every answer back.
-  await expect(shows(page, "Muskelaufbau")).toBeVisible();
-  await expect(shows(page, "3 Tage pro Woche")).toBeVisible();
-  await expect(shows(page, "60 Minuten je Training")).toBeVisible();
-  await expect(shows(page, "Fitnessstudio")).toBeVisible();
+  // The finished Training card summarises the answers; Person stays optional.
+  await expect(card(page, "Training")).toContainText("Muskeln aufbauen");
+  await expect(card(page, "Training")).toContainText("3 × pro Woche");
+  await expect(card(page, "Person")).toContainText("freiwillig");
   await expect(shows(page, "Angaben vollständig.")).toBeVisible();
 
-  // Requesting the plan opens the honest handoff to the chat: there is no
-  // button that fakes a model call.
-  await button(page, "Trainingsplan vorschlagen lassen").click();
+  // "Plan erstellen" hands over to the chat: there is no button that fakes a
+  // model call.
+  await button(page, "Plan erstellen").click();
   await expect(heading(page, "Jetzt entsteht dein Plan")).toBeVisible();
-  await expect(shows(page, /Wechsle in den Chat/)).toBeVisible();
+  await expect(shows(page, /arbeitet im Chat/)).toBeVisible();
   await expect(shows(page, /erfindet keine Trainingsgewichte/)).toBeVisible();
   await expect(button(page, /Plan jetzt generieren/)).toHaveCount(0);
 
   // The proposal arrives the way ChatGPT would send it: through the MCP tools,
   // against the same server state the wizard is reading.
-  const proposal = await page.evaluate(async () => {
-    const claim = JSON.parse(
-      sessionStorage.getItem("arnold.onboarding.claim") ?? "{}",
-    );
-    const post = async (name: string, args: Record<string, unknown>) => {
-      const response = await fetch("/mcp", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json, text/event-stream",
-        },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: Math.floor(Math.random() * 1e9),
-          method: "tools/call",
-          params: { name, arguments: args },
-        }),
-      });
-      const payload = await response.json();
-      return payload.result?.structuredContent ?? payload;
-    };
-    const brief = await post("get_onboarding_brief", claim);
-    const ids = brief.exercise_catalog
-      .slice(0, 3)
-      .map((entry: { exercise_id: string }) => entry.exercise_id);
-    return post("submit_onboarding_plan_proposal", {
-      request_id: `e2e-${Date.now()}`,
-      ...claim,
-      name: "Push/Pull/Legs",
-      origin: "ai_proposal",
-      sessions: ["Push", "Pull", "Legs"].map((session_name, index) => ({
-        session_name,
-        exercises: [
-          {
-            exercise_id: ids[index],
-            target_sets: 3,
-            rep_min: 8,
-            rep_max: 12,
-          },
-        ],
-      })),
-    });
+  const claim = await storedClaim(page);
+  const brief = await callTool(page, "get_onboarding_brief", claim);
+  expect(brief.path).toBe("arnold_plan");
+  const ids = brief.exercise_catalog
+    .slice(0, 3)
+    .map((entry: { exercise_id: string }) => entry.exercise_id);
+  const proposal = await callTool(page, "submit_onboarding_plan_proposal", {
+    request_id: `e2e-${Date.now()}`,
+    ...claim,
+    name: "Push/Pull/Legs",
+    origin: "ai_proposal",
+    sessions: ["Push", "Pull", "Legs"].map((session_name, index) => ({
+      session_name,
+      exercises: [
+        { exercise_id: ids[index], target_sets: 3, rep_min: 8, rep_max: 12 },
+      ],
+    })),
   });
   expect(proposal.ok).toBe(true);
 
@@ -237,7 +225,7 @@ test("a new user walks the whole setup up to the Google handoff", async ({
   await expect(shows(page, /3 Trainingseinheiten/).first()).toBeVisible();
   await expect(page.locator(".plan-draft-note")).toContainText("erst");
 
-  // The Task 005 editor is mounted inside the wizard, not a second editor.
+  // The plan editor is mounted inside the wizard, not a second editor.
   await expect(page.locator(".onb-editor .plan-editor")).toBeVisible();
   await expect(
     wizard(page).getByText("Push", { exact: true }).first(),
@@ -255,7 +243,6 @@ test("a new user walks the whole setup up to the Google handoff", async ({
   await expect(heading(page, "Dein Trainingsplan ist bereit.")).toBeVisible();
   await expect(shows(page, /verbinden wir dein Google-Konto/)).toBeVisible();
   await expect(shows(page, /Nächster Entwicklungsschritt/)).toBeVisible();
-  // The Google button exists but cannot be used: no sham interaction.
   await expect(button(page, "Google-Konto verbinden")).toBeDisabled();
   await expect(
     shows(page, /Es wurde kein Google-Konto verbunden/),
@@ -264,9 +251,9 @@ test("a new user walks the whole setup up to the Google handoff", async ({
 });
 
 /**
- * Acceptance scenario 1, continued: the user edits the proposal in the editor,
- * the change raises the revision, and the confirmation that follows is bound to
- * the *new* revision. The old one can no longer be confirmed unnoticed.
+ * The user edits the proposal in the editor, the change raises the revision,
+ * and the confirmation that follows is bound to the *new* revision. The old
+ * one can no longer be confirmed unnoticed.
  */
 test("editing the proposal rebinds the confirmation to the new revision", async ({
   page,
@@ -277,7 +264,7 @@ test("editing the proposal rebinds the confirmation to the new revision", async 
     (await callTool(page, "get_onboarding_plan", claim)).plan.row_revision,
   ).toBe(1);
 
-  // Replace an exercise through the Task 005 editor mounted in the wizard.
+  // Replace an exercise through the editor mounted in the wizard.
   await page
     .getByRole("button", { name: /austauschen$/ })
     .first()
@@ -328,32 +315,22 @@ test("editing the proposal rebinds the confirmation to the new revision", async 
 });
 
 /**
- * Acceptance scenario 2: the user already has a routine. It is structured into
- * a draft, reviewed, and reaches the same safe handoff state.
+ * The user already has a plan. One tap on the welcome screen, the plan comes
+ * through the chat, and it reaches the same safe handoff state.
  */
-test("an existing routine reaches the same handoff state", async ({ page }) => {
+test("an own plan reaches the same handoff state", async ({ page }) => {
   await openWizard(page, ONB_B_URL);
-  await button(page, /Einrichtung (starten|fortsetzen)/).click();
-  await choose(page, /Trainingsziel/, "Kraftaufbau");
-  await choose(page, /Krafttraining/, "Erfahren");
-  await button(page, "Weiter").click();
-  await choose(page, /Wie oft/, "3");
-  await choose(page, /Wie viel Zeit/, "75");
-  await choose(page, /Wo trainierst du/, "Fitnessstudio");
-  await button(page, "Weiter").click();
+  await button(page, /Eigenen Plan übernehmen/).click();
 
-  await choose(page, /Wie möchtest du starten/, "Ich habe schon einen Plan");
-  // The path is explained rather than left to guesswork.
-  await expect(shows(page, /Deinen Plan übernehmen/)).toBeVisible();
-  await expect(shows(page, /Push\/Pull\/Legs/)).toBeVisible();
-  await button(page, "Optionale Angaben überspringen").click();
-  await button(page, "Trainingsplan vorschlagen lassen").click();
+  // No questionnaire: the screen says the plan comes through the chat.
+  await expect(heading(page, "Deinen Plan übernehmen")).toBeVisible();
+  await expect(shows(page, /Foto/).first()).toBeVisible();
+  await expect(button(page, "Im Chat weitermachen")).toBeVisible();
 
-  // The routine arrives structured, flagged as a takeover rather than a
-  // generated plan.
+  // The plan arrives transcribed, flagged as a takeover.
   const claim = await storedClaim(page);
   const brief = await callTool(page, "get_onboarding_brief", claim);
-  expect(brief.starting_point).toBe("existing_plan");
+  expect(brief.path).toBe("own_plan");
   const ids = brief.exercise_catalog
     .slice(0, 3)
     .map((entry: { exercise_id: string }) => entry.exercise_id);
@@ -362,8 +339,6 @@ test("an existing routine reaches the same handoff state", async ({ page }) => {
     ...claim,
     name: "Mein Push/Pull/Legs",
     origin: "existing_routine",
-    // The user named exercises but not every set count: what they did not say
-    // stays empty instead of being invented.
     sessions: ["Push", "Pull", "Legs"].map((session_name, index) => ({
       session_name,
       exercises: [
@@ -373,7 +348,7 @@ test("an existing routine reaches the same handoff state", async ({ page }) => {
   });
   expect(submitted.ok).toBe(true);
 
-  await button(page, "Nach dem Vorschlag suchen").click();
+  await button(page, "Nach dem Plan suchen").click();
   await expect(heading(page, "Dein Planvorschlag")).toBeVisible();
   await expect(shows(page, /Mein Push\/Pull\/Legs/).first()).toBeVisible();
 
@@ -393,62 +368,82 @@ test("an existing routine reaches the same handoff state", async ({ page }) => {
 
 /* ------------------------------------------------------- navigating back */
 
-test("going back to an earlier step keeps every answer", async ({ page }) => {
+test("going back to the welcome keeps every answer", async ({ page }) => {
   await openWizard(page, ONB_B_URL);
-  await button(page, /Einrichtung (starten|fortsetzen)/).click();
+  await startArnoldPlan(page);
+  await choose(page, /Was ist dein Ziel/, "Stärker werden");
+  await expect(
+    radio(page, /Was ist dein Ziel/, "Stärker werden"),
+  ).toBeChecked();
+  await choose(page, /Wie oft pro Woche/, "4");
+  await expect(radio(page, /Wie oft pro Woche/, "4")).toBeChecked();
 
-  await choose(page, /Trainingsziel/, "Kraftaufbau");
-  await choose(page, /Krafttraining/, "Anfänger");
-  await button(page, "Weiter").click();
-
-  await choose(page, /Wie oft/, "4");
-  await choose(page, /Wie viel Zeit/, "45");
-  await choose(page, /Wo trainierst du/, "Zuhause");
-
-  // Back one step: the earlier answers must still be selected.
+  // Back to the two buttons, then the same way in again.
   await button(page, /^Zurück/).click();
-  await expect(heading(page, "Was möchtest du erreichen?")).toBeVisible();
-  await expect(radio(page, /Trainingsziel/, "Kraftaufbau")).toBeChecked();
-  await expect(radio(page, /Krafttraining/, "Anfänger")).toBeChecked();
-
-  // Forward again: the later answers survived too.
-  await button(page, "Weiter").click();
-  await expect(radio(page, /Wie oft/, "4")).toBeChecked();
-  await expect(radio(page, /Wie viel Zeit/, "45")).toBeChecked();
+  await expect(heading(page, "Willkommen bei Arnold")).toBeVisible();
+  await button(page, /Plan mit Arnold erstellen/).click();
+  await card(page, "Training").click();
+  await expect(
+    radio(page, /Was ist dein Ziel/, "Stärker werden"),
+  ).toBeChecked();
+  await expect(radio(page, /Wie oft pro Woche/, "4")).toBeChecked();
 });
 
-test("a required answer is reported at the question that is missing it", async ({
+test("'Plan erstellen' waits until the Training card is complete", async ({
   page,
 }) => {
   await openWizard(page, ONB_B_URL);
-  await button(page, /Einrichtung (starten|fortsetzen)/).click();
+  await startArnoldPlan(page);
 
-  // Continue without answering: the wizard must not advance.
-  await button(page, "Weiter").click();
-  await expect(heading(page, "Was möchtest du erreichen?")).toBeVisible();
-  const alerts = wizard(page).getByRole("alert");
-  await expect(alerts.first()).toBeVisible();
-  await expect(shows(page, /Trainingsziel fehlt noch/)).toBeVisible();
+  // Nothing answered yet: the button is there but cannot be used, and the
+  // screen names what is missing.
+  await expect(button(page, "Plan erstellen")).toBeDisabled();
+  await expect(shows(page, /Für deinen Plan fehlt noch/)).toBeVisible();
+  await expect(shows(page, /Trainingsziel/).first()).toBeVisible();
 
-  // Answering clears the way.
-  await choose(page, /Trainingsziel/, "Muskelaufbau");
-  await choose(page, /Krafttraining/, "Fortgeschritten");
-  await button(page, "Weiter").click();
-  await expect(heading(page, /Trainingsalltag/)).toBeVisible();
+  // The Person card is optional: the plan does not wait for it.
+  await choose(page, /Was ist dein Ziel/, "Muskeln aufbauen");
+  await choose(page, /Wie lange trainierst du/, "Anfänger");
+  await choose(page, /Wie oft pro Woche/, "2");
+  await choose(page, /Wie viel Zeit/, "45");
+  await choose(page, /Wo trainierst du/, "Fitnessstudio");
+  await expect(button(page, "Plan erstellen")).toBeEnabled();
 });
 
-test("a summary row jumps back to the step that owns it", async ({ page }) => {
+test("fixed weekdays set the number of days", async ({ page }) => {
   await openWizard(page, ONB_B_URL);
-  await fillProfile(page);
+  await startArnoldPlan(page);
+  const days = wizard(page).getByRole("group", { name: /An welchen Tagen/ });
+  for (const day of ["Mo", "Mi", "Fr"]) {
+    await days.locator("label.onb-chip").filter({ hasText: day }).click();
+    await expect(days.getByRole("checkbox", { name: day })).toBeChecked();
+  }
+  await expect(radio(page, /Wie oft pro Woche/, "3")).toBeChecked();
+});
 
-  await button(page, "Trainingstage pro Woche ändern").click();
-  await expect(heading(page, /Trainingsalltag/)).toBeVisible();
-  await choose(page, /Wie oft/, "5");
-  await button(page, "Weiter").click();
-  await expect(heading(page, /eigene Vorlieben/)).toBeVisible();
-  await button(page, "Optionale Angaben überspringen").click();
-  // The change is reflected, which means it reached the server.
-  await expect(shows(page, "5 Tage pro Woche")).toBeVisible();
+test("the Person card takes numbers, a decimal comma included", async ({
+  page,
+}) => {
+  await openWizard(page, ONB_B_URL);
+  await button(page, /Plan mit Arnold erstellen/).click();
+  await card(page, "Person").click();
+  await wizard(page).getByLabel("Alter").fill("34");
+  await wizard(page).getByLabel("Größe").fill("181");
+  await wizard(page).getByLabel("Gewicht").fill("82,5");
+  // Shown at once, saved when the card closes.
+  await expect(card(page, "Person")).toContainText("181 cm");
+  await card(page, "Person").click();
+  await expect(card(page, "Person")).toHaveAttribute("aria-expanded", "false");
+  await expect(card(page, "Person")).toContainText("34 Jahre");
+  await expect(card(page, "Person")).toContainText("82.5 kg");
+  const claim = await storedClaim(page);
+  await expect
+    .poll(
+      async () =>
+        (await callTool(page, "get_onboarding_state", claim)).session.profile
+          .person,
+    )
+    .toMatchObject({ age_years: 34, height_cm: 181, body_weight_kg: 82.5 });
 });
 
 /* ------------------------------------------------------------ interruption */
@@ -462,10 +457,10 @@ test("closing and reopening the app resumes the stored setup", async ({
 
   // A reload stands in for closing the panel and coming back to it.
   await page.reload();
-  // The wizard resumes on the stored step rather than at the welcome screen.
-  await expect(heading(page, "Passt das so?")).toBeVisible();
-  await expect(shows(page, "Muskelaufbau")).toBeVisible();
-  await expect(shows(page, "60 Minuten je Training")).toBeVisible();
+  // The wizard resumes on the cards rather than at the welcome screen.
+  await expect(heading(page, "Erzähl Arnold von dir")).toBeVisible();
+  await expect(card(page, "Training")).toContainText("Muskeln aufbauen");
+  await expect(card(page, "Training")).toContainText("60 Min.");
   await expect(shows(page, "Angaben vollständig.")).toBeVisible();
 });
 
@@ -489,14 +484,16 @@ test("a setup without its credential starts fresh instead of leaking one", async
 
   // A brand-new setup, with none of the previous answers.
   await expect(heading(page, "Willkommen bei Arnold")).toBeVisible();
-  await button(page, /Einrichtung (starten|fortsetzen)/).click();
-  await expect(radio(page, /Trainingsziel/, "Muskelaufbau")).not.toBeChecked();
+  await startArnoldPlan(page);
+  await expect(
+    radio(page, /Was ist dein Ziel/, "Muskeln aufbauen"),
+  ).not.toBeChecked();
 });
 
 test("an expired setup offers a controlled restart", async ({ page }) => {
   await openWizard(page, ONB_SHORT_URL);
-  await button(page, /Einrichtung (starten|fortsetzen)/).click();
-  await choose(page, /Trainingsziel/, "Muskelaufbau");
+  await button(page, /Plan mit Arnold erstellen/).click();
+  await expect(heading(page, "Erzähl Arnold von dir")).toBeVisible();
 
   // The server's session lifetime on this port is deliberately short.
   await page.waitForTimeout(2000);
@@ -508,9 +505,7 @@ test("an expired setup offers a controlled restart", async ({ page }) => {
   await expect(restart).toBeEnabled();
   await restart.click();
   // A real restart, not a dead end.
-  await expect(
-    heading(page, /Willkommen bei Arnold|Was möchtest du erreichen\?/),
-  ).toBeVisible();
+  await expect(heading(page, "Willkommen bei Arnold")).toBeVisible();
 });
 
 /* -------------------------------------------------------- the error surface */
@@ -523,33 +518,12 @@ test("a refused write shows the reason and keeps the stored state", async ({
 
   // A stale revision is the realistic case: the chat changed something while
   // this screen was open.
-  const refusal = await page.evaluate(async () => {
-    const claim = JSON.parse(
-      sessionStorage.getItem("arnold.onboarding.claim") ?? "{}",
-    );
-    const response = await fetch("/mcp", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json, text/event-stream",
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "tools/call",
-        params: {
-          name: "update_onboarding_profile",
-          arguments: {
-            request_id: `e2e-stale-${Date.now()}`,
-            ...claim,
-            expected_revision: 1,
-            profile: { days_per_week: 2 },
-          },
-        },
-      }),
-    });
-    const payload = await response.json();
-    return payload.result?.structuredContent;
+  const claim = await storedClaim(page);
+  const refusal = await callTool(page, "update_onboarding_profile", {
+    request_id: `e2e-stale-${Date.now()}`,
+    ...claim,
+    expected_revision: 1,
+    profile: { training: { days_per_week: 2 } },
   });
   expect(refusal.ok).toBe(false);
   expect(refusal.error.code).toBe("REVISION_CONFLICT");
@@ -557,7 +531,7 @@ test("a refused write shows the reason and keeps the stored state", async ({
   // The screen still shows the answers that actually stand.
   await page.reload();
   await expect(shows(page, "Angaben vollständig.")).toBeVisible();
-  await expect(shows(page, "2 Tage pro Woche")).toHaveCount(0);
+  await expect(card(page, "Training")).toContainText("3 × pro Woche");
 });
 
 test("no sham success message appears anywhere in the flow", async ({
@@ -576,16 +550,17 @@ test("no sham success message appears anywhere in the flow", async ({
 test("the wizard works on a phone-sized screen", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openWizard(page, ONB_B_URL);
-  await button(page, /Einrichtung (starten|fortsetzen)/).click();
-  await expect(heading(page, "Was möchtest du erreichen?")).toBeVisible();
+  await startArnoldPlan(page);
 
   // Nothing may overflow horizontally in a narrow app panel.
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - window.innerWidth,
   );
   expect(overflow).toBeLessThanOrEqual(0);
-  await choose(page, /Trainingsziel/, "Muskelaufbau");
-  await expect(radio(page, /Trainingsziel/, "Muskelaufbau")).toBeChecked();
+  await choose(page, /Was ist dein Ziel/, "Muskeln aufbauen");
+  await expect(
+    radio(page, /Was ist dein Ziel/, "Muskeln aufbauen"),
+  ).toBeChecked();
 });
 
 for (const theme of ["light", "dark"] as const)
@@ -610,43 +585,46 @@ for (const theme of ["light", "dark"] as const)
 test("the wizard is keyboard operable", async ({ page }) => {
   await openWizard(page, ONB_B_URL);
 
-  // Reach and press the start control with the keyboard alone.
+  // Reach and press "Plan mit Arnold erstellen" with the keyboard alone.
   await page.keyboard.press("Tab");
   for (let step = 0; step < 12; step++) {
     const onStart = await page.evaluate(() =>
-      document.activeElement?.textContent?.includes("Einrichtung"),
+      document.activeElement?.textContent?.includes("Plan mit Arnold"),
     );
     if (onStart) break;
     await page.keyboard.press("Tab");
   }
   await page.keyboard.press("Enter");
-  await expect(heading(page, "Was möchtest du erreichen?")).toBeVisible();
+  await expect(heading(page, "Erzähl Arnold von dir")).toBeVisible();
+
+  // Open the Training card from the keyboard.
+  await card(page, "Training").focus();
+  await page.keyboard.press("Enter");
+  await expect(card(page, "Training")).toHaveAttribute("aria-expanded", "true");
 
   // Tab into the first option group, exactly as a keyboard user arrives there.
   const focusedLabel = () =>
     page.evaluate(() => document.activeElement?.getAttribute("aria-label"));
   for (let step = 0; step < 15; step++) {
-    if ((await focusedLabel()) === "Muskelaufbau") break;
+    if ((await focusedLabel()) === "Muskeln aufbauen") break;
     await page.keyboard.press("Tab");
   }
-  expect(await focusedLabel()).toBe("Muskelaufbau");
+  expect(await focusedLabel()).toBe("Muskeln aufbauen");
 
-  // Space selects the focused option, the standard radio activation. Awaited,
-  // because the selection round-trips through the server before the controlled
-  // input reflects it.
+  // Space selects the focused option; arrow keys move within the group.
   await page.keyboard.press("Space");
-  await expect(radio(page, /Trainingsziel/, "Muskelaufbau")).toBeChecked();
-
-  // Arrow keys move the selection within the group.
+  await expect(
+    radio(page, /Was ist dein Ziel/, "Muskeln aufbauen"),
+  ).toBeChecked();
   await page.keyboard.press("ArrowDown");
-  await expect(radio(page, /Trainingsziel/, "Kraftaufbau")).toBeChecked();
-  await expect(radio(page, /Trainingsziel/, "Muskelaufbau")).not.toBeChecked();
+  await expect(
+    radio(page, /Was ist dein Ziel/, "Stärker werden"),
+  ).toBeChecked();
 });
 
 test("the wizard has no serious accessibility violations", async ({ page }) => {
   await openWizard(page, ONB_B_URL);
-  await button(page, /Einrichtung (starten|fortsetzen)/).click();
-  await expect(heading(page, "Was möchtest du erreichen?")).toBeVisible();
+  await startArnoldPlan(page);
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa"])
     .analyze();

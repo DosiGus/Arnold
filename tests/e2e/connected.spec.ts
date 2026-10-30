@@ -66,12 +66,14 @@ test("onboarding, Google consent, personal tracker, first set, and browser reloa
       ...claim,
       request_id: "browser-profile",
       profile: {
-        primary_goal: "strength",
-        experience: "intermediate",
-        days_per_week: 3,
-        session_minutes: 60,
-        environment: "gym",
-        starting_point: "new_plan",
+        path: "arnold_plan",
+        training: {
+          primary_goal: "strength",
+          experience: "intermediate",
+          days_per_week: 3,
+          session_minutes: 60,
+          environment: "gym",
+        },
       },
     });
     await call("request_onboarding_plan", {

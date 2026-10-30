@@ -19,15 +19,16 @@
  * expiry check lives in the guard, not in the caller, so a forgotten check
  * cannot let a stale session keep writing.
  *
- * Third, `COMPLETED` is unreachable here. It needs provisioning evidence that
- * only Task 007 can produce, and the machine refuses the transition with
- * `OAUTH_NOT_IMPLEMENTED` instead of letting Task 006 report a successful
- * Google setup that never happened.
+ * Third, `COMPLETED` needs provisioning evidence that only the verified Google
+ * setup can produce. Without it the machine refuses the transition with
+ * `OAUTH_NOT_IMPLEMENTED` instead of reporting a Google setup that never
+ * happened.
  */
 import {
   PROFILE_STEPS,
-  STEP_FOR_STATUS,
+  stepForStatus,
   type OnboardingErrorCode,
+  type OnboardingPath,
   type OnboardingStatus,
   type OnboardingStep,
 } from "../../shared/onboarding-contract.js";
@@ -36,7 +37,9 @@ import {
 export interface OnboardingMachineState {
   status: OnboardingStatus;
   step: OnboardingStep;
-  /** Whether all six required answers are present. Computed, never stored. */
+  /** The path chosen on the welcome screen. Decides which screen collects answers. */
+  path: OnboardingPath | null;
+  /** Whether the required answers for the path are present. Computed, never stored. */
   profile_complete: boolean;
   has_plan_draft: boolean;
   has_confirmation: boolean;
@@ -46,7 +49,12 @@ export interface OnboardingMachineState {
 
 export type OnboardingEvent =
   | { type: "START" }
-  | { type: "SAVE_PROFILE"; profile_complete: boolean }
+  /** `path` is the path *after* the save, which may be the one just chosen. */
+  | {
+      type: "SAVE_PROFILE";
+      profile_complete: boolean;
+      path: OnboardingPath | null;
+    }
   /** Navigate to an earlier collection step. Changes the step, not the status. */
   | { type: "GO_BACK"; step: OnboardingStep }
   | { type: "REQUEST_PLAN" }
@@ -55,7 +63,7 @@ export type OnboardingEvent =
   | { type: "REVISE_PLAN" }
   | { type: "CONFIRM_PLAN" }
   | { type: "PREPARE_HANDOFF" }
-  /** Task 007 only. `provisioning_verified` can never be true in Task 006. */
+  /** Only verified Google provisioning sets `provisioning_verified`. */
   | { type: "GOOGLE_CONNECTED"; provisioning_verified: boolean }
   | { type: "CANCEL" }
   | { type: "EXPIRE" }
@@ -111,14 +119,11 @@ const COLLECTING: readonly OnboardingStatus[] = [
   "WAITING_FOR_PLAN_PROPOSAL",
 ];
 
-const stepOf = (status: OnboardingStatus): OnboardingStep =>
-  STEP_FOR_STATUS[status];
-
 const move = (
   state: OnboardingMachineState,
   status: OnboardingStatus,
   effects: readonly TransitionEffect[] = [],
-  step: OnboardingStep = stepOf(status),
+  step: OnboardingStep = stepForStatus(status, state.path),
 ): TransitionResult => ({
   ok: true,
   state: { ...state, status, step },
@@ -217,7 +222,11 @@ export function transitionOnboarding(
       if (state.status === "REVIEWING_PLAN")
         return { ok: true, state, effects: [] };
       return move(
-        state,
+        {
+          ...state,
+          path: event.path,
+          profile_complete: event.profile_complete,
+        },
         event.profile_complete ? "PROFILE_READY" : "COLLECTING_PROFILE",
       );
     }
@@ -280,7 +289,7 @@ export function transitionOnboarding(
       )
         return refuse(
           "INVALID_STATE_TRANSITION",
-          "Ein Planvorschlag wird erst nach request_onboarding_plan angenommen.",
+          "Ein Planvorschlag wird erst angenommen, wenn die Angaben vollständig sind.",
         );
       if (!state.profile_complete)
         return refuse(
@@ -357,8 +366,8 @@ export function transitionOnboarding(
           "INVALID_STATE_TRANSITION",
           "Die Google-Verbindung setzt einen bestätigten Plan und den Zustand AWAITING_GOOGLE_CONNECTION voraus.",
         );
-      // Task 006 has no provisioning, so this is the honest answer rather than
-      // a status that claims a Google file exists.
+      // Without verified provisioning this is the honest answer rather than a
+      // status that claims a Google file exists.
       if (!event.provisioning_verified)
         return refuse(
           "OAUTH_NOT_IMPLEMENTED",
@@ -375,8 +384,12 @@ export function allowedEvents(
 ): OnboardingEventType[] {
   const probes: OnboardingEvent[] = [
     { type: "START" },
-    { type: "SAVE_PROFILE", profile_complete: state.profile_complete },
-    { type: "GO_BACK", step: "goal" },
+    {
+      type: "SAVE_PROFILE",
+      profile_complete: state.profile_complete,
+      path: state.path,
+    },
+    { type: "GO_BACK", step: "welcome" },
     { type: "REQUEST_PLAN" },
     { type: "PLAN_PROPOSED" },
     { type: "REVISE_PLAN" },

@@ -208,4 +208,22 @@ export class ArnoldClient {
     if (this.app) await this.app.openLink({ url });
     else window.open(url, "_blank", "noopener,noreferrer");
   }
+
+  /**
+   * Posts a message into the chat as the user, so a button can hand the turn
+   * to ChatGPT ("Plan erstellen" → the model builds the plan). Returns false
+   * where there is no chat (the local preview) or the host refused it.
+   */
+  async sendChatMessage(text: string): Promise<boolean> {
+    if (!this.app) return false;
+    try {
+      const result = await this.app.sendMessage({
+        role: "user",
+        content: [{ type: "text", text }],
+      });
+      return !result.isError;
+    } catch {
+      return false;
+    }
+  }
 }

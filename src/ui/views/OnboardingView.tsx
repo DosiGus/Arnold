@@ -16,23 +16,13 @@
  * user has finished is already on the server, which is why navigating back
  * cannot lose data.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle, ChevronLeft, Info, RefreshCw } from "lucide-react";
-import type {
-  ExperienceLevel,
-  OnboardingProfilePatch,
-  OnboardingState,
-  OnboardingStep,
-  StartingPoint,
-  TrainingEnvironment,
-  TrainingGoal,
-} from "../../shared/onboarding-contract";
+import type { OnboardingState } from "../../shared/onboarding-contract";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
-import { useOnboarding } from "../hooks/useOnboarding";
+import { OWN_PLAN_MESSAGE, useOnboarding } from "../hooks/useOnboarding";
 import {
-  AvailabilityStep,
   CancelOnboardingButton,
-  GoalStep,
   GoogleConnectionHandoffStep,
   OnboardingErrorState,
   OnboardingIssues,
@@ -40,67 +30,29 @@ import {
   OnboardingLoading,
   OnboardingNotice,
   OnboardingResumeState,
+  OwnPlanStep,
   PlanConfirmationDialog,
   PlanGenerationStep,
-  PreferencesStep,
-  ProfileSummaryStep,
+  ProfileStep,
   WelcomeStep,
-  parseList,
 } from "../components/onboarding";
 import { TrainingPlanEditorView } from "./TrainingPlanEditorView";
-
-/** The optional free-text fields, held locally until a step is submitted. */
-type Drafts = {
-  preferred: string;
-  avoided: string;
-  equipment: string;
-  notes: string;
-};
 
 export function OnboardingView({
   client,
   initial,
-  resumed = false,
   onFinishedHandoff,
 }: {
   client: ArnoldMcpClient;
   initial?: OnboardingState;
+  /** Kept for callers; the server's step decides where a resumed setup opens. */
   resumed?: boolean;
   /** Called when the setup reaches the handoff, so a shell can react. */
   onFinishedHandoff?: () => void;
 }) {
   const onb = useOnboarding(client, initial);
   const { state, session, step, progress, validation } = onb;
-  /** Errors are shown once a step has been submitted, not while typing. */
-  const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [confirming, setConfirming] = useState(false);
-  const [drafts, setDrafts] = useState<Drafts>({
-    preferred: "",
-    avoided: "",
-    equipment: "",
-    notes: "",
-  });
-
-  const preferences = session?.profile.preferences;
-
-  // The optional fields are seeded from the server once and then owned locally,
-  // so typing is never fought by a background reload.
-  const seeded = useMemo(
-    () => ({
-      preferred: (preferences?.preferred_exercises ?? []).join(", "),
-      avoided: (preferences?.avoided_exercises ?? []).join(", "),
-      equipment: (preferences?.available_equipment ?? []).join(", "),
-      notes: preferences?.notes ?? "",
-    }),
-    [preferences],
-  );
-  const [seedKey, setSeedKey] = useState<string>();
-  useEffect(() => {
-    const key = session?.onboarding_session_id;
-    if (!key || seedKey === key) return;
-    setSeedKey(key);
-    setDrafts(seeded);
-  }, [seedKey, seeded, session?.onboarding_session_id]);
 
   useEffect(() => {
     if (session?.status === "AWAITING_GOOGLE_CONNECTION") onFinishedHandoff?.();
@@ -166,24 +118,6 @@ export function OnboardingView({
     );
 
   const profile = session.profile;
-  const mark = (fields: readonly string[]) =>
-    setTouched((previous) => ({
-      ...previous,
-      ...Object.fromEntries(fields.map((field) => [field, true])),
-    }));
-  const shows = (fields: readonly string[]) =>
-    fields.some((field) => touched[field]);
-
-  /** Saves a patch and moves on only once the server has stored it. */
-  const saveAnd = async (
-    patch: OnboardingProfilePatch,
-    nextStep: OnboardingStep,
-  ) => {
-    const response = await onb.saveProfile(patch, nextStep);
-    if (response?.ok) onb.goToStep(nextStep);
-    return response;
-  };
-
   const banner = (
     <>
       {onb.error && (
@@ -253,10 +187,12 @@ export function OnboardingView({
         <div className="onb-shell">
           {banner}
           <PlanGenerationStep
-            daysPerWeek={profile.days_per_week}
-            minutes={profile.session_minutes}
-            startingPoint={profile.starting_point}
-            onBack={() => onb.goToStep("summary")}
+            daysPerWeek={profile.training.days_per_week}
+            minutes={profile.training.session_minutes}
+            path={profile.path}
+            onBack={() =>
+              onb.goToStep(profile.path === "own_plan" ? "own_plan" : "profile")
+            }
             onReload={() => void onb.reload(true)}
             busy={onb.busy}
           />
@@ -292,7 +228,11 @@ export function OnboardingView({
               <button
                 type="button"
                 className="secondary"
-                onClick={() => onb.goToStep("summary")}
+                onClick={() =>
+                  onb.goToStep(
+                    profile.path === "own_plan" ? "own_plan" : "profile",
+                  )
+                }
                 disabled={onb.busy}
               >
                 <ChevronLeft size={14} aria-hidden="true" />
@@ -350,143 +290,46 @@ export function OnboardingView({
 
   const content = () => {
     switch (step) {
+      case "profile":
+        return (
+          <ProfileStep
+            profile={profile}
+            progress={progress}
+            validation={validation}
+            exerciseChoices={state.exercise_choices}
+            splitOptions={state.split_options}
+            busy={onb.busy}
+            canWritePlan={state.can_write_plan}
+            onSave={async (patch) =>
+              (await onb.saveProfile(patch))?.ok ?? false
+            }
+            onRequestPlan={() => void onb.requestPlan()}
+            onBack={() => onb.goToStep("welcome")}
+          />
+        );
+
+      case "own_plan":
+        return (
+          <OwnPlanStep
+            onBack={() => onb.goToStep("welcome")}
+            onAskChat={() => void client.askChat(OWN_PLAN_MESSAGE)}
+            onReload={() => void onb.reload(true)}
+            busy={onb.busy}
+          />
+        );
+
       case "welcome":
+      default:
         return (
           <WelcomeStep
-            resumed={resumed || progress.answered_required > 0}
             canWritePlan={state.can_write_plan}
             googleAvailable={state.google_connection_available}
             busy={onb.busy}
-            onStart={() => onb.goToStep("goal")}
-          />
-        );
-
-      case "availability":
-        return (
-          <AvailabilityStep
-            days={profile.days_per_week}
-            minutes={profile.session_minutes}
-            environment={profile.environment}
-            validation={validation}
-            busy={onb.busy}
-            showErrors={shows([
-              "days_per_week",
-              "session_minutes",
-              "environment",
-            ])}
-            onChange={(patch) => void onb.saveProfile(patch)}
-            onBack={() => onb.goToStep("goal")}
-            onNext={() => {
-              mark(["days_per_week", "session_minutes", "environment"]);
-              if (
-                profile.days_per_week !== null &&
-                profile.session_minutes !== null &&
-                profile.environment !== null
-              )
-                onb.goToStep("preferences");
-            }}
-          />
-        );
-
-      case "preferences":
-        return (
-          <PreferencesStep
-            startingPoint={profile.starting_point}
-            preferred={drafts.preferred}
-            avoided={drafts.avoided}
-            equipment={drafts.equipment}
-            notes={drafts.notes}
-            validation={validation}
-            busy={onb.busy}
-            showErrors={shows(["starting_point"])}
-            onChange={(patch) => {
-              if (patch.starting_point)
-                void onb.saveProfile({ starting_point: patch.starting_point });
-              const { starting_point: _ignored, ...rest } = patch;
-              if (Object.keys(rest).length)
-                setDrafts((previous) => ({ ...previous, ...rest }));
-            }}
-            onBack={() => onb.goToStep("availability")}
-            onNext={({ skipOptional }) => {
-              mark(["starting_point"]);
-              if (profile.starting_point === null) return;
-              if (skipOptional) {
-                onb.goToStep("summary");
-                return;
-              }
-              // Optional answers are only sent when there is something to send,
-              // so skipping writes nothing and claims nothing.
-              const next = {
-                ...(parseList(drafts.preferred).length
-                  ? { preferred_exercises: parseList(drafts.preferred) }
-                  : {}),
-                ...(parseList(drafts.avoided).length
-                  ? { avoided_exercises: parseList(drafts.avoided) }
-                  : {}),
-                ...(parseList(drafts.equipment).length
-                  ? { available_equipment: parseList(drafts.equipment) }
-                  : {}),
-                ...(drafts.notes.trim() ? { notes: drafts.notes.trim() } : {}),
-              };
-              if (Object.keys(next).length)
-                void saveAnd({ preferences: next }, "summary");
-              else onb.goToStep("summary");
-            }}
-          />
-        );
-
-      case "summary":
-      case "plan_proposal":
-      case "plan_review":
-      case "confirmation":
-      case "google_connection":
-      case "done":
-        return (
-          <ProfileSummaryStep
-            summary={{
-              goal: profile.primary_goal,
-              experience: profile.experience,
-              days: profile.days_per_week,
-              minutes: profile.session_minutes,
-              environment: profile.environment,
-              startingPoint: profile.starting_point,
-              preferred: preferences?.preferred_exercises ?? [],
-              avoided: preferences?.avoided_exercises ?? [],
-              equipment: preferences?.available_equipment ?? [],
-              notes: preferences?.notes,
-            }}
-            progress={progress}
-            validation={validation}
-            busy={onb.busy}
-            canRequestPlan={progress.can_request_plan}
-            canWritePlan={state.can_write_plan}
-            onEdit={(target) => onb.goToStep(target)}
-            onBack={() => onb.goToStep("preferences")}
-            onRequestPlan={() => void onb.requestPlan()}
-          />
-        );
-
-      case "goal":
-      default:
-        return (
-          <GoalStep
-            goal={profile.primary_goal}
-            experience={profile.experience}
-            validation={validation}
-            busy={onb.busy}
-            showErrors={shows(["primary_goal", "experience"])}
-            onChange={(patch) =>
-              void onb.saveProfile(
-                patch as {
-                  primary_goal?: TrainingGoal;
-                  experience?: ExperienceLevel;
-                },
-              )
-            }
-            onNext={() => {
-              mark(["primary_goal", "experience"]);
-              if (profile.primary_goal !== null && profile.experience !== null)
-                onb.goToStep("availability");
+            onChoose={(path) => {
+              // Choosing the path already chosen just continues there.
+              if (path === profile.path)
+                onb.goToStep(path === "own_plan" ? "own_plan" : "profile");
+              else void onb.choosePath(path);
             }}
           />
         );
@@ -498,11 +341,13 @@ export function OnboardingView({
       {banner}
       {content()}
       <footer className="onb-statusbar">
-        {/* Said rather than implied: the setup survives on this server only. */}
+        {/* Said rather than implied: where the setup is kept. */}
         <span className="onb-status-note">
-          {state.resume.durable
-            ? "Einrichtung gespeichert."
-            : "Nur für diese Serversitzung gespeichert."}
+          {state.resume.cross_device
+            ? "Mit deinem Konto gespeichert."
+            : state.resume.durable
+              ? "Einrichtung gespeichert."
+              : "Nur für diese Serversitzung gespeichert."}
         </span>
         <button
           type="button"
@@ -523,5 +368,3 @@ export function OnboardingView({
     </div>
   );
 }
-
-export type { StartingPoint, TrainingEnvironment };

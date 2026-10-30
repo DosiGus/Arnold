@@ -24,7 +24,14 @@ async function start() {
     new StreamableHTTPClientTransport(new URL("/mcp", location.href)),
   );
   const { tools } = await client.listTools();
-  const tool = tools.find((t) => t.name === "show_arnold_dashboard");
+  // `?tool=show_arnold_onboarding` opens the setup wizard instead; only the
+  // two UI entry tools are accepted.
+  const requested = new URLSearchParams(location.search).get("tool");
+  const name =
+    requested === "show_arnold_onboarding"
+      ? requested
+      : "show_arnold_dashboard";
+  const tool = tools.find((t) => t.name === name);
   const uri = tool && getToolUiResourceUri(tool);
   if (!uri) throw new Error("UI-Ressource fehlt in tools/list.");
   const resource = await client.readResource({ uri });

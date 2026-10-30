@@ -19,7 +19,9 @@ import {
 } from "../src/server/onboarding/fixture";
 import { InMemoryOnboardingRepository } from "../src/server/onboarding/repository";
 import { planFixtureDataset } from "../src/server/plan/fixture";
-import type { OnboardingService } from "../src/server/onboarding/service";
+import { OnboardingService } from "../src/server/onboarding/service";
+import { AuthenticatedOnboardingAccessControl } from "../src/server/onboarding/access";
+import type { AuthenticatedArnoldContext } from "../src/server/auth/identity";
 import {
   OnboardingStateSchema,
   type OnboardingProfilePatch,
@@ -29,12 +31,14 @@ import {
 const rid = () => randomUUID();
 
 const COMPLETE_PROFILE: OnboardingProfilePatch = {
-  primary_goal: "muscle_gain",
-  experience: "intermediate",
-  days_per_week: 3,
-  session_minutes: 60,
-  environment: "gym",
-  starting_point: "new_plan",
+  path: "arnold_plan",
+  training: {
+    primary_goal: "muscle_gain",
+    experience: "intermediate",
+    days_per_week: 3,
+    session_minutes: 60,
+    environment: "gym",
+  },
 };
 
 /** Starts a setup and returns the handle a caller needs for everything else. */
@@ -162,16 +166,64 @@ describe("collecting the profile", () => {
     await service.updateProfile({
       request_id: rid(),
       ...claim,
-      profile: { primary_goal: "strength", experience: "beginner" },
+      profile: {
+        path: "arnold_plan",
+        training: { primary_goal: "strength", experience: "beginner" },
+      },
     });
     const second = await service.updateProfile({
       request_id: rid(),
       ...claim,
-      profile: { days_per_week: 4 },
+      profile: { training: { days_per_week: 4 } },
     });
-    expect(second.state!.session.profile.primary_goal).toBe("strength");
-    expect(second.state!.session.profile.experience).toBe("beginner");
-    expect(second.state!.session.profile.days_per_week).toBe(4);
+    expect(second.state!.session.profile.training.primary_goal).toBe(
+      "strength",
+    );
+    expect(second.state!.session.profile.training.experience).toBe("beginner");
+    expect(second.state!.session.profile.training.days_per_week).toBe(4);
+  });
+
+  it("records the screen that still has open questions after a save without a step", async () => {
+    // Found live in ChatGPT: the recorded step stayed on an answered question,
+    // and the model kept saving the same answers again and again.
+    const service = createFixtureOnboarding().onboarding;
+    const { claim } = await startSetup(service);
+    const goal = await service.updateProfile({
+      request_id: rid(),
+      ...claim,
+      profile: {
+        path: "arnold_plan",
+        training: { primary_goal: "muscle_gain", experience: "intermediate" },
+      },
+    });
+    expect(goal.state!.session.current_step).toBe("profile");
+    expect(goal.state!.progress.missing_fields).toEqual([
+      "training.days_per_week",
+      "training.session_minutes",
+      "training.environment",
+    ]);
+    const done = await service.updateProfile({
+      request_id: rid(),
+      ...claim,
+      profile: {
+        training: { days_per_week: 3, session_minutes: 60, environment: "gym" },
+      },
+    });
+    expect(done.state!.session.status).toBe("PROFILE_READY");
+    expect(done.state!.session.current_step).toBe("profile");
+    expect(done.state!.progress.missing_fields).toEqual([]);
+  });
+
+  it("keeps an explicit step from the wizard", async () => {
+    const service = createFixtureOnboarding().onboarding;
+    const { claim } = await startSetup(service);
+    const saved = await service.updateProfile({
+      request_id: rid(),
+      ...claim,
+      profile: { path: "arnold_plan", training: { primary_goal: "strength" } },
+      step: "welcome",
+    });
+    expect(saved.state!.session.current_step).toBe("welcome");
   });
 
   it("updates a single answer from a later turn", async () => {
@@ -181,13 +233,13 @@ describe("collecting the profile", () => {
     const changed = await service.updateProfile({
       request_id: rid(),
       ...claim,
-      profile: { days_per_week: 5 },
+      profile: { training: { days_per_week: 5 } },
     });
-    expect(changed.state!.session.profile.days_per_week).toBe(5);
-    expect(changed.state!.session.profile.session_minutes).toBe(60);
+    expect(changed.state!.session.profile.training.days_per_week).toBe(5);
+    expect(changed.state!.session.profile.training.session_minutes).toBe(60);
     // The brief that a later proposal is built from reflects the change.
     const brief = await service.getBrief(claim);
-    expect(brief.availability.days_per_week).toBe(5);
+    expect(brief.availability!.days_per_week).toBe(5);
   });
 
   it("becomes ready only once every answer is in", async () => {
@@ -196,7 +248,7 @@ describe("collecting the profile", () => {
     const partial = await service.updateProfile({
       request_id: rid(),
       ...claim,
-      profile: { primary_goal: "muscle_gain" },
+      profile: { training: { primary_goal: "muscle_gain" } },
     });
     expect(partial.state!.session.status).toBe("COLLECTING_PROFILE");
     expect(partial.state!.progress.can_request_plan).toBe(false);
@@ -228,11 +280,11 @@ describe("collecting the profile", () => {
     const back = await service.updateProfile({
       request_id: rid(),
       ...claim,
-      step: "goal",
+      step: "welcome",
     });
     expect(back.ok).toBe(true);
-    expect(back.state!.session.current_step).toBe("goal");
-    expect(back.state!.session.profile.days_per_week).toBe(3);
+    expect(back.state!.session.current_step).toBe("welcome");
+    expect(back.state!.session.profile.training.days_per_week).toBe(3);
     expect(back.state!.progress.profile_complete).toBe(true);
   });
 
@@ -242,18 +294,18 @@ describe("collecting the profile", () => {
     await service.updateProfile({
       request_id: rid(),
       ...claim,
-      profile: { primary_goal: "strength" },
+      profile: { training: { primary_goal: "strength" } },
     });
     const stale = await service.updateProfile({
       request_id: rid(),
       ...claim,
       expected_revision: state.session.revision,
-      profile: { primary_goal: "muscle_gain" },
+      profile: { training: { primary_goal: "muscle_gain" } },
     });
     expect(stale.ok).toBe(false);
     expect(stale.error?.code).toBe("REVISION_CONFLICT");
     // The earlier value stands; nothing was overwritten.
-    expect(stale.state!.session.profile.primary_goal).toBe("strength");
+    expect(stale.state!.session.profile.training.primary_goal).toBe("strength");
   });
 
   it("treats a repeated request id as already done", async () => {
@@ -263,18 +315,18 @@ describe("collecting the profile", () => {
     const first = await service.updateProfile({
       request_id: requestId,
       ...claim,
-      profile: { days_per_week: 3 },
+      profile: { training: { days_per_week: 3 } },
     });
     const second = await service.updateProfile({
       request_id: requestId,
       ...claim,
-      profile: { days_per_week: 6 },
+      profile: { training: { days_per_week: 6 } },
     });
     expect(first.ok).toBe(true);
     expect(second.ok).toBe(true);
     expect(second.replayed).toBe(true);
     // The repeat did not apply the second value.
-    expect(second.state!.session.profile.days_per_week).toBe(3);
+    expect(second.state!.session.profile.training.days_per_week).toBe(3);
     expect(second.state!.session.revision).toBe(first.state!.session.revision);
   });
 });
@@ -365,10 +417,34 @@ describe("the plan proposal", () => {
     expect(refused.ok).toBe(false);
   });
 
-  it("refuses a proposal before the phase was opened", async () => {
+  it("takes a proposal right after complete answers, opening the phase on the way", async () => {
+    // "Plan erstellen" and a pasted own plan go straight to the proposal.
     const service = createFixtureOnboarding().onboarding;
     const { claim } = await withProfile(service);
     const brief = await service.getBrief(claim);
+    const submitted = await service.submitPlanProposal({
+      request_id: rid(),
+      ...claim,
+      name: "Direkt",
+      origin: "ai_proposal",
+      sessions: proposalSessions(
+        brief.exercise_catalog.slice(0, 3).map((e) => e.exercise_id),
+      ),
+    });
+    expect(submitted.ok, submitted.error?.message).toBe(true);
+    expect(submitted.state!.session.status).toBe("REVIEWING_PLAN");
+  });
+
+  it("refuses a proposal while answers are missing, without writing a draft", async () => {
+    const runtime = createFixtureOnboarding();
+    const service = runtime.onboarding;
+    const { claim } = await startSetup(service);
+    await service.updateProfile({
+      request_id: rid(),
+      ...claim,
+      profile: { path: "arnold_plan" },
+    });
+    const before = (await runtime.repository.read()).plans.length;
     const refused = await service.submitPlanProposal({
       request_id: rid(),
       ...claim,
@@ -377,12 +453,37 @@ describe("the plan proposal", () => {
       sessions: [
         {
           session_name: "Push",
-          exercises: [{ exercise_id: brief.exercise_catalog[0].exercise_id }],
+          exercises: [{ exercise_id: "bench-press" }],
         },
       ],
     });
     expect(refused.ok).toBe(false);
+    expect(refused.error?.code).toBe("PROFILE_INCOMPLETE");
+    expect((await runtime.repository.read()).plans.length).toBe(before);
+  });
+
+  it("refuses a new proposal over a confirmed plan, without writing a draft", async () => {
+    const { runtime, service, claim, state, ids } = await withProposal();
+    await service.confirmPlan({
+      request_id: rid(),
+      ...claim,
+      confirmation: {
+        plan_version_id: state.plan!.plan_version_id,
+        row_revision: state.plan!.row_revision,
+        confirmed: true,
+      },
+    });
+    const before = (await runtime.repository.read()).plans.length;
+    const refused = await service.submitPlanProposal({
+      request_id: rid(),
+      ...claim,
+      name: "Noch einer",
+      origin: "ai_proposal",
+      sessions: proposalSessions(ids),
+    });
+    expect(refused.ok).toBe(false);
     expect(refused.error?.code).toBe("INVALID_STATE_TRANSITION");
+    expect((await runtime.repository.read()).plans.length).toBe(before);
   });
 
   it("leaves an unstated target load empty rather than inventing one", async () => {
@@ -445,17 +546,19 @@ describe("the plan proposal", () => {
     expect(submitted.state!.plan!.session_count).toBe(2);
   });
 
-  it("takes over an existing routine as a draft", async () => {
+  it("takes over an own plan as a draft, straight from the path choice", async () => {
     const service = createFixtureOnboarding().onboarding;
     const { claim } = await startSetup(service);
-    await service.updateProfile({
+    const chosen = await service.updateProfile({
       request_id: rid(),
       ...claim,
-      profile: { ...COMPLETE_PROFILE, starting_point: "existing_plan" },
+      profile: { path: "own_plan" },
     });
-    await service.requestPlanProposal({ request_id: rid(), ...claim });
+    // Choosing the path is the only answer the own-plan path needs.
+    expect(chosen.state!.session.status).toBe("PROFILE_READY");
+    expect(chosen.state!.session.current_step).toBe("own_plan");
     const brief = await service.getBrief(claim);
-    expect(brief.starting_point).toBe("existing_plan");
+    expect(brief.path).toBe("own_plan");
     const ids = brief.exercise_catalog.slice(0, 3).map((e) => e.exercise_id);
     const submitted = await service.submitPlanProposal({
       request_id: rid(),
@@ -701,7 +804,7 @@ describe("a change after the confirmation", () => {
     const changed = await service.updateProfile({
       request_id: rid(),
       ...claim,
-      profile: { days_per_week: 4 },
+      profile: { training: { days_per_week: 4 } },
     });
     expect(changed.ok).toBe(true);
     expect(changed.state!.session.status).toBe("REVIEWING_PLAN");
@@ -847,7 +950,7 @@ describe("cancelling", () => {
     const refused = await service.updateProfile({
       request_id: rid(),
       ...claim,
-      profile: { days_per_week: 5 },
+      profile: { training: { days_per_week: 5 } },
     });
     expect(refused.ok).toBe(false);
     expect(refused.error?.code).toBe("SESSION_CANCELLED");
@@ -868,7 +971,7 @@ describe("expiry", () => {
     const refused = await service.updateProfile({
       request_id: rid(),
       ...claim,
-      profile: { days_per_week: 5 },
+      profile: { training: { days_per_week: 5 } },
     });
     expect(refused.ok).toBe(false);
     expect(refused.error?.code).toBe("SESSION_EXPIRED");
@@ -930,8 +1033,8 @@ describe("resuming", () => {
     const service = createFixtureOnboarding().onboarding;
     const { claim } = await withProfile(service);
     const resumed = await service.resumeOnboarding(claim);
-    expect(resumed.session.profile.primary_goal).toBe("muscle_gain");
-    expect(resumed.session.profile.days_per_week).toBe(3);
+    expect(resumed.session.profile.training.primary_goal).toBe("muscle_gain");
+    expect(resumed.session.profile.training.days_per_week).toBe(3);
     expect(resumed.progress.profile_complete).toBe(true);
   });
 
@@ -946,7 +1049,7 @@ describe("resuming", () => {
     expect(resumed.state!.session.onboarding_session_id).toBe(
       claim.onboarding_session_id,
     );
-    expect(resumed.state!.session.profile.days_per_week).toBe(3);
+    expect(resumed.state!.session.profile.training.days_per_week).toBe(3);
     // No new secret is handed out for a session that already has one.
     expect(resumed.session_token).toBeNull();
   });
@@ -1054,6 +1157,7 @@ describe("nothing reaches Google", () => {
     expect(serialized).not.toContain(state.session.onboarding_session_id);
     expect(serialized).not.toContain("COLLECTING_PROFILE");
     expect(serialized).not.toContain("primary_goal");
+    expect(serialized).not.toContain("arnold_plan");
   });
 
   it("works on a fixture tracker that is not the master template", async () => {
@@ -1137,12 +1241,148 @@ describe("the audit trail", () => {
     await context.service.updateProfile({
       request_id: rid(),
       ...context.claim,
-      profile: { days_per_week: 4 },
+      profile: { training: { days_per_week: 4 } },
     });
     const audit = context.runtime.audit as { events: Map<string, unknown> };
     const types = [...audit.events.values()].map(
       (event) => (event as { event_type: string }).event_type,
     );
     expect(types).toContain("ONBOARDING_CONFIRMATION_INVALIDATED");
+  });
+});
+
+/* ------------------------------------------------- one setup per account */
+
+describe("one setup per account", () => {
+  const account = (userId: string) =>
+    ({ userId }) as unknown as AuthenticatedArnoldContext;
+  const accountRuntime = (repository = new InMemoryOnboardingRepository()) =>
+    createFixtureOnboarding({
+      repository,
+      access: new AuthenticatedOnboardingAccessControl("user-1"),
+    });
+
+  it("continues the open setup in a new chat instead of starting a second", async () => {
+    const service = accountRuntime().onboarding;
+    const first = await service.openOnboarding(account("user-1"));
+    expect(first.resumed).toBe(false);
+    const claim = {
+      onboarding_session_id: first.state.session.onboarding_session_id,
+      session_token: first.token!,
+    };
+    await service.updateProfile(
+      { request_id: rid(), ...claim, profile: COMPLETE_PROFILE },
+      account("user-1"),
+    );
+
+    // A new chat has no secret. It gets the same setup, with a fresh one.
+    const again = await service.openOnboarding(account("user-1"));
+    expect(again.resumed).toBe(true);
+    expect(again.state.session.onboarding_session_id).toBe(
+      claim.onboarding_session_id,
+    );
+    expect(again.state.session.profile.training.days_per_week).toBe(3);
+    expect(again.state.resume.cross_device).toBe(true);
+    expect(again.token).toBeTruthy();
+    expect(again.token).not.toBe(claim.session_token);
+
+    // The new secret works, the old one no longer does.
+    await expect(
+      service.getOnboardingState(
+        { ...claim, session_token: again.token! },
+        account("user-1"),
+      ),
+    ).resolves.toBeTruthy();
+    await expect(
+      service.getOnboardingState(claim, account("user-1")),
+    ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+  });
+
+  it("does the same through start_arnold_onboarding", async () => {
+    const service = accountRuntime().onboarding;
+    const first = await service.startOnboarding(
+      { request_id: rid() },
+      account("user-1"),
+    );
+    const second = await service.startOnboarding(
+      { request_id: rid() },
+      account("user-1"),
+    );
+    expect(second.ok).toBe(true);
+    expect(second.state!.session.onboarding_session_id).toBe(
+      first.state!.session.onboarding_session_id,
+    );
+  });
+
+  it("never starts again once the account is set up", async () => {
+    const repository = new InMemoryOnboardingRepository();
+    const service = accountRuntime(repository).onboarding;
+    const opened = await service.openOnboarding(account("user-1"));
+    const record = (await repository.getSession(
+      opened.state.session.onboarding_session_id,
+    ))!;
+    await repository.updateSession(
+      {
+        ...record,
+        session: {
+          ...record.session,
+          status: "COMPLETED",
+          revision: record.session.revision + 1,
+        },
+      },
+      record.session.revision,
+    );
+
+    const start = await service.startOnboarding(
+      { request_id: rid() },
+      account("user-1"),
+    );
+    expect(start.ok).toBe(false);
+    expect(start.error?.code).toBe("ONBOARDING_ALREADY_COMPLETED");
+
+    // Opening the app shows the finished setup, read-only, without a secret.
+    const shown = await service.openOnboarding(account("user-1"));
+    expect(shown.state.session.status).toBe("COMPLETED");
+    expect(shown.token).toBeNull();
+    expect(await service.setupRequired(account("user-1"))).toBe(false);
+  });
+
+  it("requires the setup until it is completed", async () => {
+    const service = accountRuntime().onboarding;
+    expect(await service.setupRequired(account("user-1"))).toBe(true);
+    await service.openOnboarding(account("user-1"));
+    expect(await service.setupRequired(account("user-1"))).toBe(true);
+  });
+
+  it("fails closed when the caller is not the account", async () => {
+    const service = accountRuntime().onboarding;
+    expect(await service.setupRequired(account("someone-else"))).toBe(true);
+    await expect(
+      service.openOnboarding(account("someone-else")),
+    ).rejects.toMatchObject({ code: "AUTH_REQUIRED" });
+  });
+
+  it("prefers the deployment's own evidence that the account is set up", async () => {
+    const runtime = createFixtureOnboarding();
+    const ready = new OnboardingService({
+      repository: new InMemoryOnboardingRepository(),
+      access: new AuthenticatedOnboardingAccessControl("user-1"),
+      plans: runtime.plans,
+      read: () => runtime.repository.read(),
+      trackerId: "trk_test",
+      setupComplete: async () => true,
+    });
+    expect(await ready.setupRequired(account("user-1"))).toBe(false);
+  });
+
+  it("never applies to anonymous setups", async () => {
+    const service = createFixtureOnboarding().onboarding;
+    expect(await service.setupRequired()).toBe(false);
+    const first = await service.openOnboarding();
+    const second = await service.openOnboarding();
+    // Without a verified account there is nothing to find a setup by.
+    expect(second.state.session.onboarding_session_id).not.toBe(
+      first.state.session.onboarding_session_id,
+    );
   });
 });
