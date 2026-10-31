@@ -90,9 +90,28 @@ export function parseTrustProxy(value: string | undefined): number {
     );
   return Number(value);
 }
+/** Fixed routes to fixed files; nothing from the request picks a path. */
+export const LEGAL_PAGES: Readonly<Record<string, string>> = Object.freeze({
+  "/datenschutz": "datenschutz.html",
+  "/bedingungen": "bedingungen.html",
+  "/support": "support.html",
+});
+
+/** The release id for /health. A malformed value stops the start. */
+export function releaseFrom(env: NodeJS.ProcessEnv): string | null {
+  const raw = env.ARNOLD_RELEASE;
+  if (raw === undefined || raw === "") return null;
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(raw))
+    throw new Error(
+      "ARNOLD_RELEASE darf nur Buchstaben, Ziffern, Punkt, Bindestrich und Unterstrich enthalten (höchstens 64 Zeichen).",
+    );
+  return raw;
+}
+
 export function createHttpApp(options: ServerOptions = {}) {
   const root = options.root ?? process.cwd();
   const env = withDefaultProfile(options);
+  const release = releaseFrom(env);
   const mode = writeModeFromEnv(env);
   if (
     options.connected &&
@@ -241,8 +260,35 @@ export function createHttpApp(options: ServerOptions = {}) {
       source: options.connected ? "arnold_connected" : "arnold_sheets",
       ui_contract: ARNOLD_UI_CONTRACT,
       version: "0.5.0",
+      // The deployed commit, set by the deploy (ARNOLD_RELEASE); null locally.
+      release,
     }),
   );
+  // Privacy notice, terms and support for the beta. Content comes from
+  // public/legal/ (owned by operations); a missing file is a 404, never a
+  // placeholder. Static HTML only: no scripts, no external resources.
+  for (const [path, file] of Object.entries(LEGAL_PAGES))
+    app.get(path, (_req, res) => {
+      res.setHeader(
+        "Content-Security-Policy",
+        "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      );
+      res.sendFile(
+        resolve(root, "public/legal", file),
+        {
+          dotfiles: "allow",
+          headers: { "Cache-Control": "public, max-age=300" },
+        },
+        (error) => {
+          if (!error) return;
+          if (!res.headersSent)
+            res
+              .status(404)
+              .type("text/plain; charset=utf-8")
+              .send("Diese Seite ist noch nicht verfügbar.");
+        },
+      );
+    });
   // The query string is carried across the redirect: the preview selects its
   // entry point from it (`?onboarding=1` opens the setup wizard), and dropping
   // it here would silently send every such visit to the dashboard instead.
