@@ -1,3 +1,4 @@
+import { logServerError } from "./tool-log.js";
 import { writeModeFromEnv } from "./workout/fixture.js";
 import { createFixtureOnboarding } from "./onboarding/fixture.js";
 import { planFixtureDataset } from "./plan/fixture.js";
@@ -300,10 +301,7 @@ export function createHttpApp(options: ServerOptions = {}) {
         await server.connect(transport);
         await transport.handleRequest(req, res, req.body);
       } catch (error) {
-        console.error(
-          "MCP request failed:",
-          error instanceof Error ? error.message : "Unknown error",
-        );
+        logServerError("mcp request failed", error);
         if (!res.headersSent)
           res.status(500).json({
             jsonrpc: "2.0",
@@ -321,7 +319,8 @@ export function createHttpApp(options: ServerOptions = {}) {
   });
   app.use((_req, res) => res.status(404).json({ error: "Nicht gefunden." }));
   app.use((error: Error, _req: Request, res: Response, _next: NextFunction) => {
-    console.error(error.message);
+    // Type and status only: a body-parser message quotes the request body.
+    logServerError("http request failed", error);
     const bodyError = error as Error & { status?: number; type?: string };
     if (!res.headersSent && bodyError.type === "entity.parse.failed") {
       res.status(400).json({ error: "Ungültiger JSON-Request." });
