@@ -19,7 +19,11 @@ import {
   type ArnoldSheetsReadTransport,
 } from "./arnold-sheets-read-adapter.js";
 import { ArnoldDataError } from "./arnold-sheet-parser.js";
-import type { Recovery } from "../shared/write-recovery.js";
+import {
+  GOOGLE_REAUTH_MESSAGE,
+  type Recovery,
+} from "../shared/write-recovery.js";
+import { isGoogleReauthRequired } from "./google/reauth.js";
 import type { ArnoldDataset } from "../shared/arnold-schema-v1.js";
 
 /** Why a dataset could not be produced, in terms the UI can act on. */
@@ -50,6 +54,13 @@ export class ArnoldSourceError extends Error {
 /** Maps adapter and validation errors onto the UI-facing failure taxonomy. */
 export function classifyFailure(error: unknown): ArnoldSourceFailure {
   if (error instanceof ArnoldSourceError) return error.failure;
+  if (isGoogleReauthRequired(error))
+    return {
+      code: "google_reauth_required",
+      message: GOOGLE_REAUTH_MESSAGE,
+      retryable: false,
+      recovery: "reconnect_google",
+    };
   if (error instanceof ArnoldSheetsReadError) {
     const map = {
       AUTH: {
@@ -78,6 +89,11 @@ export function classifyFailure(error: unknown): ArnoldSourceFailure {
         recovery: "retry_same_request",
       },
       API: { code: "unknown", retryable: true, recovery: "retry_same_request" },
+      GOOGLE_REAUTH_REQUIRED: {
+        code: "google_reauth_required",
+        retryable: false,
+        recovery: "reconnect_google",
+      },
     } as const;
     const mapped = map[error.code];
     return {

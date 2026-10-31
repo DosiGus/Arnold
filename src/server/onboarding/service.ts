@@ -31,7 +31,12 @@
  * Onboarding state lives in its own repository, never in the six Arnold tables
  * (`CONFIG.onboarding_storage = BACKEND_ONLY`).
  */
-import { recoveryFor } from "../../shared/write-recovery.js";
+import {
+  GOOGLE_REAUTH_MESSAGE,
+  GOOGLE_REAUTH_REQUIRED,
+  recoveryFor,
+} from "../../shared/write-recovery.js";
+import { isGoogleReauthRequired } from "../google/reauth.js";
 import type {
   ArnoldDataset,
   ArnoldExercise,
@@ -1555,6 +1560,12 @@ export class OnboardingService {
   /** Normalises anything thrown into an `OnboardingError`. */
   private normalize(error: unknown): OnboardingError {
     if (error instanceof OnboardingError) return error;
+    if (isGoogleReauthRequired(error))
+      return new OnboardingError(
+        GOOGLE_REAUTH_REQUIRED,
+        GOOGLE_REAUTH_MESSAGE,
+        false,
+      );
     if (error instanceof OnboardingAccessError)
       return new OnboardingError(error.code, error.message);
     if (error instanceof RepositoryConflictError)

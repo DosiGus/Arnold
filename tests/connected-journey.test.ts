@@ -44,6 +44,7 @@ import {
   WorkoutContextSchema,
 } from "../src/shared/workout-contract.js";
 import { ArnoldDashboardViewSchema } from "../src/shared/arnold-view.js";
+import { PlanWriteResponseSchema } from "../src/shared/plan-contract.js";
 import { TOOL_ACCESS } from "../src/server/auth/tool-access.js";
 import {
   googleOAuthConfig,
@@ -746,5 +747,129 @@ describe("connected end-to-end journey (Google simulated, real HTTP and MCP)", (
     ).catch(() => ({ isError: true }));
     expect(connect.isError).toBe(true);
     expect(google.creates).toBe(0);
+  });
+});
+
+describe("B4: an expired Google grant leads to reconnecting, without data loss", () => {
+  const meta = (result: CallToolResult) =>
+    (result._meta as { arnold?: { code?: string; recovery?: string } })?.arnold;
+  const text = (result: CallToolResult) =>
+    result.content.map((c) => (c.type === "text" ? c.text : "")).join(" ");
+
+  it("answers every Google-dependent tool with GOOGLE_REAUTH_REQUIRED", async () => {
+    const { claim, plan } = await connected();
+    const workout = await startWorkout();
+    google.revoked.add("alice");
+
+    for (const name of [
+      "get_arnold_dashboard",
+      "show_arnold_dashboard",
+      "get_arnold_workouts",
+      "get_workout",
+      "get_training_plan",
+      "list_training_plans",
+    ]) {
+      const result = await call("alice", name);
+      expect(result.isError, name).toBe(true);
+      expect(meta(result), name).toMatchObject({
+        code: "GOOGLE_REAUTH_REQUIRED",
+        recovery: "reconnect_google",
+      });
+      expect(text(result), name).toContain(
+        "Die Google-Freigabe ist abgelaufen. Bitte über die Karte neu verbinden.",
+      );
+    }
+
+    const write = WriteResponseSchema.parse(
+      (
+        await call("alice", "log_workout_sets", {
+          request_id: "set-while-expired",
+          workout_id: workout.workout_id,
+          sets: [setInput],
+        })
+      ).structuredContent,
+    );
+    expect(write.ok).toBe(false);
+    expect(write.error).toMatchObject({
+      code: "GOOGLE_REAUTH_REQUIRED",
+      recovery: "reconnect_google",
+      retryable: false,
+    });
+
+    const planWrite = PlanWriteResponseSchema.parse(
+      (
+        await call("alice", "create_plan_version", {
+          request_id: "plan-while-expired",
+          source_plan_version_id: plan.plan_version_id,
+        })
+      ).structuredContent,
+    );
+    expect(planWrite.ok).toBe(false);
+    expect(planWrite.error).toMatchObject({
+      code: "GOOGLE_REAUTH_REQUIRED",
+      recovery: "reconnect_google",
+    });
+
+    const finish = await call("alice", "finish_arnold_setup", claim);
+    expect(finish.isError).toBe(true);
+    expect(meta(finish)).toMatchObject({
+      code: "GOOGLE_REAUTH_REQUIRED",
+      recovery: "reconnect_google",
+    });
+
+    expect(
+      (await call("alice", "get_google_connection")).structuredContent,
+    ).toMatchObject({ connection: { status: "REAUTH_REQUIRED" } });
+  });
+
+  it("expires mid-write, then the same request succeeds once after reconnecting", async () => {
+    const { claim } = await connected();
+    const workout = await startWorkout();
+    const first = WriteResponseSchema.parse(
+      (
+        await call("alice", "log_workout_sets", {
+          request_id: "set-before-expiry",
+          workout_id: workout.workout_id,
+          sets: [setInput],
+        })
+      ).structuredContent,
+    );
+    expect(first.ok, first.error?.message).toBe(true);
+
+    const input = {
+      request_id: "set-during-expiry",
+      workout_id: workout.workout_id,
+      sets: [{ ...setInput, reps: 8 }],
+    };
+    google.expireGrantBeforeNextWrite = true;
+    const refused = WriteResponseSchema.parse(
+      (await call("alice", "log_workout_sets", input)).structuredContent,
+    );
+    expect(refused.ok).toBe(false);
+    expect(refused.error).toMatchObject({
+      code: "GOOGLE_REAUTH_REQUIRED",
+      recovery: "reconnect_google",
+    });
+
+    // Reconnect through the normal card flow.
+    expect((await consent("alice", claim)).response.status).toBe(200);
+    expect(google.creates).toBe(1);
+
+    const retried = WriteResponseSchema.parse(
+      (await call("alice", "log_workout_sets", input)).structuredContent,
+    );
+    expect(retried.ok, retried.error?.message).toBe(true);
+    const replay = WriteResponseSchema.parse(
+      (await call("alice", "log_workout_sets", input)).structuredContent,
+    );
+    expect(replay.ok).toBe(true);
+    expect(replay.replayed).toBe(true);
+
+    const sets = WorkoutContextSchema.parse(
+      (await call("alice", "get_workout", { workout_id: workout.workout_id }))
+        .structuredContent,
+    ).sets;
+    expect(sets.map((set) => set.reps).sort()).toEqual([10, 8].sort());
+    expect((await call("alice", "get_arnold_dashboard")).isError).toBeFalsy();
   });
 });

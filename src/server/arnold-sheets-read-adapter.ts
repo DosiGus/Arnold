@@ -1,3 +1,5 @@
+import { GOOGLE_REAUTH_MESSAGE } from "../shared/write-recovery.js";
+import { isGoogleReauthRequired } from "./google/reauth.js";
 import { GoogleAuth } from "google-auth-library";
 import { z } from "zod";
 import {
@@ -35,6 +37,7 @@ export class ArnoldSheetsReadError extends Error {
       | "NOT_FOUND"
       | "RATE_LIMIT"
       | "UNAVAILABLE"
+      | "GOOGLE_REAUTH_REQUIRED"
       | "API",
     readonly status?: number,
   ) {
@@ -45,6 +48,7 @@ export class ArnoldSheetsReadError extends Error {
       NOT_FOUND: "Konfigurierte Arnold-Datei oder Tabelle nicht gefunden.",
       RATE_LIMIT: "Google-Sheets-Leselimit erreicht; später erneut versuchen.",
       UNAVAILABLE: "Google Sheets ist vorübergehend nicht verfügbar.",
+      GOOGLE_REAUTH_REQUIRED: GOOGLE_REAUTH_MESSAGE,
       API: "Google Sheets konnte nicht gelesen werden; Anmeldung und Netzwerk prüfen.",
     };
     super(messages[code]);
@@ -53,6 +57,9 @@ export class ArnoldSheetsReadError extends Error {
 }
 function apiError(error: unknown): ArnoldSheetsReadError {
   if (error instanceof ArnoldSheetsReadError) return error;
+  // An expired grant keeps its meaning, but not the original error object.
+  if (isGoogleReauthRequired(error))
+    return new ArnoldSheetsReadError("GOOGLE_REAUTH_REQUIRED");
   const candidate = error as {
     response?: { status?: unknown };
     status?: unknown;

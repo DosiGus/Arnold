@@ -8,6 +8,10 @@ import {
 } from "../shared/workout-contract.js";
 import type { ArnoldDataSource } from "./arnold-source.js";
 import type { WorkoutLoggingService } from "./workout/service.js";
+import {
+  googleReauthToolResult,
+  isGoogleReauthRequired,
+} from "./google/reauth.js";
 
 const descriptions: Record<WriteOperation, string> = {
   start_workout:
@@ -92,15 +96,23 @@ export function registerWorkoutTools(
           ],
           structuredContent: payload,
         };
-      } catch {
+      } catch (error) {
+        if (isGoogleReauthRequired(error)) return googleReauthToolResult();
         return {
           isError: true,
           content: [
             {
               type: "text" as const,
-              text: "STORAGE_UNAVAILABLE: Workout konnte nicht geladen werden.",
+              text: "STORAGE_UNAVAILABLE: Workout konnte nicht geladen werden. Erneut versuchen ist möglich.",
             },
           ],
+          _meta: {
+            arnold: {
+              code: "STORAGE_UNAVAILABLE",
+              retryable: true,
+              recovery: "retry_same_request",
+            },
+          },
         };
       }
     },

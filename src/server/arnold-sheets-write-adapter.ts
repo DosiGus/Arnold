@@ -1,3 +1,7 @@
+import {
+  googleReauthWriteError,
+  isGoogleReauthRequired,
+} from "./google/reauth.js";
 import { GoogleAuth } from "google-auth-library";
 import {
   ARNOLD_TABLE_HEADERS,
@@ -131,6 +135,8 @@ const statusOf = (error: unknown) => {
 };
 function apiFailure(error: unknown, writing: boolean): WriteError {
   if (error instanceof WriteError) return error;
+  // The grant is refreshed before a request is sent: nothing was written.
+  if (isGoogleReauthRequired(error)) return googleReauthWriteError();
   if (error instanceof ArnoldDataError)
     return new WriteError(
       "SCHEMA_MISMATCH",
@@ -414,7 +420,18 @@ export class ArnoldSheetsWriteAdapter implements ArnoldWriteRepository {
     } catch (error) {
       throw apiFailure(error, true);
     }
-    const observed = await this.read();
+    let observed: ArnoldDataset;
+    try {
+      observed = await this.read();
+    } catch {
+      // The batch was accepted; only its readback failed (for example an
+      // expired grant). The outcome is unknown, never "not written".
+      throw new WriteError(
+        "COMMIT_STATUS_UNKNOWN",
+        "Google hat gespeichert, die Kontrolle steht noch aus. Mit derselben request_id erneut prüfen.",
+        true,
+      );
+    }
     if (fingerprint(observed) !== this.allowedNext)
       throw new WriteError(
         "COMMIT_STATUS_UNKNOWN",

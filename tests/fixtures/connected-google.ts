@@ -49,6 +49,8 @@ export class ConnectedGoogle {
   loseWriteResponse = false;
   rejectInitialize = false;
   rejectCreate: number | undefined;
+  /** The grant expires exactly when the next sheet write arrives. */
+  expireGrantBeforeNextWrite = false;
   authorize(url: string, subject: string) {
     const authorization = new URL(url);
     const code = randomUUID();
@@ -173,6 +175,11 @@ export class ConnectedGoogle {
         (r: Record<string, unknown>) => r.addSheet,
       );
       if (initializing && this.rejectInitialize) return fail(503);
+      if (!initializing && this.expireGrantBeforeNextWrite) {
+        this.expireGrantBeforeNextWrite = false;
+        this.revoked.add(owner);
+        return fail(401);
+      }
       const next = structuredClone(file.sheets);
       for (const request of body.requests) {
         if (request.addSheet) {

@@ -1,3 +1,4 @@
+import { googleReauthWriteError } from "../google/reauth.js";
 import { createHash, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { z } from "zod";
@@ -138,10 +139,7 @@ export class ConnectedUserRuntime {
     const connection = await this.options.connections.status(caller);
     const manifest = await this.manifest.read();
     if (!connection || connection.status !== "CONNECTED")
-      throw new WriteError(
-        "AUTH_REQUIRED",
-        "Bitte Google verbinden oder die Freigabe erneuern.",
-      );
+      throw googleReauthWriteError();
     if (
       manifest.googleSubject &&
       manifest.googleSubject !== connection.google_subject

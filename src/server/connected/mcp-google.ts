@@ -1,6 +1,15 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/server";
 import { currentArnoldContext } from "../auth/guarded-server.js";
+import { recoveryFor } from "../../shared/write-recovery.js";
+import { GoogleConnectionError } from "../google/connection-service.js";
+import {
+  googleReauthToolResult,
+  isGoogleReauthRequired,
+} from "../google/reauth.js";
+import { OnboardingAccessError } from "../onboarding/access.js";
+import { OnboardingError } from "../onboarding/service.js";
+import { WriteError } from "../workout/infrastructure.js";
 import type { GoogleBrowserFlow } from "./google-browser.js";
 import { SetupClaimSchema, type ConnectedArnoldRuntime } from "./runtime.js";
 
@@ -18,6 +27,16 @@ export function registerGoogleTools(
     structuredContent: value,
     content: [{ type: "text" as const, text: message }],
   });
+  /** Runs an account tool; a failure becomes a coded error with a next step. */
+  const guarded = async (
+    action: () => Promise<ReturnType<typeof response>>,
+  ) => {
+    try {
+      return await action();
+    } catch (error) {
+      return accountToolFailure(error);
+    }
+  };
   server.registerTool(
     "connect_google_account",
     {
@@ -33,9 +52,11 @@ export function registerGoogleTools(
       },
     },
     async (claim) =>
-      response(
-        await browser.start(context(), claim),
-        "Öffne den Verbindungslink und erteile die Google-Freigabe. Die Einrichtung ist erst nach erfolgreicher Dateiprüfung abgeschlossen.",
+      guarded(async () =>
+        response(
+          await browser.start(context(), claim),
+          "Öffne den Verbindungslink und erteile die Google-Freigabe. Die Einrichtung ist erst nach erfolgreicher Dateiprüfung abgeschlossen.",
+        ),
       ),
   );
   server.registerTool(
@@ -53,14 +74,15 @@ export function registerGoogleTools(
         openWorldHint: true,
       },
     },
-    async (claim) => {
-      const caller = context();
-      const user = await runtime.forUser(caller);
-      return response(
-        await user.provision(claim, caller),
-        "Persönliche Trainingsdatei geprüft. Einrichtung abgeschlossen.",
-      );
-    },
+    async (claim) =>
+      guarded(async () => {
+        const caller = context();
+        const user = await runtime.forUser(caller);
+        return response(
+          await user.provision(claim, caller),
+          "Persönliche Trainingsdatei geprüft. Einrichtung abgeschlossen.",
+        );
+      }),
   );
   server.registerTool(
     "get_google_connection",
@@ -80,21 +102,22 @@ export function registerGoogleTools(
       }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async () => {
-      const connection = await runtime.options.connections.status(context());
-      return response(
-        {
-          connection: connection
-            ? {
-                status: connection.status,
-                email: connection.google_email,
-                has_refresh_token: connection.has_refresh_token,
-              }
-            : null,
-        },
-        "Zustand der eigenen Google-Verbindung geladen.",
-      );
-    },
+    async () =>
+      guarded(async () => {
+        const connection = await runtime.options.connections.status(context());
+        return response(
+          {
+            connection: connection
+              ? {
+                  status: connection.status,
+                  email: connection.google_email,
+                  has_refresh_token: connection.has_refresh_token,
+                }
+              : null,
+          },
+          "Zustand der eigenen Google-Verbindung geladen.",
+        );
+      }),
   );
   server.registerTool(
     "disconnect_google_account",
@@ -114,9 +137,46 @@ export function registerGoogleTools(
       },
     },
     async () =>
-      response(
-        await runtime.options.connections.disconnect(context()),
-        "Google-Verbindung getrennt. Die Trainingsdatei bleibt erhalten.",
+      guarded(async () =>
+        response(
+          await runtime.options.connections.disconnect(context()),
+          "Google-Verbindung getrennt. Die Trainingsdatei bleibt erhalten.",
+        ),
       ),
   );
+}
+
+/**
+ * A failed account tool as an MCP error with code and recovery.
+ *
+ * Messages come from Arnold's own error classes, which never quote Google
+ * responses or tokens; anything else is reported generically.
+ */
+export function accountToolFailure(error: unknown) {
+  if (isGoogleReauthRequired(error)) return googleReauthToolResult();
+  const known =
+    error instanceof WriteError ||
+    error instanceof GoogleConnectionError ||
+    error instanceof OnboardingError ||
+    error instanceof OnboardingAccessError;
+  const code = known ? (error as { code: string }).code : "STORAGE_UNAVAILABLE";
+  const retryable =
+    error instanceof WriteError || error instanceof OnboardingError
+      ? error.retryable
+      : code === "GOOGLE_UNAVAILABLE" || !known;
+  const message = known
+    ? (error as Error).message
+    : "Die Google-Verbindung ist derzeit nicht verfügbar.";
+  return {
+    isError: true as const,
+    content: [
+      {
+        type: "text" as const,
+        text: `${code}: ${message}${retryable ? " Erneut versuchen ist möglich." : ""}`,
+      },
+    ],
+    _meta: {
+      arnold: { code, retryable, recovery: recoveryFor(code, retryable) },
+    },
+  };
 }

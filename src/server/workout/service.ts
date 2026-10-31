@@ -1,3 +1,7 @@
+import {
+  googleReauthWriteError,
+  isGoogleReauthRequired,
+} from "../google/reauth.js";
 import { recoveryFor } from "../../shared/write-recovery.js";
 import { z } from "zod";
 import { analyzeSetLoad } from "../../analytics/load.js";
@@ -331,6 +335,11 @@ export class WorkoutLoggingService {
               await this.options.repository.apply(entry.changes);
             } catch (error) {
               this.options.invalidate();
+              if (isGoogleReauthRequired(error)) {
+                // Refused before sending: safe to dispatch again after reconnecting.
+                await this.options.ledger.save({ ...entry, state: "prepared" });
+                throw googleReauthWriteError();
+              }
               let state: string = "unknown";
               try {
                 state = await inspectChanges(
@@ -391,18 +400,20 @@ export class WorkoutLoggingService {
       const failure =
         error instanceof WriteError
           ? error
-          : error instanceof z.ZodError
-            ? new WriteError(
-                "VALIDATION_ERROR",
-                "Eingaben sind nicht eindeutig oder ungültig.",
-                false,
-                error.issues.map((i) => `${i.path.join(".")}: ${i.message}`),
-              )
-            : new WriteError(
-                "STORAGE_UNAVAILABLE",
-                "Schreibinfrastruktur derzeit nicht verfügbar.",
-                true,
-              );
+          : isGoogleReauthRequired(error)
+            ? googleReauthWriteError()
+            : error instanceof z.ZodError
+              ? new WriteError(
+                  "VALIDATION_ERROR",
+                  "Eingaben sind nicht eindeutig oder ungültig.",
+                  false,
+                  error.issues.map((i) => `${i.path.join(".")}: ${i.message}`),
+                )
+              : new WriteError(
+                  "STORAGE_UNAVAILABLE",
+                  "Schreibinfrastruktur derzeit nicht verfügbar.",
+                  true,
+                );
       return {
         ok: false,
         operation,
