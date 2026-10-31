@@ -178,7 +178,11 @@ for (const width of [375, 1024])
           .locator("button:visible")
           .evaluateAll((buttons) =>
             buttons
-              .filter((button) => button.getBoundingClientRect().height < 43.5)
+              .filter(
+                (button) =>
+                  button.getBoundingClientRect().height < 43.5 ||
+                  button.getBoundingClientRect().width < 43.5,
+              )
               .map((button) => button.textContent),
           );
         expect(small, `${name}: touch targets`).toEqual([]);
@@ -198,6 +202,11 @@ for (const width of [375, 1024])
         if (card === "progress")
           await expect(page.locator(".ac-big")).toBeVisible();
         await capture(card);
+        if (card === "history") {
+          await page.locator(".ac-training-row").first().click();
+          await expect(page.locator(".workout-detail")).toBeVisible();
+          await capture("history-detail");
+        }
       }
       await page
         .getByRole("button", { name: "Plan bearbeiten", exact: true })

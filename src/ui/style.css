@@ -465,6 +465,7 @@ body:has(.arnold-cards) {
   color: #fff;
 }
 .arnold-cards .ac-link {
+  min-width: var(--ac-tap);
   min-height: var(--ac-tap);
   padding: 0.4rem 0;
   text-align: start;
@@ -490,6 +491,7 @@ body:has(.arnold-cards) {
   gap: 0.5rem;
 }
 .arnold-cards .ac-chip {
+  min-width: var(--ac-tap);
   flex: none;
   min-height: var(--ac-tap);
   padding: 0 0.9375rem;
