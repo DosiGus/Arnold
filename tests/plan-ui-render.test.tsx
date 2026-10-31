@@ -312,7 +312,9 @@ describe("the validation panel", () => {
     expect(output).toContain("Hinweise");
     expect(output).toContain("Empfehlungen");
     expect(output).not.toContain("DAYS_PER_WEEK_MISMATCH");
-    expect(output).toMatch(/Trainingstage|Trainingshäufigkeit|Trainingseinheiten/);
+    expect(output).toMatch(
+      /Trainingstage|Trainingshäufigkeit|Trainingseinheiten/,
+    );
     expect(output).not.toContain("MISSING_TARGET_SETS");
     expect(output).toContain("Zielsätze");
     // A recommendation is never presented as a blocking failure.

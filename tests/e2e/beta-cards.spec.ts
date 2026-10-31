@@ -190,7 +190,11 @@ for (const width of [375, 1024])
         });
       };
       for (const card of ["today", "week", "progress", "history", "plan"]) {
-        await openCard(page, card, card === "plan" ? "http://127.0.0.1:8796" : BASE);
+        await openCard(
+          page,
+          card,
+          card === "plan" ? "http://127.0.0.1:8796" : BASE,
+        );
         if (card === "progress")
           await expect(page.locator(".ac-big")).toBeVisible();
         await capture(card);
@@ -395,6 +399,7 @@ test("Google reconnect works in a new chat without a setup claim and restores th
 
 test("numeric inputs reject invalid values and confirm unusual values before saving", async ({
   page,
+  browserName,
 }) => {
   await page.goto("http://127.0.0.1:8795/preview");
   await page
@@ -409,6 +414,28 @@ test("numeric inputs reject invalid values and confirm unusual values before sav
     page.getByRole("button", { name: "Satz speichern", exact: true }),
   ).toBeDisabled();
   await page.getByLabel("Wiederholungen", { exact: true }).fill("8");
+  const capture = async (name: string) => {
+    for (const width of [375, 1024])
+      for (const theme of ["light", "dark"] as const) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.evaluate(
+          (theme) => (document.documentElement.dataset.theme = theme),
+          theme,
+        );
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= innerWidth + 1,
+          ),
+        ).toBe(true);
+        await page.screenshot({
+          path: resolve(
+            `docs/beta/screens/${browserName}-${name}-${width}-${theme}.png`,
+          ),
+          fullPage: true,
+        });
+      }
+  };
+  await capture("set");
   let first = true;
   const inputs: Record<string, unknown>[] = [];
   await page.route("**/mcp", async (route) => {
@@ -440,6 +467,7 @@ test("numeric inputs reject invalid values and confirm unusual values before sav
   await expect(
     page.getByRole("heading", { name: "Stimmt das?", exact: true }),
   ).toBeVisible();
+  await capture("unusual-values");
   expect(inputs[0].confirm_unusual_values).toBeUndefined();
   await page
     .getByRole("button", { name: "Ja, diese Werte speichern", exact: true })
@@ -448,11 +476,12 @@ test("numeric inputs reject invalid values and confirm unusual values before sav
   expect(inputs[1].confirm_unusual_values).toBe(true);
   expect(inputs[1].request_id).not.toBe(inputs[0].request_id);
   await page
-    .getByRole("button", { name: "Training abbrechen", exact: true })
+    .getByRole("button", { name: "Training beenden", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Ja, abbrechen", exact: true })
-    .click();
+  await expect(
+    page.locator(".ac-label").filter({ hasText: "Training gespeichert" }),
+  ).toBeVisible();
+  await capture("training-summary");
 });
 
 test("the sandbox host never receives a deletion token in model context", async ({
@@ -470,6 +499,7 @@ test("the sandbox host never receives a deletion token in model context", async 
       value.result.tools.push({
         ...opening,
         name: "delete_arnold_account",
+        outputSchema: { type: "object", additionalProperties: true },
         inputSchema: {
           type: "object",
           properties: { confirmation_token: { type: "string" } },
@@ -507,4 +537,83 @@ test("the sandbox host never receives a deletion token in model context", async 
     frame.getByRole("heading", { name: "Löschung abgebrochen" }),
   ).toBeVisible();
   expect(confirmations).toBe(0);
+});
+
+test("a chat-selected exercise and metric survive host revalidation", async ({
+  page,
+}) => {
+  await page.goto(
+    `${BASE}/host?card=progress&exercise_id=ex-test-row-single&metric=estimated_1rm`,
+  );
+  const frame = page.frameLocator("iframe");
+  await expect(
+    frame.getByRole("heading", { name: "Testrudern einarmig", exact: true }),
+  ).toBeVisible();
+  await expect(frame.locator(".ac")).toContainText(
+    "Kein getestetes Maximalgewicht",
+  );
+  await expect(page.locator("#host-context")).toContainText(
+    "Testrudern einarmig",
+  );
+  await expect(frame.locator(".ac")).toContainText("kg pro Hantel");
+});
+
+test("chat-selected history opens the requested session and still lets another session open", async ({
+  page,
+}) => {
+  await page.goto(`${BASE}/preview?card=history&workout_id=w-test-6`);
+  await expect(
+    page
+      .locator(".workout-detail")
+      .getByRole("heading", { name: "Abgebrochene Einheit", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Zur Trainingsliste", exact: true })
+    .click();
+  await page.getByRole("button", { name: /Freies Training am/ }).click();
+  await expect(
+    page
+      .locator(".workout-detail")
+      .getByRole("heading", { name: "Freies Training", exact: true }),
+  ).toBeVisible();
+});
+
+test("a completed setup in a new chat restores its sheet link without the old secret", async ({
+  page,
+}) => {
+  const { states } = await visuals;
+  await page.route("**/mcp", async (route) => {
+    const name = route.request().postDataJSON()?.params?.name;
+    if (name === "show_arnold_onboarding")
+      return result(route, {
+        onboarding_contract: ONBOARDING_CONTRACT,
+        state: states.done,
+        resumed: true,
+        session_token: null,
+        source: {
+          label: "Synthetische Vorschau",
+          description: "Nur Demo-Daten",
+          schema_version: ONBOARDING_SCHEMA_VERSION,
+        },
+      });
+    if (name === "get_arnold_stored_data")
+      return result(route, {
+        items: [],
+        google_sheet_url:
+          "https://docs.google.com/spreadsheets/d/synthetic-demo-only/edit",
+        retention_days: 30,
+      });
+    await route.continue();
+  });
+  await page.goto(`${BASE}/preview?onboarding=1`);
+  await expect(
+    page.getByRole("heading", {
+      name: "Bereit für dein erstes Training",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Google-Tabelle öffnen", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
 });

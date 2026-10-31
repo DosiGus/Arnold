@@ -481,11 +481,13 @@ test("renders in the dark theme", async ({ page }) => {
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   const card = page.getByRole("region", { name: "Trainingseinheit Push" });
   await expect(card).toBeVisible();
-  // The card paints its own background rather than inheriting the page's.
-  const background = await card.evaluate(
-    (node) => getComputedStyle(node).backgroundColor,
-  );
-  expect(background).not.toBe("rgba(0, 0, 0, 0)");
+  // Full-screen sections share the page surface and inherit contrasting text.
+  const colors = await card.evaluate((node) => ({
+    text: getComputedStyle(node).color,
+    page: getComputedStyle(document.body).backgroundColor,
+  }));
+  expect(colors.page).not.toBe("rgba(0, 0, 0, 0)");
+  expect(colors.text).not.toBe(colors.page);
   await discardDraft(page);
 });
 
