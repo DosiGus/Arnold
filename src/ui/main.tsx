@@ -7,6 +7,10 @@ import { OnboardingView } from "./views/OnboardingView";
 import "./style.css";
 import "./glass.css";
 import "./cards.css";
+import { AccountCard } from "./views/AccountCard";
+import { CardSkeleton } from "./components/cards";
+import { GoogleRecovery, RecoveryCard } from "./components/recovery";
+import { asFailure, type UiFailure } from "./recovery";
 import { parseCard, type CardId } from "./cards";
 
 /**
@@ -22,9 +26,11 @@ function Boot() {
   const [payload, setPayload] = useState<ArnoldPayload>();
   const [error, setError] = useState("");
   const [stale, setStale] = useState(false);
+  const [failure, setFailure] = useState<UiFailure>();
   const [card, setCard] = useState<CardId>();
 
   useEffect(() => {
+    document.documentElement.dataset.embedded = String(client.embedded);
     document.documentElement.dataset.theme = matchMedia(
       "(prefers-color-scheme: dark)",
     ).matches
@@ -44,9 +50,18 @@ function Boot() {
       setError("");
     };
     client.onTheme = (theme) => {
+      document.documentElement.dataset.embedded = String(client.embedded);
       document.documentElement.dataset.theme = theme;
     };
     client.onError = setError;
+    client.onFailure = (next) => {
+      if (
+        next.recovery === "reconnect_google" ||
+        next.recovery === "finish_setup" ||
+        !payload
+      )
+        setFailure(next);
+    };
     client.onStale = setStale;
     // The model picks the card through the tool's `card` argument.
     client.onInput = (args) => setCard(parseCard(args.card));
@@ -56,37 +71,30 @@ function Boot() {
     };
   }, [client, mcp]);
 
-  if (!payload)
-    return (
-      <main className="boot">
-        <div className="brand-icon">a.</div>
-        <h1>Arnold</h1>
-        {error ? (
-          <>
-            <p role="alert">{error}</p>
-            <button className="primary" onClick={() => location.reload()}>
-              Erneut verbinden
-            </button>
-          </>
-        ) : (
-          <>
-            <div className="loading-line" />
-            <p>Dein Trainingsüberblick wird geladen …</p>
-          </>
-        )}
-      </main>
-    );
-
-  if (payload.contract === "onboarding")
-    return (
-      <OnboardingView
-        client={mcp}
-        initial={payload.onboarding.state}
-        resumed={payload.onboarding.resumed}
-      />
-    );
-
-  return (
+  const content = !payload ? (
+    <main className="arnold-cards">
+      {error || failure ? (
+        <RecoveryCard
+          recovery={failure?.recovery ?? "retry_same_request"}
+          onAction={() => {
+            if (failure?.recovery === "finish_setup")
+              void mcp.showOnboarding().catch(() => {});
+            else location.reload();
+          }}
+        />
+      ) : (
+        <CardSkeleton />
+      )}
+    </main>
+  ) : payload.contract === "account" ? (
+    <AccountCard client={mcp} initial={payload.account} />
+  ) : payload.contract === "onboarding" ? (
+    <OnboardingView
+      client={mcp}
+      initial={payload.onboarding.state}
+      resumed={payload.onboarding.resumed}
+    />
+  ) : (
     <ArnoldDashboardApp
       client={mcp}
       initial={payload.dashboard}
@@ -94,6 +102,33 @@ function Boot() {
       stale={stale}
       card={card}
     />
+  );
+  return (
+    <GoogleRecovery
+      client={mcp}
+      failure={failure}
+      onRecovered={() => {
+        setFailure(undefined);
+        setError("");
+        if (!payload) void mcp.openDashboard().catch(() => {});
+      }}
+    >
+      {failure?.recovery === "finish_setup" ? (
+        <main className="arnold-cards">
+          <RecoveryCard
+            recovery="finish_setup"
+            onAction={() => {
+              void mcp
+                .showOnboarding()
+                .then(() => setFailure(undefined))
+                .catch(() => {});
+            }}
+          />
+        </main>
+      ) : (
+        content
+      )}
+    </GoogleRecovery>
   );
 }
 

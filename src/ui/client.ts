@@ -15,6 +15,11 @@ import {
   OnboardingViewSchema,
   type OnboardingView,
 } from "../shared/onboarding-contract";
+import {
+  DeleteAccountResponseSchema,
+  type DeleteAccountResponse,
+} from "../shared/account-contract";
+import { ArnoldToolError, asFailure, type UiFailure } from "./recovery";
 import { readStoredClaim } from "./client/onboarding-claim";
 
 /**
@@ -23,6 +28,7 @@ import { readStoredClaim } from "./client/onboarding-claim";
  */
 export type ArnoldPayload =
   | { contract: "dashboard"; dashboard: ArnoldDashboardView }
+  | { contract: "account"; account: DeleteAccountResponse }
   /** The setup wizard. Its own contract, so it never renders dashboard data. */
   | { contract: "onboarding"; onboarding: OnboardingView };
 
@@ -33,6 +39,7 @@ export class ArnoldClient {
   onPayload?: (payload: ArnoldPayload) => void;
   onTheme?: (theme: "light" | "dark") => void;
   onError?: (message: string) => void;
+  onFailure?: (failure: UiFailure) => void;
   /** The arguments the model passed to the tool that opened this app. */
   onInput?: (args: Record<string, unknown>) => void;
   /**
@@ -43,7 +50,15 @@ export class ArnoldClient {
   onStale?: (stale: boolean) => void;
 
   /** Recognises either contract; returns null for anything else. */
-  private interpret(content: unknown): ArnoldPayload | null {
+  private interpret(
+    content: unknown,
+    meta?: Record<string, unknown>,
+  ): ArnoldPayload | null {
+    const arnold = meta?.arnold as Record<string, unknown> | undefined;
+    const account = DeleteAccountResponseSchema.safeParse(
+      arnold?.delete_account ?? content,
+    );
+    if (account.success) return { contract: "account", account: account.data };
     if (!content || typeof content !== "object") return null;
     // Checked first and by its own contract field: an onboarding payload must
     // never be mistaken for a dashboard, and vice versa.
@@ -67,6 +82,17 @@ export class ArnoldClient {
     // server definitively rejected the operation and said why. Passing it
     // through lets the caller show the reason and carry on, instead of leaving
     // the operation in an unclear state that must be reconciled.
+    if (result.isError) {
+      const structured = result.structuredContent as
+        Record<string, unknown> | undefined;
+      const meta = result._meta?.arnold as Record<string, unknown> | undefined;
+      this.onFailure?.(
+        asFailure(
+          meta ?? structured?.error ?? structured?.failure,
+          "retry_same_request",
+        ),
+      );
+    }
     if (
       result.isError &&
       (WriteResponseSchema.safeParse(result.structuredContent).success ||
@@ -74,20 +100,23 @@ export class ArnoldClient {
         OnboardingResponseSchema.safeParse(result.structuredContent).success)
     )
       return result.structuredContent;
-    if (result.isError)
-      throw new Error(
-        result.content
-          .filter((c) => c.type === "text")
-          .map((c) => c.text)
-          .join("\n") || "Das Tool konnte nicht ausgeführt werden.",
+    if (result.isError) {
+      const structured = result.structuredContent as
+        Record<string, unknown> | undefined;
+      throw new ArnoldToolError(
+        asFailure(
+          result._meta?.arnold ?? structured?.error ?? structured?.failure,
+          "retry_same_request",
+        ),
       );
+    }
     const content = result.structuredContent;
-    const payload = this.interpret(content);
+    const payload = this.interpret(content, result._meta);
     if (payload && notify) {
       this.onPayload?.(payload);
       this.onStale?.(stale);
     }
-    return content;
+    return payload?.contract === "account" ? payload.account : content;
   }
 
   /**
@@ -99,6 +128,7 @@ export class ArnoldClient {
    */
   private refreshTool(payload: ArnoldPayload | null) {
     if (payload?.contract === "onboarding") return null;
+    if (payload?.contract === "account") return "delete_arnold_account";
     return "get_arnold_dashboard";
   }
 
@@ -119,7 +149,10 @@ export class ArnoldClient {
           // so it is read without being published first.
           if (!initialResultReceived && !result.isError) {
             initialResultReceived = true;
-            const replayed = this.interpret(result.structuredContent);
+            const replayed = this.interpret(
+              result.structuredContent,
+              result._meta,
+            );
             const tool = this.refreshTool(replayed);
             if (!tool) {
               // Shown as-is and marked stale; the wizard revalidates itself
@@ -173,6 +206,10 @@ export class ArnoldClient {
       const wantsOnboarding = new URLSearchParams(location.search).has(
         "onboarding",
       );
+      if (new URLSearchParams(location.search).get("account") === "delete") {
+        await this.call("delete_arnold_account");
+        return;
+      }
       if (!wantsOnboarding) {
         await this.call("show_arnold_dashboard");
         return;
@@ -197,6 +234,16 @@ export class ArnoldClient {
           arguments: args,
         })) as CallToolResult);
     return this.publish(result, false, options.publish !== false);
+  }
+
+  async displayMode(mode: "inline" | "fullscreen") {
+    if (!this.app) return false;
+    try {
+      const result = await this.app.requestDisplayMode({ mode });
+      return result.mode === mode;
+    } catch {
+      return false;
+    }
   }
 
   async close() {
