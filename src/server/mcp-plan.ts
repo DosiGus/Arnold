@@ -15,6 +15,7 @@
  * with an enabled write mode is wired in, so a read-only deployment advertises
  * no plan mutation at all.
  */
+import { recoveryFor } from "../shared/write-recovery.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/server";
 import {
@@ -55,6 +56,7 @@ function failure(error: unknown) {
         code: failed.code,
         retryable: failed.retryable,
         details: failed.details,
+        recovery: recoveryFor(failed.code, failed.retryable),
       },
     },
   };

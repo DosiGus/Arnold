@@ -1,3 +1,4 @@
+import { recoveryFor } from "../../shared/write-recovery.js";
 import { z } from "zod";
 import { analyzeSetLoad } from "../../analytics/load.js";
 import {
@@ -413,6 +414,7 @@ export class WorkoutLoggingService {
           message: failure.message,
           retryable: failure.retryable,
           details: failure.details,
+          recovery: recoveryFor(failure.code, failure.retryable),
         },
       };
     }

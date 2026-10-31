@@ -60,7 +60,13 @@ export function gateUntilSetUp(
         return {
           isError: true,
           content: [{ type: "text" as const, text: SETUP_REQUIRED_TEXT }],
-          _meta: { arnold: { code: "SETUP_REQUIRED", retryable: false } },
+          _meta: {
+            arnold: {
+              code: "SETUP_REQUIRED",
+              retryable: false,
+              recovery: "finish_setup",
+            },
+          },
         };
       return handler(...args);
     };

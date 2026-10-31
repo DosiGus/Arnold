@@ -1,3 +1,4 @@
+import { recoveryFor } from "../shared/write-recovery.js";
 import { registerWorkoutTools } from "./mcp-workout.js";
 import { registerPlanTools } from "./mcp-plan.js";
 import { registerOnboardingTools } from "./mcp-onboarding.js";
@@ -158,7 +159,16 @@ function failure(error: unknown) {
     ],
     structuredContent: undefined,
     isError: true as const,
-    _meta: { arnold: { failure: classified } },
+    _meta: {
+      arnold: {
+        failure: classified,
+        code: classified.code.toUpperCase(),
+        retryable: classified.retryable,
+        recovery:
+          classified.recovery ??
+          recoveryFor(classified.code.toUpperCase(), classified.retryable),
+      },
+    },
   };
 }
 

@@ -134,8 +134,15 @@ export const ViewWeekSchema = z.object({
   iso_year: z.number().int(),
   iso_week: z.number().int().positive(),
   is_current_week: z.boolean(),
+  /** Sessions in the week. */
   workouts: count,
+  /** Distinct calendar days with training; the weekly goal compares this. */
   training_days: count,
+  /**
+   * Every calendar day of the week with a completed session, ascending, from
+   * workout_date_local. Not limited to `recent_workouts`.
+   */
+  trained_dates: z.array(isoDate),
   working_sets: count,
   /** Nominal volume; null when no eligible set in the week had a usable load. */
   nominal_volume: z.number().finite().nullable(),

@@ -633,6 +633,7 @@ export function buildDashboardView(
       is_current_week: week.is_current_week,
       workouts: week.workouts,
       training_days: week.training_days,
+      trained_dates: [...week.trained_dates],
       working_sets: week.working_sets,
       nominal_volume: week.nominal_volume.value,
       nominal_volume_status: week.nominal_volume.status,

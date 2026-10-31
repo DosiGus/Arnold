@@ -363,6 +363,8 @@ export const WeeklyTrendSchema = z
     is_current_week: z.boolean(),
     workouts: count,
     training_days: count,
+    /** Days of this week with a completed session, ascending. */
+    trained_dates: z.array(isoDate).readonly(),
     working_sets: count,
     nominal_volume: MetricValueSchema,
     volume_change_vs_previous_week: MetricValueSchema,

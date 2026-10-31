@@ -19,6 +19,7 @@ import {
   type ArnoldSheetsReadTransport,
 } from "./arnold-sheets-read-adapter.js";
 import { ArnoldDataError } from "./arnold-sheet-parser.js";
+import type { Recovery } from "../shared/write-recovery.js";
 import type { ArnoldDataset } from "../shared/arnold-schema-v1.js";
 
 /** Why a dataset could not be produced, in terms the UI can act on. */
@@ -30,10 +31,13 @@ export type ArnoldSourceFailure = {
     | "rate_limited"
     | "unavailable"
     | "schema_incompatible"
+    | "google_reauth_required"
     | "unknown";
   readonly message: string;
   /** True when simply trying again can plausibly succeed. */
   readonly retryable: boolean;
+  /** What the user should do next; derived from `retryable` when absent. */
+  readonly recovery?: Recovery;
 };
 
 export class ArnoldSourceError extends Error {
@@ -48,18 +52,39 @@ export function classifyFailure(error: unknown): ArnoldSourceFailure {
   if (error instanceof ArnoldSourceError) return error.failure;
   if (error instanceof ArnoldSheetsReadError) {
     const map = {
-      AUTH: { code: "auth_missing", retryable: false },
-      PERMISSION: { code: "permission_denied", retryable: false },
-      NOT_FOUND: { code: "not_found", retryable: false },
-      RATE_LIMIT: { code: "rate_limited", retryable: true },
-      UNAVAILABLE: { code: "unavailable", retryable: true },
-      API: { code: "unknown", retryable: true },
+      AUTH: {
+        code: "auth_missing",
+        retryable: false,
+        recovery: "reconnect_google",
+      },
+      PERMISSION: {
+        code: "permission_denied",
+        retryable: false,
+        recovery: "contact_support",
+      },
+      NOT_FOUND: {
+        code: "not_found",
+        retryable: false,
+        recovery: "contact_support",
+      },
+      RATE_LIMIT: {
+        code: "rate_limited",
+        retryable: true,
+        recovery: "retry_same_request",
+      },
+      UNAVAILABLE: {
+        code: "unavailable",
+        retryable: true,
+        recovery: "retry_same_request",
+      },
+      API: { code: "unknown", retryable: true, recovery: "retry_same_request" },
     } as const;
     const mapped = map[error.code];
     return {
       code: mapped.code,
       message: error.message,
       retryable: mapped.retryable,
+      recovery: mapped.recovery,
     };
   }
   if (error instanceof ArnoldDataError)
@@ -68,12 +93,14 @@ export function classifyFailure(error: unknown): ArnoldSourceFailure {
       message:
         "Die Arnold-Datei passt nicht zum erwarteten Schema v1. Struktur und Spalten der sechs Tabellen prüfen.",
       retryable: false,
+      recovery: "contact_support",
     };
   return {
     code: "unknown",
     message:
       "Die Trainingsdaten konnten nicht geladen werden. Verbindung und Serverprotokoll prüfen.",
     retryable: true,
+    recovery: "retry_same_request",
   };
 }
 

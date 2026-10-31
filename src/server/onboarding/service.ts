@@ -31,6 +31,7 @@
  * Onboarding state lives in its own repository, never in the six Arnold tables
  * (`CONFIG.onboarding_storage = BACKEND_ONLY`).
  */
+import { recoveryFor } from "../../shared/write-recovery.js";
 import type {
   ArnoldDataset,
   ArnoldExercise,
@@ -1545,6 +1546,7 @@ export class OnboardingService {
           message: failure.message,
           retryable: failure.retryable,
           details: failure.details,
+          recovery: recoveryFor(failure.code, failure.retryable),
         },
       };
     }

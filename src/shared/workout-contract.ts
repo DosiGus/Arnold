@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { toolErrorSchema } from "./write-recovery.js";
 import {
   ArnoldExerciseSchema,
   ArnoldWorkoutSchema,
@@ -120,6 +121,8 @@ export const WriteErrorCodeSchema = z.enum([
   "STORAGE_UNAVAILABLE",
   "COMMIT_STATUS_UNKNOWN",
   "EXERCISE_MATCH_FOUND",
+  "GOOGLE_REAUTH_REQUIRED",
+  "SHEET_CAPACITY_EXCEEDED",
 ]);
 export type WriteErrorCode = z.infer<typeof WriteErrorCodeSchema>;
 export const WriteResultSchema = z.strictObject({
@@ -138,14 +141,7 @@ export const WriteResponseSchema = z
     request_id: z.string(),
     replayed: z.boolean(),
     result: WriteResultSchema.nullable(),
-    error: z
-      .strictObject({
-        code: WriteErrorCodeSchema,
-        message: z.string(),
-        retryable: z.boolean(),
-        details: z.array(z.string()),
-      })
-      .nullable(),
+    error: toolErrorSchema(WriteErrorCodeSchema).nullable(),
   })
   .superRefine((value, ctx) => {
     if (

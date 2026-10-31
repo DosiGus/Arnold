@@ -21,6 +21,7 @@
  *     `isError` with a machine-readable code and the unchanged state, never a
  *     cheerful message about something that did not happen.
  */
+import { recoveryFor } from "../shared/write-recovery.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/server";
 import {
@@ -93,6 +94,7 @@ function failure(error: unknown) {
         code: failed.code,
         retryable: failed.retryable,
         details: failed.details,
+        recovery: recoveryFor(failed.code, failed.retryable),
       },
     },
   };

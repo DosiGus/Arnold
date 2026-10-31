@@ -21,6 +21,7 @@
  * else.
  */
 import { z } from "zod";
+import { toolErrorSchema } from "./write-recovery.js";
 import {
   ArnoldExecutionModeSchema,
   ArnoldIdSchema,
@@ -555,6 +556,8 @@ export const PlanErrorCodeSchema = z.enum([
   "PERMISSION_DENIED",
   "STORAGE_UNAVAILABLE",
   "COMMIT_STATUS_UNKNOWN",
+  "GOOGLE_REAUTH_REQUIRED",
+  "SHEET_CAPACITY_EXCEEDED",
 ]);
 export type PlanErrorCode = z.infer<typeof PlanErrorCodeSchema>;
 
@@ -570,14 +573,7 @@ export const PlanWriteResponseSchema = z.strictObject({
   /** True when a repeated request_id returned the already-stored result. */
   replayed: z.boolean(),
   result: PlanWriteResultSchema.nullable(),
-  error: z
-    .strictObject({
-      code: PlanErrorCodeSchema,
-      message: z.string(),
-      retryable: z.boolean(),
-      details: z.array(z.string()),
-    })
-    .nullable(),
+  error: toolErrorSchema(PlanErrorCodeSchema).nullable(),
 });
 export type PlanWriteResponse = z.infer<typeof PlanWriteResponseSchema>;
 

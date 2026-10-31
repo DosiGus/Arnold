@@ -37,6 +37,7 @@
  * Only the Google provisioning step can complete a setup.
  */
 import { z } from "zod";
+import { toolErrorSchema } from "./write-recovery.js";
 import {
   ArnoldExecutionModeSchema,
   ArnoldIdSchema,
@@ -851,6 +852,7 @@ export const ONBOARDING_ERROR_CODES = [
   "PLAN_WRITE_UNAVAILABLE",
   "STORAGE_UNAVAILABLE",
   "DUPLICATE_OPERATION",
+  "GOOGLE_REAUTH_REQUIRED",
 ] as const;
 export const OnboardingErrorCodeSchema = z.enum(ONBOARDING_ERROR_CODES);
 export type OnboardingErrorCode = z.infer<typeof OnboardingErrorCodeSchema>;
@@ -975,14 +977,7 @@ export const OnboardingResponseSchema = z.strictObject({
    * tool text and never stored in plaintext on the server.
    */
   session_token: z.string().nullable(),
-  error: z
-    .strictObject({
-      code: OnboardingErrorCodeSchema,
-      message: z.string(),
-      retryable: z.boolean(),
-      details: z.array(z.string()),
-    })
-    .nullable(),
+  error: toolErrorSchema(OnboardingErrorCodeSchema).nullable(),
 });
 export type OnboardingResponse = z.infer<typeof OnboardingResponseSchema>;
 

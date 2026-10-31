@@ -82,6 +82,7 @@ export function computeTrends(input: PreparedInput) {
     is_current_week: boolean;
     workouts: number;
     training_days: number;
+    trained_dates: readonly string[];
     working_sets: number;
     nominal_volume: MetricValue;
     volume_change_vs_previous_week: MetricValue;
@@ -97,6 +98,17 @@ export function computeTrends(input: PreparedInput) {
       is_current_week: week_start === currentWeek,
       workouts: bucket.workouts.length,
       training_days: bucket.dates.size,
+      // Calendar days with a completed session, from workout_date_local. Two
+      // sessions on one day are one day (D5).
+      trained_dates: Object.freeze(
+        [
+          ...new Set(
+            bucket.workouts
+              .filter((workout) => workout.completed)
+              .map((workout) => workout.date),
+          ),
+        ].sort(compareDate),
+      ),
       working_sets: analyses.filter((analysis) => analysis.bucket === "working")
         .length,
       nominal_volume,

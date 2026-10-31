@@ -22,6 +22,7 @@
  * Writes run in the fixture mode and in the connected profile
  * (src/server/connected); the read-only Sheets profile never writes plans.
  */
+import { recoveryFor } from "../../shared/write-recovery.js";
 import {
   ARNOLD_SCHEMA_VERSION,
   type ArnoldDataset,
@@ -435,6 +436,7 @@ export class TrainingPlanService {
           message: failure.message,
           retryable: failure.retryable,
           details: failure.details,
+          recovery: recoveryFor(failure.code, failure.retryable),
         },
       };
     }
