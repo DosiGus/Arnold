@@ -8,7 +8,15 @@ test("onboarding, Google consent, personal tracker, first set, and browser reloa
 }) => {
   const base = "http://127.0.0.1:8803";
   const { token } = await (await request.get(`${base}/__test/token`)).json();
+  // Opening the dashboard is slowed down as on a loaded CI runner, so a tap
+  // that lands while the card is still switching is caught deterministically
+  // (B19: a second tap used to hit the old "Erstes Training starten" button).
+  let dashboardOpens = 0;
   await context.route(`${base}/mcp`, async (route) => {
+    if (route.request().postData()?.includes('"show_arnold_dashboard"')) {
+      dashboardOpens += 1;
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
     await route.continue({
       headers: {
         ...route.request().headers(),
@@ -134,6 +142,8 @@ test("onboarding, Google consent, personal tracker, first set, and browser reloa
     .getByRole("button", { name: "Satz speichern", exact: true })
     .click();
   await expect(page.locator(".ac-chip.done")).toHaveCount(1);
+  // One tap, one dashboard: the switch never fires twice.
+  expect(dashboardOpens).toBe(1);
   // A reload resumes the open workout with its saved set.
   await page.goto(`${base}/preview`);
   await expect(page.locator(".ac-chip.done")).toHaveCount(1);
