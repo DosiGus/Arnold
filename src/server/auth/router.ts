@@ -51,6 +51,8 @@ export interface AuthSurfaceOptions {
 export interface AuthSurface {
   resolveRequest(request: Request): Promise<AuthenticatedArnoldContext>;
   assertActive(context: AuthenticatedArnoldContext): Promise<void>;
+  /** Account deletion: forgets the user and its identity connections. */
+  removeUser(userId: string): Promise<boolean>;
   /**
    * Mounts `/.well-known/oauth-protected-resource` and
    * `/.well-known/oauth-authorization-server`. Undefined in `open` mode,
@@ -129,6 +131,7 @@ export function buildAuthSurface(options: AuthSurfaceOptions): AuthSurface {
     return {
       resolveRequest,
       assertActive,
+      removeUser: (userId: string) => repository.remove(userId),
       metadataRouter: undefined,
       bearerGate: passThrough,
       guard,
@@ -190,6 +193,7 @@ export function buildAuthSurface(options: AuthSurfaceOptions): AuthSurface {
   return {
     resolveRequest,
     assertActive,
+    removeUser: (userId: string) => repository.remove(userId),
     metadataRouter,
     bearerGate,
     guard,

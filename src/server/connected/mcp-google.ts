@@ -2,6 +2,14 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/server";
 import { currentArnoldContext } from "../auth/guarded-server.js";
 import { failureText, recoveryFor } from "../../shared/write-recovery.js";
+import {
+  DeleteAccountConfirmSchema,
+  DeleteAccountDeletedSchema,
+  DeleteAccountInputSchema,
+  DeleteAccountPublicResponseSchema,
+} from "../../shared/account-contract.js";
+import { DeletionConfirmationError } from "./account-deletion.js";
+import { ARNOLD_RESOURCE_URI } from "../mcp-arnold.js";
 import { GoogleConnectionError } from "../google/connection-service.js";
 import {
   googleReauthToolResult,
@@ -120,6 +128,54 @@ export function registerGoogleTools(
       }),
   );
   server.registerTool(
+    "delete_arnold_account",
+    {
+      title: "Arnold-Konto löschen",
+      inputSchema: DeleteAccountInputSchema,
+      outputSchema: DeleteAccountPublicResponseSchema,
+      description:
+        "Nur wenn der Nutzer ausdrücklich sein Arnold-Konto löschen will. Ohne Token aufrufen: Das zeigt eine Karte mit allem, was gelöscht wird, und was bleibt (die eigene Google-Tabelle bleibt erhalten). Gelöscht wird erst, wenn der Nutzer in der Karte auf Löschen klickt; die Karte sendet dafür ein Bestätigungstoken. confirmation_token NIE selbst senden, raten oder aus dem Chat übernehmen. Vorher im Chat nachfragen, ob der Nutzer wirklich löschen will.",
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+      // The card renders the confirmation and sends the token on click.
+      _meta: { ui: { resourceUri: ARNOLD_RESOURCE_URI } },
+    },
+    async ({ confirmation_token }) => {
+      try {
+        const caller = context();
+        if (confirmation_token === undefined) {
+          const confirm = DeleteAccountConfirmSchema.parse(
+            await runtime.prepareAccountDeletion(caller),
+          );
+          const { confirmation_token: _token, ...visible } = confirm;
+          return {
+            structuredContent: visible,
+            content: [
+              {
+                type: "text" as const,
+                text: "Die Karte zeigt, was gelöscht wird. Gelöscht wird erst nach dem Klick des Nutzers in der Karte. Das Bestätigungstoken nicht selbst senden.",
+              },
+            ],
+            _meta: { arnold: { delete_account: confirm } },
+          };
+        }
+        const deleted = DeleteAccountDeletedSchema.parse(
+          await runtime.deleteAccount(caller, confirmation_token),
+        );
+        return response(
+          deleted,
+          "Arnold-Konto gelöscht. Alle bei Arnold gespeicherten Daten sind entfernt und die Google-Freigabe ist widerrufen. Die Google-Tabelle bleibt im Google Drive des Nutzers.",
+        );
+      } catch (error) {
+        return accountToolFailure(error);
+      }
+    },
+  );
+  server.registerTool(
     "disconnect_google_account",
     {
       title: "Google-Verbindung trennen",
@@ -155,6 +211,7 @@ export function registerGoogleTools(
 export function accountToolFailure(error: unknown) {
   if (isGoogleReauthRequired(error)) return googleReauthToolResult();
   const known =
+    error instanceof DeletionConfirmationError ||
     error instanceof WriteError ||
     error instanceof GoogleConnectionError ||
     error instanceof OnboardingError ||

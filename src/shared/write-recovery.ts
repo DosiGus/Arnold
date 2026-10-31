@@ -80,6 +80,7 @@ export function recoveryFor(code: string, retryable: boolean): Recovery {
       return "retry_same_request";
     case "SESSION_EXPIRED":
     case "SESSION_CANCELLED":
+    case "CONFIRMATION_INVALID":
     case "HANDOFF_SUPERSEDED":
       return "start_over";
     case "SCHEMA_MISMATCH":

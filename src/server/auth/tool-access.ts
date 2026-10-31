@@ -33,6 +33,8 @@ export const TOOL_ACCESS: Readonly<Record<string, ToolAccessClass>> = {
   finish_arnold_setup: "ACCOUNT_MANAGEMENT",
   get_google_connection: "ACCOUNT_MANAGEMENT",
   disconnect_google_account: "ACCOUNT_MANAGEMENT",
+  // Two stages; the second needs the token only the card sends (B6).
+  delete_arnold_account: "ACCOUNT_MANAGEMENT",
   show_arnold_dashboard: "AUTHENTICATED_READ",
 
   // ── mcp-arnold.ts — the v2 analytics surface ──

@@ -873,3 +873,146 @@ describe("B4: an expired Google grant leads to reconnecting, without data loss",
     expect((await call("alice", "get_arnold_dashboard")).isError).toBeFalsy();
   });
 });
+
+describe("B6: delete_arnold_account", () => {
+  type Confirm = {
+    stage: string;
+    summary: { stored_items: string[]; keeps: string[] };
+    expires_at: string;
+    confirmation_token?: string;
+  };
+  const tokenOf = (result: CallToolResult) =>
+    (
+      result._meta as {
+        arnold?: { delete_account?: { confirmation_token?: string } };
+      }
+    )?.arnold?.delete_account?.confirmation_token;
+  const meta = (result: CallToolResult) =>
+    (result._meta as { arnold?: { code?: string; recovery?: string } })?.arnold;
+  const identityFile = () =>
+    readFile(join(directory, "identities.json"), "utf8");
+  const userDirs = () => readdir(join(directory, "users")).catch(() => []);
+
+  it("does nothing without a token and keeps the token away from the model", async () => {
+    await connected();
+    await startWorkout();
+    const dirsBefore = await userDirs();
+    const first = await call("alice", "delete_arnold_account");
+    expect(first.isError).toBeFalsy();
+    const visible = first.structuredContent as Confirm;
+    expect(visible.stage).toBe("confirm");
+    expect(visible.confirmation_token).toBeUndefined();
+    expect(JSON.stringify(first.content)).not.toContain(tokenOf(first)!);
+    expect(tokenOf(first)).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(visible.summary.keeps.join(" ")).toContain("Google-Tabelle");
+    expect(Date.parse(visible.expires_at)).toBeGreaterThan(Date.now());
+
+    expect(await userDirs()).toEqual(dirsBefore);
+    expect((await call("alice", "get_workout")).isError).toBeFalsy();
+    expect(
+      (await call("alice", "get_google_connection")).structuredContent,
+    ).toMatchObject({ connection: { status: "CONNECTED" } });
+    expect(google.revoked.has("alice")).toBe(false);
+  });
+
+  it("refuses a wrong, a foreign and a reused token without deleting anything", async () => {
+    await connected("alice");
+    await connected("bob");
+    const aliceToken = tokenOf(await call("alice", "delete_arnold_account"))!;
+    const bobToken = tokenOf(await call("bob", "delete_arnold_account"))!;
+    // last_seen_at changes on every call; the rows themselves must stay.
+    const rows = async () => {
+      const state = JSON.parse(await identityFile());
+      return [
+        ...state.users.map((u: { user_id: string }) => u.user_id),
+        ...state.identity_connections.map(
+          (c: { connection_id: string }) => c.connection_id,
+        ),
+      ].sort();
+    };
+    const identities = await rows();
+
+    for (const token of ["x".repeat(43), bobToken]) {
+      const refused = await call("alice", "delete_arnold_account", {
+        confirmation_token: token,
+      });
+      expect(refused.isError).toBe(true);
+      expect(meta(refused)).toMatchObject({
+        code: "CONFIRMATION_INVALID",
+        recovery: "start_over",
+      });
+    }
+    expect(await rows()).toEqual(identities);
+    expect((await userDirs()).length).toBe(2);
+    expect((await call("alice", "get_workout")).isError).toBeFalsy();
+
+    // A wrong attempt does not burn the user's own live token.
+    const deleted = await call("alice", "delete_arnold_account", {
+      confirmation_token: aliceToken,
+    });
+    expect(deleted.isError, JSON.stringify(deleted.content)).toBeFalsy();
+    const reused = await call("alice", "delete_arnold_account", {
+      confirmation_token: aliceToken,
+    });
+    expect(meta(reused)).toMatchObject({ code: "CONFIRMATION_INVALID" });
+  });
+
+  it("deletes everything Arnold stores for one user and leaves the other untouched", async () => {
+    await connected("alice");
+    await connected("bob");
+    await startWorkout("alice");
+    const bobWorkout = await startWorkout("bob");
+    const aliceDir = runtime.userDirectory(
+      JSON.parse(await identityFile()).users[0].user_id,
+    );
+    const token = tokenOf(await call("alice", "delete_arnold_account"))!;
+    const result = await call("alice", "delete_arnold_account", {
+      confirmation_token: token,
+    });
+    expect(result.isError, JSON.stringify(result.content)).toBeFalsy();
+    expect(result.structuredContent).toMatchObject({
+      stage: "deleted",
+      google_sheet_kept: true,
+      sheet_url: expect.stringMatching(
+        /^https:\/\/docs\.google\.com\/spreadsheets\/d\/spreadsheet_\d+_alice\/edit$/,
+      ),
+    });
+
+    // Google: grant revoked, the sheet stays.
+    expect(google.revoked.has("alice")).toBe(true);
+    expect([...google.files.values()].some((f) => f.owner === "alice")).toBe(
+      true,
+    );
+    // Local: identity, credentials, setup, journal, audit and mapping gone.
+    const identities = JSON.parse(await identityFile());
+    expect(identities.users).toHaveLength(1);
+    expect(identities.identity_connections).toHaveLength(1);
+    expect(identities.identity_connections[0].subject).toBe("bob");
+    const connections = await readFile(
+      join(directory, "connections.json"),
+      "utf8",
+    );
+    expect(connections).not.toContain("alice");
+    await expect(readdir(aliceDir)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await userDirs()).toHaveLength(1);
+
+    // Bob is untouched.
+    expect(google.revoked.has("bob")).toBe(false);
+    const bob = WorkoutContextSchema.parse(
+      (
+        await call("bob", "get_workout", {
+          workout_id: bobWorkout.workout_id,
+        })
+      ).structuredContent,
+    );
+    expect(bob.workout?.workout_id).toBe(bobWorkout.workout_id);
+    expect(
+      (await call("bob", "get_google_connection")).structuredContent,
+    ).toMatchObject({ connection: { status: "CONNECTED" } });
+
+    // The same login later starts as a new, empty account.
+    const fresh = await call("alice", "get_arnold_dashboard");
+    expect(fresh.isError).toBe(true);
+    expect(JSON.stringify(fresh.content)).toContain("SETUP_REQUIRED");
+  });
+});

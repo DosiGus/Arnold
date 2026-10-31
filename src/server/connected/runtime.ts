@@ -1,5 +1,6 @@
 import { googleReauthWriteError } from "../google/reauth.js";
 import { createHash, randomUUID } from "node:crypto";
+import { readFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { z } from "zod";
 import {
@@ -34,6 +35,7 @@ import {
   type ArnoldWriteRepository,
   type AuthorizationGuard,
 } from "../workout/infrastructure.js";
+import { DeletionTokens, deletionSummary } from "./account-deletion.js";
 import { newTrackerDataset } from "./catalog.js";
 import { GoogleTrackerApi } from "./google-api.js";
 import { LocalAuditLog, LocalDraftRepository, LocalState } from "./state.js";
@@ -59,13 +61,20 @@ export interface ConnectedRuntimeOptions {
   auth: AuthSurface;
   connections: GoogleConnectionService;
   fetchImpl?: FetchLike;
+  /** Clock for confirmation tokens; injectable for tests. */
+  now?: () => number;
 }
+
+const sheetUrl = (spreadsheetId: string) =>
+  `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
 
 /** Single-instance development integration. Production still requires Task 007-D. */
 export class ConnectedArnoldRuntime {
   private users = new Map<string, Promise<ConnectedUserRuntime>>();
   private requests = new InProcessWriteCoordinator();
+  readonly deletionTokens: DeletionTokens;
   constructor(readonly options: ConnectedRuntimeOptions) {
+    this.deletionTokens = new DeletionTokens(options.now);
     if (
       options.auth.summary.mode !== "oidc" ||
       options.auth.summary.identityStore !== "file"
@@ -74,14 +83,83 @@ export class ConnectedArnoldRuntime {
         "Arnold Connected benötigt OIDC und einen dauerhaften Datei-Identitätsspeicher.",
       );
   }
+  /** One directory per user; the name is a hash, never the user id. */
+  userDirectory(userId: string) {
+    return resolve(
+      this.options.directory,
+      createHash("sha256").update(userId).digest("hex"),
+    );
+  }
+  /**
+   * The stored tracker mapping, read without creating anything. Undefined
+   * when this user never started a setup.
+   */
+  async storedManifest(userId: string): Promise<Manifest | undefined> {
+    try {
+      const raw = await readFile(
+        resolve(this.userDirectory(userId), "tracker.json"),
+        "utf8",
+      );
+      const manifest = ManifestSchema.parse(JSON.parse(raw));
+      if (manifest.userId !== userId)
+        throw new Error("Fremde Tracker-Zuordnung im Speicher.");
+      return manifest;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      throw error;
+    }
+  }
+  /** First stage of account deletion: what goes, what stays, and a token. */
+  async prepareAccountDeletion(context: AuthenticatedArnoldContext) {
+    await this.options.auth.assertActive(context);
+    const manifest = await this.storedManifest(context.userId);
+    const connection = await this.options.connections.status(context);
+    const { token, expiresAt } = this.deletionTokens.issue(context.userId);
+    return {
+      stage: "confirm" as const,
+      summary: deletionSummary({
+        googleConnected: connection !== null,
+        sheetExists: Boolean(manifest?.spreadsheetId),
+      }),
+      confirmation_token: token,
+      expires_at: expiresAt,
+    };
+  }
+  /**
+   * Second stage: deletes everything Arnold stores about this user.
+   *
+   * Order matters for a retry after a failure halfway: Google is revoked
+   * while the credential still exists, local data goes next, and the
+   * identity is removed last, so the same login can finish the deletion.
+   * The user's Google sheet is never touched.
+   */
+  async deleteAccount(
+    context: AuthenticatedArnoldContext,
+    confirmationToken: string,
+  ) {
+    await this.options.auth.assertActive(context);
+    this.deletionTokens.redeem(context.userId, confirmationToken);
+    const manifest = await this.storedManifest(context.userId);
+    await this.options.connections.disconnect(context);
+    this.users.delete(context.userId);
+    await rm(this.userDirectory(context.userId), {
+      recursive: true,
+      force: true,
+    });
+    await this.options.auth.removeUser(context.userId);
+    return {
+      stage: "deleted" as const,
+      google_sheet_kept: true as const,
+      sheet_url: manifest?.spreadsheetId
+        ? sheetUrl(manifest.spreadsheetId)
+        : null,
+    };
+  }
   async forUser(context: AuthenticatedArnoldContext) {
     await this.options.auth.assertActive(context);
     let runtime = this.users.get(context.userId);
     if (!runtime) {
-      const directory = resolve(
-        this.options.directory,
-        createHash("sha256").update(context.userId).digest("hex"),
-      );
+      const directory = this.userDirectory(context.userId);
       runtime = ConnectedUserRuntime.create(
         directory,
         context.userId,
@@ -395,7 +473,7 @@ export class ConnectedUserRuntime {
         context,
       );
       return {
-        spreadsheet_url: `https://docs.google.com/spreadsheets/d/${manifest.spreadsheetId}/edit`,
+        spreadsheet_url: sheetUrl(manifest.spreadsheetId!),
       };
     }
     const { handoff } = await this.bindingFor(claim, context);
@@ -526,7 +604,7 @@ export class ConnectedUserRuntime {
       context,
     );
     return {
-      spreadsheet_url: `https://docs.google.com/spreadsheets/d/${manifest.spreadsheetId}/edit`,
+      spreadsheet_url: sheetUrl(manifest.spreadsheetId!),
     };
   }
 }

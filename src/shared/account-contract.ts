@@ -4,6 +4,11 @@
  * `delete_arnold_account` runs in two stages. The first call returns a
  * summary and a short-lived confirmation token; only the card sends the token
  * back, after an explicit click. ChatGPT never sends it on its own.
+ *
+ * Where the token travels: the card reads the full first-stage answer
+ * (`DeleteAccountConfirmSchema`) from `_meta.arnold.delete_account`, which the
+ * model does not see. `structuredContent`, which the model sees, is the same
+ * answer without the token (`DeleteAccountConfirmPublicSchema`).
  */
 import { z } from "zod";
 
@@ -40,6 +45,17 @@ export const DeleteAccountResponseSchema = z.discriminatedUnion("stage", [
   DeleteAccountDeletedSchema,
 ]);
 export type DeleteAccountResponse = z.infer<typeof DeleteAccountResponseSchema>;
+
+/** The first stage as the model sees it: no token. */
+export const DeleteAccountConfirmPublicSchema = DeleteAccountConfirmSchema.omit(
+  { confirmation_token: true },
+);
+
+/** `structuredContent` of `delete_arnold_account`. */
+export const DeleteAccountPublicResponseSchema = z.discriminatedUnion("stage", [
+  DeleteAccountConfirmPublicSchema,
+  DeleteAccountDeletedSchema,
+]);
 
 export const DELETE_ACCOUNT_ERROR_CODES = [
   /** The token is unknown, already used, belongs to someone else or expired. */
