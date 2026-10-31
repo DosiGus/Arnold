@@ -57,6 +57,7 @@ import {
   validClaims,
 } from "./fixtures/arnold-auth.js";
 import { ConnectedGoogle } from "./fixtures/connected-google.js";
+import { missingHints } from "./fixtures/tool-hints.js";
 
 const key = makeRsaKey("connected-issuer");
 const cipher = new TokenCipher(generateEncryptionKey("journey-key"));
@@ -352,6 +353,15 @@ describe("connected end-to-end journey (Google simulated, real HTTP and MCP)", (
     expect(tools.map((tool) => tool.name)).toContain("connect_google_account");
     for (const tool of tools)
       expect(TOOL_ACCESS[tool.name], tool.name).toBeDefined();
+    // B10: all three safety hints on every tool of the connected profile.
+    expect(missingHints(tools)).toEqual([]);
+    for (const name of Object.keys(TOOL_ACCESS).filter(
+      (tool) => TOOL_ACCESS[tool] === "ACCOUNT_MANAGEMENT",
+    ))
+      expect(
+        tools.map((tool) => tool.name),
+        name,
+      ).toContain(name);
     const health = await (await fetch(`${base}/health`)).json();
     expect(health).toMatchObject({
       auth: "oidc",

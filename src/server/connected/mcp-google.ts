@@ -109,7 +109,12 @@ export function registerGoogleTools(
           })
           .nullable(),
       }),
-      annotations: { readOnlyHint: true, openWorldHint: false },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
     },
     async () =>
       guarded(async () => {
