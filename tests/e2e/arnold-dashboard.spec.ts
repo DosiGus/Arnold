@@ -36,7 +36,7 @@ test("opens the week card with engine numbers and leads on to other cards", asyn
   // Numbers come from the analytics engine's week row, not from the browser.
   const card = page.locator(".ac").first();
   await expect(card).toContainText("Arbeitssätze");
-  await expect(card).toContainText("kg Volumen");
+  await expect(card).toContainText(/Trainingstag/);
   await expect(card).toContainText("Letzter Rekord");
   // There is no app frame inside the chat: no menu, logo or page title.
   await expect(page.getByRole("navigation")).toHaveCount(0);

@@ -54,8 +54,20 @@ describe("week card renders an engine payload", () => {
     );
     expect(output).toMatch(/\d+ (von \d+ )?Trainings?/);
     expect(output).toContain("Arbeitssätze");
-    expect(output).toContain("kg Volumen");
     expect(markup.match(/class="ac-btn /g)).toHaveLength(2);
+  });
+
+  it("counts distinct days and uses every server-provided date, beyond recent workouts", () => {
+    const payload = structuredClone(view);
+    const week = payload.weeks.find((w) => w.is_current_week) ?? payload.weeks.at(-1)!;
+    week.workouts = 3;
+    week.training_days = 2;
+    week.trained_dates = [week.week_start];
+    payload.recent_workouts = [];
+    payload.active_plan!.days_per_week = 3;
+    const markup = render(<WeekCard view={payload} canWrite={false} onOpen={noop} />);
+    expect(markup).toContain("2 von 3 Trainingstagen");
+    expect(markup.match(/class="done"/g)).toHaveLength(1);
   });
 
   it("shows the most recent training and the latest record", () => {

@@ -6,7 +6,7 @@ import {
   CardNote,
   StatGrid,
 } from "../components/cards";
-import { dateLabel, formatNumber, UNKNOWN } from "../format";
+import { dateLabel, formatNumber } from "../format";
 import type { CardId } from "../cards";
 
 const DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
@@ -59,11 +59,7 @@ export function WeekCard({
   const week =
     view.weeks.find((w) => w.is_current_week) ??
     view.weeks[view.weeks.length - 1];
-  const trained = new Set(
-    view.recent_workouts
-      .filter((w) => w.status === "completed")
-      .map((w) => w.date),
-  );
+  const trained = new Set(week?.trained_dates ?? []);
   const today = new Intl.DateTimeFormat("en-CA").format(new Date());
   const goal = view.active_plan?.days_per_week ?? null;
   const last = view.recent_workouts.find((w) => w.status === "completed");
@@ -71,17 +67,17 @@ export function WeekCard({
     .filter((r) => r.kind === "improvement")
     .sort((a, b) => b.achieved_on.localeCompare(a.achieved_on))[0];
   const warnings = view.notices.filter((n) => n.severity === "warning");
-  const workouts = week?.workouts ?? 0;
+  const trainingDays = week?.training_days ?? 0;
 
   return (
     <ArnoldCard
       label={
-        week?.is_current_week ? "Diese Woche" : `Woche ${week?.label ?? ""}`
+        week?.is_current_week ? "Diese Woche" : week ? `Woche vom ${dateLabel(week.week_start)}` : "Deine Woche"
       }
       title={
         goal
-          ? `${workouts} von ${goal} Trainings`
-          : `${workouts} ${workouts === 1 ? "Training" : "Trainings"}`
+          ? `${trainingDays} von ${goal} Trainingstagen`
+          : `${trainingDays} ${trainingDays === 1 ? "Trainingstag" : "Trainingstage"}`
       }
       subtitle={
         last ? `Zuletzt: ${last.title} · ${dateLabel(last.date)}` : undefined
@@ -111,13 +107,6 @@ export function WeekCard({
         <StatGrid
           items={[
             { label: "Arbeitssätze", value: week.working_sets },
-            {
-              label: "kg Volumen",
-              value:
-                week.nominal_volume === null
-                  ? UNKNOWN
-                  : formatNumber(week.nominal_volume, 0),
-            },
           ]}
         />
       )}
