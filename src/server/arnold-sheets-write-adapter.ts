@@ -393,16 +393,42 @@ export class ArnoldSheetsWriteAdapter implements ArnoldWriteRepository {
         appends.set(table, rows);
       }
     }
-    for (const [table, rows] of appends)
+    const limits = this.reader.limits;
+    for (const [table, rows] of appends) {
+      const properties = this.metadata!.sheets.find(
+        (s) => s.properties.title === table,
+      )!.properties;
+      // appendCells writes after the last row holding data, counting internal
+      // gaps; spare grid rows below it are reused before the grid grows.
+      const usedRows = this.rows(table).reduce(
+        (last, row, index) =>
+          row.some((cell) => cell !== null && cell !== undefined && cell !== "")
+            ? index + 1
+            : last,
+        0,
+      );
+      const resultingRows = Math.max(
+        properties.gridProperties.rowCount,
+        usedRows + rows.length,
+      );
+      if (
+        resultingRows > limits.rows ||
+        resultingRows * properties.gridProperties.columnCount > limits.cells
+      )
+        throw new WriteError(
+          "SHEET_CAPACITY_EXCEEDED",
+          "Deine Trainingstabelle ist voll: Arnold könnte sie nach diesem Speichern nicht mehr lesen. Es wurde nichts geschrieben. Bitte wende dich an den Support.",
+          false,
+          [table, `resulting_rows=${resultingRows}`, `max_rows=${limits.rows}`],
+        );
       requests.push({
         appendCells: {
-          sheetId: this.metadata!.sheets.find(
-            (s) => s.properties.title === table,
-          )!.properties.sheetId,
+          sheetId: properties.sheetId,
           rows,
           fields: "userEnteredValue",
         },
       });
+    }
     try {
       for (let attempt = 0; ; attempt++) {
         try {
