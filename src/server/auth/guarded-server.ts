@@ -24,6 +24,7 @@
  */
 import type { McpServer, ServerContext } from "@modelcontextprotocol/server";
 import { requireToolAccess } from "./tool-access.js";
+import { withConfirmationRule } from "./confirmation-rules.js";
 import { scopeChallengeFor, type ArnoldToolGuard } from "./tool-guard.js";
 import type { AuthenticatedArnoldContext } from "./identity.js";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -111,6 +112,11 @@ export function guardToolRegistrations(
     const challenge = scopeChallengeFor(access);
     const guardedConfig = {
       ...config,
+      // D10: the confirmation rule is part of every description (B9).
+      description: withConfirmationRule(
+        name,
+        config.description as string | undefined,
+      ),
       // Lets the server answer an under-scoped call with a protocol-correct
       // insufficient_scope challenge before the handler runs. Advisory
       // plumbing; the guard below is the gate.
