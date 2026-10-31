@@ -1,4 +1,4 @@
-import { recoveryFor } from "../shared/write-recovery.js";
+import { failureText, recoveryFor } from "../shared/write-recovery.js";
 import { registerWorkoutTools } from "./mcp-workout.js";
 import { registerPlanTools } from "./mcp-plan.js";
 import { registerOnboardingTools } from "./mcp-onboarding.js";
@@ -145,16 +145,31 @@ function failure(error: unknown) {
     error instanceof AnalyticsOptionsError
   )
     return {
-      content: [{ type: "text" as const, text: error.message }],
+      content: [
+        {
+          type: "text" as const,
+          text: failureText("VALIDATION_ERROR", error.message, "none"),
+        },
+      ],
       isError: true as const,
+      _meta: {
+        arnold: {
+          code: "VALIDATION_ERROR",
+          retryable: false,
+          recovery: "none" as const,
+        },
+      },
     };
   const classified =
     error instanceof ArnoldSourceError ? error.failure : classifyFailure(error);
+  const code = classified.code.toUpperCase();
+  const recovery =
+    classified.recovery ?? recoveryFor(code, classified.retryable);
   return {
     content: [
       {
         type: "text" as const,
-        text: `${classified.message}${classified.retryable ? " Erneut versuchen ist möglich." : ""}`,
+        text: failureText(code, classified.message, recovery),
       },
     ],
     structuredContent: undefined,
@@ -162,11 +177,9 @@ function failure(error: unknown) {
     _meta: {
       arnold: {
         failure: classified,
-        code: classified.code.toUpperCase(),
+        code,
         retryable: classified.retryable,
-        recovery:
-          classified.recovery ??
-          recoveryFor(classified.code.toUpperCase(), classified.retryable),
+        recovery,
       },
     },
   };

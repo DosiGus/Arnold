@@ -15,7 +15,7 @@
  * with an enabled write mode is wired in, so a read-only deployment advertises
  * no plan mutation at all.
  */
-import { recoveryFor } from "../shared/write-recovery.js";
+import { failureText, recoveryFor } from "../shared/write-recovery.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/server";
 import {
@@ -48,7 +48,11 @@ function failure(error: unknown) {
     content: [
       {
         type: "text" as const,
-        text: `${failed.code}: ${failed.message}${failed.retryable ? " Erneut versuchen ist möglich." : ""}`,
+        text: failureText(
+          failed.code,
+          failed.message,
+          recoveryFor(failed.code, failed.retryable),
+        ),
       },
     ],
     _meta: {
@@ -258,7 +262,11 @@ export function registerPlanTools(
             type: "text" as const,
             text: payload.ok
               ? `Neuer Entwurf ${payload.result?.plan?.version.plan_version_id} (Version ${payload.result?.plan?.version.version_no}) erstellt.`
-              : `${payload.error!.code}: ${payload.error!.message}`,
+              : failureText(
+                  payload.error!.code,
+                  payload.error!.message,
+                  payload.error!.recovery,
+                ),
           },
         ],
       };
@@ -297,7 +305,11 @@ export function registerPlanTools(
             {
               type: "text" as const,
               text: !payload.ok
-                ? `${payload.error!.code}: ${payload.error!.message}${payload.error!.details.length ? ` (${payload.error!.details.join("; ")})` : ""}`
+                ? failureText(
+                    payload.error!.code,
+                    `${payload.error!.message}${payload.error!.details.length ? ` (${payload.error!.details.join("; ")})` : ""}`,
+                    payload.error!.recovery,
+                  )
                 : payload.replayed
                   ? "Bereits bestätigter Vorgang; keine weitere Änderung."
                   : payload.result?.activation

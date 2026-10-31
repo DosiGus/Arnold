@@ -12,6 +12,7 @@
 import {
   GOOGLE_REAUTH_MESSAGE,
   GOOGLE_REAUTH_REQUIRED,
+  failureText,
 } from "../../shared/write-recovery.js";
 import { WriteError } from "../workout/infrastructure.js";
 
@@ -40,7 +41,11 @@ export function googleReauthToolResult() {
     content: [
       {
         type: "text" as const,
-        text: `${GOOGLE_REAUTH_REQUIRED}: ${GOOGLE_REAUTH_MESSAGE}`,
+        text: failureText(
+          GOOGLE_REAUTH_REQUIRED,
+          GOOGLE_REAUTH_MESSAGE,
+          "reconnect_google",
+        ),
       },
     ],
     _meta: {

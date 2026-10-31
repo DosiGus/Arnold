@@ -21,7 +21,7 @@
  *     `isError` with a machine-readable code and the unchanged state, never a
  *     cheerful message about something that did not happen.
  */
-import { recoveryFor } from "../shared/write-recovery.js";
+import { failureText, recoveryFor } from "../shared/write-recovery.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/server";
 import {
@@ -86,7 +86,11 @@ function failure(error: unknown) {
     content: [
       {
         type: "text" as const,
-        text: `${failed.code}: ${failed.message}${failed.retryable ? " Erneut versuchen ist möglich." : ""}`,
+        text: failureText(
+          failed.code,
+          failed.message,
+          recoveryFor(failed.code, failed.retryable),
+        ),
       },
     ],
     _meta: {
@@ -176,7 +180,11 @@ function respond(payload: OnboardingResponse) {
       {
         type: "text" as const,
         text: !payload.ok
-          ? `${payload.error!.code}: ${payload.error!.message}${payload.error!.details.length ? ` (${payload.error!.details.join("; ")})` : ""}`
+          ? failureText(
+              payload.error!.code,
+              `${payload.error!.message}${payload.error!.details.length ? ` (${payload.error!.details.join("; ")})` : ""}`,
+              payload.error!.recovery,
+            )
           : payload.replayed
             ? `Bereits ausgeführt; keine doppelte Änderung. ${payload.state ? summarize(payload.state) : ""}`
             : payload.state

@@ -1,3 +1,4 @@
+import { failureText } from "../shared/write-recovery.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/server";
 import {
@@ -71,9 +72,20 @@ export function registerWorkoutTools(
             content: [
               {
                 type: "text" as const,
-                text: "WORKOUT_NOT_FOUND: Trainingseinheit nicht gefunden.",
+                text: failureText(
+                  "WORKOUT_NOT_FOUND",
+                  "Trainingseinheit nicht gefunden.",
+                  "reload_then_retry",
+                ),
               },
             ],
+            _meta: {
+              arnold: {
+                code: "WORKOUT_NOT_FOUND",
+                retryable: false,
+                recovery: "reload_then_retry",
+              },
+            },
           };
         const payload = WorkoutContextSchema.parse({
           tracker_id: dataset.config.tracker_id,
@@ -103,7 +115,11 @@ export function registerWorkoutTools(
           content: [
             {
               type: "text" as const,
-              text: "STORAGE_UNAVAILABLE: Workout konnte nicht geladen werden. Erneut versuchen ist möglich.",
+              text: failureText(
+                "STORAGE_UNAVAILABLE",
+                "Workout konnte nicht geladen werden.",
+                "retry_same_request",
+              ),
             },
           ],
           _meta: {
@@ -149,7 +165,11 @@ export function registerWorkoutTools(
                 ? payload.replayed
                   ? "Bereits bestätigter Vorgang; keine weitere Änderung."
                   : "Änderung gespeichert und verifiziert."
-                : `${payload.error!.code}: ${payload.error!.message}`,
+                : failureText(
+                    payload.error!.code,
+                    payload.error!.message,
+                    payload.error!.recovery,
+                  ),
             },
           ],
         };

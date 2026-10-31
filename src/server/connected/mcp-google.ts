@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/server";
 import { currentArnoldContext } from "../auth/guarded-server.js";
-import { recoveryFor } from "../../shared/write-recovery.js";
+import { failureText, recoveryFor } from "../../shared/write-recovery.js";
 import { GoogleConnectionError } from "../google/connection-service.js";
 import {
   googleReauthToolResult,
@@ -164,6 +164,7 @@ export function accountToolFailure(error: unknown) {
     error instanceof WriteError || error instanceof OnboardingError
       ? error.retryable
       : code === "GOOGLE_UNAVAILABLE" || !known;
+  const recovery = recoveryFor(code, retryable);
   const message = known
     ? (error as Error).message
     : "Die Google-Verbindung ist derzeit nicht verfügbar.";
@@ -172,11 +173,9 @@ export function accountToolFailure(error: unknown) {
     content: [
       {
         type: "text" as const,
-        text: `${code}: ${message}${retryable ? " Erneut versuchen ist möglich." : ""}`,
+        text: failureText(code, message, recovery),
       },
     ],
-    _meta: {
-      arnold: { code, retryable, recovery: recoveryFor(code, retryable) },
-    },
+    _meta: { arnold: { code, retryable, recovery } },
   };
 }
