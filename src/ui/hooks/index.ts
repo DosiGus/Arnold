@@ -23,21 +23,25 @@ import type {
   HistoryQuery,
 } from "../client/ArnoldMcpClient";
 
+import { asFailure, type UiFailure } from "../recovery";
+
 export type AsyncState<T> = {
   data?: T;
   loading: boolean;
   error: string;
+  failure?: UiFailure;
   /** Monotonic counter; bumping it re-runs the request. */
   reload: () => void;
 };
 
-function useAsync<T>(
+export function useAsync<T>(
   run: (signal: { cancelled: boolean }) => Promise<T>,
   deps: readonly unknown[],
 ): AsyncState<T> {
   const [data, setData] = useState<T>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [failure, setFailure] = useState<UiFailure>();
   const [nonce, setNonce] = useState(0);
   const latest = useRef(0);
   const runRef = useRef(run);
@@ -48,6 +52,7 @@ function useAsync<T>(
     const signal = { cancelled: false };
     setLoading(true);
     setError("");
+    setFailure(undefined);
     runRef
       .current(signal)
       .then((value) => {
@@ -57,6 +62,8 @@ function useAsync<T>(
       })
       .catch((e: Error) => {
         if (signal.cancelled || token !== latest.current) return;
+        const failure = asFailure(e, "retry_same_request");
+        setFailure(failure);
         setError(e.message);
       })
       .finally(() => {
@@ -70,7 +77,12 @@ function useAsync<T>(
   }, [...deps, nonce]);
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
-  return { data, loading, error, reload };
+  useEffect(() => {
+    const refresh = () => reload();
+    window.addEventListener("arnold:refresh", refresh);
+    return () => window.removeEventListener("arnold:refresh", refresh);
+  }, [reload]);
+  return { data, loading, error, failure, reload };
 }
 
 /**

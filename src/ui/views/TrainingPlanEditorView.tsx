@@ -49,6 +49,7 @@ import {
   type SessionActions,
   type TargetDraft,
 } from "../components/plan";
+import { RecoveryNotice } from "../components/recovery";
 import { EmptyState, LoadingState } from "../components";
 
 /**
@@ -97,8 +98,8 @@ export function TrainingPlanEditorView({
 
   /** Sends one edit and closes whatever panel triggered it. */
   async function send(edit: Record<string, unknown>) {
-    close();
-    await editor.applyEdits([edit]);
+    const response = await editor.applyEdits([edit]);
+    if (response?.ok) close();
   }
 
   const sessionActions = (
@@ -218,11 +219,15 @@ export function TrainingPlanEditorView({
           <span>{editor.message}</span>
         </p>
       )}
-      {editor.error && (
-        <p className="plan-notice warning" role="alert">
-          <AlertTriangle size={15} aria-hidden="true" />
-          <span>{editor.error}</span>
-        </p>
+      {editor.error && !panel && (
+        <RecoveryNotice
+          message={editor.failure?.message}
+          recovery={editor.failure?.recovery ?? "retry_same_request"}
+          onAction={
+            editor.pending ? () => void editor.retry() : () => editor.reload()
+          }
+          busy={busy}
+        />
       )}
       {editor.pending && (
         <div className="plan-notice warning" role="alert">
@@ -230,8 +235,8 @@ export function TrainingPlanEditorView({
           <div>
             <strong>Unbestätigter Vorgang</strong>
             <p>
-              Deine Eingaben bleiben erhalten. Der Vorgang wird mit derselben
-              Operations-ID geprüft, damit nichts doppelt gespeichert wird.
+              Deine Eingaben bleiben erhalten. Prüfe denselben Vorgang, damit
+              nichts doppelt gespeichert wird.
             </p>
             <div className="plan-actions">
               <button
@@ -241,13 +246,6 @@ export function TrainingPlanEditorView({
                 onClick={() => void editor.retry()}
               >
                 Vorgang prüfen
-              </button>
-              <button
-                type="button"
-                className="secondary"
-                onClick={editor.dismissPending}
-              >
-                Verwerfen
               </button>
             </div>
           </div>
@@ -611,19 +609,25 @@ export function TrainingPlanEditorView({
 
       {panel?.kind === "settings" && (
         <ExerciseSettingsPanel
+          error={
+            editor.error ? (editor.failure?.message ?? editor.error) : undefined
+          }
           exercise={panel.exercise}
           busy={busy}
           onClose={close}
           onSave={(draft) => {
             const item = panel.exercise;
-            close();
-            void editor.applyEdits([
-              {
-                type: "update_plan_exercise_targets",
-                plan_item_id: item.plan_item_id,
-                targets: targetsFromDraft(draft),
-              },
-            ]);
+            void editor
+              .applyEdits([
+                {
+                  type: "update_plan_exercise_targets",
+                  plan_item_id: item.plan_item_id,
+                  targets: targetsFromDraft(draft),
+                },
+              ])
+              .then((response) => {
+                if (response?.ok) close();
+              });
           }}
         />
       )}

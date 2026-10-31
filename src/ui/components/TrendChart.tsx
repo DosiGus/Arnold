@@ -198,21 +198,24 @@ export function ProgressChart({
   unit,
   /** Load convention of this series, so "20 kg" cannot read as a total. */
   loadBasisLabel = null,
+  compact = false,
 }: {
   points: readonly { date: string; value: number }[];
   label: string;
   unit: string;
   loadBasisLabel?: string | null;
+  compact?: boolean;
 }) {
   const data = points.map((point) => ({
     ...point,
     label: dateLabel(point.date),
+    timestamp: Date.parse(point.date),
   }));
   const qualified = loadBasisLabel ? `${label} (${loadBasisLabel})` : label;
   return (
     <>
       <div
-        className="chart"
+        className={`chart ${compact ? "ac-chart" : ""}`}
         role="img"
         aria-label={`${qualified} in ${unit}: ${
           data
@@ -223,16 +226,28 @@ export function ProgressChart({
         <ResponsiveContainer width="100%" height="100%">
           <LineChart
             data={data}
-            margin={{ top: 14, right: 12, left: -15, bottom: 0 }}
+            margin={
+              compact
+                ? { top: 10, right: 8, left: 8, bottom: 10 }
+                : { top: 14, right: 12, left: -15, bottom: 0 }
+            }
             accessibilityLayer
           >
-            <CartesianGrid
-              stroke="var(--border)"
-              strokeDasharray="3 5"
-              vertical={false}
-            />
+            {!compact && (
+              <CartesianGrid
+                stroke="var(--border)"
+                strokeDasharray="3 5"
+                vertical={false}
+              />
+            )}
             <XAxis
-              dataKey="label"
+              hide={compact}
+              type="number"
+              domain={["dataMin", "dataMax"]}
+              dataKey="timestamp"
+              tickFormatter={(value: number) =>
+                dateLabel(new Date(value).toISOString().slice(0, 10))
+              }
               tickLine={false}
               axisLine={false}
               tick={axisTick}
@@ -240,6 +255,7 @@ export function ProgressChart({
               minTickGap={24}
             />
             <YAxis
+              hide={compact}
               tickLine={false}
               axisLine={false}
               tick={axisTick}
@@ -248,6 +264,11 @@ export function ProgressChart({
               domain={["auto", "auto"]}
             />
             <Tooltip
+              labelFormatter={(value) =>
+                typeof value === "number"
+                  ? dateLabel(new Date(value).toISOString().slice(0, 10))
+                  : String(value)
+              }
               contentStyle={tooltipStyle}
               formatter={(value) => [
                 `${formatNumber(Number(value), 1)} ${unit}${
@@ -257,7 +278,7 @@ export function ProgressChart({
               ]}
             />
             <Line
-              type="monotone"
+              type="linear"
               dataKey="value"
               name={qualified}
               stroke="var(--chart)"

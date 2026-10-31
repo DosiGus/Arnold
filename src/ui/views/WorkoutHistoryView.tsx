@@ -1,32 +1,22 @@
-/**
- * Workout history for any split.
- *
- * Session names come from the stored snapshot, so the list works for
- * "Oberkörper A", for a spontaneous session and for a plan that changed three
- * times. Filtering and paging happen on the server; this view only states what
- * it wants.
- */
 import { useEffect, useState } from "react";
-import { Dumbbell, ListFilter } from "lucide-react";
 import type { ArnoldDashboardView } from "../../shared/arnold-view";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
-import { useWorkoutHistory } from "../hooks";
+import { useAsync, useWorkoutHistory } from "../hooks";
+import { useModelContext } from "../hooks/useModelContext";
 import {
-  Card,
-  EmptyState,
-  ErrorState,
-  LoadingState,
-  PeriodFilter,
-  PlanSelector,
-  SessionSelector,
-  SetList,
-  StatusNotice,
-  WorkoutCard,
-  type PeriodValue,
-} from "../components";
-import { dateLabel, formatNumber, UNKNOWN } from "../format";
-
-const PAGE_SIZE = 20;
+  ArnoldCard,
+  CardActions,
+  CardNote,
+  CardSkeleton,
+  ChipGroup,
+} from "../components/cards";
+import { RecoveryCard } from "../components/recovery";
+import {
+  dateLabel,
+  formatSetLine,
+  formatExecution,
+  SET_TYPE_LABEL,
+} from "../format";
 
 export function WorkoutHistoryView({
   client,
@@ -37,233 +27,310 @@ export function WorkoutHistoryView({
   dashboard: ArnoldDashboardView;
   initialWorkoutId?: string;
 }) {
-  const [period, setPeriod] = useState<PeriodValue>({});
+  const [expanded, setExpanded] = useState(Boolean(initialWorkoutId));
+  const [selectedId, setSelectedId] = useState(initialWorkoutId);
+  const [period, setPeriod] = useState<{ from?: string; to?: string }>({});
   const [planId, setPlanId] = useState<string>();
   const [sessionName, setSessionName] = useState<string>();
-  // Opening a specific session must find it whatever its status is: the
-  // overview also lists cancelled sessions, and the default listing does not.
-  const [includeAllStatuses, setIncludeAllStatuses] = useState(
-    initialWorkoutId !== undefined,
-  );
+  const [includeAll, setIncludeAll] = useState(Boolean(initialWorkoutId));
   const [offset, setOffset] = useState(0);
-  const [selectedId, setSelectedId] = useState(initialWorkoutId);
-  /** True while a specific session was asked for and has not been found yet. */
-  const [requestedId, setRequestedId] = useState(initialWorkoutId);
-
-  // A narrowed filter must start at the first page again.
-  useEffect(() => {
-    setOffset(0);
-  }, [period.from, period.to, planId, sessionName, includeAllStatuses]);
-
   const history = useWorkoutHistory(client, {
     ...period,
     plan_version_ids: planId ? [planId] : undefined,
     session_name: sessionName,
-    workout_statuses: includeAllStatuses
+    workout_statuses: includeAll
       ? ["completed", "cancelled", "in_progress", "planned"]
       : undefined,
-    limit: PAGE_SIZE,
+    limit: 8,
     offset,
   });
-
-  const workouts = history.data?.workouts ?? [];
-  const found = workouts.find((workout) => workout.workout_id === selectedId);
-  /**
-   * No silent substitution. Falling back to `workouts[0]` meant that clicking a
-   * cancelled session in the overview opened a *different* session and
-   * presented it as the answer. A session that was explicitly requested is
-   * either shown or reported as not in the current filter.
-   */
-  const selected = found ?? (requestedId ? undefined : workouts[0]);
-  const requestedMissing =
-    requestedId !== undefined && !found && !history.loading && !history.error;
-
+  const direct = useAsync(
+    () =>
+      initialWorkoutId
+        ? client.historyWorkout(initialWorkoutId)
+        : Promise.resolve(undefined),
+    [client, initialWorkoutId],
+  );
+  useEffect(() => {
+    if (initialWorkoutId) void client.displayMode("fullscreen");
+  }, [client, initialWorkoutId]);
+  const selected = (
+    selectedId === initialWorkoutId && direct.data
+      ? direct.data.workouts
+      : history.data?.workouts
+  )?.find((w) => w.workout_id === selectedId);
+  const open = (id?: string) => {
+    void client.displayMode("fullscreen");
+    setExpanded(true);
+    setSelectedId(id);
+  };
+  const close = () => {
+    void client.displayMode("inline");
+    setExpanded(false);
+    setSelectedId(undefined);
+    setPeriod({});
+    setSessionName(undefined);
+    setPlanId(undefined);
+    setIncludeAll(false);
+    setOffset(0);
+  };
+  const filter = (update: () => void) => {
+    setOffset(0);
+    setSelectedId(undefined);
+    update();
+  };
+  useModelContext(
+    client,
+    selected
+      ? `Arnold zeigt das Training „${selected.title}“ am ${selected.date}, workout_id ${selected.workout_id}, Status ${selected.status_label}. Gespeicherte Sätze: ${JSON.stringify(selected.exercises.map((block) => ({ exercise: block.name, sets: block.sets })))}. Die Karte zeigt diese Werte bereits. Für Korrekturen aktuelle Revision mit get_workout lesen.`
+      : `Arnold zeigt den Trainingsverlauf${history.data ? ` mit ${history.data.total} Treffern` : ""}. Der Nutzer kann ein Training öffnen oder im Chat nach einem Datum fragen.`,
+  );
+  if (selectedId === initialWorkoutId && initialWorkoutId && direct.loading)
+    return <CardSkeleton />;
+  if (selectedId === initialWorkoutId && initialWorkoutId && direct.error)
+    return (
+      <RecoveryCard
+        recovery={direct.failure?.recovery ?? "retry_same_request"}
+        onAction={direct.reload}
+      />
+    );
+  if (history.error)
+    return (
+      <RecoveryCard
+        recovery={history.failure?.recovery ?? "retry_same_request"}
+        onAction={history.reload}
+      />
+    );
+  if (!history.data) return <CardSkeleton />;
+  if (selectedId)
+    return (
+      <ArnoldCard
+        className="ac-fullscreen workout-detail"
+        label="Trainingsverlauf"
+        title={selected?.title ?? "Training nicht in dieser Auswahl"}
+        subtitle={
+          selected
+            ? `${dateLabel(selected.date, true)} · ${selected.status_label}`
+            : "Passe die Auswahl an, um dieses Training zu finden."
+        }
+      >
+        {selected?.notes && <p className="ac-text">{selected.notes}</p>}
+        {selected?.exercises.map((block) => (
+          <section className="ac-exercise-detail" key={block.exercise_id}>
+            <h3 className="ac-section-title">{block.name}</h3>
+            {block.retired && (
+              <p className="ac-caption">Inzwischen ausgemustert</p>
+            )}
+            {block.mixed_load_basis && (
+              <p className="ac-caption">
+                Die Gewichtsangabe steht direkt an jedem Satz.
+              </p>
+            )}
+            <ol className="ac-set-rows">
+              {block.sets.map((set) => (
+                <li
+                  key={set.set_id}
+                  className={set.voided ? "is-voided" : undefined}
+                >
+                  <span>
+                    <strong>{formatSetLine(set)}</strong>
+                    <small>
+                      {SET_TYPE_LABEL[set.set_type]} {set.set_number}
+                      {formatExecution(set) ? ` · ${formatExecution(set)}` : ""}
+                      {set.voided ? " · Verworfen" : ""}
+                      {set.rir !== null ? ` · RIR ${set.rir}` : ""}
+                      {set.rpe !== null ? ` · RPE ${set.rpe}` : ""}
+                    </small>
+                    {set.notes && <small>{set.notes}</small>}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </section>
+        ))}
+        <CardActions
+          primary={{
+            label: "Zur Trainingsliste",
+            onClick: () => setSelectedId(undefined),
+          }}
+          secondary={{ label: "Zurück zum Chat", onClick: close }}
+        />
+      </ArnoldCard>
+    );
   return (
-    <>
-      <details className="filter-disclosure">
-        <summary>Zeitraum & Filter</summary>
-        <div className="filter-bar history-filters">
-          <PeriodFilter
-            value={period}
-            onChange={setPeriod}
-            anchor={dashboard.period.to}
-            idPrefix="history"
-            scopeLabel="Workouts"
+    <ArnoldCard
+      className={expanded ? "ac-fullscreen" : ""}
+      label="Dein Verlauf"
+      title={
+        history.data.total
+          ? "Deine letzten Trainings"
+          : "Hier beginnt dein Trainingsverlauf"
+      }
+      subtitle={
+        history.data.total
+          ? `${history.data.total} ${history.data.total === 1 ? "Training gefunden" : "Trainings gefunden"}`
+          : "Dein erstes gespeichertes Training erscheint hier."
+      }
+      busy={history.loading}
+    >
+      {expanded && (
+        <div className="ac-field">
+          <ChipGroup
+            label="Training auswählen"
+            options={[
+              { value: "all", label: "Alle Trainings" },
+              ...dashboard.session_names.map((name) => ({
+                value: name,
+                label: name,
+              })),
+            ]}
+            value={sessionName ?? "all"}
+            onChange={(value) =>
+              filter(() => setSessionName(value === "all" ? undefined : value))
+            }
           />
-          <div className="filter-selects">
-            <PlanSelector
-              plans={dashboard.plan_history}
-              value={planId}
-              onChange={setPlanId}
-            />
-            <SessionSelector
-              sessions={dashboard.session_names}
-              value={sessionName}
-              onChange={setSessionName}
-            />
-            <label className="checkbox-field" htmlFor="history-all-statuses">
+          <ChipGroup
+            label="Trainingsplan auswählen"
+            value={planId ?? "all"}
+            options={[
+              { value: "all", label: "Alle Pläne" },
+              ...dashboard.plan_history.map((plan) => ({
+                value: plan.plan_version_id,
+                label: `${plan.name} · Version ${plan.version_no}`,
+              })),
+            ]}
+            onChange={(value) =>
+              filter(() => setPlanId(value === "all" ? undefined : value))
+            }
+          />
+          <div className="ac-date-range">
+            <label>
+              Von
               <input
-                id="history-all-statuses"
-                type="checkbox"
-                checked={includeAllStatuses}
-                onChange={(e) => setIncludeAllStatuses(e.target.checked)}
+                type="date"
+                aria-label="Trainings von"
+                value={period.from ?? ""}
+                onChange={(e) =>
+                  filter(() =>
+                    setPeriod((p) => ({
+                      ...p,
+                      from: e.target.value || undefined,
+                    })),
+                  )
+                }
               />
-              Abgebrochene und offene Einheiten zeigen
+            </label>
+            <label>
+              Bis
+              <input
+                type="date"
+                aria-label="Trainings bis"
+                value={period.to ?? ""}
+                onChange={(e) =>
+                  filter(() =>
+                    setPeriod((p) => ({
+                      ...p,
+                      to: e.target.value || undefined,
+                    })),
+                  )
+                }
+              />
             </label>
           </div>
+          <button
+            className="ac-switch"
+            role="switch"
+            aria-checked={includeAll}
+            onClick={() => filter(() => setIncludeAll((v) => !v))}
+          >
+            <span>Offene und abgebrochene Trainings zeigen</span>
+            <span className="ac-switch-track" aria-hidden="true">
+              <i />
+            </span>
+          </button>
         </div>
-      </details>
-
-      {history.error && (
-        <ErrorState message={history.error} onRetry={history.reload} />
       )}
-      {requestedMissing && (
-        <StatusNotice
-          notice={{
-            code: "filter_empty",
-            severity: "warning",
-            title: "Angeforderte Trainingseinheit nicht in der Auswahl",
-            message:
-              "Die aufgerufene Einheit liegt außerhalb der aktuellen Filter. Zeitraum, Plan oder Einheit anpassen, um sie zu sehen.",
-          }}
+      {history.data.workouts.length ? (
+        <ul className="ac-training-list">
+          {history.data.workouts.slice(0, expanded ? 8 : 4).map((workout) => (
+            <li key={workout.workout_id}>
+              <button
+                type="button"
+                className="ac-training-row"
+                aria-label={`${workout.title} am ${dateLabel(workout.date, true)}`}
+                onClick={() => open(workout.workout_id)}
+              >
+                <span>
+                  <strong>{workout.title}</strong>
+                  <small>
+                    {dateLabel(workout.date)} · {workout.exercise_count}{" "}
+                    {workout.exercise_count === 1 ? "Übung" : "Übungen"} ·{" "}
+                    {workout.status_label}
+                  </small>
+                </span>
+                <span aria-hidden="true">›</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : expanded ? (
+        <CardNote>
+          Keine Trainings in dieser Auswahl. Wähle einen anderen Zeitraum oder
+          setze die Auswahl zurück.
+        </CardNote>
+      ) : null}
+      {expanded &&
+        (period.from || period.to || sessionName || planId || includeAll) && (
+          <button
+            className="ac-link"
+            onClick={() =>
+              filter(() => {
+                setPeriod({});
+                setSessionName(undefined);
+                setPlanId(undefined);
+                setIncludeAll(false);
+              })
+            }
+          >
+            Auswahl zurücksetzen
+          </button>
+        )}
+      {expanded ? (
+        <>
+          <CardActions
+            primary={
+              history.data.has_more
+                ? {
+                    label: "Weitere Trainings",
+                    onClick: () => setOffset((n) => n + 8),
+                  }
+                : undefined
+            }
+            secondary={
+              offset > 0
+                ? {
+                    label: "Vorherige Trainings",
+                    onClick: () => setOffset((n) => Math.max(0, n - 8)),
+                  }
+                : undefined
+            }
+          />
+          <button type="button" className="ac-link" onClick={close}>
+            Zurück zum Chat
+          </button>
+        </>
+      ) : (
+        <CardActions
+          primary={
+            history.data.total
+              ? { label: "Alle Trainings ansehen", onClick: () => open() }
+              : {
+                  label: "Training ansehen",
+                  onClick: () => void client.openDashboard(),
+                }
+          }
         />
       )}
-      {history.data?.notices.map((notice) => (
-        <StatusNotice key={notice.code} notice={notice} />
-      ))}
-
-      <div className="history-grid" aria-busy={history.loading}>
-        <Card className="history-list">
-          <div className="card-heading">
-            <div>
-              <h2>Trainings</h2>
-              <p>
-                {history.loading && !history.data
-                  ? "Einheiten werden geladen …"
-                  : `${history.data?.total ?? 0} Einheiten gefunden`}
-              </p>
-            </div>
-          </div>
-          {history.loading && !history.data ? (
-            <LoadingState text="Trainingshistorie wird geladen …" />
-          ) : workouts.length ? (
-            <>
-              {workouts.map((workout) => (
-                <WorkoutCard
-                  key={workout.workout_id}
-                  workout={workout}
-                  selected={selected?.workout_id === workout.workout_id}
-                  onSelect={(id) => {
-                    setSelectedId(id);
-                    setRequestedId(undefined);
-                  }}
-                />
-              ))}
-              {(offset > 0 || history.data?.has_more) && (
-                <div className="pager">
-                  <button
-                    className="secondary"
-                    disabled={offset === 0}
-                    onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-                  >
-                    Neuere
-                  </button>
-                  <span>
-                    {offset + 1}–{offset + workouts.length} von{" "}
-                    {history.data?.total ?? 0}
-                  </span>
-                  <button
-                    className="secondary"
-                    disabled={!history.data?.has_more}
-                    onClick={() => setOffset(offset + PAGE_SIZE)}
-                  >
-                    Ältere
-                  </button>
-                </div>
-              )}
-            </>
-          ) : (
-            !history.error && (
-              <EmptyState
-                title="Keine Einheiten gefunden"
-                text="Zeitraum, Plan oder Trainingseinheit anpassen."
-              />
-            )
-          )}
-        </Card>
-
-        <Card className="workout-detail">
-          {selected ? (
-            <>
-              <div className="card-heading">
-                <div>
-                  {!selected.counts_towards_metrics && (
-                    <span className="set-flag">{selected.status_label}</span>
-                  )}
-                  <h2>{selected.title}</h2>
-                  <p>
-                    {dateLabel(selected.date, true)}
-                    {selected.plan_name
-                      ? ` · ${selected.plan_name} · v${selected.plan_version_no}`
-                      : " · ohne Trainingsplan"}
-                  </p>
-                </div>
-                <span className="detail-total">
-                  <strong>
-                    {selected.nominal_volume === null
-                      ? UNKNOWN
-                      : formatNumber(selected.nominal_volume, 0)}
-                  </strong>{" "}
-                  {selected.nominal_volume === null
-                    ? "kein Volumen"
-                    : "kg Volumen"}
-                </span>
-              </div>
-              <div className="detail-chips">
-                <span>
-                  <Dumbbell size={14} aria-hidden="true" />
-                  {selected.exercise_count} Übungen
-                </span>
-                <span>
-                  <ListFilter size={14} aria-hidden="true" />
-                  {selected.set_count} Sätze
-                </span>
-                <span>{selected.working_set_count} Arbeitssätze</span>
-              </div>
-              {selected.notes && (
-                <p className="workout-notes">{selected.notes}</p>
-              )}
-              <div className="exercise-details">
-                {selected.exercises.map((block) => (
-                  <section key={block.exercise_id}>
-                    <h3>
-                      {block.name}
-                      {block.retired && (
-                        <span className="set-flag">Übung beendet</span>
-                      )}
-                      {!block.in_current_catalog && (
-                        <span className="set-flag">nur in der Historie</span>
-                      )}
-                    </h3>
-                    {block.mixed_load_basis && (
-                      <p className="block-note">
-                        Diese Übung enthält mehrere Gewichtsdefinitionen; die
-                        Sätze werden nicht zusammengefasst.
-                      </p>
-                    )}
-                    <SetList sets={block.sets} />
-                  </section>
-                ))}
-              </div>
-            </>
-          ) : (
-            <EmptyState
-              title="Keine Einheit ausgewählt"
-              text="Wähle links eine Trainingseinheit aus."
-            />
-          )}
-        </Card>
-      </div>
-    </>
+    </ArnoldCard>
   );
 }

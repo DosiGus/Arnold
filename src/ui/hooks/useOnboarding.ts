@@ -33,6 +33,8 @@ import { PROFILE_STEPS } from "../../shared/onboarding-contract";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
 
 /** What the buttons say in the chat on the user's behalf. Short, first person. */
+import { asFailure, RECOVERY_COPY, type UiFailure } from "../recovery";
+
 export const PLAN_REQUEST_MESSAGE =
   "Meine Angaben sind fertig. Bitte erstelle jetzt meinen Trainingsplan.";
 export const OWN_PLAN_MESSAGE =
@@ -64,6 +66,9 @@ export function useOnboarding(
     initial ? "READY" : "LOADING",
   );
   const [error, setError] = useState("");
+  const [failure, setFailure] = useState<UiFailure>();
+  const [pending, setPending] = useState(false);
+  const [reloadEpoch, setReloadEpoch] = useState(0);
   const [message, setMessage] = useState("");
   /**
    * Which step to open a setup on.
@@ -105,11 +110,27 @@ export function useOnboarding(
   const reload = useCallback(
     async (follow = false) => {
       const token = ++generation.current;
+      if (
+        stateRef.current?.session.status === "COMPLETED" &&
+        !client.getOnboardingClaim()
+      ) {
+        // A completed account no longer needs its expired setup credential.
+        // The completion card verifies and restores the sheet through the account read tool.
+        setUi("READY");
+        setError("");
+        setFailure(undefined);
+        return stateRef.current;
+      }
       try {
         const next = await client.onboardingState();
         if (token !== generation.current) return undefined;
         adopt(next, follow);
+        if (follow) setReloadEpoch((epoch) => epoch + 1);
         setUi("READY");
+        if (follow && !client.hasPendingOnboarding()) {
+          setError("");
+          setFailure(undefined);
+        }
         return next;
       } catch (e) {
         if (token !== generation.current) return undefined;
@@ -117,7 +138,9 @@ export function useOnboarding(
         // needs a restart, not a retry, and the UI says so.
         const missing = /Sitzungsnachweis/.test((e as Error).message);
         setUi(missing ? "NO_SESSION" : "ERROR");
-        setError((e as Error).message);
+        const failure = asFailure(e, "retry_same_request");
+        setFailure(failure);
+        setError(RECOVERY_COPY[failure.recovery].body);
         return undefined;
       }
     },
@@ -127,7 +150,16 @@ export function useOnboarding(
   useEffect(() => {
     // A payload handed in by the host may be a replayed tool result, so the
     // state is revalidated against the server before anything is acted on.
-    void reload(!initial);
+    const unconfirmed = client.hasPendingOnboarding();
+    setPending(unconfirmed);
+    if (unconfirmed) {
+      setFailure({
+        code: "COMMIT_STATUS_UNKNOWN",
+        recovery: "retry_same_request",
+      });
+      setError("Eine Speicherung ist noch nicht bestätigt.");
+    }
+    void reload(true);
     return () => {
       generation.current++;
     };
@@ -169,12 +201,11 @@ export function useOnboarding(
         setMessage("");
         try {
           const response = await action(revision);
+          setPending(client.hasPendingOnboarding());
           if (!response.ok) {
-            setError(
-              [response.error?.message, ...(response.error?.details ?? [])]
-                .filter(Boolean)
-                .join(" · "),
-            );
+            const failure = asFailure(response.error);
+            setFailure(failure);
+            setError(RECOVERY_COPY[failure.recovery].body);
             // A refusal still carries the state that actually stands, so the
             // screen stays truthful instead of showing what was attempted.
             if (response.state) adopt(response.state, false);
@@ -195,7 +226,10 @@ export function useOnboarding(
           return response;
         } catch (e) {
           setUi("ERROR");
-          setError((e as Error).message);
+          setPending(client.hasPendingOnboarding());
+          const failure = asFailure(e, "retry_same_request");
+          setFailure(failure);
+          setError(RECOVERY_COPY[failure.recovery].body);
           // The outcome is unclear, so the stored state is re-read rather than
           // assumed. Nothing is reported as saved.
           await reload();
@@ -389,11 +423,13 @@ export function useOnboarding(
     setError("");
     try {
       await client.connectGoogle();
-      setMessage(
-        "Google-Freigabe im geöffneten Fenster abschließen. Anschließend hier aktualisieren.",
-      );
+      setMessage("Google-Freigabe im geöffneten Fenster abschließen.");
+      return true;
     } catch (error) {
-      setError((error as Error).message);
+      const failure = asFailure(error, "retry_same_request");
+      setFailure(failure);
+      setError(RECOVERY_COPY[failure.recovery].body);
+      return false;
     }
   };
   const finishSetup = async () => {
@@ -402,7 +438,10 @@ export function useOnboarding(
       await client.finishSetup();
       await reload(true);
     } catch (error) {
-      setError((error as Error).message);
+      const failure = asFailure(error, "retry_same_request");
+      setFailure(failure);
+      setError(RECOVERY_COPY[failure.recovery].body);
+      return false;
     }
   };
   const expired = session?.status === "EXPIRED";
@@ -414,6 +453,24 @@ export function useOnboarding(
     step,
     ui,
     error,
+    failure,
+    reloadEpoch,
+    pending,
+    retry: async () => {
+      try {
+        const response = await client.retryOnboarding();
+        setPending(client.hasPendingOnboarding());
+        if (response?.state) adopt(response.state, true);
+        if (response?.ok) {
+          setError("");
+          setFailure(undefined);
+        }
+        return response;
+      } catch (error) {
+        setPending(true);
+        setFailure(asFailure(error, "retry_same_request"));
+      }
+    },
     message,
     busy: ui === "SAVING" || ui === "REQUESTING_PLAN" || ui === "CONFIRMING",
     expired,

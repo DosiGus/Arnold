@@ -6,12 +6,20 @@ import type {
 } from "../../shared/workout-contract";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
 
+import {
+  ArnoldToolError,
+  asFailure,
+  RECOVERY_COPY,
+  type UiFailure,
+} from "../recovery";
+
 type Pending = { operation: WriteOperation; input: Record<string, unknown> };
 /** A pending request is immutable until confirmed. Reloads and retries keep its ID. */
 export function useWorkoutLogger(client: ArnoldMcpClient, changed: () => void) {
   const [data, setData] = useState<WorkoutContext>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [failure, setFailure] = useState<UiFailure>();
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState<Pending>();
   const guard = useRef(false),
@@ -29,7 +37,11 @@ export function useWorkoutLogger(client: ArnoldMcpClient, changed: () => void) {
       }
       return next;
     } catch (e) {
-      if (token === generation.current) setError((e as Error).message);
+      if (token === generation.current) {
+        const failure = asFailure(e, "retry_same_request");
+        setFailure(failure);
+        setError(RECOVERY_COPY[failure.recovery].body);
+      }
       throw e;
     }
   }
@@ -64,6 +76,7 @@ export function useWorkoutLogger(client: ArnoldMcpClient, changed: () => void) {
     guard.current = true;
     setBusy(true);
     setError("");
+    setFailure(undefined);
     setMessage("");
     setPending(request);
     const tracker = dataRef.current?.tracker_id;
@@ -72,18 +85,16 @@ export function useWorkoutLogger(client: ArnoldMcpClient, changed: () => void) {
       const response = await client.write(request.operation, request.input);
       if (!response.ok) {
         if (
-          response.error?.code === "COMMIT_STATUS_UNKNOWN" ||
+          response.error?.recovery === "retry_same_request" ||
           response.error?.code === "STORAGE_UNAVAILABLE"
         )
           throw new Error(`${response.error.code}: ${response.error.message}`);
         setPending(undefined);
         if (tracker) client.clearPending(tracker);
         // The server's own words; the code stays out of the user's way.
-        setError(
-          [response.error?.message, ...(response.error?.details ?? [])]
-            .filter(Boolean)
-            .join(" "),
-        );
+        const failure = asFailure(response.error);
+        setFailure(failure);
+        setError(RECOVERY_COPY[failure.recovery].body);
         return response;
       }
       setPending(undefined);
@@ -93,9 +104,10 @@ export function useWorkoutLogger(client: ArnoldMcpClient, changed: () => void) {
         response.result?.workout?.workout_id ??
         dataRef.current?.workout?.workout_id;
       setMessage(
-        response.replayed
-          ? "Bereits gespeichert · keine doppelte Änderung."
-          : "Gespeichert und bestätigt.",
+        request.operation === "log_workout_sets" ||
+          request.operation === "update_set"
+          ? "Satz gespeichert."
+          : "",
       );
       try {
         await load(id);
@@ -108,9 +120,16 @@ export function useWorkoutLogger(client: ArnoldMcpClient, changed: () => void) {
       return response;
     } catch (e) {
       // No optimistic success. Keep EXACT request and form values for reconciliation.
-      setError(
-        `${(e as Error).message} Status unklar: Vorgang prüfen, bevor weitere Daten gespeichert werden.`,
-      );
+      const failure = asFailure(e, "retry_same_request");
+      if (
+        e instanceof ArnoldToolError &&
+        failure.recovery !== "retry_same_request"
+      ) {
+        setPending(undefined);
+        if (tracker) client.clearPending(tracker);
+      }
+      setFailure(failure);
+      setError(RECOVERY_COPY[failure.recovery].body);
       try {
         await load(dataRef.current?.workout?.workout_id);
       } catch {
@@ -121,6 +140,18 @@ export function useWorkoutLogger(client: ArnoldMcpClient, changed: () => void) {
       setBusy(false);
     }
   }
+  useEffect(() => {
+    if (!message) return;
+    const timer = setTimeout(() => setMessage(""), 2400);
+    return () => clearTimeout(timer);
+  }, [message]);
+  useEffect(
+    () =>
+      client.subscribeRefresh(() => {
+        void load(dataRef.current?.workout?.workout_id).catch(() => {});
+      }),
+    [client],
+  );
   function write(operation: WriteOperation, input: Record<string, unknown>) {
     return dispatch({
       operation,
@@ -131,6 +162,12 @@ export function useWorkoutLogger(client: ArnoldMcpClient, changed: () => void) {
     data,
     busy,
     error,
+    failure,
+    clearError: () => {
+      setError("");
+      setFailure(undefined);
+    },
+    reload: () => load(dataRef.current?.workout?.workout_id).catch(() => {}),
     message,
     pending,
     select: (id: string) => load(id).catch(() => {}),

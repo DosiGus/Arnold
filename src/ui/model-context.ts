@@ -154,7 +154,7 @@ export function weekContext(view: ArnoldDashboardView) {
     return `Arnold zeigt gerade die Wochenkarte; es gibt noch keine Trainings. ${SEEN}`;
   const goal = view.active_plan?.days_per_week;
   return [
-    `Arnold zeigt gerade die Wochenkarte (${week.is_current_week ? "diese Woche" : `Woche ${week.label}`}): ${week.workouts}${goal ? ` von ${goal}` : ""} Trainings, ${week.working_sets} Arbeitssätze, ${volume(week.nominal_volume)} Volumen.`,
+    `Arnold zeigt gerade die Wochenkarte (${week.is_current_week ? "diese Woche" : `Woche ${week.label}`}): ${week.training_days}${goal ? ` von ${goal} Trainingstagen` : ` ${week.training_days === 1 ? "Trainingstag" : "Trainingstage"}`}, ${count(week.working_sets, "Arbeitssatz", "Arbeitssätze")}, ${volume(week.nominal_volume)} Volumen.`,
     last ? `Zuletzt: „${last.title}“ am ${dateLabel(last.date, true)}.` : "",
     SEEN,
   ]

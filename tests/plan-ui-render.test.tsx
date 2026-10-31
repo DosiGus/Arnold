@@ -311,8 +311,12 @@ describe("the validation panel", () => {
     expect(output).toContain("Plan ist gültig");
     expect(output).toContain("Hinweise");
     expect(output).toContain("Empfehlungen");
-    expect(output).toContain("DAYS_PER_WEEK_MISMATCH");
-    expect(output).toContain("MISSING_TARGET_SETS");
+    expect(output).not.toContain("DAYS_PER_WEEK_MISMATCH");
+    expect(output).toMatch(
+      /Trainingstage|Trainingshäufigkeit|Trainingseinheiten/,
+    );
+    expect(output).not.toContain("MISSING_TARGET_SETS");
+    expect(output).toContain("Zielsätze");
     // A recommendation is never presented as a blocking failure.
     expect(output).not.toContain("Blockierende Fehler");
   });
@@ -335,7 +339,7 @@ describe("the validation panel", () => {
     const validation = await h.plans.validate({ plan_version_id: "pfx-v2" });
     const output = text(<PlanValidationPanel validation={validation} />);
     expect(output).toContain("noch nicht aktivierbar");
-    expect(output).toContain("PLAN_NOT_A_DRAFT");
+    expect(output).not.toContain("PLAN_NOT_A_DRAFT");
   });
 });
 
@@ -421,8 +425,9 @@ describe("the activation dialog", () => {
     expect(output).toContain("Trainingsplan aktivieren");
     expect(output).toContain("Deine bisherigen Trainingsdaten bleiben");
     expect(output).toContain("Bestätigen und aktivieren");
-    expect(output).toContain(version.plan_version_id);
-    expect(output).toContain(`Revision ${version.row_revision}`);
+    expect(output).not.toContain(version.plan_version_id);
+    expect(output).toContain(version.name);
+    expect(output).toContain("angezeigte Version");
     // It states what happens to the previous version and to running workouts.
     expect(output).toContain("archiviert und bleibt lesbar");
     expect(output).toContain("laufende Trainings behalten");

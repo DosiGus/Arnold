@@ -186,7 +186,7 @@ describe("replayed tool results on reopening a chat", () => {
       isError: true,
     });
     await vi.waitFor(() => expect(errors.length).toBe(1));
-    expect(errors[0]).toContain("Google-Anmeldung fehlt.");
+    expect(errors[0]).toContain("Deine Eingaben bleiben erhalten");
     expect(fake.calls).toHaveLength(0);
   });
 });

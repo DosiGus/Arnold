@@ -1,3 +1,9 @@
+import { ArnoldToolError } from "../recovery";
+import {
+  DeleteAccountResponseSchema,
+  FinishSetupOutputSchema,
+  StoredDataSchema,
+} from "../../shared/account-contract";
 import {
   WorkoutContextSchema,
   WriteResponseSchema,
@@ -94,19 +100,85 @@ export class ArnoldMcpClient {
   /** Held in memory so an opaque MCP App origin without storage still works. */
   private onboardingClaim?: OnboardingClaim;
   constructor(private readonly client: ArnoldClient) {}
-  async connectGoogle() {
+  private refreshListeners = new Set<() => void>();
+  subscribeRefresh(listener: () => void) {
+    this.refreshListeners.add(listener);
+    return () => {
+      this.refreshListeners.delete(listener);
+    };
+  }
+  refreshViews() {
+    this.refreshListeners.forEach((listener) => listener());
+    window.dispatchEvent(new Event("arnold:refresh"));
+  }
+  async googleConnected() {
+    const result = z
+      .object({ connection: z.object({ status: z.string() }).nullable() })
+      .parse(
+        await this.client.call("get_google_connection", {}, { publish: false }),
+      );
+    return result.connection?.status === "CONNECTED";
+  }
+  async showOnboarding() {
+    await this.client.call(
+      "show_arnold_onboarding",
+      this.getOnboardingClaim() ?? {},
+    );
+  }
+  async deleteAccount(confirmation_token?: string) {
+    return DeleteAccountResponseSchema.parse(
+      await this.client.call(
+        "delete_arnold_account",
+        confirmation_token ? { confirmation_token } : {},
+        { publish: false },
+      ),
+    );
+  }
+  async openLink(url: string) {
+    await this.client.openExternal(url);
+  }
+  async displayMode(mode: "inline" | "fullscreen") {
+    return this.client.displayMode(mode);
+  }
+  async connectGoogle(reconnect = false) {
     const result = z
       .object({ authorization_url: z.string().url() })
-      .parse(await this.client.call("connect_google_account", this.claim()));
+      .parse(
+        await this.client.call(
+          "connect_google_account",
+          reconnect ? {} : (this.getOnboardingClaim() ?? {}),
+        ),
+      );
     await this.client.openExternal(result.authorization_url);
   }
   async finishSetup() {
-    return z
-      .object({ spreadsheet_url: z.string().url() })
-      .parse(await this.client.call("finish_arnold_setup", this.claim()));
+    return FinishSetupOutputSchema.parse(
+      await this.client.call("finish_arnold_setup", this.claim()),
+    );
+  }
+  async setupFile() {
+    if (this.getOnboardingClaim()) {
+      try {
+        return await this.finishSetup();
+      } catch {
+        /* A completed account can outlive its setup credential. */
+      }
+    }
+    const stored = StoredDataSchema.parse(
+      await this.client.call("get_arnold_stored_data", {}, { publish: false }),
+    );
+    if (!stored.google_sheet_url)
+      throw new ArnoldToolError({
+        code: "SHEET_UNAVAILABLE",
+        recovery: "contact_support",
+      });
+    return {
+      spreadsheet_url: stored.google_sheet_url,
+      spreadsheet_name: undefined,
+    };
   }
   async openDashboard() {
-    await this.client.call("show_arnold_dashboard");
+    await this.client.call("show_arnold_dashboard", { card: "today" });
   }
   /** Tells the model what the app shows, without starting a chat turn. */
   async tellModel(text: string) {
@@ -198,6 +270,11 @@ export class ArnoldMcpClient {
    * browser session that created it.
    */
   rememberOnboarding(claim: OnboardingClaim) {
+    if (
+      this.onboardingClaim?.onboarding_session_id !==
+      claim.onboarding_session_id
+    )
+      this.pendingOnboarding = undefined;
     this.onboardingClaim = claim;
     writeStoredClaim(claim);
   }
@@ -210,6 +287,7 @@ export class ArnoldMcpClient {
   }
 
   forgetOnboarding() {
+    this.clearPendingOnboarding();
     this.onboardingClaim = undefined;
     clearStoredClaim();
   }
@@ -251,11 +329,76 @@ export class ArnoldMcpClient {
     );
   }
 
-  /** One onboarding write. Every response is validated before the UI sees it. */
+  private pendingOnboarding?: { tool: string; input: Record<string, unknown> };
+  private onboardingPendingKey() {
+    return `arnold.onboarding.pending.${this.claim().onboarding_session_id}`;
+  }
+  private readPendingOnboarding() {
+    if (this.pendingOnboarding) return this.pendingOnboarding;
+    try {
+      const raw = sessionStorage.getItem(this.onboardingPendingKey());
+      if (raw) {
+        const parsed = z
+          .object({
+            tool: z.enum([
+              "update_onboarding_profile",
+              "request_onboarding_plan",
+              "submit_onboarding_plan_proposal",
+              "confirm_onboarding_plan",
+              "revise_onboarding_plan",
+              "cancel_onboarding",
+            ]),
+            input: z.record(z.string(), z.unknown()),
+          })
+          .parse(JSON.parse(raw));
+        this.pendingOnboarding = parsed;
+      }
+    } catch {
+      /* An opaque origin retains the in-memory operation. */
+    }
+    return this.pendingOnboarding;
+  }
+  hasPendingOnboarding() {
+    return Boolean(this.readPendingOnboarding());
+  }
+  async retryOnboarding() {
+    const pending = this.readPendingOnboarding();
+    if (pending) return this.writeOnboarding(pending.tool, pending.input);
+  }
+  private clearPendingOnboarding() {
+    this.pendingOnboarding = undefined;
+    try {
+      sessionStorage.removeItem(this.onboardingPendingKey());
+    } catch {
+      /* no storage */
+    }
+  }
+  /** Writes remain immutable across a lost response and a browser reload. */
   private async writeOnboarding(tool: string, input: Record<string, unknown>) {
-    return OnboardingResponseSchema.parse(
+    const existing = this.readPendingOnboarding();
+    if (
+      existing &&
+      (existing.tool !== tool || existing.input.request_id !== input.request_id)
+    )
+      throw new ArnoldToolError({
+        code: "COMMIT_STATUS_UNKNOWN",
+        recovery: "retry_same_request",
+      });
+    this.pendingOnboarding = { tool, input };
+    try {
+      sessionStorage.setItem(
+        this.onboardingPendingKey(),
+        JSON.stringify(this.pendingOnboarding),
+      );
+    } catch {
+      /* no storage */
+    }
+    const result = OnboardingResponseSchema.parse(
       await this.client.call(tool, { ...this.claim(), ...input }),
     );
+    if (result.ok || result.error?.recovery !== "retry_same_request")
+      this.clearPendingOnboarding();
+    return result;
   }
 
   async saveOnboardingProfile(input: {
@@ -386,6 +529,28 @@ export class ArnoldMcpClient {
     return ArnoldWorkoutHistoryViewSchema.parse(
       await this.client.call("get_arnold_workouts", args(query)),
     );
+  }
+
+  async historyWorkout(workout_id: string) {
+    const context = await this.workout(workout_id);
+    if (!context.workout)
+      throw new ArnoldToolError({
+        code: "WORKOUT_NOT_FOUND",
+        recovery: "reload_then_retry",
+      });
+    const date = context.workout.workout_date_local;
+    return this.workouts({
+      from: date,
+      to: date,
+      workout_statuses: [
+        "planned",
+        "in_progress",
+        "completed",
+        "cancelled",
+        "voided",
+      ],
+      limit: 200,
+    });
   }
 
   async progress(query: ProgressQuery): Promise<ArnoldExerciseProgressView> {

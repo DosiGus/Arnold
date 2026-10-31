@@ -34,7 +34,7 @@ test("onboarding, Google consent, personal tracker, first set, and browser reloa
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(`${base}/preview?onboarding=1`);
-  const wizard = page.locator(".onb-shell");
+  const wizard = page.locator('main[data-card="onboarding"]');
   await expect(
     wizard.getByRole("heading", { name: "Willkommen bei Arnold" }),
   ).toBeVisible();
@@ -101,8 +101,7 @@ test("onboarding, Google consent, personal tracker, first set, and browser reloa
     .getByRole("button", { name: "Plan bestätigen", exact: true })
     .first()
     .click();
-  await page
-    .getByRole("dialog")
+  await wizard
     .getByRole("button", { name: "Plan bestätigen", exact: true })
     .click();
   await expect(
@@ -122,13 +121,14 @@ test("onboarding, Google consent, personal tracker, first set, and browser reloa
     .click();
   await expect(
     wizard.getByRole("heading", {
-      name: "Deine Einrichtung ist abgeschlossen.",
+      name: "Bereit für dein erstes Training",
     }),
   ).toBeVisible();
-  await wizard.getByRole("button", { name: "Zum Training" }).click();
+  await wizard.getByRole("button", { name: "Erstes Training starten" }).click();
   // The new plan's first day is waiting on today's card.
   await page.getByRole("button", { name: "Training starten" }).click();
   await expect(page.locator(".ac-steppers")).toBeVisible();
+  await page.getByLabel("Gewicht", { exact: true }).fill("40");
   await page.getByLabel("Wiederholungen", { exact: true }).fill("10");
   await page
     .getByRole("button", { name: "Satz speichern", exact: true })

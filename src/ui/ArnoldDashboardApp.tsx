@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ArnoldDashboardView } from "../shared/arnold-view";
 import type { ArnoldMcpClient } from "./client/ArnoldMcpClient";
 import { useDashboardData } from "./hooks";
@@ -13,17 +7,12 @@ import { TrainingCard } from "./views/TrainingCard";
 import { WeekCard } from "./views/WeekCard";
 import { WorkoutHistoryView } from "./views/WorkoutHistoryView";
 import { ExerciseProgressView } from "./views/ExerciseProgressView";
-import { TrainingPlanEditorView } from "./views/TrainingPlanEditorView";
+import { PlanCard } from "./views/PlanCard";
+import { RecoveryNotice } from "./components/recovery";
 import { dateTimeLabel } from "./format";
 import { parseCard, type CardId } from "./cards";
 import { useModelContext } from "./hooks/useModelContext";
-import { pageContext, weekContext } from "./model-context";
-
-const PAGE_LABEL: Partial<Record<CardId, string>> = {
-  progress: "Fortschritt",
-  history: "Verlauf",
-  plan: "Trainingsplan",
-};
+import { weekContext } from "./model-context";
 
 function previewCard(): CardId | undefined {
   if (typeof window === "undefined") return undefined;
@@ -53,12 +42,13 @@ export function ArnoldDashboardApp({
   card?: CardId;
 }) {
   const [trail, setTrail] = useState<CardId[]>(() => [
-    requested ?? previewCard() ?? "today",
+    initial.focus?.card ?? requested ?? previewCard() ?? "today",
   ]);
   // A new request from the chat replaces whatever the card showed before.
   useEffect(() => {
-    if (requested) setTrail([requested]);
-  }, [requested]);
+    const card = initial.focus?.card ?? requested;
+    if (card) setTrail([card]);
+  }, [requested, initial.focus]);
   const card = trail[trail.length - 1];
 
   // Only the week card needs to know whether writing is possible; the training
@@ -100,7 +90,7 @@ export function ArnoldDashboardApp({
       ? undefined
       : card === "week"
         ? weekContext(view)
-        : pageContext(card),
+        : undefined,
   );
 
   const notes = (
@@ -114,14 +104,19 @@ export function ArnoldDashboardApp({
           </button>
         </CardNote>
       )}
-      {bridgeError && <CardNote tone="error">{bridgeError}</CardNote>}
-      {dashboard.error && (
+      {bridgeError && (
         <CardNote tone="error">
-          {dashboard.error}{" "}
-          <button type="button" className="ac-link" onClick={dashboard.reload}>
+          Deine Ansicht konnte nicht aktualisiert werden.{" "}
+          <button className="ac-link" onClick={dashboard.reload}>
             Erneut laden
           </button>
         </CardNote>
+      )}
+      {dashboard.error && (
+        <RecoveryNotice
+          recovery={dashboard.failure?.recovery ?? "retry_same_request"}
+          onAction={dashboard.reload}
+        />
       )}
     </>
   );
@@ -140,15 +135,6 @@ export function ArnoldDashboardApp({
         Zurück
       </button>
     ) : undefined;
-  const page = (children: ReactNode) => (
-    <div className="ac-page">
-      <div className="ac-head">
-        <span className="ac-label">{PAGE_LABEL[card]}</span>
-        {backLink}
-      </div>
-      {children}
-    </div>
-  );
 
   return (
     <main className="arnold-cards" id="main-content" data-card={card}>
@@ -164,20 +150,31 @@ export function ArnoldDashboardApp({
       {card === "week" && (
         <WeekCard view={view} canWrite={canWrite} onOpen={open} />
       )}
-      {card === "progress" &&
-        page(<ExerciseProgressView client={client} dashboard={view} />)}
-      {card === "history" &&
-        page(<WorkoutHistoryView client={client} dashboard={view} />)}
-      {card === "plan" &&
-        page(
-          <TrainingPlanEditorView
-            client={client}
-            onChanged={dashboard.reload}
-          />,
-        )}
-      {backLink && (card === "today" || card === "week") && (
-        <div style={{ paddingInline: 4 }}>{backLink}</div>
+      {card === "progress" && (
+        <ExerciseProgressView
+          key={`${initial.focus ? initial.source.generated_at : "default"}-${initial.focus?.exercise_id ?? ""}-${initial.focus?.metric ?? ""}`}
+          client={client}
+          dashboard={view}
+          initialExerciseId={initial.focus?.exercise_id ?? undefined}
+          initialMetric={initial.focus?.metric ?? undefined}
+        />
       )}
+      {card === "history" && (
+        <WorkoutHistoryView
+          key={`${initial.focus ? initial.source.generated_at : "default"}-${initial.focus?.workout_id ?? "history"}`}
+          client={client}
+          dashboard={view}
+          initialWorkoutId={initial.focus?.workout_id ?? undefined}
+        />
+      )}
+      {card === "plan" && (
+        <PlanCard
+          client={client}
+          dashboard={view}
+          onChanged={dashboard.reload}
+        />
+      )}
+      {backLink && <div style={{ paddingInline: 4 }}>{backLink}</div>}
     </main>
   );
 }

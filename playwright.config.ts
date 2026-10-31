@@ -1,6 +1,19 @@
 import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "tests/e2e",
+  projects: [
+    { name: "chromium", use: { browserName: "chromium" } },
+    {
+      name: "webkit",
+      use: { browserName: "webkit" },
+      testMatch: [
+        "**/beta-cards.spec.ts",
+        "**/onboarding.spec.ts",
+        "**/arnold-dashboard.spec.ts",
+        "**/arnold-v2-qa.spec.ts",
+      ],
+    },
+  ],
   fullyParallel: false,
   workers: 1,
   reporter: "list",

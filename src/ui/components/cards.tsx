@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, useId, type ReactNode } from "react";
 import { AlertCircle, Minus, Plus } from "lucide-react";
 
 /**
@@ -25,10 +25,11 @@ export function ArnoldCard({
   className?: string;
   busy?: boolean;
   "aria-label"?: string;
+  role?: "region" | "alert" | "status";
 }) {
   return (
     <section
-      className={`ac ac-enter ${className}`}
+      className={`ac ${className}`}
       aria-busy={busy || undefined}
       {...rest}
     >
@@ -142,31 +143,58 @@ export function Stepper({
   unit,
   step,
   min = 0,
+  max = Infinity,
   onChange,
   disabled,
   format = (v) => String(v),
+  onValidityChange,
 }: {
   label: string;
   value: number;
   unit?: string;
   step: number;
   min?: number;
+  max?: number;
   onChange: (value: number) => void;
   disabled?: boolean;
   format?: (value: number) => string;
+  onValidityChange?: (valid: boolean) => void;
 }) {
   const [text, setText] = useState(format(value));
   const [editing, setEditing] = useState(false);
-  useEffect(() => {
-    if (!editing) setText(format(value));
-  }, [value, editing]);
+  const [invalid, setInvalid] = useState(false);
+  const errorId = useId();
+  const displayed = editing || invalid ? text : format(value);
   // Rounded to the step's precision, so 0.1 + 0.2 never shows up as 0.30000004.
-  const change = (delta: number) =>
-    onChange(Math.max(min, Math.round((value + delta) * 1000) / 1000));
-  const commit = (raw: string) => {
+  const valid = (raw: string) => {
     const parsed = Number(raw.replace(",", ".").trim());
-    if (raw.trim() !== "" && Number.isFinite(parsed) && parsed >= min)
-      onChange(Math.round(parsed * 1000) / 1000);
+    return (
+      raw.trim() !== "" &&
+      Number.isFinite(parsed) &&
+      parsed >= min &&
+      parsed <= max &&
+      (unit === "kg" || Number.isInteger(parsed))
+    );
+  };
+  const change = (delta: number) => {
+    setInvalid(false);
+    onValidityChange?.(true);
+    const next = Math.min(
+      max,
+      Math.max(min, Math.round((value + delta) * 1000) / 1000),
+    );
+    setText(format(next));
+    onChange(next);
+  };
+  const commit = (raw: string) => {
+    if (valid(raw)) {
+      onChange(Number(raw.replace(",", ".").trim()));
+      setInvalid(false);
+      onValidityChange?.(true);
+    } else {
+      setInvalid(true);
+      onValidityChange?.(false);
+    }
   };
   return (
     <div className="ac-stepper">
@@ -186,18 +214,27 @@ export function Stepper({
             className="ac-stepper-input"
             inputMode="decimal"
             aria-label={label}
-            value={text}
+            aria-invalid={invalid || undefined}
+            aria-describedby={invalid ? errorId : undefined}
+            value={displayed}
             disabled={disabled}
-            style={{ width: `${Math.max(1, text.length) + 0.4}ch` }}
+            style={{ width: `${Math.max(1, displayed.length) + 0.4}ch` }}
             onFocus={(event) => {
+              setText(event.currentTarget.value);
               setEditing(true);
               event.currentTarget.select();
             }}
             onChange={(event) => {
               setText(event.target.value);
-              commit(event.target.value);
+              setInvalid(!valid(event.target.value));
+              onValidityChange?.(valid(event.target.value));
+              if (valid(event.target.value))
+                onChange(Number(event.target.value.replace(",", ".").trim()));
             }}
-            onBlur={() => setEditing(false)}
+            onBlur={() => {
+              commit(text);
+              setEditing(false);
+            }}
             onKeyDown={(event) => {
               if (event.key === "Enter") event.currentTarget.blur();
             }}
@@ -208,12 +245,20 @@ export function Stepper({
           type="button"
           className="ac-round"
           aria-label={`${label} erhöhen`}
-          disabled={disabled}
+          disabled={disabled || value >= max}
           onClick={() => change(step)}
         >
           <Plus size={17} aria-hidden="true" />
         </button>
       </div>
+      {invalid && (
+        <p className="ac-input-error" id={errorId} role="alert">
+          {Number.isFinite(max)
+            ? `Wähle einen Wert von ${min} bis ${max}.`
+            : `Wähle einen gültigen Wert ab ${min}.`}
+          {unit !== "kg" ? " Bitte eine ganze Zahl." : ""}
+        </p>
+      )}
     </div>
   );
 }
