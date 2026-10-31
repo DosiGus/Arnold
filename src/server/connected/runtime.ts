@@ -87,6 +87,17 @@ export interface ConnectedRuntimeOptions {
 const sheetUrl = (spreadsheetId: string) =>
   `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
 
+/**
+ * The answer of a verified setup (B16): the link and, when Google reported
+ * one, the file's actual name. A missing name stays missing, never invented.
+ */
+const setupResult = (spreadsheetId: string, file: { name?: string }) => ({
+  spreadsheet_url: sheetUrl(spreadsheetId),
+  ...(typeof file.name === "string" && file.name.trim()
+    ? { spreadsheet_name: file.name }
+    : {}),
+});
+
 /** Single-instance development integration. Production still requires Task 007-D. */
 export class ConnectedArnoldRuntime {
   private users = new Map<string, Promise<ConnectedUserRuntime>>();
@@ -552,8 +563,11 @@ export class ConnectedUserRuntime {
   async verifyTracker(context: AuthenticatedArnoldContext) {
     const manifest = await this.manifest.read();
     const google = await this.google(context);
-    await google.verifyFile(manifest.spreadsheetId!, manifest.trackerId);
-    return { spreadsheet_url: sheetUrl(manifest.spreadsheetId!) };
+    const file = await google.verifyFile(
+      manifest.spreadsheetId!,
+      manifest.trackerId,
+    );
+    return setupResult(manifest.spreadsheetId!, file);
   }
   async provision(claim: SetupClaim, context: AuthenticatedArnoldContext) {
     await this.caller(context);
@@ -565,15 +579,16 @@ export class ConnectedUserRuntime {
           "PERMISSION_DENIED",
           "Für dieses Konto ist bereits eine Trainingsdatei eingerichtet.",
         );
-      await google.verifyFile(manifest.spreadsheetId!, manifest.trackerId);
+      const file = await google.verifyFile(
+        manifest.spreadsheetId!,
+        manifest.trackerId,
+      );
       await this.onboarding.completeProvisioning(
         claim,
         manifest.binding!,
         context,
       );
-      return {
-        spreadsheet_url: sheetUrl(manifest.spreadsheetId!),
-      };
+      return setupResult(manifest.spreadsheetId!, file);
     }
     const { handoff } = await this.bindingFor(claim, context);
     if (manifest.binding && manifest.binding !== handoff.oauth_state_binding)
@@ -662,7 +677,10 @@ export class ConnectedUserRuntime {
       manifest = { ...manifest, spreadsheetId: matches[0].id };
       await this.manifest.save(manifest);
     }
-    await google.verifyFile(manifest.spreadsheetId!, manifest.trackerId);
+    const file = await google.verifyFile(
+      manifest.spreadsheetId!,
+      manifest.trackerId,
+    );
     const seed = await this.seed.read();
     const reader = new ArnoldSheetsReadAdapter(
       {
@@ -702,8 +720,6 @@ export class ConnectedUserRuntime {
       manifest.binding!,
       context,
     );
-    return {
-      spreadsheet_url: sheetUrl(manifest.spreadsheetId!),
-    };
+    return setupResult(manifest.spreadsheetId!, file);
   }
 }

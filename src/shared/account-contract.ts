@@ -35,6 +35,17 @@ export const ConnectGoogleInputSchema = z
   );
 export type ConnectGoogleInput = z.infer<typeof ConnectGoogleInputSchema>;
 
+/** Output of `finish_arnold_setup` (B16). */
+export const FinishSetupOutputSchema = z.strictObject({
+  spreadsheet_url: z.string().url(),
+  /**
+   * The file name as Google reported it while verifying the file; the user
+   * may have renamed it. Absent when Google reported none, never invented.
+   */
+  spreadsheet_name: z.string().min(1).optional(),
+});
+export type FinishSetupOutput = z.infer<typeof FinishSetupOutputSchema>;
+
 export const DeleteAccountInputSchema = z.strictObject({
   confirmation_token: z.string().min(16).max(256).optional(),
 });

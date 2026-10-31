@@ -17,6 +17,8 @@ type Sheet = {
 };
 type File = {
   id: string;
+  /** The file name as Google reports it; tests may rename it. */
+  name: string;
   owner: string;
   mimeType: string;
   appProperties: Record<string, string>;
@@ -127,6 +129,7 @@ export class ConnectedGoogle {
         const id = `spreadsheet_${++this.creates}_${owner}`;
         const file: File = {
           id,
+          name: body.name,
           owner,
           mimeType: body.mimeType,
           appProperties: body.appProperties,
@@ -275,6 +278,7 @@ export class ConnectedGoogle {
   private view(file: File) {
     return {
       id: file.id,
+      name: file.name,
       mimeType: file.mimeType,
       ownedByMe: true,
       trashed: false,

@@ -1273,3 +1273,33 @@ describe("B15: completed setup data follows the 30-day rule", () => {
     expect(google.creates).toBe(1);
   });
 });
+
+describe("B16: finish_arnold_setup names the verified file", () => {
+  it("returns the name Google reports, also when repeated after completion", async () => {
+    const { claim } = await connected("alice");
+    const first = await call("alice", "finish_arnold_setup", claim);
+    expect(first.isError, JSON.stringify(first.content)).toBeFalsy();
+    expect(first.structuredContent).toMatchObject({
+      spreadsheet_url: expect.stringMatching(/^https:\/\/docs\.google\.com\//),
+      spreadsheet_name: "Arnold – Mein Training",
+    });
+
+    // The user renamed the file in Drive: Arnold reports the real name.
+    const file = [...google.files.values()].find((f) => f.owner === "alice")!;
+    file.name = "Mein Krafttraining 2026";
+    const again = await call("alice", "finish_arnold_setup", claim);
+    expect(again.structuredContent).toMatchObject({
+      spreadsheet_name: "Mein Krafttraining 2026",
+    });
+    expect(JSON.stringify(again.content)).toContain("Mein Krafttraining 2026");
+  });
+
+  it("leaves the name out when Google reports none", async () => {
+    const { claim } = await connected("alice");
+    const file = [...google.files.values()].find((f) => f.owner === "alice")!;
+    file.name = "";
+    const result = await call("alice", "finish_arnold_setup", claim);
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).not.toHaveProperty("spreadsheet_name");
+  });
+});

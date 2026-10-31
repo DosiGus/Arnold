@@ -8,6 +8,7 @@ import {
   DeleteAccountInputSchema,
   ConnectGoogleInputSchema,
   DeleteAccountPublicResponseSchema,
+  FinishSetupOutputSchema,
   StoredDataSchema,
 } from "../../shared/account-contract.js";
 import { DeletionConfirmationError } from "./account-deletion.js";
@@ -79,7 +80,7 @@ export function registerGoogleTools(
     {
       title: "Dateieinrichtung prüfen und abschließen",
       inputSchema: SetupClaimSchema,
-      outputSchema: z.object({ spreadsheet_url: z.string().url() }),
+      outputSchema: FinishSetupOutputSchema,
       description:
         "Nach der Google-Freigabe einen unterbrochenen Einrichtungsversuch prüfen und fortsetzen. Unklare Dateierstellung wird anhand der eigenen Tracker-ID geprüft; niemals blind eine zweite Datei erstellen. Sitzungsnachweis erforderlich.",
       annotations: {
@@ -93,9 +94,14 @@ export function registerGoogleTools(
       guarded(async () => {
         const caller = context();
         const user = await runtime.forUser(caller);
-        return response(
+        const setup = FinishSetupOutputSchema.parse(
           await user.provision(claim, caller),
-          "Persönliche Trainingsdatei geprüft. Einrichtung abgeschlossen.",
+        );
+        return response(
+          setup,
+          setup.spreadsheet_name
+            ? `Persönliche Trainingsdatei „${setup.spreadsheet_name}“ geprüft. Einrichtung abgeschlossen.`
+            : "Persönliche Trainingsdatei geprüft. Einrichtung abgeschlossen.",
         );
       }),
   );
