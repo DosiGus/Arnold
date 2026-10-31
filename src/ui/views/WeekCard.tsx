@@ -72,7 +72,11 @@ export function WeekCard({
   return (
     <ArnoldCard
       label={
-        week?.is_current_week ? "Diese Woche" : week ? `Woche vom ${dateLabel(week.week_start)}` : "Deine Woche"
+        week?.is_current_week
+          ? "Diese Woche"
+          : week
+            ? `Woche vom ${dateLabel(week.week_start)}`
+            : "Deine Woche"
       }
       title={
         goal
@@ -106,7 +110,10 @@ export function WeekCard({
       {week && (
         <StatGrid
           items={[
-            { label: "Arbeitssätze", value: week.working_sets },
+            {
+              label: week.working_sets === 1 ? "Arbeitssatz" : "Arbeitssätze",
+              value: week.working_sets,
+            },
           ]}
         />
       )}
@@ -128,7 +135,7 @@ export function WeekCard({
         </div>
       )}
       {warnings.map((notice) => (
-        <CardNote key={notice.code}>{notice.title}</CardNote>
+        <CardNote key={notice.code}>{notice.message}</CardNote>
       ))}
       <CardActions
         primary={{ label: "Fortschritt", onClick: () => onOpen("progress") }}

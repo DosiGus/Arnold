@@ -29,7 +29,7 @@ export {
 } from "../shared/arnold-format";
 
 const SHORT = new Intl.DateTimeFormat("de-DE", {
-  day: "2-digit",
+  day: "numeric",
   month: "short",
   timeZone: "UTC",
 });

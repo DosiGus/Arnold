@@ -64,7 +64,9 @@ describe("model context", () => {
   it("reports the week with the engine's numbers", () => {
     const text = weekContext(view);
     expect(text).toContain("Wochenkarte");
-    expect(text).toMatch(/\d+ (von \d+ Trainingstagen|Trainingstage?), \d+ Arbeitss[äa]tze?/);
+    expect(text).toMatch(
+      /\d+ (von \d+ Trainingstagen|Trainingstage?), \d+ Arbeitss[äa]tze?/,
+    );
     expect(text).toContain("nicht wiederholen");
   });
 
