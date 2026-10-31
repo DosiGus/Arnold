@@ -1,22 +1,54 @@
 # Handoff Worker C – Release, Betrieb, Beta-Abnahme
 
-Stand 31.10.2026, Branch `feat/beta-ops`.
+Stand 31.10.2026. Integriert in `main` (`46a964a`), live als `arnold-00011-h6s`.
 
 ## Überblick
 
-| Aufgabe | Commit    | Stand                                                                                                                                                                                                                                                                                     |
-| ------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| C1      | `9580ba7` | Fertig. Archiv 1.314 → 124 Dateien (unten).                                                                                                                                                                                                                                               |
-| C2      | lokal     | Workflow fertig, liegt auf dem lokalen Branch `beta-ops-with-ci`. GitHub nimmt ihn erst an, wenn Kevins GitHub-Zugang die Berechtigung `workflow` hat (`gh auth refresh -h github.com -s workflow`). Danach: Commit auf `feat/beta-ops` holen, pushen, Lauf grün, Schutzregel für `main`. |
-| C3      | `82c73a0` | Deploy-Skript fertig und Sperren lokal geprüft. Rollback-Übung **offen** (Freigabe Kevin).                                                                                                                                                                                                |
-| C4      | `5aa3c19` | Übungsskript fertig. Ausführung **offen** (Freigabe Kevin).                                                                                                                                                                                                                               |
-| C5      | `6cc15aa` | Monitoring-Skript fertig. Einrichtung und Alarm-Übungen **offen** (Freigabe Kevin).                                                                                                                                                                                                       |
-| C6      | `969f996` | Entwürfe fertig, über B12-Routen getestet (200, CSP ohne Skripte). Freigabe K8 offen.                                                                                                                                                                                                     |
-| C7      | `5831cdf` | Fertig, Platzhalter für Tarif (K4) und Feedback-Kanal (K9).                                                                                                                                                                                                                               |
-| C8      | `a7e7d94` | Fertig, an B gemeldet; B hat B13 darauf aufgebaut.                                                                                                                                                                                                                                        |
-| C9      | `5ae00e6` | Fertig. Labels `beta-bug`, `beta-ux`, `beta-wunsch` angelegt. Kanal: Entscheidung K9.                                                                                                                                                                                                     |
-| C10     | –         | Wartet auf Kevins Zeichen, dass A fertig ist (31.10.: kein Deploy bis dahin).                                                                                                                                                                                                             |
-| C11     | –         | Nach C10.                                                                                                                                                                                                                                                                                 |
+| Aufgabe | Commit    | Stand                                                                                                                                                                                                                                                                                                                                  |
+| ------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C1      | `9580ba7` | Fertig. Archiv 1.314 → 124 Dateien (unten).                                                                                                                                                                                                                                                                                            |
+| C2      | `ef9f9e4` | Fertig. CI läuft bei jedem Push und PR, inklusive WebKit. Erster Lauf auf `main` deckte einen echten UI-Wettlauf auf (B19, PR #1), danach grün (Lauf 41236118563). Schutzregel für `main` nicht möglich: privates Repository im Free-Tarif, GitHub verlangt Pro. Ersatz: Das Deploy-Skript deployt nur Commits mit grünem `check.yml`. |
+| C3      | `82c73a0` | Deploy-Skript fertig und Sperren lokal geprüft. Rollback-Übung **offen** (Freigabe Kevin).                                                                                                                                                                                                                                             |
+| C4      | `5aa3c19` | Übungsskript fertig. Ausführung **offen** (Freigabe Kevin).                                                                                                                                                                                                                                                                            |
+| C5      | `6cc15aa` | Monitoring-Skript fertig. Einrichtung und Alarm-Übungen **offen** (Freigabe Kevin).                                                                                                                                                                                                                                                    |
+| C6      | `969f996` | Entwürfe fertig, über B12-Routen getestet (200, CSP ohne Skripte). Freigabe K8 offen.                                                                                                                                                                                                                                                  |
+| C7      | `5831cdf` | Fertig, Platzhalter für Tarif (K4) und Feedback-Kanal (K9).                                                                                                                                                                                                                                                                            |
+| C8      | `a7e7d94` | Fertig, an B gemeldet; B hat B13 darauf aufgebaut.                                                                                                                                                                                                                                                                                     |
+| C9      | `5ae00e6` | Fertig. Labels `beta-bug`, `beta-ux`, `beta-wunsch` angelegt. Kanal: Entscheidung K9.                                                                                                                                                                                                                                                  |
+| C10     | `46a964a` | Fertig. Reihenfolge backend → design → ops → C2 → B19 ohne Konflikte; lokal und in der CI grün (1.423 Vitest, 87 Playwright in Chromium und WebKit). Deploy durch den Lead mit dem Skript (Kevins Freigabe in dessen Session). Rauchtest siehe unten.                                                                                  |
+| C11     | –         | Nach C10.                                                                                                                                                                                                                                                                                                                              |
+
+## Live-Stand
+
+- Revision `arnold-00011-h6s`, 100 % Traffic, Label `commit=46a964ad0eb6972133cf80d07454ffb0f01d3de7`, Profil connected.
+- Rauchtest (Lead, von C lesend nachgeprüft): `/health` meldet `release` = `46a964ad0eb6…`; `/mcp` ohne Token 401; `/datenschutz`, `/bedingungen`, `/support` je 200; beide Adressen antworten; keine Logzeile `severity>=ERROR` oder `outcome: thrown` in den 30 Minuten danach.
+- Pro Deploy entsteht jetzt genau eine Revision (vorher zwei).
+- Rollback-Ziel bei Problemen: `arnold-00010-zn5` (Stand vor der Beta, ohne Kartenoberfläche; liest dieselben Daten).
+
+## Offen
+
+| Punkt                                             | Wer       | Stand                                                                                                         |
+| ------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------- |
+| C3 Rollback-Übung                                 | C         | wartet auf Kevins Okay in der Session von C                                                                   |
+| C4 Backup-Übung                                   | C         | wartet auf Kevins Okay (`bash scripts/backup-drill.sh`, nur Testdatei)                                        |
+| C5 Alarme und Testalarme                          | C         | wartet auf Kevins Okay (`bash scripts/setup-monitoring.sh`, dann `drill thrown`, `drill 5xx`, `drill uptime`) |
+| Interne Abnahme                                   | Kevin + C | nach `ABNAHME.md`; Protokoll folgt hier                                                                       |
+| C11 GUIDE, README, Aufräumen                      | C         | nach der Abnahme                                                                                              |
+| Playwright überschreibt `docs/beta/screens/*.png` | A         | lokale Läufe hinterlassen einen schmutzigen Checkout; nach der Beta hinter einen Schalter legen               |
+
+## K-Liste (Kevin)
+
+| ID  | Aufgabe                               | Stand                                                                                  |
+| --- | ------------------------------------- | -------------------------------------------------------------------------------------- |
+| K1  | D1–D10 bestätigen                     | offen (Worker arbeiten mit den Empfehlungen)                                           |
+| K2  | Google Auth Platform prüfen           | offen                                                                                  |
+| K3  | WorkOS nur Eingeladene, JWT-Template  | offen; `offline_access` und Refresh-Tokens bietet WorkOS an                            |
+| K4  | ChatGPT-Tarif der Tester              | **dringend**: OpenAI nennt eigene MCP-Server nur noch für Business, Enterprise und Edu |
+| K5  | Budgetalarm                           | offen (Schritte in `docs/BETRIEB.md`, Kosten)                                          |
+| K6  | Tester und zwei Testkonten            | offen                                                                                  |
+| K7  | Tester eintragen                      | nach interner Abnahme                                                                  |
+| K8  | Datenschutz und Bedingungen freigeben | offen; Platzhalter gelb markiert                                                       |
+| K9  | Support- und Feedback-Weg             | offen; Vorschlag in `docs/beta/FEEDBACK.md`                                            |
 
 ## Befunde
 
