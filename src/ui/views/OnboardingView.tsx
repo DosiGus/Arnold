@@ -50,7 +50,7 @@ export function OnboardingView({
     fileGuard.current = true;
     setFileError(false);
     try {
-      setFile(await client.finishSetup());
+      setFile(await client.setupFile());
     } catch {
       setFileError(true);
     } finally {

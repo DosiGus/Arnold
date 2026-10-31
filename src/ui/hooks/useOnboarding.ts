@@ -110,6 +110,17 @@ export function useOnboarding(
   const reload = useCallback(
     async (follow = false) => {
       const token = ++generation.current;
+      if (
+        stateRef.current?.session.status === "COMPLETED" &&
+        !client.getOnboardingClaim()
+      ) {
+        // A completed account no longer needs its expired setup credential.
+        // The completion card verifies and restores the sheet through the account read tool.
+        setUi("READY");
+        setError("");
+        setFailure(undefined);
+        return stateRef.current;
+      }
       try {
         const next = await client.onboardingState();
         if (token !== generation.current) return undefined;
