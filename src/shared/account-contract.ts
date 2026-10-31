@@ -63,3 +63,39 @@ export const DELETE_ACCOUNT_ERROR_CODES = [
   "GOOGLE_REAUTH_REQUIRED",
   "STORAGE_UNAVAILABLE",
 ] as const;
+
+/* ------------------------------------------------------- stored data (B7) */
+
+export const STORED_DATA_KEYS = [
+  "account",
+  "google_connection",
+  "setup",
+  "tracker_mapping",
+  "write_journal",
+  "audit_log",
+  "setup_snapshot",
+] as const;
+
+/** One kind of data Arnold keeps on its own server about the user. */
+export const StoredDataItemSchema = z.strictObject({
+  key: z.enum(STORED_DATA_KEYS),
+  /** German label for the user. */
+  label: z.string(),
+  /** What it contains, in plain German. Never the content itself. */
+  contains: z.string(),
+  /** Number of records, where counting makes sense. */
+  count: z.number().int().nonnegative().nullable(),
+  oldest_at: isoDateTime.nullable(),
+  newest_at: isoDateTime.nullable(),
+  /** How long it is kept, in plain German. */
+  kept: z.string(),
+});
+export type StoredDataItem = z.infer<typeof StoredDataItemSchema>;
+
+export const StoredDataSchema = z.strictObject({
+  items: z.array(StoredDataItemSchema),
+  /** The training data itself lives in the user's own Google sheet. */
+  google_sheet_url: z.string().url().nullable(),
+  retention_days: z.number().int().positive(),
+});
+export type StoredData = z.infer<typeof StoredDataSchema>;

@@ -37,7 +37,12 @@ import {
 } from "../workout/infrastructure.js";
 import { DeletionTokens, deletionSummary } from "./account-deletion.js";
 import { newTrackerDataset } from "./catalog.js";
-import { pruneUserDirectory, retentionCutoff } from "./retention.js";
+import {
+  DEFAULT_RETENTION_DAYS,
+  pruneUserDirectory,
+  retentionCutoff,
+} from "./retention.js";
+import { describeStoredData } from "./stored-data.js";
 import { GoogleTrackerApi } from "./google-api.js";
 import { LocalAuditLog, LocalDraftRepository, LocalState } from "./state.js";
 
@@ -64,6 +69,8 @@ export interface ConnectedRuntimeOptions {
   fetchImpl?: FetchLike;
   /** Clock for confirmation tokens; injectable for tests. */
   now?: () => number;
+  /** Retention period in days, as reported to the user (B7/B8). */
+  retentionDays?: number;
 }
 
 const sheetUrl = (spreadsheetId: string) =>
@@ -109,6 +116,31 @@ export class ConnectedArnoldRuntime {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
       throw error;
     }
+  }
+  /** B7: what Arnold keeps about this user, without creating anything. */
+  async storedData(context: AuthenticatedArnoldContext) {
+    await this.options.auth.assertActive(context);
+    const manifest = await this.storedManifest(context.userId);
+    const connection = await this.options.connections.status(context);
+    const retentionDays = this.options.retentionDays ?? DEFAULT_RETENTION_DAYS;
+    return {
+      items: await describeStoredData({
+        directory: this.userDirectory(context.userId),
+        retentionDays,
+        account: await this.options.auth.accountDates(context.userId),
+        google: connection
+          ? {
+              connected_at_utc: connection.connected_at_utc,
+              updated_at_utc: connection.updated_at_utc,
+              has_email: connection.google_email !== null,
+            }
+          : null,
+      }),
+      google_sheet_url: manifest?.spreadsheetId
+        ? sheetUrl(manifest.spreadsheetId)
+        : null,
+      retention_days: retentionDays,
+    };
   }
   /** First stage of account deletion: what goes, what stays, and a token. */
   async prepareAccountDeletion(context: AuthenticatedArnoldContext) {

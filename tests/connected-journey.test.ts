@@ -1051,3 +1051,57 @@ describe("B8: retention in the connected runtime", () => {
     expect((await call("alice", "get_arnold_dashboard")).isError).toBeFalsy();
   });
 });
+
+describe("B7: get_arnold_stored_data", () => {
+  it("lists kinds, counts and dates of stored data, never their content", async () => {
+    await connected("alice");
+    await startWorkout("alice");
+    const result = await call("alice", "get_arnold_stored_data");
+    expect(result.isError, JSON.stringify(result.content)).toBeFalsy();
+    const data = result.structuredContent as {
+      items: { key: string; count: number | null; newest_at: string | null }[];
+      google_sheet_url: string | null;
+      retention_days: number;
+    };
+    expect(data.items.map((item) => item.key).sort()).toEqual(
+      [
+        "account",
+        "audit_log",
+        "google_connection",
+        "setup",
+        "setup_snapshot",
+        "tracker_mapping",
+        "write_journal",
+      ].sort(),
+    );
+    expect(data.retention_days).toBe(30);
+    expect(data.google_sheet_url).toMatch(
+      /^https:\/\/docs\.google\.com\/spreadsheets\/d\/spreadsheet_\d+_alice\/edit$/,
+    );
+    const journal = data.items.find((item) => item.key === "write_journal")!;
+    expect(journal.count).toBeGreaterThan(0);
+    expect(Date.parse(journal.newest_at!)).toBeLessThanOrEqual(Date.now());
+    const text = JSON.stringify(result);
+    for (const secret of [
+      "alice@example.test",
+      "Mein Trainingsplan",
+      "refresh_",
+      "bench-press",
+    ])
+      expect(text).not.toContain(secret);
+  });
+
+  it("shows no Google data and no sheet for a user who never connected", async () => {
+    const result = await call("newcomer", "get_arnold_stored_data");
+    expect(result.isError, JSON.stringify(result.content)).toBeFalsy();
+    const data = result.structuredContent as {
+      items: { key: string }[];
+      google_sheet_url: string | null;
+    };
+    const keys = data.items.map((item) => item.key);
+    expect(keys).toContain("account");
+    expect(keys).not.toContain("google_connection");
+    expect(keys).not.toContain("write_journal");
+    expect(data.google_sheet_url).toBeNull();
+  });
+});

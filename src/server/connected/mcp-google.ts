@@ -7,6 +7,7 @@ import {
   DeleteAccountDeletedSchema,
   DeleteAccountInputSchema,
   DeleteAccountPublicResponseSchema,
+  StoredDataSchema,
 } from "../../shared/account-contract.js";
 import { DeletionConfirmationError } from "./account-deletion.js";
 import { ARNOLD_RESOURCE_URI } from "../mcp-arnold.js";
@@ -124,6 +125,32 @@ export function registerGoogleTools(
               : null,
           },
           "Zustand der eigenen Google-Verbindung geladen.",
+        );
+      }),
+  );
+  server.registerTool(
+    "get_arnold_stored_data",
+    {
+      title: "Bei Arnold gespeicherte Daten anzeigen",
+      inputSchema: z.strictObject({}),
+      outputSchema: StoredDataSchema,
+      description:
+        "Zeigt, welche Daten Arnold auf dem eigenen Server über den Nutzer speichert, seit wann und wie lange. Nur Art, Anzahl und Datum, nie Inhalte. Die Trainingsdaten selbst liegen in der eigenen Google-Tabelle; das Ergebnis nennt ihren Link. Für Fragen wie 'Was speichert ihr über mich?' oder einen Datenexport.",
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async () =>
+      guarded(async () => {
+        const data = StoredDataSchema.parse(
+          await runtime.storedData(context()),
+        );
+        return response(
+          data,
+          `${data.items.length} Arten von Daten bei Arnold gespeichert. Die Trainingsdaten liegen in der eigenen Google-Tabelle${data.google_sheet_url ? "" : " (noch nicht angelegt)"}.`,
         );
       }),
   );

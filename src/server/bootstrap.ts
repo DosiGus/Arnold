@@ -82,14 +82,15 @@ export async function createConfiguredHttpApp(
       jwksUri: "https://www.googleapis.com/oauth2/v3/certs",
     }),
   });
+  // D4: journals, snapshots and audit are deleted after the retention period,
+  // at start and then daily. An invalid period stops the start (fail closed).
+  const retentionDays = retentionDaysFrom(env);
   const runtime = new ConnectedArnoldRuntime({
     directory: resolve(directory, "users"),
     auth,
     connections,
+    retentionDays,
   });
-  // D4: journals, snapshots and audit are deleted after the retention period,
-  // at start and then daily. An invalid period stops the start (fail closed).
-  const retentionDays = retentionDaysFrom(env);
   scheduleRetention(() =>
     runtime.applyRetention(retentionDays).catch((error: unknown) => {
       logServerError("retention failed", error);

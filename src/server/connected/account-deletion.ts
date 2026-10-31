@@ -68,7 +68,7 @@ export function deletionSummary(input: {
       "Deine Arnold-Anmeldung (interne Kennung, keine E-Mail-Adresse)",
       ...(input.googleConnected
         ? [
-            "Deine Google-Freigabe (verschlüsselt gespeichert; wird bei Google widerrufen)",
+            "Deine Google-Freigabe (verschlüsselt gespeichert; wird bei Google widerrufen) und die E-Mail-Adresse deines Google-Kontos",
           ]
         : []),
       "Dein Einrichtungsstand mit Profilangaben und Planentwurf",
