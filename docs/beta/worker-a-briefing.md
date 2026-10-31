@@ -37,6 +37,13 @@ Seit Commit `3af023a` in `main`, du kannst direkt darauf bauen:
 - **Ungewöhnliche Werte (Satzkarte):** Über 500 kg oder über 100 Wiederholungen antwortet `log_workout_sets` bzw. `update_set` mit `CONFIRMATION_REQUIRED`. Die Karte fragt „Stimmt das?“ und sendet bei Ja erneut mit `confirm_unusual_values: true`. Grenzen in `UNUSUAL_SET_LIMITS` (`workout-contract.ts`).
 - **Datum in der Zukunft:** `DATE_IN_FUTURE` mit `recovery: "none"`; die Karte zeigt einen kurzen Hinweis.
 
+**Nachtrag 2, Branch `feat/beta-backend` (`bfd2916`), erfüllt die Wünsche aus `handoff-A.md`:**
+
+- **Abschlusskarte (D7):** `finish_arnold_setup` liefert `spreadsheet_name`, den bei Google geprüften Namen (`FinishSetupOutputSchema`). Fehlt der Name, fehlt das Feld; nie einen Namen erfinden.
+- **Direkt öffnen:** `show_arnold_dashboard` nimmt `exercise_id` und `metric` (nur `card: "progress"`) sowie `workout_id` (nur `card: "history"`). Die Antwort enthält das geprüfte `focus`; nutze **`focus`, nicht die rohe Tool-Eingabe**. Unbekannte ID: `EXERCISE_NOT_FOUND` oder `WORKOUT_NOT_FOUND` mit `reload_then_retry`. Falsche Kombination: `VALIDATION_ERROR`.
+- **Fortschrittsvergleich:** Die Fortschrittsantwort hat `comparisons` (pro Kennzahl) und `selected_comparison` mit `{ metric, status, reason, from_date, to_date, from_value, to_value, delta, unit, comparability_key }`. Damit zeigt die Karte „+5 kg seit …“ ohne eigene Rechnung. Gründe, wenn kein Vergleich möglich ist: `comparison_needs_two_dates`, `comparison_mixed_load_basis`, `no_computable_sets`; dafür einen ruhigen Hinweistext statt einer Zahl.
+- Um gegen diese Verträge zu bauen, `origin/feat/beta-backend` in deinen Branch holen. Erst nach dem Merge von B stehen sie in `main`.
+
 ## Designprinzipien (verbindlich, freigegeben am 30.10.)
 
 - **Eine Karte, ein Gedanke.** Pro Karte höchstens 2 Buttons unten und höchstens 4 Zahlen. Eine dritte, leise Textaktion („Training abbrechen“) ist erlaubt.
