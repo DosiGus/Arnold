@@ -22,7 +22,13 @@ Seit Commit `3af023a` in `main`, du kannst direkt darauf bauen:
 - Fehler von Workout-, Plan- und Einrichtungs-Tools haben das Pflichtfeld `recovery` im Fehlerobjekt.
 - Lese-Tools (Dashboard, Plan lesen, Einrichtungssperre) tragen den Fehler stattdessen in `_meta.arnold = { code, retryable, recovery }`; das Dashboard zusätzlich `failure`.
 - `ViewWeekSchema.trained_dates`: ISO-Daten der abgeschlossenen Einheiten, schon von der Engine befüllt.
-- `src/shared/account-contract.ts`: Ein- und Ausgabe von `delete_arnold_account` (`stage: "confirm" | "deleted"`, `sheet_url` kann `null` sein). Das Tool selbst baut B noch (B6).
+- `src/shared/account-contract.ts`: Ein- und Ausgabe von `delete_arnold_account` (`stage: "confirm" | "deleted"`, `sheet_url` kann `null` sein).
+- **`delete_arnold_account` ist gebaut** (Branch `feat/beta-backend`, Commit `668e21f`, kommt mit dem nächsten Merge von B nach `main`):
+  - Das Tool öffnet die Arnold-Karte (`_meta.ui.resourceUri`).
+  - `structuredContent` (sieht ChatGPT) folgt `DeleteAccountConfirmPublicSchema` **ohne** Token.
+  - Das Bestätigungstoken steht nur in `_meta.arnold.delete_account` (volle Antwort nach `DeleteAccountConfirmSchema`).
+  - Die Karte erkennt `stage: "confirm"` und sendet beim Klick `delete_arnold_account` mit `confirmation_token` per `callServerTool`. Das Token gilt 5 Minuten und nur einmal.
+  - Ist es ungültig oder abgelaufen, kommt `_meta.arnold.code = "CONFIRMATION_INVALID"` mit `recovery: "start_over"`. Die Karte bietet dann an, neu zu beginnen.
 - Neuer Fehlercode `SHEET_CAPACITY_EXCEEDED` mit `recovery: "contact_support"`.
 
 ## Designprinzipien (verbindlich, freigegeben am 30.10.)
