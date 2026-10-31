@@ -59,7 +59,7 @@ export function registerGoogleTools(
       inputSchema: ConnectGoogleInputSchema,
       outputSchema: z.object({ authorization_url: z.string().url() }),
       description:
-        "Verbindet Google mit Arnold. Während der Einrichtung nach ausdrücklicher Planbestätigung mit onboarding_session_id und session_token aufrufen: Danach erstellt Arnold die eigene Trainingsdatei und übernimmt genau den bestätigten Plan; keine Dateierstellung vor dieser Freigabe. Ist Arnold schon eingerichtet und die Google-Freigabe abgelaufen (GOOGLE_REAUTH_REQUIRED), ohne Angaben aufrufen: Das verbindet dasselbe Google-Konto neu, die bestehende Trainingsdatei bleibt. Den zurückgegebenen Link öffnen und selbst bei Google freigeben.",
+        "Verbindet Google mit Arnold. Während der Einrichtung nach ausdrücklicher Planbestätigung mit onboarding_session_id und session_token aufrufen: Danach erstellt Arnold die eigene Trainingsdatei und übernimmt genau den bestätigten Plan; keine Dateierstellung vor dieser Freigabe. Ist Arnold schon eingerichtet und die Google-Freigabe abgelaufen (GOOGLE_REAUTH_REQUIRED), ohne Angaben aufrufen: Das verbindet dasselbe Google-Konto neu, die bestehende Trainingsdatei bleibt. Antwortet das Tool mit SETUP_REQUIRED, zuerst die Einrichtung über show_arnold_onboarding vorschlagen. Den zurückgegebenen Link öffnen und selbst bei Google freigeben.",
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -172,7 +172,7 @@ export function registerGoogleTools(
       inputSchema: DeleteAccountInputSchema,
       outputSchema: DeleteAccountPublicResponseSchema,
       description:
-        "Nur wenn der Nutzer ausdrücklich sein Arnold-Konto löschen will. Ohne Token aufrufen: Das zeigt eine Karte mit allem, was gelöscht wird, und was bleibt (die eigene Google-Tabelle bleibt erhalten). Gelöscht wird erst, wenn der Nutzer in der Karte auf Löschen klickt; die Karte sendet dafür ein Bestätigungstoken. confirmation_token NIE selbst senden, raten oder aus dem Chat übernehmen. Vorher im Chat nachfragen, ob der Nutzer wirklich löschen will.",
+        "Nur wenn der Nutzer ausdrücklich sein Arnold-Konto löschen will. Löschen entfernt alles, was Arnold speichert; Trainingsdaten bleiben nur in der eigenen Google-Tabelle im Drive des Nutzers erhalten, nicht bei Arnold. Will der Nutzer etwas bei Arnold behalten, das vorher erklären. Ohne Token aufrufen: Das zeigt eine Karte mit allem, was gelöscht wird, und was bleibt (die eigene Google-Tabelle bleibt erhalten). Gelöscht wird erst, wenn der Nutzer in der Karte auf Löschen klickt; die Karte sendet dafür ein Bestätigungstoken. confirmation_token NIE selbst senden, raten oder aus dem Chat übernehmen. Vorher im Chat nachfragen, ob der Nutzer wirklich löschen will.",
       annotations: {
         readOnlyHint: false,
         destructiveHint: true,

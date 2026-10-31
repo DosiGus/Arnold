@@ -16,13 +16,13 @@ import {
 
 const descriptions: Record<WriteOperation, string> = {
   start_workout:
-    "Startet eine Trainingseinheit, optional mit einer unveränderten Planversion. Gleiche request_id für Retries verwenden.",
+    "Startet eine Trainingseinheit, optional mit einer unveränderten Planversion. workout_date_local ist das lokale Kalenderdatum des Nutzers (für „gestern“ der gestrige Tag); ein Datum in der Zukunft wird mit DATE_IN_FUTURE abgelehnt. Gleiche request_id für Retries verwenden.",
   log_workout_sets:
-    "Speichert einen oder mehrere tatsächliche Sätze als geprüften Batch. Lastbasis, Wiederholungsbasis, Geräteanzahl, Ausführung und Seite sind ausdrücklich erforderlich; nichts wird verdoppelt oder geraten.",
+    "Speichert einen oder mehrere tatsächliche Sätze als geprüften Batch. Nur aufrufen, wenn Übung, Wiederholungen und Gewicht (oder Körpergewicht) genannt sind; fehlt etwas oder widersprechen sich die Angaben, zuerst nachfragen. Lastbasis, Wiederholungsbasis, Geräteanzahl, Ausführung und Seite sind ausdrücklich erforderlich; nichts wird verdoppelt oder geraten (Kurzhanteln: load_basis per_implement, implement_count 2). Anstrengung als rir, nicht als rpe. Über 500 kg oder über 100 Wiederholungen antwortet Arnold mit CONFIRMATION_REQUIRED: dann beim Nutzer nachfragen und nur nach ausdrücklichem Ja mit confirm_unusual_values: true erneut senden.",
   update_set:
-    "Korrigiert einen Satz anhand stabiler set_id und expected_row_revision. Abgeschlossene Workouts benötigen correct_completed, correction_reason und besondere Berechtigung.",
+    "Korrigiert einen gespeicherten Satz anhand stabiler set_id und expected_row_revision, z. B. „10 statt 8 Wiederholungen“; nicht verwerfen und neu anlegen. Abgeschlossene Workouts benötigen correct_completed, correction_reason und besondere Berechtigung. Für ungewöhnliche Werte gilt dieselbe Bestätigung wie bei log_workout_sets.",
   void_set:
-    "Storniert einen Satz als Tombstone anhand set_id und expected_row_revision; keine physische Löschung. Bei Retry dieselbe request_id verwenden.",
+    "Storniert einen Satz als Tombstone anhand set_id und expected_row_revision; keine physische Löschung. Bei mehreren möglichen Sätzen zuerst fragen, welcher gemeint ist. Bei Retry dieselbe request_id verwenden.",
   complete_workout:
     "Schließt ein laufendes Training mit mindestens einem aktiven Satz ab. expected_row_revision ist erforderlich; Endzeit nur angeben, wenn bekannt.",
   cancel_workout:

@@ -368,7 +368,7 @@ describe("historical data stays intact across a plan change", () => {
     });
     const started = await h.service.startWorkout({
       request_id: "w-start",
-      workout_date_local: "2026-06-02",
+      workout_date_local: "2026-06-01",
       timezone: "Europe/Berlin",
       session_name: "Push",
     });
@@ -389,7 +389,7 @@ describe("historical data stays intact across a plan change", () => {
     });
     const started = await h.service.startWorkout({
       request_id: "w1",
-      workout_date_local: "2026-06-02",
+      workout_date_local: "2026-06-01",
       timezone: "Europe/Berlin",
       session_name: "Push",
     });

@@ -210,6 +210,12 @@ export const ARNOLD_INSTRUCTIONS = [
   "In der Einrichtung erfasst die App die Angaben per Button. Im Chat begleiten, kurz erklären und nur fragen, was die App nicht abfragt. Der Text jedes Einrichtungswerkzeugs sagt, was als Nächstes zu tun ist.",
   "Die Arnold-Karten melden dir still, was gerade zu sehen ist und welche Sätze gespeichert sind (mit set_id); darauf bei Rückfragen und Korrekturen zurückgreifen. Schickt die App „Training beendet: …“, kurz würdigen, die Zahlen nicht wiederholen und höchstens einen nächsten Schritt vorschlagen.",
   "Einen Trainingsplan nie im Namen des Nutzers bestätigen.",
+  // B13: what the chat test corpus expects when input is unclear.
+  "Nachfragen statt raten: Satz nur speichern, wenn Übung, Wiederholungen und Gewicht (oder Körpergewicht) klar sind; sonst genau das Fehlende erfragen. Keine Sätze, Gewichte oder Übungen erfinden („Ich hab heute Beine gemacht“ heißt nachfragen). Widersprechen sich Angaben (3 Sätze, aber „insgesamt 4“), nachfragen und nichts speichern.",
+  "Datum: workout_date_local ist das lokale Kalenderdatum des Nutzers; „gestern“ ist der gestrige lokale Tag, auch kurz nach Mitternacht. Ein Training in der Zukunft gibt es nicht: nach dem richtigen Datum fragen.",
+  "Gewichte: Bei Kurzhanteln („die 12er“) gilt das Gewicht je Hantel; ist das nicht eindeutig, nachfragen und die Annahme in der Antwort nennen. Ungewöhnliche Werte (über 500 kg oder über 100 Wiederholungen) erst bestätigen lassen. Anstrengung als RIR („noch 0 / 1–2 / 3+ Wiederholungen im Tank“) speichern, nicht als RPE; RPE 8 entspricht etwa RIR 1–2.",
+  "Korrekturen eines gespeicherten Satzes mit update_set, nicht verwerfen und neu anlegen. Bei mehreren möglichen Sätzen, Trainings oder Entwürfen zuerst fragen, welcher gemeint ist.",
+  "Das Wochenziel sind die Trainingstage pro Woche aus dem aktiven Plan (days_per_week); zwei Einheiten an einem Tag zählen als ein Tag. Ein anderes Ziel heißt: eine neue Planversion entwerfen und erst nach Rückfrage aktivieren.",
 ].join(" ");
 
 export function createArnoldMcpServer(
@@ -295,7 +301,7 @@ export function createArnoldMcpServer(
     "show_arnold_dashboard",
     {
       title: "Arnold öffnen",
-      description: `Öffnet Arnold als Karte im Chat. Quelle: ${sourceLabel}. Liefert den Dashboard-Vertrag arnold.dashboard/2. Mit card die passende Karte wählen: today, wenn der Nutzer trainieren oder Sätze eintragen will oder fragt, was heute ansteht; week für den Wochenüberblick; progress für den Fortschritt einer Übung; history für vergangene Trainings; plan zum Ansehen oder Bearbeiten des Trainingsplans. Die Karte zeigt die Zahlen selbst; im Chat danach nur kurz einordnen und nichts wiederholen.`,
+      description: `Öffnet Arnold als Karte im Chat. Quelle: ${sourceLabel}. Liefert den Dashboard-Vertrag arnold.dashboard/2. Mit card die passende Karte wählen: today, wenn der Nutzer trainieren oder Sätze eintragen will oder fragt, was heute ansteht; week für den Wochenüberblick; progress für den Fortschritt einer Übung; history für vergangene Trainings; plan zum Ansehen oder Bearbeiten des Trainingsplans. Will der Nutzer heute trainieren, zuerst die Karte today zeigen; start_workout erst, wenn er wirklich startet oder einen Satz nennt. Die Karte zeigt die Zahlen selbst; im Chat danach nur kurz einordnen und nichts wiederholen.`,
       inputSchema: z.object({ card: DashboardCardSchema.optional() }),
       outputSchema: ArnoldDashboardViewSchema,
       annotations: readOnly,
