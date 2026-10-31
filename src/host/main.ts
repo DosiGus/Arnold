@@ -45,7 +45,19 @@ async function start() {
     throw new Error("Ungültige MCP Apps UI-Ressource.");
   // `?card=week` opens that card, the way the model passes `card`.
   const card = new URLSearchParams(location.search).get("card");
-  const args = card && name === "show_arnold_dashboard" ? { card } : {};
+  const args =
+    card && name === "show_arnold_dashboard"
+      ? {
+          card,
+          ...Object.fromEntries(
+            ["exercise_id", "metric", "workout_id"].flatMap((key) =>
+              new URLSearchParams(location.search).get(key)
+                ? [[key, new URLSearchParams(location.search).get(key)]]
+                : [],
+            ),
+          ),
+        }
+      : {};
   const initial = (await client.callTool({
     name: tool!.name,
     arguments: args,

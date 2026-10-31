@@ -161,7 +161,7 @@ export function GoogleRecovery({
                   setBusy(true);
                   setMessage("");
                   void client
-                    .connectGoogle()
+                    .connectGoogle(true)
                     .then(() => setWaiting(true))
                     .catch(() =>
                       setMessage(
@@ -178,7 +178,7 @@ export function GoogleRecovery({
                       disabled: busy,
                       onClick: () => {
                         void client
-                          .connectGoogle()
+                          .connectGoogle(true)
                           .catch(() =>
                             setMessage(
                               "Der Verbindungslink konnte nicht geöffnet werden.",
