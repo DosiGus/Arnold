@@ -1016,3 +1016,38 @@ describe("B6: delete_arnold_account", () => {
     expect(JSON.stringify(fresh.content)).toContain("SETUP_REQUIRED");
   });
 });
+
+describe("B8: retention in the connected runtime", () => {
+  it("prunes old journal entries per user and keeps the account working", async () => {
+    await connected("alice");
+    await startWorkout("alice");
+    const journal = async () =>
+      JSON.parse(
+        await readFile(
+          join(
+            runtime.userDirectory(
+              JSON.parse(
+                await readFile(join(directory, "identities.json"), "utf8"),
+              ).users[0].user_id,
+            ),
+            "operations.json",
+          ),
+          "utf8",
+        ),
+      ) as { state: string }[];
+    expect((await journal()).length).toBeGreaterThan(0);
+    expect(await runtime.applyRetention(30)).toMatchObject({
+      users: 1,
+      journal: 0,
+    });
+    const later = await runtime.applyRetention(
+      30,
+      Date.now() + 31 * 86_400_000,
+    );
+    expect(later.journal).toBeGreaterThan(0);
+    expect(later.snapshots).toBe(2);
+    expect(await journal()).toEqual([]);
+    expect((await call("alice", "get_workout")).isError).toBeFalsy();
+    expect((await call("alice", "get_arnold_dashboard")).isError).toBeFalsy();
+  });
+});

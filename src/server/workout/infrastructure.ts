@@ -243,6 +243,8 @@ const EntrySchema = z.object({
   // One ledger serves workout and plan writes, so a replay is deduplicated
   // across both domains by (tracker, request_id) rather than per service.
   result: z.union([WriteResultSchema, PlanWriteResultSchema]),
+  /** Last write of this entry; drives the retention period (B8). */
+  recorded_at: z.string().optional(),
 });
 export type LedgerEntry = z.infer<typeof EntrySchema>;
 export interface OperationLedger {
@@ -313,7 +315,9 @@ export class FileOperationLedger implements OperationLedger {
           ledgerKey(e.trackerId, e.requestId) !==
           ledgerKey(entry.trackerId, entry.requestId),
       );
-      next.push(EntrySchema.parse(entry));
+      next.push(
+        EntrySchema.parse({ ...entry, recorded_at: new Date().toISOString() }),
+      );
       await mkdir(dirname(this.path), { recursive: true });
       const temp = `${this.path}.${uuid7()}.tmp`;
       await writeFile(temp, JSON.stringify(next), { mode: 0o600, flush: true });

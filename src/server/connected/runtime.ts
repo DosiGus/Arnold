@@ -1,6 +1,6 @@
 import { googleReauthWriteError } from "../google/reauth.js";
 import { createHash, randomUUID } from "node:crypto";
-import { readFile, rm } from "node:fs/promises";
+import { readFile, readdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { z } from "zod";
 import {
@@ -37,6 +37,7 @@ import {
 } from "../workout/infrastructure.js";
 import { DeletionTokens, deletionSummary } from "./account-deletion.js";
 import { newTrackerDataset } from "./catalog.js";
+import { pruneUserDirectory, retentionCutoff } from "./retention.js";
 import { GoogleTrackerApi } from "./google-api.js";
 import { LocalAuditLog, LocalDraftRepository, LocalState } from "./state.js";
 
@@ -154,6 +155,39 @@ export class ConnectedArnoldRuntime {
         ? sheetUrl(manifest.spreadsheetId)
         : null,
     };
+  }
+  /**
+   * Applies the retention period to every user directory (B8). Each user is
+   * pruned under the same lock as that user's writes.
+   */
+  async applyRetention(days: number, now = Date.now()) {
+    const cutoff = retentionCutoff(days, now);
+    const totals = { users: 0, journal: 0, audit: 0, snapshots: 0 };
+    let names: string[];
+    try {
+      names = await readdir(this.options.directory);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return totals;
+      throw error;
+    }
+    for (const name of names) {
+      if (!/^[0-9a-f]{64}$/.test(name)) continue;
+      const directory = resolve(this.options.directory, name);
+      const userId = await readFile(resolve(directory, "tracker.json"), "utf8")
+        .then((raw) => ManifestSchema.parse(JSON.parse(raw)).userId)
+        .catch(() => undefined);
+      // A directory without a readable owner has no writer to race with.
+      const prune = () => pruneUserDirectory(directory, cutoff);
+      const result =
+        userId && this.userDirectory(userId) === directory
+          ? await this.requests.exclusive(userId, prune)
+          : await prune();
+      totals.users += 1;
+      totals.journal += result.journal;
+      totals.audit += result.audit;
+      totals.snapshots += result.snapshots;
+    }
+    return totals;
   }
   async forUser(context: AuthenticatedArnoldContext) {
     await this.options.auth.assertActive(context);
