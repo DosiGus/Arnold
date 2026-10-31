@@ -160,13 +160,31 @@ export class ArnoldClient {
               this.publish(result, true);
               return;
             }
-            void this.call(tool).catch((error: Error) => {
-              // Revalidation failed: the replayed result is all there is, so it
-              // is shown and explicitly flagged as possibly out of date rather
-              // than presented as the current state.
-              this.publish(result, true);
-              this.onError?.(`Aktualisierung fehlgeschlagen: ${error.message}`);
-            });
+            const focus =
+              replayed?.contract === "dashboard"
+                ? replayed.dashboard.focus
+                : undefined;
+            void this.call(tool, {}, { publish: !focus })
+              .then((content) => {
+                if (!focus) return;
+                const fresh = this.interpret(content);
+                if (fresh?.contract === "dashboard") {
+                  this.onPayload?.({
+                    contract: "dashboard",
+                    dashboard: { ...fresh.dashboard, focus },
+                  });
+                  this.onStale?.(false);
+                }
+              })
+              .catch((error: Error) => {
+                // Revalidation failed: the replayed result is all there is, so it
+                // is shown and explicitly flagged as possibly out of date rather
+                // than presented as the current state.
+                this.publish(result, true);
+                this.onError?.(
+                  `Aktualisierung fehlgeschlagen: ${error.message}`,
+                );
+              });
             return;
           }
           this.publish(result);
@@ -211,7 +229,13 @@ export class ArnoldClient {
         return;
       }
       if (!wantsOnboarding) {
-        await this.call("show_arnold_dashboard");
+        const query = new URLSearchParams(location.search);
+        const input = Object.fromEntries(
+          ["card", "exercise_id", "metric", "workout_id"].flatMap((key) =>
+            query.get(key) ? [[key, query.get(key)]] : [],
+          ),
+        );
+        await this.call("show_arnold_dashboard", input);
         return;
       }
       // A reload must continue the setup rather than start a second one, so the

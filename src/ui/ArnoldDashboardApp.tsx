@@ -42,12 +42,13 @@ export function ArnoldDashboardApp({
   card?: CardId;
 }) {
   const [trail, setTrail] = useState<CardId[]>(() => [
-    requested ?? previewCard() ?? "today",
+    initial.focus?.card ?? requested ?? previewCard() ?? "today",
   ]);
   // A new request from the chat replaces whatever the card showed before.
   useEffect(() => {
-    if (requested) setTrail([requested]);
-  }, [requested]);
+    const card = initial.focus?.card ?? requested;
+    if (card) setTrail([card]);
+  }, [requested, initial.focus]);
   const card = trail[trail.length - 1];
 
   // Only the week card needs to know whether writing is possible; the training
@@ -150,13 +151,28 @@ export function ArnoldDashboardApp({
         <WeekCard view={view} canWrite={canWrite} onOpen={open} />
       )}
       {card === "progress" && (
-        <ExerciseProgressView client={client} dashboard={view} />
+        <ExerciseProgressView
+          key={`${initial.focus ? initial.source.generated_at : "default"}-${initial.focus?.exercise_id ?? ""}-${initial.focus?.metric ?? ""}`}
+          client={client}
+          dashboard={view}
+          initialExerciseId={initial.focus?.exercise_id ?? undefined}
+          initialMetric={initial.focus?.metric ?? undefined}
+        />
       )}
       {card === "history" && (
-        <WorkoutHistoryView client={client} dashboard={view} />
+        <WorkoutHistoryView
+          key={`${initial.focus ? initial.source.generated_at : "default"}-${initial.focus?.workout_id ?? "history"}`}
+          client={client}
+          dashboard={view}
+          initialWorkoutId={initial.focus?.workout_id ?? undefined}
+        />
       )}
       {card === "plan" && (
-        <PlanCard client={client} dashboard={view} onChanged={dashboard.reload} />
+        <PlanCard
+          client={client}
+          dashboard={view}
+          onChanged={dashboard.reload}
+        />
       )}
       {backLink && <div style={{ paddingInline: 4 }}>{backLink}</div>}
     </main>

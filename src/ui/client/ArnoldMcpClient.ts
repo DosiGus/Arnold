@@ -1,5 +1,9 @@
 import { ArnoldToolError } from "../recovery";
-import { DeleteAccountResponseSchema } from "../../shared/account-contract";
+import {
+  DeleteAccountResponseSchema,
+  FinishSetupOutputSchema,
+  StoredDataSchema,
+} from "../../shared/account-contract";
 import {
   WorkoutContextSchema,
   WriteResponseSchema,
@@ -136,27 +140,45 @@ export class ArnoldMcpClient {
   async displayMode(mode: "inline" | "fullscreen") {
     return this.client.displayMode(mode);
   }
-  async connectGoogle() {
+  async connectGoogle(reconnect = false) {
     const result = z
       .object({ authorization_url: z.string().url() })
       .parse(
         await this.client.call(
           "connect_google_account",
-          this.getOnboardingClaim() ?? {},
+          reconnect ? {} : (this.getOnboardingClaim() ?? {}),
         ),
       );
     await this.client.openExternal(result.authorization_url);
   }
   async finishSetup() {
-    return z
-      .object({
-        spreadsheet_url: z.string().url(),
-        spreadsheet_name: z.string().optional(),
-      })
-      .parse(await this.client.call("finish_arnold_setup", this.claim()));
+    return FinishSetupOutputSchema.parse(
+      await this.client.call("finish_arnold_setup", this.claim()),
+    );
+  }
+  async setupFile() {
+    if (this.getOnboardingClaim()) {
+      try {
+        return await this.finishSetup();
+      } catch {
+        /* A completed account can outlive its setup credential. */
+      }
+    }
+    const stored = StoredDataSchema.parse(
+      await this.client.call("get_arnold_stored_data", {}, { publish: false }),
+    );
+    if (!stored.google_sheet_url)
+      throw new ArnoldToolError({
+        code: "SHEET_UNAVAILABLE",
+        recovery: "contact_support",
+      });
+    return {
+      spreadsheet_url: stored.google_sheet_url,
+      spreadsheet_name: undefined,
+    };
   }
   async openDashboard() {
-    await this.client.call("show_arnold_dashboard");
+    await this.client.call("show_arnold_dashboard", { card: "today" });
   }
   /** Tells the model what the app shows, without starting a chat turn. */
   async tellModel(text: string) {
@@ -248,6 +270,11 @@ export class ArnoldMcpClient {
    * browser session that created it.
    */
   rememberOnboarding(claim: OnboardingClaim) {
+    if (
+      this.onboardingClaim?.onboarding_session_id !==
+      claim.onboarding_session_id
+    )
+      this.pendingOnboarding = undefined;
     this.onboardingClaim = claim;
     writeStoredClaim(claim);
   }
@@ -502,6 +529,28 @@ export class ArnoldMcpClient {
     return ArnoldWorkoutHistoryViewSchema.parse(
       await this.client.call("get_arnold_workouts", args(query)),
     );
+  }
+
+  async historyWorkout(workout_id: string) {
+    const context = await this.workout(workout_id);
+    if (!context.workout)
+      throw new ArnoldToolError({
+        code: "WORKOUT_NOT_FOUND",
+        recovery: "reload_then_retry",
+      });
+    const date = context.workout.workout_date_local;
+    return this.workouts({
+      from: date,
+      to: date,
+      workout_statuses: [
+        "planned",
+        "in_progress",
+        "completed",
+        "cancelled",
+        "voided",
+      ],
+      limit: 200,
+    });
   }
 
   async progress(query: ProgressQuery): Promise<ArnoldExerciseProgressView> {

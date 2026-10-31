@@ -34,21 +34,31 @@ const METRICS = [
 export function ExerciseProgressView({
   client,
   dashboard,
+  initialExerciseId,
+  initialMetric,
 }: {
   client: ArnoldMcpClient;
   dashboard: ArnoldDashboardView;
+  initialExerciseId?: string;
+  initialMetric?: ProgressMetricKey;
 }) {
   const [exerciseId, setExerciseId] = useState(
     () =>
+      initialExerciseId ??
       dashboard.exercises.find((e) => e.logged_sets > 0)?.exercise_id ??
       dashboard.exercises[0]?.exercise_id ??
       "",
   );
-  const [metric, setMetric] = useState<ProgressMetricKey>("max_load");
+  const [metric, setMetric] = useState<ProgressMetricKey>(
+    initialMetric ?? "max_load",
+  );
   const [choosing, setChoosing] = useState<"exercise" | "metric">();
   const [page, setPage] = useState(0);
   useEffect(() => {
-    if (!dashboard.exercises.some((e) => e.exercise_id === exerciseId))
+    if (
+      !initialExerciseId &&
+      !dashboard.exercises.some((e) => e.exercise_id === exerciseId)
+    )
       setExerciseId(dashboard.exercises[0]?.exercise_id ?? "");
   }, [dashboard.exercises, exerciseId]);
   const progress = useExerciseProgress(client, exerciseId, metric, {});
@@ -72,11 +82,24 @@ export function ExerciseProgressView({
         : metric;
   const kpi = view?.kpis.find((item) => item.key === key);
   const lastPoint = view?.selected_series?.points.at(-1);
-  const shown = kpi
-    ? metricDisplay(kpi)
-    : lastPoint
-      ? { value: formatNumber(lastPoint.value, 0), unit: "Wdh.", known: true }
-      : undefined;
+  const change = view?.selected_comparison;
+  const difference = change?.status === "valid" ? change : undefined;
+  const shown =
+    difference?.to_value != null
+      ? {
+          value: formatNumber(difference.to_value, 1),
+          unit: difference.unit === "reps" ? "Wdh." : "kg",
+          known: true,
+        }
+      : kpi
+        ? metricDisplay(kpi)
+        : lastPoint
+          ? {
+              value: formatNumber(lastPoint.value, 0),
+              unit: "Wdh.",
+              known: true,
+            }
+          : undefined;
   const comparison = comparable
     ? [
         LOAD_BASIS_LABEL[comparable.load_basis],
@@ -86,23 +109,13 @@ export function ExerciseProgressView({
         .filter(Boolean)
         .join(" · ")
     : null;
-  // The engine supplies both the improvement and its comparability. No delta is computed here.
-  const record =
-    metric === "max_load" || metric === "estimated_1rm"
-      ? dashboard.records
-          .filter(
-            (r) =>
-              r.exercise_id === exerciseId &&
-              r.metric ===
-                (metric === "max_load" ? "max_load" : "estimated_1rm") &&
-              r.comparability?.key === comparable?.key &&
-              r.kind === "improvement",
-          )
-          .sort((a, b) => b.achieved_on.localeCompare(a.achieved_on))[0]
-      : undefined;
+  const firstDate =
+    view?.selected_series?.points[0]?.date ?? view?.first_training_date;
+  const lastDate =
+    view?.selected_series?.points.at(-1)?.date ?? view?.last_training_date;
   const dateRange =
-    view?.first_training_date && view.last_training_date
-      ? `${dateLabel(view.first_training_date)} – ${dateLabel(view.last_training_date)}`
+    firstDate && lastDate
+      ? `${dateLabel(firstDate)} – ${dateLabel(lastDate)}`
       : undefined;
   useModelContext(
     client,
@@ -199,8 +212,10 @@ export function ExerciseProgressView({
       {shown?.known ? (
         <div className="ac-progress-value">
           <p className="ac-caption">
-            {kpi?.label ??
-              `Wiederholungen am ${lastPoint ? dateLabel(lastPoint.date) : "letzten Trainingstag"}`}
+            {difference?.to_date
+              ? `${METRICS.find((m) => m.value === metric)?.label ?? "Leistung"} am ${dateLabel(difference.to_date)}`
+              : (kpi?.label ??
+                `Wiederholungen am ${lastPoint ? dateLabel(lastPoint.date) : "letzten Trainingstag"}`)}
           </p>
           <p className="ac-big">
             {shown.value}
@@ -216,10 +231,12 @@ export function ExerciseProgressView({
       )}
       {comparison && <p className="ac-caption">{comparison}</p>}
       {kpi?.note && shown?.known && <p className="ac-caption">{kpi.note}</p>}
-      {record?.improvement !== null && record?.improvement !== undefined && (
+      {difference?.delta != null && difference.from_date && (
         <p className="ac-text">
-          +{formatNumber(record.improvement, 1)} {shown?.unit} beim Rekord am{" "}
-          {dateLabel(record.achieved_on)}
+          {difference.delta === 0
+            ? "Unverändert"
+            : `${difference.delta > 0 ? "+" : ""}${formatNumber(difference.delta, 1)} ${difference.unit === "reps" ? "Wdh." : "kg"}`}{" "}
+          seit {dateLabel(difference.from_date)}
         </p>
       )}
       {metric === "estimated_1rm" && (

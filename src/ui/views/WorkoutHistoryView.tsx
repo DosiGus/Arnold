@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ArnoldDashboardView } from "../../shared/arnold-view";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
-import { useWorkoutHistory } from "../hooks";
+import { useAsync, useWorkoutHistory } from "../hooks";
 import { useModelContext } from "../hooks/useModelContext";
 import {
   ArnoldCard,
@@ -44,9 +44,21 @@ export function WorkoutHistoryView({
     limit: 8,
     offset,
   });
-  const selected = history.data?.workouts.find(
-    (w) => w.workout_id === selectedId,
+  const direct = useAsync(
+    () =>
+      initialWorkoutId
+        ? client.historyWorkout(initialWorkoutId)
+        : Promise.resolve(undefined),
+    [client, initialWorkoutId],
   );
+  useEffect(() => {
+    if (initialWorkoutId) void client.displayMode("fullscreen");
+  }, [client, initialWorkoutId]);
+  const selected = (
+    selectedId === initialWorkoutId && direct.data
+      ? direct.data.workouts
+      : history.data?.workouts
+  )?.find((w) => w.workout_id === selectedId);
   const open = (id?: string) => {
     void client.displayMode("fullscreen");
     setExpanded(true);
@@ -73,6 +85,15 @@ export function WorkoutHistoryView({
       ? `Arnold zeigt das Training „${selected.title}“ am ${selected.date}, workout_id ${selected.workout_id}, Status ${selected.status_label}. Gespeicherte Sätze: ${JSON.stringify(selected.exercises.map((block) => ({ exercise: block.name, sets: block.sets })))}. Die Karte zeigt diese Werte bereits. Für Korrekturen aktuelle Revision mit get_workout lesen.`
       : `Arnold zeigt den Trainingsverlauf${history.data ? ` mit ${history.data.total} Treffern` : ""}. Der Nutzer kann ein Training öffnen oder im Chat nach einem Datum fragen.`,
   );
+  if (selectedId === initialWorkoutId && initialWorkoutId && direct.loading)
+    return <CardSkeleton />;
+  if (selectedId === initialWorkoutId && initialWorkoutId && direct.error)
+    return (
+      <RecoveryCard
+        recovery={direct.failure?.recovery ?? "retry_same_request"}
+        onAction={direct.reload}
+      />
+    );
   if (history.error)
     return (
       <RecoveryCard
