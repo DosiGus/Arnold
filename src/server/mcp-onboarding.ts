@@ -21,7 +21,7 @@
  *     `isError` with a machine-readable code and the unchanged state, never a
  *     cheerful message about something that did not happen.
  */
-import { recoveryFor } from "../shared/write-recovery.js";
+import { failureText, recoveryFor } from "../shared/write-recovery.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/server";
 import {
@@ -86,7 +86,11 @@ function failure(error: unknown) {
     content: [
       {
         type: "text" as const,
-        text: `${failed.code}: ${failed.message}${failed.retryable ? " Erneut versuchen ist möglich." : ""}`,
+        text: failureText(
+          failed.code,
+          failed.message,
+          recoveryFor(failed.code, failed.retryable),
+        ),
       },
     ],
     _meta: {
@@ -176,7 +180,11 @@ function respond(payload: OnboardingResponse) {
       {
         type: "text" as const,
         text: !payload.ok
-          ? `${payload.error!.code}: ${payload.error!.message}${payload.error!.details.length ? ` (${payload.error!.details.join("; ")})` : ""}`
+          ? failureText(
+              payload.error!.code,
+              `${payload.error!.message}${payload.error!.details.length ? ` (${payload.error!.details.join("; ")})` : ""}`,
+              payload.error!.recovery,
+            )
           : payload.replayed
             ? `Bereits ausgeführt; keine doppelte Änderung. ${payload.state ? summarize(payload.state) : ""}`
             : payload.state
@@ -383,7 +391,7 @@ export function registerOnboardingTools(
     {
       title: "Trainingsplanvorschlag übergeben",
       description:
-        "Übergibt einen vollständig strukturierten Trainingsplanvorschlag und speichert ihn nach serverseitiger Prüfung als bearbeitbaren Entwurf. Jede Trainingseinheit braucht einen frei wählbaren Namen und mindestens eine Übung; es gibt keinen vorgeschriebenen Split. exercise_id-Werte müssen aus dem Übungskatalog des Briefs stammen – unbekannte IDs werden abgelehnt. Zielgewichte nur angeben, wenn der Nutzer sie genannt hat; unbekannte Gewichte bleiben leer. origin: ai_proposal für einen selbst erstellten Vorschlag (Weg arnold_plan), existing_routine für die Übernahme des eigenen Plans des Nutzers aus Text oder Foto (Weg own_plan), manual für eine vom Nutzer diktierte Struktur. Bei vollständigen Angaben ist kein vorheriger request_onboarding_plan nötig. Der Plan wird NICHT aktiviert und in keine Google-Datei geschrieben; dafür ist eine ausdrückliche Bestätigung des Nutzers über confirm_onboarding_plan nötig. Dieselbe request_id erneut senden, um einen unklaren Vorgang zu prüfen statt einen zweiten Entwurf anzulegen.",
+        "Übergibt einen vollständig strukturierten Trainingsplanvorschlag und speichert ihn nach serverseitiger Prüfung als bearbeitbaren Entwurf. Jede Trainingseinheit braucht einen frei wählbaren Namen und mindestens eine Übung; es gibt keinen vorgeschriebenen Split. exercise_id-Werte müssen aus dem Übungskatalog des Briefs stammen – unbekannte IDs werden abgelehnt. Eine Übung, die es im Katalog nicht gibt, in custom_exercises beschreiben (key custom:1, custom:2 …, name_de) und in der Einheit den key als exercise_id verwenden; Arnold legt sie als eigene Übung an. Zielgewichte nur angeben, wenn der Nutzer sie genannt hat; unbekannte Gewichte bleiben leer. origin: ai_proposal für einen selbst erstellten Vorschlag (Weg arnold_plan), existing_routine für die Übernahme des eigenen Plans des Nutzers aus Text oder Foto (Weg own_plan), manual für eine vom Nutzer diktierte Struktur. Bei vollständigen Angaben ist kein vorheriger request_onboarding_plan nötig. Der Plan wird NICHT aktiviert und in keine Google-Datei geschrieben; dafür ist eine ausdrückliche Bestätigung des Nutzers über confirm_onboarding_plan nötig. Dieselbe request_id erneut senden, um einen unklaren Vorgang zu prüfen statt einen zweiten Entwurf anzulegen.",
       inputSchema: OnboardingToolInputs.submit_onboarding_plan_proposal,
       outputSchema: OnboardingResponseSchema,
       annotations: writing,

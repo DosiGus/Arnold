@@ -1,4 +1,8 @@
-import { recoveryFor } from "../shared/write-recovery.js";
+import {
+  failureText,
+  recoveryFor,
+  type Recovery,
+} from "../shared/write-recovery.js";
 import { registerWorkoutTools } from "./mcp-workout.js";
 import { registerPlanTools } from "./mcp-plan.js";
 import { registerOnboardingTools } from "./mcp-onboarding.js";
@@ -138,6 +142,48 @@ const ProgressInputSchema = z.object({
   ),
 });
 
+/** B17: open a card directly on one exercise or one workout. */
+const ShowDashboardInputSchema = z.object({
+  card: DashboardCardSchema.optional(),
+  exercise_id: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Nur mit card progress: Übungs-ID aus get_arnold_dashboard.exercises.",
+    ),
+  metric: ProgressMetricKeySchema.optional().describe(
+    "Nur mit card progress: Kennzahl des Fortschritts, Standard max_load.",
+  ),
+  workout_id: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("Nur mit card history: Trainings-ID aus get_arnold_workouts."),
+});
+
+/** A focus argument that does not belong to the chosen card, as German text. */
+function misplacedFocus(input: z.infer<typeof ShowDashboardInputSchema>) {
+  if (
+    (input.exercise_id !== undefined || input.metric !== undefined) &&
+    input.card !== "progress"
+  )
+    return "exercise_id und metric gehören zur Karte progress. card: progress setzen.";
+  if (input.workout_id !== undefined && input.card !== "history")
+    return "workout_id gehört zur Karte history. card: history setzen.";
+  return null;
+}
+
+function focusFailure(code: string, message: string, recovery: Recovery) {
+  return {
+    content: [
+      { type: "text" as const, text: failureText(code, message, recovery) },
+    ],
+    isError: true as const,
+    _meta: { arnold: { code, retryable: false, recovery } },
+  };
+}
+
 /** Tool failures are reported as MCP errors, never as a fabricated empty result. */
 function failure(error: unknown) {
   if (
@@ -145,16 +191,31 @@ function failure(error: unknown) {
     error instanceof AnalyticsOptionsError
   )
     return {
-      content: [{ type: "text" as const, text: error.message }],
+      content: [
+        {
+          type: "text" as const,
+          text: failureText("VALIDATION_ERROR", error.message, "none"),
+        },
+      ],
       isError: true as const,
+      _meta: {
+        arnold: {
+          code: "VALIDATION_ERROR",
+          retryable: false,
+          recovery: "none" as const,
+        },
+      },
     };
   const classified =
     error instanceof ArnoldSourceError ? error.failure : classifyFailure(error);
+  const code = classified.code.toUpperCase();
+  const recovery =
+    classified.recovery ?? recoveryFor(code, classified.retryable);
   return {
     content: [
       {
         type: "text" as const,
-        text: `${classified.message}${classified.retryable ? " Erneut versuchen ist möglich." : ""}`,
+        text: failureText(code, classified.message, recovery),
       },
     ],
     structuredContent: undefined,
@@ -162,11 +223,9 @@ function failure(error: unknown) {
     _meta: {
       arnold: {
         failure: classified,
-        code: classified.code.toUpperCase(),
+        code,
         retryable: classified.retryable,
-        recovery:
-          classified.recovery ??
-          recoveryFor(classified.code.toUpperCase(), classified.retryable),
+        recovery,
       },
     },
   };
@@ -197,6 +256,12 @@ export const ARNOLD_INSTRUCTIONS = [
   "In der Einrichtung erfasst die App die Angaben per Button. Im Chat begleiten, kurz erklären und nur fragen, was die App nicht abfragt. Der Text jedes Einrichtungswerkzeugs sagt, was als Nächstes zu tun ist.",
   "Die Arnold-Karten melden dir still, was gerade zu sehen ist und welche Sätze gespeichert sind (mit set_id); darauf bei Rückfragen und Korrekturen zurückgreifen. Schickt die App „Training beendet: …“, kurz würdigen, die Zahlen nicht wiederholen und höchstens einen nächsten Schritt vorschlagen.",
   "Einen Trainingsplan nie im Namen des Nutzers bestätigen.",
+  // B13: what the chat test corpus expects when input is unclear.
+  "Nachfragen statt raten: Satz nur speichern, wenn Übung, Wiederholungen und Gewicht (oder Körpergewicht) klar sind; sonst genau das Fehlende erfragen. Keine Sätze, Gewichte oder Übungen erfinden („Ich hab heute Beine gemacht“ heißt nachfragen). Widersprechen sich Angaben (3 Sätze, aber „insgesamt 4“), nachfragen und nichts speichern.",
+  "Datum: workout_date_local ist das lokale Kalenderdatum des Nutzers; „gestern“ ist der gestrige lokale Tag, auch kurz nach Mitternacht. Ein Training in der Zukunft gibt es nicht: nach dem richtigen Datum fragen.",
+  "Gewichte: Bei Kurzhanteln („die 12er“) gilt das Gewicht je Hantel; ist das nicht eindeutig, nachfragen und die Annahme in der Antwort nennen. Ungewöhnliche Werte (über 500 kg oder über 100 Wiederholungen) erst bestätigen lassen. Anstrengung als RIR („noch 0 / 1–2 / 3+ Wiederholungen im Tank“) speichern, nicht als RPE; RPE 8 entspricht etwa RIR 1–2.",
+  "Korrekturen eines gespeicherten Satzes mit update_set, nicht verwerfen und neu anlegen. Bei mehreren möglichen Sätzen, Trainings oder Entwürfen zuerst fragen, welcher gemeint ist.",
+  "Das Wochenziel sind die Trainingstage pro Woche aus dem aktiven Plan (days_per_week); zwei Einheiten an einem Tag zählen als ein Tag. Ein anderes Ziel heißt: eine neue Planversion entwerfen und erst nach Rückfrage aktivieren.",
 ].join(" ");
 
 export function createArnoldMcpServer(
@@ -282,18 +347,55 @@ export function createArnoldMcpServer(
     "show_arnold_dashboard",
     {
       title: "Arnold öffnen",
-      description: `Öffnet Arnold als Karte im Chat. Quelle: ${sourceLabel}. Liefert den Dashboard-Vertrag arnold.dashboard/2. Mit card die passende Karte wählen: today, wenn der Nutzer trainieren oder Sätze eintragen will oder fragt, was heute ansteht; week für den Wochenüberblick; progress für den Fortschritt einer Übung; history für vergangene Trainings; plan zum Ansehen oder Bearbeiten des Trainingsplans. Die Karte zeigt die Zahlen selbst; im Chat danach nur kurz einordnen und nichts wiederholen.`,
-      inputSchema: z.object({ card: DashboardCardSchema.optional() }),
+      description: `Öffnet Arnold als Karte im Chat. Quelle: ${sourceLabel}. Liefert den Dashboard-Vertrag arnold.dashboard/2. Mit card die passende Karte wählen: today, wenn der Nutzer trainieren oder Sätze eintragen will oder fragt, was heute ansteht; week für den Wochenüberblick; progress für den Fortschritt einer Übung (mit exercise_id aus get_arnold_dashboard.exercises öffnet die Karte direkt diese Übung, metric optional); history für vergangene Trainings (mit workout_id direkt dieses Training); plan zum Ansehen oder Bearbeiten des Trainingsplans. Will der Nutzer heute trainieren, zuerst die Karte today zeigen; start_workout erst, wenn er wirklich startet oder einen Satz nennt. Die Karte zeigt die Zahlen selbst; im Chat danach nur kurz einordnen und nichts wiederholen.`,
+      inputSchema: ShowDashboardInputSchema,
       outputSchema: ArnoldDashboardViewSchema,
       annotations: readOnly,
       _meta: { ui: { resourceUri: ARNOLD_RESOURCE_URI } },
     },
-    async () => {
+    async (input) => {
       try {
+        const misplaced = misplacedFocus(input);
+        if (misplaced)
+          return focusFailure("VALIDATION_ERROR", misplaced, "none");
         const snapshot = await load();
-        const view = buildDashboardView(snapshot.dataset, context(snapshot), {
+        // B17: ids are checked against this user's own data only.
+        if (
+          input.exercise_id !== undefined &&
+          !snapshot.dataset.exercises.some(
+            (e) => e.exercise_id === input.exercise_id,
+          )
+        )
+          return focusFailure(
+            "EXERCISE_NOT_FOUND",
+            "Diese Übung gibt es in deinen Daten nicht. Übungs-ID aus get_arnold_dashboard.exercises nehmen oder die Karte progress ohne exercise_id öffnen.",
+            "reload_then_retry",
+          );
+        if (
+          input.workout_id !== undefined &&
+          !snapshot.dataset.workouts.some(
+            (w) => w.workout_id === input.workout_id,
+          )
+        )
+          return focusFailure(
+            "WORKOUT_NOT_FOUND",
+            "Dieses Training gibt es in deinen Daten nicht. Trainings-ID aus get_arnold_workouts nehmen oder die Karte history ohne workout_id öffnen.",
+            "reload_then_retry",
+          );
+        const base = buildDashboardView(snapshot.dataset, context(snapshot), {
           reference_date: today(clock),
         });
+        const view = input.card
+          ? {
+              ...base,
+              focus: {
+                card: input.card,
+                exercise_id: input.exercise_id ?? null,
+                metric: input.metric ?? null,
+                workout_id: input.workout_id ?? null,
+              },
+            }
+          : base;
         const workouts = view.kpis.find((k) => k.key === "workouts")?.value;
         return result(
           view,

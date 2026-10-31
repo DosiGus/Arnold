@@ -442,6 +442,31 @@ export const PlanEditSchema = z.discriminatedUnion("type", [
 export type PlanEdit = z.infer<typeof PlanEditSchema>;
 export type PlanEditType = PlanEdit["type"];
 
+/**
+ * An exercise the user trains that is not in the catalog (B11).
+ *
+ * The sessions of the same call refer to it by `key` in place of an
+ * exercise_id. Arnold creates it as the user's own exercise in the same write
+ * as the plan, or reuses an existing exercise with the same name. Unknown
+ * defaults are filled conservatively and can be edited later.
+ */
+export const CustomExerciseInputSchema = z.strictObject({
+  /** Placeholder used as exercise_id in the sessions, e.g. "custom:1". */
+  key: z
+    .string()
+    .regex(
+      /^custom:[a-z0-9-]{1,40}$/,
+      'key beginnt mit "custom:" und enthält nur a-z, 0-9 und Bindestriche.',
+    ),
+  name_de: name,
+  equipment: z.string().trim().min(1).max(60).optional(),
+  primary_muscle: z.string().trim().min(1).max(60).optional(),
+  default_load_basis: ArnoldLoadBasisSchema.optional(),
+  default_execution_mode: ArnoldExecutionModeSchema.optional(),
+  default_implement_count: positiveInt.max(4).optional(),
+});
+export type CustomExerciseInput = z.infer<typeof CustomExerciseInputSchema>;
+
 /* -------------------------------------------------------------- tool inputs */
 
 export const PlanWriteInputs = {
@@ -456,6 +481,8 @@ export const PlanWriteInputs = {
     origin: z.enum(["manual", "ai_proposal", "imported", "clone"]).optional(),
     /** Continue an existing routine instead of starting a new family. */
     plan_family_id: id.optional(),
+    /** Exercises outside the catalog, referenced by key in `sessions`. */
+    custom_exercises: z.array(CustomExerciseInputSchema).max(20).optional(),
   }),
   create_plan_version: z.strictObject({
     ...request,

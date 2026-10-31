@@ -426,7 +426,7 @@ export function buildBrief(
       constraints: [
         "Den Plan des Nutzers so übernehmen, wie er ist: dieselben Trainingstage, Übungen, Sätze und Wiederholungen. Die Struktur nicht verbessern oder ersetzen.",
         "Fehlt dem Nutzer noch ein Plan im Chat, zuerst darum bitten, ihn als Text einzufügen oder ein Foto davon zu schicken.",
-        "Jede genannte Übung der passenden exercise_id aus exercise_catalog zuordnen. Gibt es keine passende Übung, sie weglassen und in open_questions nennen.",
+        "Jede genannte Übung der passenden exercise_id aus exercise_catalog zuordnen. Gibt es keine passende Übung, sie nicht weglassen: in custom_exercises mit key (custom:1, custom:2 …) und name_de so beschreiben, wie der Nutzer sie nennt, und in der Einheit key als exercise_id verwenden. Arnold legt sie als eigene Übung an. Gerät, Muskel und Lastbasis nur angeben, wenn eindeutig.",
         "Nicht genannte Sätze oder Wiederholungen nicht erfinden: offen lassen und in open_questions nennen; der Nutzer ergänzt sie im Editor.",
         ...shared,
       ],

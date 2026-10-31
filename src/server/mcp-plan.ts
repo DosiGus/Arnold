@@ -15,7 +15,7 @@
  * with an enabled write mode is wired in, so a read-only deployment advertises
  * no plan mutation at all.
  */
-import { recoveryFor } from "../shared/write-recovery.js";
+import { failureText, recoveryFor } from "../shared/write-recovery.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/server";
 import {
@@ -48,7 +48,11 @@ function failure(error: unknown) {
     content: [
       {
         type: "text" as const,
-        text: `${failed.code}: ${failed.message}${failed.retryable ? " Erneut versuchen ist möglich." : ""}`,
+        text: failureText(
+          failed.code,
+          failed.message,
+          recoveryFor(failed.code, failed.retryable),
+        ),
       },
     ],
     _meta: {
@@ -69,13 +73,13 @@ const ok = (data: Record<string, unknown>, text: string) => ({
 
 const WRITE_DESCRIPTIONS: Record<PlanWriteOperation, string> = {
   create_training_plan:
-    "Legt einen neuen Trainingsplan als Entwurf an. Beliebige Trainingssplits mit beliebig vielen Trainingseinheiten und frei benannten Einheiten; jede Einheit braucht mindestens eine Übung. Der Plan wird NICHT aktiviert – dafür ist activate_training_plan mit ausdrücklicher Bestätigung zuständig. Mit plan_family_id wird eine bestehende Routine fortgeführt, ohne Angabe eine neue Planfamilie begonnen.",
+    "Legt einen neuen Trainingsplan als Entwurf an. Beliebige Trainingssplits mit beliebig vielen Trainingseinheiten und frei benannten Einheiten; jede Einheit braucht mindestens eine Übung. Der Plan wird NICHT aktiviert – dafür ist activate_training_plan mit ausdrücklicher Bestätigung zuständig. Mit plan_family_id wird eine bestehende Routine fortgeführt, ohne Angabe eine neue Planfamilie begonnen. Übungen außerhalb des Katalogs in custom_exercises beschreiben und in der Einheit über ihren key (custom:…) verwenden; sie werden im selben Vorgang als eigene Übungen angelegt.",
   create_plan_version:
     "Erstellt aus einer beliebigen vorhandenen Planversion eine neue, bearbeitbare Draft-Version. Das ist der Weg, um einen aktiven Plan zu ändern und um zu einem früheren Plan zurückzukehren: die Quellversion bleibt unverändert, alle Planpositionen erhalten neue IDs. Fortgeführte Trainingseinheiten behalten innerhalb derselben Planfamilie ihre session_id; mit as_new_family entsteht eine eigenständige Routine mit neuen Session-IDs.",
   update_plan_draft:
-    "Wendet typisierte Änderungen auf einen Entwurf an: Trainingseinheiten hinzufügen, umbenennen, umsortieren, duplizieren, entfernen; Übungen hinzufügen, austauschen, entfernen, umsortieren; Zielsätze, Wiederholungsbereiche, Zielgewichte, Pausen, Notizen und Ausführungen ändern. Erfordert expected_row_revision des Entwurfs und erkennt damit parallele Änderungen. Aktive und archivierte Versionen werden nie verändert.",
+    "Das Wochenziel ist days_per_week des aktiven Plans (update_plan_metadata); um es zu ändern, mit create_plan_version einen Entwurf anlegen, hier ändern und erst nach Rückfrage aktivieren. Wendet typisierte Änderungen auf einen Entwurf an: Trainingseinheiten hinzufügen, umbenennen, umsortieren, duplizieren, entfernen; Übungen hinzufügen, austauschen, entfernen, umsortieren; Zielsätze, Wiederholungsbereiche, Zielgewichte, Pausen, Notizen und Ausführungen ändern. Erfordert expected_row_revision des Entwurfs und erkennt damit parallele Änderungen. Aktive und archivierte Versionen werden nie verändert.",
   activate_training_plan:
-    "Aktiviert einen geprüften Entwurf und archiviert die bisher aktive Version im selben Vorgang, sodass nie zwei Pläne gleichzeitig aktiv sind. Erfordert expected_row_revision UND eine confirmation, die genau diese Planversion und Revision nennt – eine erfolgreiche Validierung allein ist keine Bestätigung. Abgeschlossene und laufende Trainings behalten ihre bisherige Planversion.",
+    "Gibt es mehrere Entwürfe, zuerst fragen, welcher aktiviert werden soll. Aktiviert einen geprüften Entwurf und archiviert die bisher aktive Version im selben Vorgang, sodass nie zwei Pläne gleichzeitig aktiv sind. Erfordert expected_row_revision UND eine confirmation, die genau diese Planversion und Revision nennt – eine erfolgreiche Validierung allein ist keine Bestätigung. Abgeschlossene und laufende Trainings behalten ihre bisherige Planversion.",
   archive_plan_draft:
     "Verwirft einen nicht mehr benötigten Entwurf. Der Datensatz bleibt lesbar erhalten; nichts wird gelöscht. Ein verworfener Entwurf gilt nie als aktiv gewesen und beeinflusst keine Auswertung.",
 };
@@ -258,7 +262,11 @@ export function registerPlanTools(
             type: "text" as const,
             text: payload.ok
               ? `Neuer Entwurf ${payload.result?.plan?.version.plan_version_id} (Version ${payload.result?.plan?.version.version_no}) erstellt.`
-              : `${payload.error!.code}: ${payload.error!.message}`,
+              : failureText(
+                  payload.error!.code,
+                  payload.error!.message,
+                  payload.error!.recovery,
+                ),
           },
         ],
       };
@@ -297,7 +305,11 @@ export function registerPlanTools(
             {
               type: "text" as const,
               text: !payload.ok
-                ? `${payload.error!.code}: ${payload.error!.message}${payload.error!.details.length ? ` (${payload.error!.details.join("; ")})` : ""}`
+                ? failureText(
+                    payload.error!.code,
+                    `${payload.error!.message}${payload.error!.details.length ? ` (${payload.error!.details.join("; ")})` : ""}`,
+                    payload.error!.recovery,
+                  )
                 : payload.replayed
                   ? "Bereits bestätigter Vorgang; keine weitere Änderung."
                   : payload.result?.activation

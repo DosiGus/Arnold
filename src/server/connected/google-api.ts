@@ -14,6 +14,8 @@ import { WriteError } from "../workout/infrastructure.js";
 
 export type TrackerFile = {
   id: string;
+  /** As Google reports it; the user may have renamed the file. */
+  name?: string;
   mimeType: string;
   trashed?: boolean;
   ownedByMe?: boolean;
@@ -92,11 +94,15 @@ export class GoogleTrackerApi {
       appProperties: { arnold_tracker: trackerId },
     });
   }
-  async verifyFile(spreadsheetId: string, trackerId: string) {
+  /** Checks the file belongs to this tracker and returns it as Google sees it. */
+  async verifyFile(
+    spreadsheetId: string,
+    trackerId: string,
+  ): Promise<TrackerFile> {
     const url = new URL(`${DRIVE}/${encodeURIComponent(spreadsheetId)}`);
     url.searchParams.set(
       "fields",
-      "id,mimeType,trashed,ownedByMe,appProperties",
+      "id,name,mimeType,trashed,ownedByMe,appProperties",
     );
     const file = await this.request<TrackerFile>(url);
     if (
@@ -110,6 +116,7 @@ export class GoogleTrackerApi {
         "PERMISSION_DENIED",
         "Diese Datei gehört nicht zur eigenen Arnold-Einrichtung.",
       );
+    return file;
   }
   sheets(spreadsheetId: string): ArnoldSheetsWriteTransport {
     return {

@@ -104,6 +104,10 @@ export const REASON_TEXT: Record<AnalyticsReason, string> = {
     "In dieser Woche galten zwei Trainingspläne, das Wochenziel ist dadurch nicht eindeutig.",
   working_set_not_planned:
     "Einzelne Arbeitssätze gehören zu keiner geplanten Übung dieser Einheit.",
+  comparison_needs_two_dates:
+    "Für einen Vergleich braucht es Messwerte an mindestens zwei Tagen.",
+  comparison_mixed_load_basis:
+    "Die Werte stammen aus unterschiedlichen Lastarten und sind nicht vergleichbar.",
 };
 
 /** Joins the reasons behind a metric into one short sentence, or `null`. */
@@ -1047,6 +1051,10 @@ export function buildExerciseProgressView(
         })),
     selected_metric: metric,
     selected_series: selected,
+    // B18: the engine's comparisons, passed on unchanged.
+    comparisons: progress ? [...progress.comparisons] : [],
+    selected_comparison:
+      progress?.comparisons.find((entry) => entry.metric === metric) ?? null,
     available_metrics: PROGRESS_METRICS.map((entry) => {
       const match = series.find((s) => s.metric === entry.key);
       return {

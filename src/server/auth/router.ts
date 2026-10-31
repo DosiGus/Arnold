@@ -51,6 +51,13 @@ export interface AuthSurfaceOptions {
 export interface AuthSurface {
   resolveRequest(request: Request): Promise<AuthenticatedArnoldContext>;
   assertActive(context: AuthenticatedArnoldContext): Promise<void>;
+  /** Account deletion: forgets the user and its identity connections. */
+  removeUser(userId: string): Promise<boolean>;
+  /** Dates of the stored account, for get_arnold_stored_data. */
+  accountDates(userId: string): Promise<{
+    created_at_utc: string;
+    last_seen_at_utc: string | null;
+  } | null>;
   /**
    * Mounts `/.well-known/oauth-protected-resource` and
    * `/.well-known/oauth-authorization-server`. Undefined in `open` mode,
@@ -108,6 +115,19 @@ export function buildAuthSurface(options: AuthSurfaceOptions): AuthSurface {
       );
   };
 
+  const accountDates = async (userId: string) => {
+    const user = await repository.byId(userId);
+    if (!user) return null;
+    const seen = (await repository.connectionsFor(userId))
+      .map((c) => c.last_seen_at_utc)
+      .sort()
+      .at(-1);
+    return {
+      created_at_utc: user.created_at_utc,
+      last_seen_at_utc: seen ?? null,
+    };
+  };
+
   if (config.mode === "open") {
     // The synthetic context is explicit and obviously fake, so that anything
     // it touches is identifiable as not belonging to a real user.
@@ -129,6 +149,8 @@ export function buildAuthSurface(options: AuthSurfaceOptions): AuthSurface {
     return {
       resolveRequest,
       assertActive,
+      removeUser: (userId: string) => repository.remove(userId),
+      accountDates,
       metadataRouter: undefined,
       bearerGate: passThrough,
       guard,
@@ -190,6 +212,8 @@ export function buildAuthSurface(options: AuthSurfaceOptions): AuthSurface {
   return {
     resolveRequest,
     assertActive,
+    removeUser: (userId: string) => repository.remove(userId),
+    accountDates,
     metadataRouter,
     bearerGate,
     guard,
