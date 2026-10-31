@@ -31,6 +31,12 @@ Seit Commit `3af023a` in `main`, du kannst direkt darauf bauen:
   - Ist es ungültig oder abgelaufen, kommt `_meta.arnold.code = "CONFIRMATION_INVALID"` mit `recovery: "start_over"`. Die Karte bietet dann an, neu zu beginnen.
 - Neuer Fehlercode `SHEET_CAPACITY_EXCEEDED` mit `recovery: "contact_support"`.
 
+**Nachtrag vom 31.10., Branch `feat/beta-backend` (`9282cdb`), kommt mit dem Merge von B nach `main`:**
+
+- **Neu verbinden (A5):** Die Karte ruft `connect_google_account` mit `{}` auf (`ConnectGoogleInputSchema` in `account-contract.ts`); bei eingerichtetem Konto ist kein Einrichtungsnachweis nötig. Vor der Einrichtung kommt `SETUP_REQUIRED` mit `recovery: "finish_setup"`.
+- **Ungewöhnliche Werte (Satzkarte):** Über 500 kg oder über 100 Wiederholungen antwortet `log_workout_sets` bzw. `update_set` mit `CONFIRMATION_REQUIRED`. Die Karte fragt „Stimmt das?“ und sendet bei Ja erneut mit `confirm_unusual_values: true`. Grenzen in `UNUSUAL_SET_LIMITS` (`workout-contract.ts`).
+- **Datum in der Zukunft:** `DATE_IN_FUTURE` mit `recovery: "none"`; die Karte zeigt einen kurzen Hinweis.
+
 ## Designprinzipien (verbindlich, freigegeben am 30.10.)
 
 - **Eine Karte, ein Gedanke.** Pro Karte höchstens 2 Buttons unten und höchstens 4 Zahlen. Eine dritte, leise Textaktion („Training abbrechen“) ist erlaubt.
@@ -96,7 +102,7 @@ Nie in der UI rechnen; jede Kennzahl kommt fertig vom Server. Keine externen Sch
 Die Details stehen in `02-TODO.md`. Hier steht pro Aufgabe, woran sie als fertig gilt.
 
 1. **A4 Wochenkarte** gegen den Vertrag `trained_dates` und `training_days`. Bis Worker B ihn liefert, mit Testdaten simulieren. **Fertig:** „x von y Trainingstagen“; zwei Einheiten an einem Tag ergeben einen Haken.
-2. **A5 Karte „Google neu verbinden“** für `GOOGLE_REAUTH_REQUIRED`. Ein Satz, warum; ein Button über den vorhandenen Ablauf (`connect_google_account`). Danach zurück zur ursprünglichen Karte.
+2. **A5 Karte „Google neu verbinden“** für `GOOGLE_REAUTH_REQUIRED`. Ein Satz, warum; ein Button über den vorhandenen Ablauf (`connect_google_account`). Danach zurück zur ursprünglichen Karte. Nach B14 braucht der Button keinen Einrichtungsnachweis mehr: Bei eingerichtetem Konto genügt `connect_google_account` ohne Sitzungsfelder. Teste den Fall „neuer Chat, kein gespeicherter Claim“.
 3. **A6 Zustände** für Laden, Leer, Fehler und Erfolg in jeder Karte, gesteuert über `recovery`. Für jeden Wert ein Text, der sagt, was der Nutzer tun kann, nie ein technischer Code. **Fertig:** ein Test pro `recovery`-Wert.
 4. **Feinschliff der Satzkarte**, alle Punkte aus dem Befund oben. Für „Letztes Mal“ zuerst prüfen, ob die Daten im View-Modell schon da sind; sonst Wunsch an B.
 5. **A3 Onboarding als Frage-Karten** auf den Bausteinen aus `cards.tsx`:
