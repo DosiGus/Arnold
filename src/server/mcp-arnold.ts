@@ -1,4 +1,8 @@
-import { failureText, recoveryFor } from "../shared/write-recovery.js";
+import {
+  failureText,
+  recoveryFor,
+  type Recovery,
+} from "../shared/write-recovery.js";
 import { registerWorkoutTools } from "./mcp-workout.js";
 import { registerPlanTools } from "./mcp-plan.js";
 import { registerOnboardingTools } from "./mcp-onboarding.js";
@@ -137,6 +141,48 @@ const ProgressInputSchema = z.object({
     "Auswertungsmetrik; Standard max_load. Lasten werden nur innerhalb vergleichbarer Ausführungen verglichen.",
   ),
 });
+
+/** B17: open a card directly on one exercise or one workout. */
+const ShowDashboardInputSchema = z.object({
+  card: DashboardCardSchema.optional(),
+  exercise_id: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Nur mit card progress: Übungs-ID aus get_arnold_dashboard.exercises.",
+    ),
+  metric: ProgressMetricKeySchema.optional().describe(
+    "Nur mit card progress: Kennzahl des Fortschritts, Standard max_load.",
+  ),
+  workout_id: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("Nur mit card history: Trainings-ID aus get_arnold_workouts."),
+});
+
+/** A focus argument that does not belong to the chosen card, as German text. */
+function misplacedFocus(input: z.infer<typeof ShowDashboardInputSchema>) {
+  if (
+    (input.exercise_id !== undefined || input.metric !== undefined) &&
+    input.card !== "progress"
+  )
+    return "exercise_id und metric gehören zur Karte progress. card: progress setzen.";
+  if (input.workout_id !== undefined && input.card !== "history")
+    return "workout_id gehört zur Karte history. card: history setzen.";
+  return null;
+}
+
+function focusFailure(code: string, message: string, recovery: Recovery) {
+  return {
+    content: [
+      { type: "text" as const, text: failureText(code, message, recovery) },
+    ],
+    isError: true as const,
+    _meta: { arnold: { code, retryable: false, recovery } },
+  };
+}
 
 /** Tool failures are reported as MCP errors, never as a fabricated empty result. */
 function failure(error: unknown) {
@@ -301,18 +347,55 @@ export function createArnoldMcpServer(
     "show_arnold_dashboard",
     {
       title: "Arnold öffnen",
-      description: `Öffnet Arnold als Karte im Chat. Quelle: ${sourceLabel}. Liefert den Dashboard-Vertrag arnold.dashboard/2. Mit card die passende Karte wählen: today, wenn der Nutzer trainieren oder Sätze eintragen will oder fragt, was heute ansteht; week für den Wochenüberblick; progress für den Fortschritt einer Übung; history für vergangene Trainings; plan zum Ansehen oder Bearbeiten des Trainingsplans. Will der Nutzer heute trainieren, zuerst die Karte today zeigen; start_workout erst, wenn er wirklich startet oder einen Satz nennt. Die Karte zeigt die Zahlen selbst; im Chat danach nur kurz einordnen und nichts wiederholen.`,
-      inputSchema: z.object({ card: DashboardCardSchema.optional() }),
+      description: `Öffnet Arnold als Karte im Chat. Quelle: ${sourceLabel}. Liefert den Dashboard-Vertrag arnold.dashboard/2. Mit card die passende Karte wählen: today, wenn der Nutzer trainieren oder Sätze eintragen will oder fragt, was heute ansteht; week für den Wochenüberblick; progress für den Fortschritt einer Übung (mit exercise_id aus get_arnold_dashboard.exercises öffnet die Karte direkt diese Übung, metric optional); history für vergangene Trainings (mit workout_id direkt dieses Training); plan zum Ansehen oder Bearbeiten des Trainingsplans. Will der Nutzer heute trainieren, zuerst die Karte today zeigen; start_workout erst, wenn er wirklich startet oder einen Satz nennt. Die Karte zeigt die Zahlen selbst; im Chat danach nur kurz einordnen und nichts wiederholen.`,
+      inputSchema: ShowDashboardInputSchema,
       outputSchema: ArnoldDashboardViewSchema,
       annotations: readOnly,
       _meta: { ui: { resourceUri: ARNOLD_RESOURCE_URI } },
     },
-    async () => {
+    async (input) => {
       try {
+        const misplaced = misplacedFocus(input);
+        if (misplaced)
+          return focusFailure("VALIDATION_ERROR", misplaced, "none");
         const snapshot = await load();
-        const view = buildDashboardView(snapshot.dataset, context(snapshot), {
+        // B17: ids are checked against this user's own data only.
+        if (
+          input.exercise_id !== undefined &&
+          !snapshot.dataset.exercises.some(
+            (e) => e.exercise_id === input.exercise_id,
+          )
+        )
+          return focusFailure(
+            "EXERCISE_NOT_FOUND",
+            "Diese Übung gibt es in deinen Daten nicht. Übungs-ID aus get_arnold_dashboard.exercises nehmen oder die Karte progress ohne exercise_id öffnen.",
+            "reload_then_retry",
+          );
+        if (
+          input.workout_id !== undefined &&
+          !snapshot.dataset.workouts.some(
+            (w) => w.workout_id === input.workout_id,
+          )
+        )
+          return focusFailure(
+            "WORKOUT_NOT_FOUND",
+            "Dieses Training gibt es in deinen Daten nicht. Trainings-ID aus get_arnold_workouts nehmen oder die Karte history ohne workout_id öffnen.",
+            "reload_then_retry",
+          );
+        const base = buildDashboardView(snapshot.dataset, context(snapshot), {
           reference_date: today(clock),
         });
+        const view = input.card
+          ? {
+              ...base,
+              focus: {
+                card: input.card,
+                exercise_id: input.exercise_id ?? null,
+                metric: input.metric ?? null,
+                workout_id: input.workout_id ?? null,
+              },
+            }
+          : base;
         const workouts = view.kpis.find((k) => k.key === "workouts")?.value;
         return result(
           view,

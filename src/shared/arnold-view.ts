@@ -300,6 +300,27 @@ export const ViewDataQualitySchema = z.object({
   notes: z.array(z.string()),
 });
 
+/** Which series a progress chart may draw, with its German label and unit. */
+export const PROGRESS_METRICS = [
+  { key: "max_load", label: "Maximale vergleichbare Last", unit: "kg" },
+  { key: "estimated_1rm", label: "Geschätztes 1RM", unit: "kg" },
+  { key: "nominal_volume", label: "Nominales Trainingsvolumen", unit: "kg" },
+  { key: "total_reps", label: "Wiederholungen", unit: "Wdh." },
+  {
+    key: "mean_reps_per_working_set",
+    label: "Ø Wiederholungen pro Arbeitssatz",
+    unit: "Wdh.",
+  },
+] as const;
+export const ProgressMetricKeySchema = z.enum([
+  "max_load",
+  "estimated_1rm",
+  "nominal_volume",
+  "total_reps",
+  "mean_reps_per_working_set",
+]);
+export type ProgressMetricKey = z.infer<typeof ProgressMetricKeySchema>;
+
 /**
  * Payload of `get_arnold_dashboard` and of `show_arnold_dashboard` in Arnold
  * mode. Aggregated on purpose: workout details and exercise series are fetched
@@ -334,6 +355,18 @@ export const ArnoldDashboardViewSchema = z.object({
     workouts_in_period: count,
     sets_in_period: count,
   }),
+  /**
+   * What `show_arnold_dashboard` was asked to open, after the server checked
+   * every id against the user's own data (B17). Absent for a plain overview.
+   */
+  focus: z
+    .object({
+      card: z.enum(["today", "week", "progress", "history", "plan"]),
+      exercise_id: ArnoldIdSchema.nullable(),
+      metric: ProgressMetricKeySchema.nullable(),
+      workout_id: ArnoldIdSchema.nullable(),
+    })
+    .optional(),
 });
 export type ArnoldDashboardView = z.infer<typeof ArnoldDashboardViewSchema>;
 
@@ -352,27 +385,6 @@ export const ArnoldWorkoutHistoryViewSchema = z.object({
 export type ArnoldWorkoutHistoryView = z.infer<
   typeof ArnoldWorkoutHistoryViewSchema
 >;
-
-/** Which series a progress chart may draw, with its German label and unit. */
-export const PROGRESS_METRICS = [
-  { key: "max_load", label: "Maximale vergleichbare Last", unit: "kg" },
-  { key: "estimated_1rm", label: "Geschätztes 1RM", unit: "kg" },
-  { key: "nominal_volume", label: "Nominales Trainingsvolumen", unit: "kg" },
-  { key: "total_reps", label: "Wiederholungen", unit: "Wdh." },
-  {
-    key: "mean_reps_per_working_set",
-    label: "Ø Wiederholungen pro Arbeitssatz",
-    unit: "Wdh.",
-  },
-] as const;
-export const ProgressMetricKeySchema = z.enum([
-  "max_load",
-  "estimated_1rm",
-  "nominal_volume",
-  "total_reps",
-  "mean_reps_per_working_set",
-]);
-export type ProgressMetricKey = z.infer<typeof ProgressMetricKeySchema>;
 
 /**
  * Payload of `get_arnold_exercise_progress`.
