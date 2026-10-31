@@ -40,3 +40,8 @@ iframe {
     11px ui-monospace,
     monospace;
 }
+
+:root[data-display-mode="fullscreen"] iframe {
+  width: 100%;
+  max-width: none;
+}

@@ -28,7 +28,8 @@ async function start() {
   // two UI entry tools are accepted.
   const requested = new URLSearchParams(location.search).get("tool");
   const name =
-    requested === "show_arnold_onboarding"
+    requested === "show_arnold_onboarding" ||
+    requested === "delete_arnold_account"
       ? requested
       : "show_arnold_dashboard";
   const tool = tools.find((t) => t.name === name);
@@ -64,11 +65,24 @@ async function start() {
         theme: "light",
         platform: "web",
         displayMode: "inline",
-        availableDisplayModes: ["inline"],
+        availableDisplayModes: ["inline", "fullscreen"],
         containerDimensions: { maxHeight: 10000 },
       },
     },
   );
+  bridge.onrequestdisplaymode = async ({ mode }) => {
+    const actual = mode === "fullscreen" ? "fullscreen" : "inline";
+    document.documentElement.dataset.displayMode = actual;
+    bridge.setHostContext({ displayMode: actual });
+    return { mode: actual };
+  };
+  bridge.onopenlink = async ({ url }) => {
+    const parsed = new URL(url);
+    if (!["http:", "https:"].includes(parsed.protocol))
+      return { isError: true };
+    window.open(url, "_blank", "noopener,noreferrer");
+    return {};
+  };
   bridge.oninitialized = async () => {
     await bridge.sendToolInput({ arguments: args });
     await bridge.sendToolResult(initial);
