@@ -5,8 +5,6 @@ import { ArnoldDashboardApp } from "./ArnoldDashboardApp";
 import { ArnoldMcpClient } from "./client/ArnoldMcpClient";
 import { OnboardingView } from "./views/OnboardingView";
 import "./style.css";
-import "./glass.css";
-import "./cards.css";
 import { AccountCard } from "./views/AccountCard";
 import { CardSkeleton } from "./components/cards";
 import { GoogleRecovery, RecoveryCard } from "./components/recovery";
