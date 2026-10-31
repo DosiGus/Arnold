@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Arnold – Hilfe und Kontakt</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #fff;
+        --fg: #111;
+        --muted: #555;
+        --draft-bg: #fff3c4;
+        --draft-fg: #5a4300;
+        --mark: #ffe08a;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #111;
+          --fg: #eee;
+          --muted: #aaa;
+          --draft-bg: #3d3000;
+          --draft-fg: #ffe08a;
+          --mark: #5a4300;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          16px/1.55 -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          system-ui,
+          sans-serif;
+      }
+      main {
+        max-width: 46rem;
+        margin: 0 auto;
+        padding: 1.5rem 1rem 4rem;
+      }
+      .draft {
+        background: var(--draft-bg);
+        color: var(--draft-fg);
+        border-radius: 0.6rem;
+        padding: 0.8rem 1rem;
+        font-weight: 600;
+      }
+      h1 {
+        font-size: 1.7rem;
+        line-height: 1.2;
+        margin: 1.5rem 0 0.3rem;
+      }
+      h2 {
+        font-size: 1.2rem;
+        margin: 2rem 0 0.5rem;
+      }
+      h3 {
+        font-size: 1.05rem;
+        margin: 1.4rem 0 0.3rem;
+      }
+      mark {
+        background: var(--mark);
+        color: inherit;
+        padding: 0 0.2em;
+        border-radius: 0.2em;
+      }
+      a {
+        color: inherit;
+      }
+      nav {
+        margin-top: 3rem;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="draft">Entwurf, Freigabe durch Kevin ausstehend.</p>
+
+      <h1>Hilfe und Kontakt</h1>
+
+      <h2>So erreichst du uns</h2>
+      <p>
+        E-Mail: <mark>[PLATZHALTER: Support-Adresse nach Entscheidung K9]</mark
+        ><br />
+        Wir antworten während der Beta
+        <mark
+          >[PLATZHALTER: zum Beispiel werktags innerhalb von 24 Stunden]</mark
+        >.
+      </p>
+      <p>Schick uns bei einem Problem bitte:</p>
+      <ul>
+        <li>ungefähr wann es passiert ist (Datum und Uhrzeit),</li>
+        <li>
+          was du in ChatGPT geschrieben hast und was Arnold geantwortet hat,
+        </li>
+        <li>wenn möglich ein Bildschirmfoto der Karte,</li>
+        <li>ob du am Handy oder am Computer warst.</li>
+      </ul>
+      <p>Schick uns nie Passwörter oder Codes aus Anmelde-E-Mails.</p>
+
+      <h2>Häufige Fragen</h2>
+
+      <h3>Arnold sagt, die Google-Freigabe ist abgelaufen.</h3>
+      <p>
+        Das ist in der Beta normal und passiert etwa alle 7 Tage. Tipp in der
+        Karte auf „Google neu verbinden“ und wähle dasselbe Google-Konto wie
+        bisher. Danach geht es mit deinen Daten weiter; nichts geht verloren.
+      </p>
+
+      <h3>Ich habe einen falschen Wert eingetragen.</h3>
+      <p>
+        Schreib es einfach im Chat, zum Beispiel „Beim zweiten Satz waren es 10
+        Wiederholungen“. Arnold korrigiert genau diesen Satz.
+      </p>
+
+      <h3>Arnold antwortet nicht oder zeigt einen Fehler.</h3>
+      <p>
+        Versuch es nach einer Minute noch einmal. Klappt es weiter nicht,
+        schreib uns. Arnold speichert nichts doppelt, auch wenn du einen Satz
+        noch einmal schickst.
+      </p>
+
+      <h3>Wo ist meine Tabelle?</h3>
+      <p>
+        In deinem Google Drive im Hauptordner. Den Namen und einen Link zeigt
+        dir Arnold am Ende der Einrichtung. Du kannst auch fragen: „Wo ist meine
+        Arnold-Tabelle?“
+      </p>
+
+      <h3>Was speichert Arnold über mich?</h3>
+      <p>
+        Frag in ChatGPT: „Welche Daten speichert Arnold über mich?“ Details
+        stehen im <a href="/datenschutz">Datenschutzhinweis</a>.
+      </p>
+
+      <h3>Wie höre ich auf?</h3>
+      <p>
+        Schreib „Lösch mein Arnold-Konto“ und bestätige in der Karte. Deine
+        Google-Tabelle bleibt in deinem Drive. Den Connector entfernst du in
+        ChatGPT unter Einstellungen.
+      </p>
+
+      <nav>
+        <a href="/datenschutz">Datenschutzhinweis</a> ·
+        <a href="/bedingungen">Beta-Bedingungen</a>
+      </nav>
+    </main>
+  </body>
+</html>

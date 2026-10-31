@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Arnold – Datenschutzhinweis (Beta)</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #fff;
+        --fg: #111;
+        --muted: #555;
+        --line: #ddd;
+        --draft-bg: #fff3c4;
+        --draft-fg: #5a4300;
+        --mark: #ffe08a;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #111;
+          --fg: #eee;
+          --muted: #aaa;
+          --line: #333;
+          --draft-bg: #3d3000;
+          --draft-fg: #ffe08a;
+          --mark: #5a4300;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          16px/1.55 -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          system-ui,
+          sans-serif;
+      }
+      main {
+        max-width: 46rem;
+        margin: 0 auto;
+        padding: 1.5rem 1rem 4rem;
+      }
+      .draft {
+        background: var(--draft-bg);
+        color: var(--draft-fg);
+        border-radius: 0.6rem;
+        padding: 0.8rem 1rem;
+        font-weight: 600;
+      }
+      h1 {
+        font-size: 1.7rem;
+        line-height: 1.2;
+        margin: 1.5rem 0 0.3rem;
+      }
+      h2 {
+        font-size: 1.2rem;
+        margin: 2rem 0 0.5rem;
+      }
+      p.meta {
+        color: var(--muted);
+        margin-top: 0;
+      }
+      mark {
+        background: var(--mark);
+        color: inherit;
+        padding: 0 0.2em;
+        border-radius: 0.2em;
+      }
+      .table {
+        overflow-x: auto;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 0.95rem;
+      }
+      th,
+      td {
+        text-align: left;
+        vertical-align: top;
+        padding: 0.45rem 0.5rem;
+        border-bottom: 1px solid var(--line);
+      }
+      th {
+        font-weight: 600;
+      }
+      a {
+        color: inherit;
+      }
+      nav {
+        margin-top: 3rem;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="draft">
+        Entwurf, Freigabe durch Kevin ausstehend. Dieser Text ist nicht
+        rechtlich geprüft.
+      </p>
+
+      <h1>Datenschutzhinweis für die Arnold-Beta</h1>
+      <p class="meta">Stand: <mark>[PLATZHALTER: Datum der Freigabe]</mark></p>
+
+      <p>
+        Arnold ist ein Trainingsbegleiter in ChatGPT. Du trägst Krafttraining im
+        Chat oder in den Arnold-Karten ein, Arnold speichert es in einer
+        Google-Tabelle in deinem eigenen Google Drive und zeigt dir Woche,
+        Fortschritt und Plan. Die Beta ist kostenlos und nur für eingeladene
+        Testerinnen und Tester. Hier steht, welche Daten dabei wo liegen, wofür
+        und wie lange, und wie du sie löschst.
+      </p>
+
+      <h2>1. Wer ist verantwortlich?</h2>
+      <p>
+        <mark>[PLATZHALTER: Name und Anschrift des Verantwortlichen]</mark
+        ><br />
+        E-Mail: <mark>[PLATZHALTER: Kontaktadresse]</mark>
+      </p>
+
+      <h2>2. Kurz gesagt</h2>
+      <ul>
+        <li>
+          Deine Trainingsdaten liegen in <strong>deiner</strong> Google-Tabelle.
+          Sie gehört dir und bleibt, auch wenn du Arnold löschst.
+        </li>
+        <li>
+          Bei uns liegt nur, was Arnold zum Betrieb braucht: Kennungen, die
+          verschlüsselte Google-Freigabe, deine Angaben aus der Einrichtung und
+          für 30 Tage ein Protokoll der Speichervorgänge.
+        </li>
+        <li>
+          „Lösch mein Arnold-Konto“ im Chat löscht alles bei uns sofort.
+          Sicherungskopien verschwinden spätestens 7 Tage danach.
+        </li>
+        <li>Keine Werbung, kein Verkauf von Daten, keine Analyse-Werkzeuge.</li>
+      </ul>
+
+      <h2>3. Welche Daten liegen wo?</h2>
+      <div class="table">
+        <table>
+          <thead>
+            <tr>
+              <th>Wo</th>
+              <th>Was</th>
+              <th>Wofür</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <strong>Dein Google Drive</strong><br />(dein Google-Konto)
+              </td>
+              <td>
+                Die Arnold-Tabelle: Übungen, Pläne, Trainings, Sätze mit
+                Gewicht, Wiederholungen, Anstrengung und Notizen.
+              </td>
+              <td>
+                Dein Trainingsprotokoll. Arnold darf nur Dateien öffnen, die
+                Arnold selbst angelegt hat (Berechtigung
+                <code>drive.file</code>), sonst nichts in deinem Drive.
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <strong>Arnold bei Google Cloud</strong><br />(Region Belgien,
+                EU)
+              </td>
+              <td>
+                Interne Nutzerkennung und Login-Kennung; Google-Kennung,
+                E-Mail-Adresse des verbundenen Google-Kontos und die
+                Google-Freigabe (verschlüsselt); Verweis auf deine Tabelle;
+                deine Angaben aus der Einrichtung (Ziel, Erfahrung,
+                Trainingstage, Geräte und freiwillig Alter, Geschlecht, Größe,
+                Gewicht, zu schonende Körperbereiche); Protokoll der
+                Speichervorgänge mit den geänderten Trainingswerten.
+              </td>
+              <td>
+                Damit Arnold dich wiedererkennt, in deine Tabelle schreiben
+                kann, einen passenden Plan vorschlägt und ein unterbrochener
+                Speichervorgang sicher wiederholt werden kann, ohne doppelte
+                Einträge.
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <strong>Server-Protokolle</strong><br />(Google Cloud Logging,
+                EU)
+              </td>
+              <td>
+                Pro Anfrage: Zeitpunkt, IP-Adresse, App-Kennung, Adresse und
+                Status. Pro Tool-Aufruf: Name des Tools, Ergebnis, Fehlercode,
+                Dauer und die interne Nutzerkennung. Keine Trainingswerte, Namen
+                oder E-Mail-Adressen.
+              </td>
+              <td>Fehler finden, Missbrauch abwehren, Betrieb überwachen.</td>
+            </tr>
+            <tr>
+              <td><strong>WorkOS</strong><br />(Anmeldedienst, USA)</td>
+              <td>
+                Dein Login bei Arnold: E-Mail-Adresse und Anmeldedaten, wie du
+                sie bei der Anmeldung angibst.
+              </td>
+              <td>Anmeldung bei Arnold aus ChatGPT heraus.</td>
+            </tr>
+            <tr>
+              <td><strong>OpenAI / ChatGPT</strong></td>
+              <td>
+                Was du im Chat schreibst und was Arnold an ChatGPT zurückgibt
+                (zum Beispiel Trainings, Plan, Auswertungen).
+              </td>
+              <td>
+                ChatGPT versteht deine Nachricht und ruft Arnold auf. Dafür
+                gelten die Bedingungen und der Datenschutzhinweis von OpenAI.
+                Arnold sieht deine Chatverläufe nicht.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Beim Verbinden mit Google setzt Arnold für wenige Minuten ein technisch
+        notwendiges Cookie, damit die Antwort von Google deinem Anmeldevorgang
+        zugeordnet werden kann. Weitere Cookies setzt Arnold nicht.
+      </p>
+
+      <h2>4. Wie lange?</h2>
+      <div class="table">
+        <table>
+          <thead>
+            <tr>
+              <th>Daten</th>
+              <th>Aufbewahrung</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Kennungen, Google-Freigabe, Verweis auf deine Tabelle</td>
+              <td>
+                bis du dein Arnold-Konto löschst (die Google-Freigabe auch, wenn
+                du Google trennst)
+              </td>
+            </tr>
+            <tr>
+              <td>Angaben aus der Einrichtung und Planentwürfe</td>
+              <td>
+                30 Tage nach abgeschlossener Einrichtung, dann automatisch
+                gelöscht
+              </td>
+            </tr>
+            <tr>
+              <td>Protokoll der Speichervorgänge und Änderungsprotokoll</td>
+              <td>
+                30 Tage, dann automatisch gelöscht (ein noch nicht
+                abgeschlossener Vorgang bleibt, bis er abgeschlossen ist)
+              </td>
+            </tr>
+            <tr>
+              <td>Server-Protokolle</td>
+              <td>30 Tage</td>
+            </tr>
+            <tr>
+              <td>Sicherungskopien gelöschter Dateien</td>
+              <td>7 Tage</td>
+            </tr>
+            <tr>
+              <td>Deine Google-Tabelle</td>
+              <td>so lange du willst; du löschst sie selbst in Google Drive</td>
+            </tr>
+            <tr>
+              <td>Login bei WorkOS</td>
+              <td>bis zum Ende der Beta oder bis du die Löschung anforderst</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>5. So löschst du deine Daten</h2>
+      <ul>
+        <li>
+          <strong>Arnold-Konto löschen:</strong> Schreib in ChatGPT „Lösch mein
+          Arnold-Konto“. Arnold zeigt dir, was gelöscht wird und was bleibt.
+          Erst wenn du in der Karte auf Löschen tippst, wird alles bei uns
+          gelöscht und die Google-Freigabe bei Google widerrufen.
+        </li>
+        <li>
+          <strong>Nur Google trennen:</strong> „Trenn mein Google-Konto“. Arnold
+          kann danach nicht mehr in deine Tabelle schreiben.
+        </li>
+        <li>
+          <strong>Tabelle löschen:</strong> in Google Drive wie jede andere
+          Datei.
+        </li>
+        <li>
+          <strong>Login bei WorkOS löschen:</strong> per E-Mail an
+          <mark>[PLATZHALTER: Kontaktadresse]</mark>.
+        </li>
+        <li>
+          <strong>Was gespeichert ist:</strong> „Welche Daten speichert Arnold
+          über mich?“ zeigt dir Art, Anzahl und Datum.
+        </li>
+      </ul>
+
+      <h2>6. Rechtsgrundlagen</h2>
+      <p>
+        <mark>[PLATZHALTER: von der Datenschutzberatung prüfen lassen]</mark>
+        Vorschlag: Nutzung von Arnold zur Erfüllung der Beta-Teilnahme (Art. 6
+        Abs. 1 lit. b DSGVO); Server-Protokolle aus berechtigtem Interesse an
+        sicherem Betrieb (Art. 6 Abs. 1 lit. f DSGVO); freiwillige Körperangaben
+        und zu schonende Körperbereiche nur mit deiner ausdrücklichen
+        Einwilligung (Art. 9 Abs. 2 lit. a DSGVO), die du jederzeit widerrufen
+        kannst, indem du die Angaben weglässt oder dein Konto löschst.
+      </p>
+
+      <h2>7. Empfänger und Übermittlung in Drittländer</h2>
+      <p>
+        Arnold nutzt als Dienstleister Google Cloud (Betrieb, Speicherung in der
+        EU), WorkOS (Anmeldung, USA) und die Google-APIs für Drive und Tabellen
+        (in deinem eigenen Google-Konto). ChatGPT nutzt du über dein eigenes
+        Konto bei OpenAI.
+        <mark
+          >[PLATZHALTER: Auftragsverarbeitungsverträge und Grundlage für die
+          Übermittlung in die USA, etwa EU-US Data Privacy Framework oder
+          Standardvertragsklauseln, prüfen und benennen]</mark
+        >
+      </p>
+
+      <h2>8. Deine Rechte</h2>
+      <p>
+        Du hast das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung
+        der Verarbeitung, Datenübertragbarkeit und Widerspruch. Deine
+        Trainingsdaten hast du jederzeit vollständig in deiner eigenen Tabelle.
+        Schreib uns an
+        <mark>[PLATZHALTER: Kontaktadresse]</mark>. Du kannst dich auch bei
+        einer Datenschutz-Aufsichtsbehörde beschweren, zum Beispiel
+        <mark>[PLATZHALTER: zuständige Aufsichtsbehörde]</mark>.
+      </p>
+
+      <h2>9. Beta-Befragung</h2>
+      <p>
+        Am Ende der Beta fragen wir dich, wie Arnold war. Die Teilnahme ist
+        freiwillig. Deine Antworten nutzen wir nur, um Arnold zu verbessern.
+        <mark
+          >[PLATZHALTER: Werkzeug für Feedback und Befragung nach Entscheidung
+          K9]</mark
+        >
+      </p>
+
+      <nav>
+        <a href="/bedingungen">Beta-Bedingungen</a> ·
+        <a href="/support">Hilfe und Kontakt</a>
+      </nav>
+    </main>
+  </body>
+</html>

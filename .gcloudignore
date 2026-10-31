@@ -1,16 +1,27 @@
-# What `gcloud run deploy --source .` must never upload. Mirrors .dockerignore
-# and keeps every secret-shaped file out of the Cloud Build source archive.
-.gcloudignore
-.git
-.github
-node_modules
-dist
-data
-test-results
-playwright-report
+# What `gcloud run deploy --source .` uploads to Cloud Build.
+#
+# Allowlist: everything at the top level is excluded, then only the build
+# inputs and the runtime files are let back in. A new top-level file or
+# folder (a worktree, an audit, test output) stays out until it is named here.
+# Keep in step with .dockerignore. Check with:
+#   gcloud meta list-files-for-upload .
+/*
+!/package.json
+!/package-lock.json
+!/Dockerfile
+!/.dockerignore
+!/tsconfig.json
+!/tsconfig.server.json
+!/vite.config.ts
+!/vite.host.config.ts
+!/dashboard.html
+!/host.html
+!/src/
+!/public/
+
+# Never, wherever they sit inside the allowed folders.
+.DS_Store
 .env*
-.codex
-.agents
 secrets
 credentials
 *.pem
