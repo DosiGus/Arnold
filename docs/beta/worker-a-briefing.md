@@ -96,7 +96,7 @@ Nie in der UI rechnen; jede Kennzahl kommt fertig vom Server. Keine externen Sch
 Die Details stehen in `02-TODO.md`. Hier steht pro Aufgabe, woran sie als fertig gilt.
 
 1. **A4 Wochenkarte** gegen den Vertrag `trained_dates` und `training_days`. Bis Worker B ihn liefert, mit Testdaten simulieren. **Fertig:** „x von y Trainingstagen“; zwei Einheiten an einem Tag ergeben einen Haken.
-2. **A5 Karte „Google neu verbinden“** für `GOOGLE_REAUTH_REQUIRED`. Ein Satz, warum; ein Button über den vorhandenen Ablauf (`connect_google_account`). Danach zurück zur ursprünglichen Karte.
+2. **A5 Karte „Google neu verbinden“** für `GOOGLE_REAUTH_REQUIRED`. Ein Satz, warum; ein Button über den vorhandenen Ablauf (`connect_google_account`). Danach zurück zur ursprünglichen Karte. Nach B14 braucht der Button keinen Einrichtungsnachweis mehr: Bei eingerichtetem Konto genügt `connect_google_account` ohne Sitzungsfelder. Teste den Fall „neuer Chat, kein gespeicherter Claim“.
 3. **A6 Zustände** für Laden, Leer, Fehler und Erfolg in jeder Karte, gesteuert über `recovery`. Für jeden Wert ein Text, der sagt, was der Nutzer tun kann, nie ein technischer Code. **Fertig:** ein Test pro `recovery`-Wert.
 4. **Feinschliff der Satzkarte**, alle Punkte aus dem Befund oben. Für „Letztes Mal“ zuerst prüfen, ob die Daten im View-Modell schon da sind; sonst Wunsch an B.
 5. **A3 Onboarding als Frage-Karten** auf den Bausteinen aus `cards.tsx`:
