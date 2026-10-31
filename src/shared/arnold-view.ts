@@ -29,6 +29,7 @@ import {
   MetricUnitSchema,
   MetricValueSchema,
   PeriodSchema,
+  ProgressComparisonSchema,
   SeriesSchema,
   type MetricValue,
 } from "../analytics/types.js";
@@ -420,6 +421,14 @@ export const ArnoldExerciseProgressViewSchema = z.object({
   /** The series the caller asked for; `points` are real measurements only. */
   selected_metric: ProgressMetricKeySchema,
   selected_series: SeriesSchema.nullable(),
+  /**
+   * First against last measurement per metric, from the analytics engine
+   * (B18). Within one comparability class, or `status: "not_available"` with
+   * a reason. The UI shows these values and computes nothing.
+   */
+  comparisons: z.array(ProgressComparisonSchema),
+  /** The comparison of `selected_metric`; null when the exercise has none. */
+  selected_comparison: ProgressComparisonSchema.nullable(),
   available_metrics: z.array(
     z.object({
       key: ProgressMetricKeySchema,
