@@ -1,16 +1,25 @@
-node_modules
-dist
-data
-test-results
-playwright-report
-.env*
-.git
-.codex
-.agents
-secrets
-credentials
-*.pem
-*.key
-service-account*.json
-service_account*.json
-*-credentials.json
+# Docker build context. Same allowlist as .gcloudignore: only build inputs
+# and runtime files. Everything else (worktrees in .claude/, docs, tests,
+# test output, local data, secrets) never reaches the image.
+*
+!package.json
+!package-lock.json
+!Dockerfile
+!tsconfig.json
+!tsconfig.server.json
+!vite.config.ts
+!vite.host.config.ts
+!dashboard.html
+!host.html
+!src
+!public
+
+**/.DS_Store
+**/.env*
+**/secrets
+**/credentials
+**/*.pem
+**/*.key
+**/service-account*.json
+**/service_account*.json
+**/*-credentials.json
