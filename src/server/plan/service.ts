@@ -595,7 +595,10 @@ export class TrainingPlanService {
       );
     const target =
       operation === "activate_training_plan" ? "active" : "archived";
-    if (!canTransition(plan.status, target))
+    if (
+      (operation === "archive_plan_draft" && plan.status !== "draft") ||
+      !canTransition(plan.status, target)
+    )
       throw planError(
         "INVALID_STATUS_TRANSITION",
         `Der Übergang von "${plan.status}" nach "${target}" ist nicht zulässig.`,

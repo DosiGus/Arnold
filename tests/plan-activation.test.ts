@@ -423,9 +423,8 @@ describe("discarding a draft", () => {
 
   it("refuses to discard an active plan", async () => {
     const h = harness();
-    const plan = (await h.dataset()).plans.find(
-      (p) => p.plan_version_id === "pfx-v2",
-    )!;
+    const before = await h.dataset();
+    const plan = before.plans.find((p) => p.plan_version_id === "pfx-v2")!;
     const result = await h.write("archive_plan_draft", {
       request_id: "arch1",
       plan_version_id: "pfx-v2",
@@ -433,8 +432,9 @@ describe("discarding a draft", () => {
     });
     // active -> archived is a legal transition, but only through activation of
     // a successor; discarding is reserved for drafts.
-    if (result.ok) expect(result.result!.plan!.version.status).toBe("archived");
-    else expect(result.error!.code).toBe("INVALID_STATUS_TRANSITION");
+    expect(result.ok).toBe(false);
+    expect(result.error!.code).toBe("INVALID_STATUS_TRANSITION");
+    expect(await h.dataset()).toEqual(before);
   });
 
   it("refuses to discard an already archived version", async () => {

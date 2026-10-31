@@ -505,7 +505,12 @@ export class WorkoutLoggingService {
             "Session erfordert eine Planversion.",
           );
         if (!plan && !session) {
-          const active = data.plans.find((p) => p.status === "active");
+          const active = data.plans.find(
+            (p) =>
+              p.status === "active" &&
+              p.activated_at_utc !== null &&
+              p.activated_at_utc.slice(0, 10) <= input.workout_date_local,
+          );
           const matches = new Set(
             data.planItems
               .filter(
@@ -726,6 +731,17 @@ export class WorkoutLoggingService {
           throw new WriteError(
             "VALIDATION_ERROR",
             "Abschluss benötigt mindestens einen aktiven Satz mit Wiederholungen.",
+          );
+        if (
+          "ended_at_utc" in input &&
+          typeof input.ended_at_utc === "string" &&
+          new Intl.DateTimeFormat("en-CA", {
+            timeZone: before.timezone,
+          }).format(new Date(input.ended_at_utc)) < before.workout_date_local
+        )
+          throw new WriteError(
+            "VALIDATION_ERROR",
+            "Workout-Ende liegt vor dem lokalen Trainingstag.",
           );
         result.workout = ArnoldWorkoutSchema.parse({
           ...before,

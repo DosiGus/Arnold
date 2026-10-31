@@ -118,6 +118,29 @@ describe("WorkoutLoggingService: creation and references", () => {
     });
     expect((await r.repository.read()).plans).toEqual(before.plans);
   });
+  it.each([
+    { activated: "2026-11-01T00:00:00Z", linked: false },
+    { activated: "2026-10-20T00:00:00Z", linked: true },
+    { activated: "2026-10-19T00:00:00Z", linked: true },
+  ])(
+    "only auto-links a plan activated by the workout day: $activated",
+    async ({ activated, linked }) => {
+      const data = workoutFixtureDataset();
+      const r = createFixtureLogging(
+        ArnoldDatasetSchema.parse({
+          ...data,
+          plans: data.plans.map((p) => ({ ...p, activated_at_utc: activated })),
+        }),
+      );
+      const before = await r.repository.read();
+      const workout = ok(
+        await r.service.startWorkout(startInput({ session_name: "Demo Push" })),
+      ).workout!;
+      expect(workout.plan_version_id).toBe(linked ? "fixture-plan-v1" : null);
+      expect(workout.session_id).toBe(linked ? "fixture-push" : null);
+      expect((await r.repository.read()).plans).toEqual(before.plans);
+    },
+  );
   it("does not guess an ambiguous session", async () => {
     const d = workoutFixtureDataset();
     const r = createFixtureLogging(
@@ -807,6 +830,92 @@ describe("idempotency, concurrency and recovery", () => {
 });
 
 describe("additional safety boundaries", () => {
+  it.each([
+    {
+      date: "2026-10-20",
+      tz: "Europe/Berlin",
+      end: "2000-01-01T12:00:00Z",
+      valid: false,
+    },
+    {
+      date: "2026-10-20",
+      tz: "Europe/Berlin",
+      end: "2026-10-19T21:59:59Z",
+      valid: false,
+    },
+    {
+      date: "2026-10-20",
+      tz: "Europe/Berlin",
+      end: "2026-10-19T22:00:00Z",
+      valid: true,
+    },
+    {
+      date: "2026-10-20",
+      tz: "America/Los_Angeles",
+      end: "2026-10-20T06:59:59Z",
+      valid: false,
+    },
+    {
+      date: "2026-10-20",
+      tz: "America/Los_Angeles",
+      end: "2026-10-20T07:00:00Z",
+      valid: true,
+    },
+    {
+      date: "2026-10-20",
+      tz: "Pacific/Kiritimati",
+      end: "2026-10-19T10:00:00Z",
+      valid: true,
+    },
+    {
+      date: "2026-03-29",
+      tz: "Europe/Berlin",
+      end: "2026-03-29T01:30:00Z",
+      valid: true,
+    },
+    {
+      date: "2026-10-25",
+      tz: "Europe/Berlin",
+      end: "2026-10-25T01:30:00Z",
+      valid: true,
+    },
+    {
+      date: "2026-10-20",
+      tz: "Europe/Berlin",
+      end: "2026-10-21T00:30:00Z",
+      valid: true,
+    },
+  ])(
+    "validates completion against the local workout day without a start time: $date / $tz / $end",
+    async ({ date, tz, end, valid }) => {
+      const r = createFixtureLogging();
+      const workout = ok(
+        await r.service.startWorkout(
+          startInput({ workout_date_local: date, timezone: tz }),
+        ),
+      ).workout!;
+      ok(
+        await r.service.logWorkoutSets({
+          request_id: "sets",
+          workout_id: workout.workout_id,
+          sets: [setInput()],
+        }),
+      );
+      const before = await r.repository.read();
+      const result = await r.service.completeWorkout({
+        request_id: "complete",
+        workout_id: workout.workout_id,
+        expected_row_revision: workout.row_revision,
+        ended_at_utc: end,
+      });
+      if (valid) {
+        expect(ok(result).workout!.ended_at_utc).toBe(end);
+      } else {
+        code(result, "VALIDATION_ERROR");
+        expect(await r.repository.read()).toEqual(before);
+      }
+    },
+  );
   it("blocks partial storage outcomes and leaves the whole tracker closed", async () => {
     const repo = new InMemoryArnoldWriteRepository(workoutFixtureDataset()),
       base = custom(repo);
