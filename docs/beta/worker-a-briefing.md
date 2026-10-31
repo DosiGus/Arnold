@@ -14,6 +14,17 @@ Das Design ist das Herzstück von Arnold. Parallel arbeiten Worker B (Backend) u
 4. `docs/GUIDE.md`: Abschnitt „Karten im Chat“ und „Chat-Brücke“.
 5. Die Bausteine `src/ui/components/cards.tsx` und `src/ui/cards.css`, dann `src/ui/views/TrainingCard.tsx` und `WeekCard.tsx` als Vorbild.
 
+## Stand der Verträge von Worker B
+
+Seit Commit `3af023a` in `main`, du kannst direkt darauf bauen:
+
+- `src/shared/write-recovery.ts`: `RecoverySchema` (7 Werte), `recoveryFor`, `GOOGLE_REAUTH_REQUIRED` mit Chat-Text.
+- Fehler von Workout-, Plan- und Einrichtungs-Tools haben das Pflichtfeld `recovery` im Fehlerobjekt.
+- Lese-Tools (Dashboard, Plan lesen, Einrichtungssperre) tragen den Fehler stattdessen in `_meta.arnold = { code, retryable, recovery }`; das Dashboard zusätzlich `failure`.
+- `ViewWeekSchema.trained_dates`: ISO-Daten der abgeschlossenen Einheiten, schon von der Engine befüllt.
+- `src/shared/account-contract.ts`: Ein- und Ausgabe von `delete_arnold_account` (`stage: "confirm" | "deleted"`, `sheet_url` kann `null` sein). Das Tool selbst baut B noch (B6).
+- Neuer Fehlercode `SHEET_CAPACITY_EXCEEDED` mit `recovery: "contact_support"`.
+
 ## Designprinzipien (verbindlich, freigegeben am 30.10.)
 
 - **Eine Karte, ein Gedanke.** Pro Karte höchstens 2 Buttons unten und höchstens 4 Zahlen. Eine dritte, leise Textaktion („Training abbrechen“) ist erlaubt.
