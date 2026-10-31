@@ -42,6 +42,22 @@ export function OnboardingView({
   }>();
   const [fileError, setFileError] = useState(false);
   const fileGuard = useRef(false);
+  // B19: switching to the training card takes a round trip. Until it is done
+  // the button stays disabled, so a second tap cannot land on this card,
+  // open the dashboard again and be lost.
+  const [opening, setOpening] = useState(false);
+  const [openError, setOpenError] = useState(false);
+  const openDashboard = async () => {
+    if (opening) return;
+    setOpening(true);
+    setOpenError(false);
+    try {
+      await client.openDashboard();
+    } catch {
+      setOpenError(true);
+      setOpening(false);
+    }
+  };
   useEffect(() => {
     if (session?.status === "AWAITING_GOOGLE_CONNECTION") onFinishedHandoff?.();
   }, [session?.status, onFinishedHandoff]);
@@ -136,10 +152,17 @@ export function OnboardingView({
             </button>
           </CardNote>
         )}
+        {openError && (
+          <CardNote>
+            Dein Training konnte nicht geöffnet werden. Bitte erneut versuchen.
+          </CardNote>
+        )}
         <CardActions
           primary={{
-            label: "Erstes Training starten",
-            onClick: () => void client.openDashboard(),
+            label: opening ? "Wird geöffnet …" : "Erstes Training starten",
+            ariaLabel: "Erstes Training starten",
+            disabled: opening,
+            onClick: () => void openDashboard(),
           }}
           secondary={
             file

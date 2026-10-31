@@ -652,10 +652,16 @@ export function ProfileStep({
         </button>
       </ArnoldCard>
     );
-  const issue = validation.errors.find(
-    (e) =>
-      e.field === `training.${question}` || e.field === `person.${question}`,
-  );
+  // B19: while a save is running or unconfirmed, the server's "missing"
+  // finding describes the state before the answer and would be a second,
+  // contradicting alert next to the pending notice. It returns once settled.
+  const issue = busy
+    ? undefined
+    : validation.errors.find(
+        (e) =>
+          e.field === `training.${question}` ||
+          e.field === `person.${question}`,
+      );
   return (
     <ArnoldCard
       label={`Einrichtung · ${optional ? "Freiwillige Angabe" : `Frage ${requiredIndex + 1} von ${REQUIRED.length}`}`}
