@@ -708,7 +708,8 @@ export class OnboardingService {
       const latest = await this.options.repository.findLatestByOwner(
         principal.subject,
       );
-      if (latest?.session.status === "COMPLETED") throw this.alreadyDone();
+      if (latest?.session.status === "COMPLETED" || (await this.accountSetUp()))
+        throw this.alreadyDone();
       if (latest && this.resumable(latest)) {
         // The owner is verified; the secret only names this session. A new
         // chat has lost it, so it is replaced rather than asked for.
@@ -787,7 +788,19 @@ export class OnboardingService {
     const latest = await this.options.repository.findLatestByOwner(
       principal.subject,
     );
-    if (latest?.session.status === "COMPLETED") throw this.alreadyDone();
+    if (latest?.session.status === "COMPLETED" || (await this.accountSetUp()))
+      throw this.alreadyDone();
+  }
+
+  /**
+   * Whether the account itself is set up, independent of a stored session.
+   * The completed session is deleted after the retention period (B15); the
+   * setup must still run only once.
+   */
+  private async accountSetUp(): Promise<boolean> {
+    return this.options.setupComplete
+      ? await this.options.setupComplete()
+      : false;
   }
 
   private alreadyDone() {
@@ -820,6 +833,8 @@ export class OnboardingService {
           token: null,
           resumed: true,
         };
+      // Set up, but the completed session was already deleted (B15).
+      if (await this.accountSetUp()) throw this.alreadyDone();
       if (latest && this.resumable(latest)) {
         // Opening is a read plus a new secret, so it also works while the
         // Google file is being created and every setup write is locked.

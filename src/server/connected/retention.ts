@@ -9,9 +9,12 @@
  * - audit.json: events older than the cutoff.
  * - provisioning.json and draft.json: setup snapshots, once the tracker is
  *   ready and the file is older than the cutoff. Neither is read again then.
+ * - onboarding.json: completed setup sessions (profile with voluntary body
+ *   data) whose last change is older than the cutoff (B15). Open sessions
+ *   keep their own rule (onboarding/repository.ts). The file stays, as an
+ *   empty list, because a vanished journal reads as a failure.
  *
- * The user's Google sheet is never touched. Onboarding sessions have their own
- * shorter retention (onboarding/repository.ts).
+ * The user's Google sheet is never touched.
  */
 import { readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -37,6 +40,7 @@ export interface RetentionResult {
   journal: number;
   audit: number;
   snapshots: number;
+  setup_sessions: number;
 }
 
 const TimedSchema = z.object({ at: z.string() }).passthrough();
@@ -45,6 +49,14 @@ const EntryLikeSchema = z
     state: z.string(),
     recorded_at: z.string().optional(),
     audit: z.array(TimedSchema),
+  })
+  .passthrough();
+
+const SessionLikeSchema = z
+  .object({
+    session: z
+      .object({ status: z.string(), updated_at_utc: z.string() })
+      .passthrough(),
   })
   .passthrough();
 
@@ -83,7 +95,12 @@ export async function pruneUserDirectory(
   directory: string,
   cutoffMs: number,
 ): Promise<RetentionResult> {
-  const result: RetentionResult = { journal: 0, audit: 0, snapshots: 0 };
+  const result: RetentionResult = {
+    journal: 0,
+    audit: 0,
+    snapshots: 0,
+    setup_sessions: 0,
+  };
 
   const journalPath = resolve(directory, "operations.json");
   const journal = await readJson(journalPath);
@@ -106,6 +123,19 @@ export async function pruneUserDirectory(
     const kept = events.filter((event) => !before(event.at, cutoffMs));
     result.audit = events.length - kept.length;
     if (result.audit > 0) await writeJson(auditPath, kept);
+  }
+
+  const sessionsPath = resolve(directory, "onboarding.json");
+  const sessions = await readJson(sessionsPath);
+  if (sessions !== undefined) {
+    const records = z.array(SessionLikeSchema).parse(sessions);
+    const kept = records.filter(
+      (record) =>
+        record.session.status !== "COMPLETED" ||
+        !before(record.session.updated_at_utc, cutoffMs),
+    );
+    result.setup_sessions = records.length - kept.length;
+    if (result.setup_sessions > 0) await writeJson(sessionsPath, kept);
   }
 
   const manifest = (await readJson(resolve(directory, "tracker.json"))) as

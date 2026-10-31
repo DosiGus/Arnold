@@ -91,6 +91,22 @@ describe("pruning one user directory", () => {
       ]),
     );
     await writeFile(join(dir, "tracker.json"), JSON.stringify({ phase }));
+    const setupSession = (id: string, status: string, updated: number) => ({
+      session: {
+        onboarding_session_id: id,
+        status,
+        updated_at_utc: iso(updated),
+        profile: { person: { body_weight_kg: 80 } },
+      },
+    });
+    await writeFile(
+      join(dir, "onboarding.json"),
+      JSON.stringify([
+        setupSession("done-old", "COMPLETED", NOW - 31 * DAY),
+        setupSession("done-new", "COMPLETED", NOW - 2 * DAY),
+        setupSession("open-old", "REVIEWING_PLAN", NOW - 31 * DAY),
+      ]),
+    );
     for (const name of ["provisioning.json", "draft.json"]) {
       await writeFile(join(dir, name), "{}");
       const old = new Date(NOW - 31 * DAY);
@@ -118,7 +134,22 @@ describe("pruning one user directory", () => {
     expect(audit.map((e: { operation_id: string }) => e.operation_id)).toEqual([
       "new",
     ]);
-    expect(result).toEqual({ journal: 2, audit: 1, snapshots: 2 });
+    expect(result).toEqual({
+      journal: 2,
+      audit: 1,
+      snapshots: 2,
+      setup_sessions: 1,
+    });
+    const sessions = JSON.parse(
+      await readFile(join(dir, "onboarding.json"), "utf8"),
+    );
+    // Completed and past the period: gone. Open sessions keep their own rule.
+    expect(
+      sessions.map(
+        (r: { session: { onboarding_session_id: string } }) =>
+          r.session.onboarding_session_id,
+      ),
+    ).toEqual(["done-new", "open-old"]);
     await expect(
       readFile(join(dir, "provisioning.json"), "utf8"),
     ).rejects.toMatchObject({ code: "ENOENT" });
@@ -134,7 +165,12 @@ describe("pruning one user directory", () => {
   it("keeps everything inside the period", async () => {
     const dir = await fixture("ready");
     const result = await pruneUserDirectory(dir, retentionCutoff(365, NOW));
-    expect(result).toEqual({ journal: 0, audit: 0, snapshots: 0 });
+    expect(result).toEqual({
+      journal: 0,
+      audit: 0,
+      snapshots: 0,
+      setup_sessions: 0,
+    });
     expect(await ids(dir)).toHaveLength(6);
   });
 
@@ -144,6 +180,7 @@ describe("pruning one user directory", () => {
       journal: 0,
       audit: 0,
       snapshots: 0,
+      setup_sessions: 0,
     });
   });
 });

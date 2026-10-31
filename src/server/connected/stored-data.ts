@@ -84,7 +84,7 @@ export async function describeStoredData(
           r.session?.updated_at_utc,
         ]),
       ),
-      kept: "Bis zum Ablauf der Einrichtung plus 7 Tage, oder bis du dein Konto löschst.",
+      kept: `Abgeschlossene Einrichtung: ${days} danach. Offene Einrichtung: bis zu ihrem Ablauf plus 7 Tage.`,
     });
 
   const manifest = (await json(resolve(directory, "tracker.json"))) as

@@ -1224,3 +1224,52 @@ describe("B14: reconnecting a set-up account without the setup claim", () => {
     expect(result.isError).toBe(true);
   });
 });
+
+describe("B15: completed setup data follows the 30-day rule", () => {
+  it("deletes the completed setup session and still runs the setup only once", async () => {
+    const { claim } = await connected("alice");
+    await startWorkout("alice");
+    const sessionsFile = join(
+      runtime.userDirectory(
+        JSON.parse(await readFile(join(directory, "identities.json"), "utf8"))
+          .users[0].user_id,
+      ),
+      "onboarding.json",
+    );
+    expect(JSON.parse(await readFile(sessionsFile, "utf8"))).toHaveLength(1);
+    expect((await runtime.applyRetention(30)).setup_sessions).toBe(0);
+
+    const later = await runtime.applyRetention(
+      30,
+      Date.now() + 31 * 86_400_000,
+    );
+    expect(later.setup_sessions).toBe(1);
+    const left = await readFile(sessionsFile, "utf8");
+    expect(JSON.parse(left)).toEqual([]);
+    expect(left).not.toContain("strength");
+
+    // Still set up: training works, and no second setup can start.
+    expect((await call("alice", "get_arnold_dashboard")).isError).toBeFalsy();
+    expect((await call("alice", "get_workout")).isError).toBeFalsy();
+    const restart = OnboardingResponseSchema.parse(
+      (
+        await call("alice", "start_arnold_onboarding", {
+          request_id: randomUUID(),
+        })
+      ).structuredContent,
+    );
+    expect(restart.error?.code).toBe("ONBOARDING_ALREADY_COMPLETED");
+    const shown = await call("alice", "show_arnold_onboarding");
+    expect(shown.isError).toBe(true);
+    expect(JSON.stringify(shown)).toContain("ONBOARDING_ALREADY_COMPLETED");
+
+    // An old claim no longer exists, and reconnecting does not need it (B14).
+    google.revoked.add("alice");
+    const started = await call("alice", "connect_google_account", {});
+    expect(started.isError, JSON.stringify(started.content)).toBeFalsy();
+    expect((await call("alice", "get_onboarding_state", claim)).isError).toBe(
+      true,
+    );
+    expect(google.creates).toBe(1);
+  });
+});

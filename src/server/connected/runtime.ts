@@ -205,7 +205,13 @@ export class ConnectedArnoldRuntime {
    */
   async applyRetention(days: number, now = Date.now()) {
     const cutoff = retentionCutoff(days, now);
-    const totals = { users: 0, journal: 0, audit: 0, snapshots: 0 };
+    const totals = {
+      users: 0,
+      journal: 0,
+      audit: 0,
+      snapshots: 0,
+      setup_sessions: 0,
+    };
     let names: string[];
     try {
       names = await readdir(this.options.directory);
@@ -229,6 +235,7 @@ export class ConnectedArnoldRuntime {
       totals.journal += result.journal;
       totals.audit += result.audit;
       totals.snapshots += result.snapshots;
+      totals.setup_sessions += result.setup_sessions;
     }
     return totals;
   }
