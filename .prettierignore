@@ -5,3 +5,4 @@ test-results
 playwright-report
 package-lock.json
 .claude/worktrees/
+docs/audit-2026-10-31/
