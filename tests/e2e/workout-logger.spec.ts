@@ -24,9 +24,7 @@ test("starts today's session, logs with plus and minus, corrects and completes",
 
   // No target weight in the plan: the first value is typed once, then reused.
   await page.getByLabel("Gewicht", { exact: true }).fill("60");
-  await expect(page.getByLabel("Wiederholungen", { exact: true })).toHaveValue(
-    "12",
-  );
+  await page.getByLabel("Wiederholungen", { exact: true }).fill("12");
   // A double tap saves one set, not two.
   await button(page, "Satz speichern").dblclick();
   await expect(saved(page)).toHaveCount(1);

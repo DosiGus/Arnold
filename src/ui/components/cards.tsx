@@ -164,9 +164,7 @@ export function Stepper({
   const [editing, setEditing] = useState(false);
   const [invalid, setInvalid] = useState(false);
   const errorId = useId();
-  useEffect(() => {
-    if (!editing && !invalid) setText(format(value));
-  }, [value, editing, invalid]);
+  const displayed = editing || invalid ? text : format(value);
   // Rounded to the step's precision, so 0.1 + 0.2 never shows up as 0.30000004.
   const valid = (raw: string) => {
     const parsed = Number(raw.replace(",", ".").trim());
@@ -218,10 +216,11 @@ export function Stepper({
             aria-label={label}
             aria-invalid={invalid || undefined}
             aria-describedby={invalid ? errorId : undefined}
-            value={text}
+            value={displayed}
             disabled={disabled}
-            style={{ width: `${Math.max(1, text.length) + 0.4}ch` }}
+            style={{ width: `${Math.max(1, displayed.length) + 0.4}ch` }}
             onFocus={(event) => {
+              setText(event.currentTarget.value);
               setEditing(true);
               event.currentTarget.select();
             }}

@@ -145,7 +145,7 @@ function targetLine(item: ArnoldPlanItem, exercise?: ArnoldExercise) {
     item.target_sets && reps
       ? `${item.target_sets} × ${reps}`
       : item.target_sets
-        ? `${item.target_sets} Sätze`
+        ? `${item.target_sets} ${item.target_sets === 1 ? "Satz" : "Sätze"}`
         : reps
           ? `${reps} Wdh.`
           : null;
@@ -644,6 +644,7 @@ function SetLogger({
   }
 
   function correct(set: ArnoldSet) {
+    setInvalidFields({});
     setEdit(set);
     setFormState({
       weight: set.load_kg ?? 0,
@@ -900,13 +901,14 @@ function SetLogger({
           label="Wiederholungen im Tank"
           options={FEEL}
           value={form.feel}
-          onChange={(feel) =>
+          onChange={(feel) => {
+            setInvalidFields((f) => ({ ...f, reserve: false }));
             setForm((f) => ({
               ...f,
               feel,
               reserve: feel === "3" ? (f.reserve ?? 3) : undefined,
-            }))
-          }
+            }));
+          }}
           disabled={disabled}
           allowNone
         />
@@ -1113,8 +1115,17 @@ function SummaryCard({
       {summary ? (
         <StatGrid
           items={[
-            { label: "Übungen", value: summary.exercise_count },
-            { label: "Arbeitssätze", value: summary.working_set_count },
+            {
+              label: summary.exercise_count === 1 ? "Übung" : "Übungen",
+              value: summary.exercise_count,
+            },
+            {
+              label:
+                summary.working_set_count === 1
+                  ? "Arbeitssatz"
+                  : "Arbeitssätze",
+              value: summary.working_set_count,
+            },
             {
               label: "kg Volumen",
               value:
