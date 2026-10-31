@@ -73,7 +73,7 @@ const ok = (data: Record<string, unknown>, text: string) => ({
 
 const WRITE_DESCRIPTIONS: Record<PlanWriteOperation, string> = {
   create_training_plan:
-    "Legt einen neuen Trainingsplan als Entwurf an. Beliebige Trainingssplits mit beliebig vielen Trainingseinheiten und frei benannten Einheiten; jede Einheit braucht mindestens eine Übung. Der Plan wird NICHT aktiviert – dafür ist activate_training_plan mit ausdrücklicher Bestätigung zuständig. Mit plan_family_id wird eine bestehende Routine fortgeführt, ohne Angabe eine neue Planfamilie begonnen.",
+    "Legt einen neuen Trainingsplan als Entwurf an. Beliebige Trainingssplits mit beliebig vielen Trainingseinheiten und frei benannten Einheiten; jede Einheit braucht mindestens eine Übung. Der Plan wird NICHT aktiviert – dafür ist activate_training_plan mit ausdrücklicher Bestätigung zuständig. Mit plan_family_id wird eine bestehende Routine fortgeführt, ohne Angabe eine neue Planfamilie begonnen. Übungen außerhalb des Katalogs in custom_exercises beschreiben und in der Einheit über ihren key (custom:…) verwenden; sie werden im selben Vorgang als eigene Übungen angelegt.",
   create_plan_version:
     "Erstellt aus einer beliebigen vorhandenen Planversion eine neue, bearbeitbare Draft-Version. Das ist der Weg, um einen aktiven Plan zu ändern und um zu einem früheren Plan zurückzukehren: die Quellversion bleibt unverändert, alle Planpositionen erhalten neue IDs. Fortgeführte Trainingseinheiten behalten innerhalb derselben Planfamilie ihre session_id; mit as_new_family entsteht eine eigenständige Routine mit neuen Session-IDs.",
   update_plan_draft:

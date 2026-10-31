@@ -1115,6 +1115,9 @@ export class OnboardingService {
             ? { goal_key: training.primary_goal }
             : {}),
           sessions: input.sessions,
+          ...(input.custom_exercises?.length
+            ? { custom_exercises: input.custom_exercises }
+            : {}),
         },
         context,
       );
