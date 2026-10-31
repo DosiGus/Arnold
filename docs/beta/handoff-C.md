@@ -4,19 +4,19 @@ Stand 31.10.2026, Branch `feat/beta-ops`.
 
 ## Überblick
 
-| Aufgabe | Commit    | Stand                                                                                                                       |
-| ------- | --------- | --------------------------------------------------------------------------------------------------------------------------- |
-| C1      | `9580ba7` | Fertig. Archiv 1.314 → 124 Dateien (unten).                                                                                 |
-| C2      | `aa5c7d7` | Workflow geschrieben. **Push blockiert**: GitHub-Zugang ohne `workflow`-Berechtigung (Kevin). Kein Lauf, keine Schutzregel. |
-| C3      | `1eb0b24` | Deploy-Skript fertig und Sperren lokal geprüft. Rollback-Übung **offen** (Freigabe Kevin).                                  |
-| C4      | `6ab766f` | Übungsskript fertig. Ausführung **offen** (Freigabe Kevin).                                                                 |
-| C5      | `5c98300` | Monitoring-Skript fertig. Einrichtung und Alarm-Übungen **offen** (Freigabe Kevin).                                         |
-| C6      | `294489a` | Entwürfe fertig, über B12-Routen getestet (200, CSP ohne Skripte). Freigabe K8 offen.                                       |
-| C7      | `3a876e1` | Fertig, Platzhalter für Tarif (K4) und Feedback-Kanal (K9).                                                                 |
-| C8      | `bf57c05` | Fertig, an B gemeldet; B hat B13 darauf aufgebaut.                                                                          |
-| C9      | `ea44d38` | Fertig. Labels `beta-bug`, `beta-ux`, `beta-wunsch` angelegt. Kanal: Entscheidung K9.                                       |
-| C10     | –         | Wartet auf `handoff-A.md` und grüne CI.                                                                                     |
-| C11     | –         | Nach C10.                                                                                                                   |
+| Aufgabe | Commit    | Stand                                                                                                                                                                                                                                                                                     |
+| ------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C1      | `9580ba7` | Fertig. Archiv 1.314 → 124 Dateien (unten).                                                                                                                                                                                                                                               |
+| C2      | lokal     | Workflow fertig, liegt auf dem lokalen Branch `beta-ops-with-ci`. GitHub nimmt ihn erst an, wenn Kevins GitHub-Zugang die Berechtigung `workflow` hat (`gh auth refresh -h github.com -s workflow`). Danach: Commit auf `feat/beta-ops` holen, pushen, Lauf grün, Schutzregel für `main`. |
+| C3      | `82c73a0` | Deploy-Skript fertig und Sperren lokal geprüft. Rollback-Übung **offen** (Freigabe Kevin).                                                                                                                                                                                                |
+| C4      | `5aa3c19` | Übungsskript fertig. Ausführung **offen** (Freigabe Kevin).                                                                                                                                                                                                                               |
+| C5      | `6cc15aa` | Monitoring-Skript fertig. Einrichtung und Alarm-Übungen **offen** (Freigabe Kevin).                                                                                                                                                                                                       |
+| C6      | `969f996` | Entwürfe fertig, über B12-Routen getestet (200, CSP ohne Skripte). Freigabe K8 offen.                                                                                                                                                                                                     |
+| C7      | `5831cdf` | Fertig, Platzhalter für Tarif (K4) und Feedback-Kanal (K9).                                                                                                                                                                                                                               |
+| C8      | `a7e7d94` | Fertig, an B gemeldet; B hat B13 darauf aufgebaut.                                                                                                                                                                                                                                        |
+| C9      | `5ae00e6` | Fertig. Labels `beta-bug`, `beta-ux`, `beta-wunsch` angelegt. Kanal: Entscheidung K9.                                                                                                                                                                                                     |
+| C10     | –         | Wartet auf Kevins Zeichen, dass A fertig ist (31.10.: kein Deploy bis dahin).                                                                                                                                                                                                             |
+| C11     | –         | Nach C10.                                                                                                                                                                                                                                                                                 |
 
 ## Befunde
 
