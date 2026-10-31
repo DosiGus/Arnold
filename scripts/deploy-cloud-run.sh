@@ -14,12 +14,19 @@
 #   fixture              invented data, one in-memory sandbox per user.
 #
 # What it does, in order:
-#   1. reads the login provider's OAuth metadata (issuer, JWKS) and checks it,
-#   2. turns on the APIs it needs,
-#   3. builds the Dockerfile in Cloud Build and deploys it (no local Docker),
-#   4. pins ALLOWED_HOSTS to the service's own run.app hostnames,
-#   5. checks /health, the protected-resource document and that /mcp refuses
-#      a request without a token.
+#   1. refuses a checkout with uncommitted changes, a commit that is not on
+#      GitHub, or a commit whose CI run is not green,
+#   2. reads the login provider's OAuth metadata (issuer, JWKS) and checks it,
+#   3. turns on the APIs it needs,
+#   4. builds exactly that commit (a clean `git archive`, not the working
+#      folder) in Cloud Build and deploys it (no local Docker); the revision
+#      gets ARNOLD_RELEASE=<commit> and the label commit=<commit>,
+#   5. pins ALLOWED_HOSTS to the service's own run.app hostnames,
+#   6. sends all traffic to the new revision (also after a rollback),
+#   7. checks /health (including the release), the protected-resource
+#      document and that /mcp refuses a request without a token.
+#
+# Rollback: docs/BETRIEB.md.
 #
 # Arnold's scopes come from the provider's JWT template in the claim
 # urn:arnold:scopes. There is deliberately no way to deploy without a login.
@@ -48,6 +55,38 @@ if ! gcloud auth list --filter=status:ACTIVE --format='value(account)' | grep -q
   echo "Nicht bei Google angemeldet. Zuerst: gcloud auth login" >&2
   exit 1
 fi
+
+# Only a committed, pushed and CI-checked state goes live, so /health always
+# names a commit that anyone can look up and that passed `npm run check`.
+cd "$(git rev-parse --show-toplevel)"
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "Nicht committete Änderungen. Erst committen und pushen, dann deployen:" >&2
+  git status --short >&2
+  exit 1
+fi
+RELEASE="$(git rev-parse HEAD)"
+git fetch --quiet origin
+if [[ -z "$(git branch -r --contains "$RELEASE")" ]]; then
+  echo "Commit $RELEASE ist nicht auf GitHub. Erst pushen, dann deployen." >&2
+  exit 1
+fi
+command -v gh >/dev/null || {
+  echo "GitHub CLI (gh) fehlt; ohne sie lässt sich die CI nicht prüfen." >&2
+  exit 1
+}
+CI="$(gh run list --commit "$RELEASE" --workflow check.yml \
+  --json status,conclusion --jq '[.[] | select(.conclusion == "success")] | length' 2>/dev/null || true)"
+if [[ "${CI:-0}" == 0 ]]; then
+  echo "Für $RELEASE gibt es keinen grünen CI-Lauf (check.yml). Erst grün, dann deployen." >&2
+  gh run list --commit "$RELEASE" --workflow check.yml >&2 || true
+  exit 1
+fi
+echo "› Release $RELEASE (committet, gepusht, CI grün)"
+
+# Build from a clean copy of the commit, never from the working folder.
+SOURCE="$(mktemp -d)"
+trap 'rm -rf "$SOURCE"' EXIT
+git archive --format=tar "$RELEASE" | tar -x -C "$SOURCE"
 
 echo "› Login-Anbieter prüfen: $AUTHKIT"
 METADATA="$(curl -fsS "$AUTHKIT/.well-known/oauth-authorization-server")"
@@ -108,6 +147,16 @@ fi
 # resource. Other hostnames of the service are added to ALLOWED_HOSTS below.
 PRIMARY_HOST="${SERVICE}-${NUMBER}.${REGION}.run.app"
 URL="https://${PRIMARY_HOST}"
+# Every hostname the service already answers on, so a redeploy creates exactly
+# one revision with the full list. Only the very first deploy needs a second
+# revision (below), because the other hostname exists only afterwards.
+service_hosts() {
+  { gcloud run services describe "$SERVICE" --region "$REGION" \
+    --format='value(metadata.annotations."run.googleapis.com/urls")' 2>/dev/null || true; } |
+    tr -d '[]" ' | tr ',' '\n' | sed -E 's#^https://##' |
+    { cat; echo "$PRIMARY_HOST"; } | grep . | sort -u | paste -sd, -
+}
+HOSTS="$(service_hosts)"
 env_vars() {
   local vars=(
     ARNOLD_ENV=development
@@ -118,6 +167,7 @@ env_vars() {
     "AUTH_SCOPE_CLAIM=$SCOPE_CLAIM"
     TRUST_PROXY=1
     ARNOLD_TOOL_LOG=json
+    "ARNOLD_RELEASE=$RELEASE"
     "ALLOWED_HOSTS=$1"
   )
   if [[ "$PROFILE" == connected ]]; then
@@ -139,30 +189,32 @@ env_vars() {
 
 echo "› Bauen und veröffentlichen (dauert einige Minuten)"
 gcloud run deploy "$SERVICE" \
-  --source . \
+  --source "$SOURCE" \
   --region "$REGION" \
   --allow-unauthenticated \
   --min-instances "$MIN_INSTANCES" \
   --max-instances 1 \
   --cpu 1 --memory 512Mi --cpu-boost \
   --concurrency 80 --timeout 300 \
-  --set-env-vars "$(env_vars "$PRIMARY_HOST")" \
-  --labels "app=arnold,profile=$PROFILE" \
+  --set-env-vars "$(env_vars "$HOSTS")" \
+  --labels "app=arnold,profile=$PROFILE,commit=$RELEASE" \
   ${EXTRA[@]+"${EXTRA[@]}"} \
   --quiet
 
-HOSTS="$(gcloud run services describe "$SERVICE" --region "$REGION" \
-  --format='value(metadata.annotations."run.googleapis.com/urls")' |
-  tr -d '[]" ' | tr ',' '\n' | sed -E 's#^https://##' | grep . | sort -u |
-  paste -sd, -)"
-HOSTS="$(printf '%s\n%s\n' "$PRIMARY_HOST" "${HOSTS//,/$'\n'}" | grep . | sort -u | paste -sd, -)"
-CURRENT="$(gcloud run services describe "$SERVICE" --region "$REGION" \
-  --format='value(spec.template.spec.containers[0].env)' | grep -o "ALLOWED_HOSTS[^;]*" || true)"
-if [[ "$HOSTS" != "$PRIMARY_HOST" && "$CURRENT" != *"$HOSTS"* ]]; then
-  echo "› ALLOWED_HOSTS auf alle Dienstadressen setzen: $HOSTS"
+NEW_HOSTS="$(service_hosts)"
+if [[ "$NEW_HOSTS" != "$HOSTS" ]]; then
+  echo "› ALLOWED_HOSTS auf alle Dienstadressen setzen: $NEW_HOSTS"
   gcloud run services update "$SERVICE" --region "$REGION" \
-    --update-env-vars "$(env_vars "$HOSTS")" --quiet >/dev/null
+    --update-env-vars "$(env_vars "$NEW_HOSTS")" --quiet >/dev/null
 fi
+
+# After a rollback the traffic is pinned to an older revision, and a new
+# deploy would then get none. Deploying means: this commit is live.
+echo "› Gesamten Traffic auf die neue Revision"
+gcloud run services update-traffic "$SERVICE" --region "$REGION" --to-latest --quiet >/dev/null
+LIVE="$(gcloud run services describe "$SERVICE" --region "$REGION" \
+  --format='value(status.traffic[0].revisionName)')"
+echo "  live: $LIVE"
 
 echo "› Prüfen: $URL"
 HEALTH="$(curl -fsS "$URL/health")"
@@ -170,6 +222,10 @@ echo "  health: $HEALTH"
 EXPECT_SYNTHETIC=$([[ "$PROFILE" == fixture ]] && echo true || echo false)
 grep -q "\"synthetic\":$EXPECT_SYNTHETIC" <<<"$HEALTH" && grep -q '"auth":"oidc"' <<<"$HEALTH" || {
   echo "Health passt nicht zum Profil $PROFILE (synthetic=$EXPECT_SYNTHETIC, auth=oidc). Abbruch." >&2
+  exit 1
+}
+grep -q "\"release\":\"$RELEASE\"" <<<"$HEALTH" || {
+  echo "/health meldet nicht release $RELEASE. Abbruch; Rollback siehe docs/BETRIEB.md." >&2
   exit 1
 }
 PRM="$(curl -fsS "$URL/.well-known/oauth-protected-resource/mcp")"
@@ -188,4 +244,5 @@ echo "  /mcp ohne Token: $STATUS"
 }
 
 echo
-echo "Fertig. ChatGPT-Connector-Adresse: $URL/mcp (Anmeldung: OAuth, Profil $PROFILE)"
+echo "Fertig. Live: $LIVE, Commit $RELEASE"
+echo "ChatGPT-Connector-Adresse: $URL/mcp (Anmeldung: OAuth, Profil $PROFILE)"
