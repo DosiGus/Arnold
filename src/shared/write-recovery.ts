@@ -80,6 +80,7 @@ export function recoveryFor(code: string, retryable: boolean): Recovery {
       return "retry_same_request";
     case "SESSION_EXPIRED":
     case "SESSION_CANCELLED":
+    case "CONFIRMATION_INVALID":
     case "HANDOFF_SUPERSEDED":
       return "start_over";
     case "SCHEMA_MISMATCH":
@@ -90,4 +91,30 @@ export function recoveryFor(code: string, retryable: boolean): Recovery {
     default:
       return retryable ? "retry_same_request" : "none";
   }
+}
+
+/** One German sentence for ChatGPT: what to do next. Empty for "none". */
+export const RECOVERY_HINT: Record<Recovery, string> = {
+  none: "",
+  retry_same_request:
+    "Nächster Schritt: dieselbe Anfrage erneut senden; bei Schreibvorgängen mit derselben request_id, nie mit einer neuen.",
+  reload_then_retry:
+    "Nächster Schritt: aktuellen Stand neu laden, dem Nutzer die Änderung zeigen und dann neu versuchen.",
+  start_over: "Nächster Schritt: den Vorgang neu beginnen.",
+  reconnect_google:
+    "Nächster Schritt: den Nutzer bitten, Google über die Karte neu zu verbinden (connect_google_account, bei eingerichtetem Arnold ohne Sitzungsangaben); danach dieselbe Anfrage wiederholen.",
+  finish_setup:
+    "Nächster Schritt: zuerst die Einrichtung abschließen (show_arnold_onboarding).",
+  contact_support:
+    "Nächster Schritt: Das kann der Nutzer nicht selbst lösen. Nicht wiederholen, sondern auf den Support verweisen.",
+};
+
+/** The text line of a failed tool call: code, message and next step. */
+export function failureText(
+  code: string,
+  message: string,
+  recovery: Recovery,
+): string {
+  const hint = RECOVERY_HINT[recovery];
+  return hint ? `${code}: ${message} ${hint}` : `${code}: ${message}`;
 }

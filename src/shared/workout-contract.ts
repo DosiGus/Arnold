@@ -33,6 +33,13 @@ export const LogSetSchema = SetMeasurementsSchema.extend({
   set_number: s.set_number.optional(),
   exercise_order: s.exercise_order.optional(),
 });
+/**
+ * Values Arnold does not store without an explicit yes from the user (B13):
+ * a load above this or more repetitions than this in one set.
+ */
+export const UNUSUAL_SET_LIMITS = Object.freeze({ load_kg: 500, reps: 100 });
+/** Sent only after the user confirmed an unusual value in the chat. */
+const unusual = { confirm_unusual_values: z.literal(true).optional() };
 const correction = {
   correct_completed: z.boolean().optional(),
   correction_reason: text.optional(),
@@ -57,6 +64,7 @@ export const WriteInputs = {
     workout_id: id,
     sets: z.array(LogSetSchema).min(1).max(100),
     source,
+    ...unusual,
   }),
   update_set: z.strictObject({
     ...request,
@@ -67,6 +75,7 @@ export const WriteInputs = {
       "Mindestens eine Änderung erforderlich.",
     ),
     ...correction,
+    ...unusual,
   }),
   void_set: z.strictObject({
     ...request,
@@ -123,6 +132,10 @@ export const WriteErrorCodeSchema = z.enum([
   "EXERCISE_MATCH_FOUND",
   "GOOGLE_REAUTH_REQUIRED",
   "SHEET_CAPACITY_EXCEEDED",
+  /** An unusual value needs the user's explicit yes (B13). */
+  "CONFIRMATION_REQUIRED",
+  /** The workout date is after today in the workout's time zone (B13). */
+  "DATE_IN_FUTURE",
 ]);
 export type WriteErrorCode = z.infer<typeof WriteErrorCodeSchema>;
 export const WriteResultSchema = z.strictObject({

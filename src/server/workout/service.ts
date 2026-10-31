@@ -1,3 +1,7 @@
+import {
+  googleReauthWriteError,
+  isGoogleReauthRequired,
+} from "../google/reauth.js";
 import { recoveryFor } from "../../shared/write-recovery.js";
 import { z } from "zod";
 import { analyzeSetLoad } from "../../analytics/load.js";
@@ -11,6 +15,7 @@ import {
   type ArnoldWorkout,
 } from "../../shared/arnold-schema-v1.js";
 import {
+  UNUSUAL_SET_LIMITS,
   WriteInputs,
   WriteResponseSchema,
   type WriteOperation,
@@ -37,6 +42,31 @@ import {
   type WriteCoordinator,
   type WriteMode,
 } from "./infrastructure.js";
+
+/**
+ * Refuses values that are almost certainly a slip (1000 kg, 300 reps) until
+ * the user confirmed them in the chat (B13, corpus case W2).
+ */
+function assertUsualValues(
+  sets: readonly { load_kg?: number | null; reps?: number }[],
+  confirmed: true | undefined,
+) {
+  if (confirmed) return;
+  const unusual = sets.filter(
+    (set) =>
+      (set.load_kg ?? 0) > UNUSUAL_SET_LIMITS.load_kg ||
+      (set.reps ?? 0) > UNUSUAL_SET_LIMITS.reps,
+  );
+  if (unusual.length)
+    throw new WriteError(
+      "CONFIRMATION_REQUIRED",
+      `Ungewöhnlicher Wert (über ${UNUSUAL_SET_LIMITS.load_kg} kg oder über ${UNUSUAL_SET_LIMITS.reps} Wiederholungen). Es wurde nichts gespeichert. Den Nutzer fragen, ob der Wert stimmt; nur nach ausdrücklichem Ja mit confirm_unusual_values: true erneut senden.`,
+      false,
+      unusual.map(
+        (set) => `load_kg=${set.load_kg ?? "–"}, reps=${set.reps ?? "–"}`,
+      ),
+    );
+}
 
 export interface LoggingOptions {
   mode: WriteMode;
@@ -331,6 +361,11 @@ export class WorkoutLoggingService {
               await this.options.repository.apply(entry.changes);
             } catch (error) {
               this.options.invalidate();
+              if (isGoogleReauthRequired(error)) {
+                // Refused before sending: safe to dispatch again after reconnecting.
+                await this.options.ledger.save({ ...entry, state: "prepared" });
+                throw googleReauthWriteError();
+              }
               let state: string = "unknown";
               try {
                 state = await inspectChanges(
@@ -391,18 +426,20 @@ export class WorkoutLoggingService {
       const failure =
         error instanceof WriteError
           ? error
-          : error instanceof z.ZodError
-            ? new WriteError(
-                "VALIDATION_ERROR",
-                "Eingaben sind nicht eindeutig oder ungültig.",
-                false,
-                error.issues.map((i) => `${i.path.join(".")}: ${i.message}`),
-              )
-            : new WriteError(
-                "STORAGE_UNAVAILABLE",
-                "Schreibinfrastruktur derzeit nicht verfügbar.",
-                true,
-              );
+          : isGoogleReauthRequired(error)
+            ? googleReauthWriteError()
+            : error instanceof z.ZodError
+              ? new WriteError(
+                  "VALIDATION_ERROR",
+                  "Eingaben sind nicht eindeutig oder ungültig.",
+                  false,
+                  error.issues.map((i) => `${i.path.join(".")}: ${i.message}`),
+                )
+              : new WriteError(
+                  "STORAGE_UNAVAILABLE",
+                  "Schreibinfrastruktur derzeit nicht verfügbar.",
+                  true,
+                );
       return {
         ok: false,
         operation,
@@ -548,6 +585,14 @@ export class WorkoutLoggingService {
             "VALIDATION_ERROR",
             "Session gehört nicht zur Planversion.",
           );
+        const today = new Intl.DateTimeFormat("en-CA", {
+          timeZone: input.timezone,
+        }).format(new Date(now));
+        if (input.workout_date_local > today)
+          throw new WriteError(
+            "DATE_IN_FUTURE",
+            `Das Trainingsdatum ${input.workout_date_local} liegt in der Zukunft (heute ist ${today}). Es wurde nichts gespeichert. Den Nutzer nach dem richtigen Datum fragen.`,
+          );
         if (
           input.started_at_utc &&
           new Intl.DateTimeFormat("en-CA", { timeZone: input.timezone }).format(
@@ -581,6 +626,7 @@ export class WorkoutLoggingService {
       }
       case "log_workout_sets": {
         const input = WriteInputs.log_workout_sets.parse(raw);
+        assertUsualValues(input.sets, input.confirm_unusual_values);
         const workout = this.workout(data, input.workout_id);
         await this.editable(workout, {}, context);
         const previous = [
@@ -689,6 +735,10 @@ export class WorkoutLoggingService {
             "INVALID_STATUS_TRANSITION",
             "Ein stornierter Satz kann nicht erneut verändert werden. Für Wiederholungen dieselbe Operations-ID verwenden.",
           );
+        if (operation === "update_set") {
+          const update = WriteInputs.update_set.parse(raw);
+          assertUsualValues([update.changes], update.confirm_unusual_values);
+        }
         const after = this.validateSet(
           {
             ...before,

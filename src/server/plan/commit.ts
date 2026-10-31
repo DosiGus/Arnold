@@ -26,6 +26,10 @@
  * workout service onto this runner is a tracked follow-up.
  */
 import {
+  googleReauthWriteError,
+  isGoogleReauthRequired,
+} from "../google/reauth.js";
+import {
   ArnoldDatasetSchema,
   type ArnoldDataset,
 } from "../../shared/arnold-schema-v1.js";
@@ -202,6 +206,11 @@ export async function commitWrite<R>(
         await repository.apply(entry.changes);
       } catch (error) {
         invalidate();
+        if (isGoogleReauthRequired(error)) {
+          // Refused before sending: safe to dispatch again after reconnecting.
+          await ledger.save({ ...entry, state: "prepared" });
+          throw googleReauthWriteError();
+        }
         let state: string = "unknown";
         try {
           state = await inspectChanges(repository, entry.changes);

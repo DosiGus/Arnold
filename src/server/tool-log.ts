@@ -21,8 +21,57 @@ export interface ToolLogEvent {
 
 export const toolLogEnabled = () => process.env.ARNOLD_TOOL_LOG === "json";
 
+/**
+ * A log-safe label for a code: identifier characters only, bounded length.
+ * Anything else (a message, a URL, request text) becomes "unlabelled".
+ */
+export function safeCode(value: unknown): string {
+  return typeof value === "string" &&
+    /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(value)
+    ? value
+    : "unlabelled";
+}
+
+/**
+ * What may be logged about an error: its type and HTTP status. Never the
+ * message, which can quote request bodies, Google API answers or user text.
+ */
+export function describeErrorForLog(error: unknown): {
+  type: string;
+  status?: number;
+} {
+  const value = error as { type?: unknown; status?: unknown; code?: unknown };
+  const type =
+    typeof value?.type === "string"
+      ? safeCode(value.type)
+      : typeof value?.code === "string"
+        ? safeCode(value.code)
+        : error instanceof Error
+          ? safeCode(error.name)
+          : "unknown";
+  return {
+    type,
+    ...(typeof value?.status === "number" && Number.isInteger(value.status)
+      ? { status: value.status }
+      : {}),
+  };
+}
+
+/** One structured error line without user content. Always on. */
+export function logServerError(where: string, error: unknown): void {
+  console.error(
+    JSON.stringify({
+      severity: "ERROR",
+      message: where,
+      ...describeErrorForLog(error),
+    }),
+  );
+}
+
 export function logToolCall(event: ToolLogEvent): void {
   if (!toolLogEnabled()) return;
+  if (event.code !== undefined)
+    event = { ...event, code: safeCode(event.code) };
   const severity =
     event.outcome === "ok"
       ? "INFO"

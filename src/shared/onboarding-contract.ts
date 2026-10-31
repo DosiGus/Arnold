@@ -57,6 +57,7 @@ import {
   PlanValidationResultSchema,
   TrainingPlanVersionSchema,
   TrainingSessionInputSchema,
+  CustomExerciseInputSchema,
 } from "./plan-contract.js";
 
 export {
@@ -928,6 +929,8 @@ export const OnboardingToolInputs = {
     sessions: z.array(TrainingSessionInputSchema).min(1).max(14),
     /** Open points the proposal knowingly leaves unresolved. Shown, not hidden. */
     open_questions: z.array(freeText).max(10).optional(),
+    /** Exercises outside the catalog, referenced by key in `sessions` (B11). */
+    custom_exercises: z.array(CustomExerciseInputSchema).max(20).optional(),
   }),
   get_onboarding_plan: z.strictObject({ ...claim }),
   confirm_onboarding_plan: z.strictObject({

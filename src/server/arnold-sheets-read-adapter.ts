@@ -1,3 +1,6 @@
+import { ARNOLD_SHEETS_LIMITS } from "../shared/sheets-limits.js";
+import { GOOGLE_REAUTH_MESSAGE } from "../shared/write-recovery.js";
+import { isGoogleReauthRequired } from "./google/reauth.js";
 import { GoogleAuth } from "google-auth-library";
 import { z } from "zod";
 import {
@@ -35,6 +38,7 @@ export class ArnoldSheetsReadError extends Error {
       | "NOT_FOUND"
       | "RATE_LIMIT"
       | "UNAVAILABLE"
+      | "GOOGLE_REAUTH_REQUIRED"
       | "API",
     readonly status?: number,
   ) {
@@ -45,6 +49,7 @@ export class ArnoldSheetsReadError extends Error {
       NOT_FOUND: "Konfigurierte Arnold-Datei oder Tabelle nicht gefunden.",
       RATE_LIMIT: "Google-Sheets-Leselimit erreicht; später erneut versuchen.",
       UNAVAILABLE: "Google Sheets ist vorübergehend nicht verfügbar.",
+      GOOGLE_REAUTH_REQUIRED: GOOGLE_REAUTH_MESSAGE,
       API: "Google Sheets konnte nicht gelesen werden; Anmeldung und Netzwerk prüfen.",
     };
     super(messages[code]);
@@ -53,6 +58,9 @@ export class ArnoldSheetsReadError extends Error {
 }
 function apiError(error: unknown): ArnoldSheetsReadError {
   if (error instanceof ArnoldSheetsReadError) return error;
+  // An expired grant keeps its meaning, but not the original error object.
+  if (isGoogleReauthRequired(error))
+    return new ArnoldSheetsReadError("GOOGLE_REAUTH_REQUIRED");
   const candidate = error as {
     response?: { status?: unknown };
     status?: unknown;
@@ -130,8 +138,18 @@ const optionsSchema = z.strictObject({
   keyFile: z.string().min(1).optional(),
   expectedTrackerId: z.string().min(1).optional(),
   expectedFileRole: z.enum(["MASTER_TEMPLATE", "USER_TRACKER"]).optional(),
-  maxRowsPerTable: z.number().int().min(1).max(100000).default(10000),
-  maxColumnsPerTable: z.number().int().min(23).max(64).default(64),
+  maxRowsPerTable: z
+    .number()
+    .int()
+    .min(1)
+    .max(100000)
+    .default(ARNOLD_SHEETS_LIMITS.rows),
+  maxColumnsPerTable: z
+    .number()
+    .int()
+    .min(23)
+    .max(ARNOLD_SHEETS_LIMITS.columns)
+    .default(ARNOLD_SHEETS_LIMITS.columns),
 });
 
 /** Separate data-access API; does not publish MCP tools. */
@@ -140,6 +158,14 @@ export class ArnoldSheetsReadAdapter {
   private readonly options: z.infer<typeof optionsSchema>;
   private readonly transport: ArnoldSheetsReadTransport;
   private pending?: Promise<ArnoldDataset>;
+  /** The grid this reader accepts; a writer must stay inside it. */
+  get limits(): { rows: number; columns: number; cells: number } {
+    return {
+      rows: this.options.maxRowsPerTable,
+      columns: this.options.maxColumnsPerTable,
+      cells: ARNOLD_SHEETS_LIMITS.cells,
+    };
+  }
   constructor(
     options: ArnoldSheetsReadOptions,
     transport?: ArnoldSheetsReadTransport,
@@ -207,7 +233,7 @@ export class ArnoldSheetsReadAdapter {
       if (
         rowCount > maxRowsPerTable ||
         columnCount > maxColumnsPerTable ||
-        rowCount * columnCount > 1000000 ||
+        rowCount * columnCount > ARNOLD_SHEETS_LIMITS.cells ||
         columnCount < ARNOLD_TABLE_HEADERS[ARNOLD_TABLES[i]].length
       )
         throw new ArnoldDataError([

@@ -1,4 +1,5 @@
 import { createConfiguredHttpApp } from "./bootstrap.js";
+import { logServerError } from "./tool-log.js";
 const port = Number(process.env.PORT ?? 8787);
 const host = process.env.HOST ?? "127.0.0.1";
 if (!Number.isInteger(port) || port < 1 || port > 65535)
@@ -23,7 +24,7 @@ const shutdown = () => {
   setTimeout(() => process.exit(1), 5000).unref();
 };
 server.on("error", (error) => {
-  console.error(error.message);
+  logServerError("http server failed", error);
   process.exitCode = 1;
 });
 process.on("SIGTERM", shutdown);

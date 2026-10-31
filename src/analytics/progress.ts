@@ -15,6 +15,7 @@ import type {
   ExerciseProgress,
   LoadReference,
   MetricUnit,
+  ProgressComparison,
   Series,
 } from "./types.js";
 
@@ -171,7 +172,7 @@ function progressFor(
       ? ["set_type_not_working"]
       : ["no_eligible_sets"];
 
-  return Object.freeze({
+  const progress = {
     exercise_id,
     exercise_known: exercise !== undefined,
     name_de: exercise?.name_de ?? null,
@@ -369,6 +370,67 @@ function progressFor(
           ]
         : [],
     ),
+  };
+  // B18: within one comparability class, or a reason instead of a number.
+  const volumeKeys = new Set(
+    analyses
+      .filter((analysis) => analysis.nominal_volume_kg !== null)
+      .map((analysis) => analysis.comparability.key),
+  );
+  const classOf: Record<string, string | AnalyticsReason | null> = {
+    max_load: lead?.comparability.key ?? null,
+    estimated_1rm: lead?.comparability.key ?? null,
+    nominal_volume:
+      volumeKeys.size > 1
+        ? "comparison_mixed_load_basis"
+        : ([...volumeKeys][0] ?? null),
+    // Repetitions compare across load bases of the same exercise.
+    total_reps: `${exercise_id}|reps`,
+    mean_reps_per_working_set: `${exercise_id}|reps`,
+  };
+  return Object.freeze({
+    ...progress,
+    comparisons: Object.freeze(
+      progress.series.map((entry) => compare(entry, classOf[entry.metric])),
+    ),
+  });
+}
+
+/** First against last point of a series that stays in one class. */
+function compare(
+  entry: Series,
+  comparability: string | AnalyticsReason | null | undefined,
+): ProgressComparison {
+  const none = (reason: AnalyticsReason): ProgressComparison =>
+    Object.freeze({
+      metric: entry.metric,
+      status: "not_available" as const,
+      reason,
+      from_date: null,
+      to_date: null,
+      from_value: null,
+      to_value: null,
+      delta: null,
+      unit: entry.unit,
+      comparability_key: null,
+    });
+  if (comparability === "comparison_mixed_load_basis")
+    return none("comparison_mixed_load_basis");
+  if (!entry.points.length || !comparability) return none("no_computable_sets");
+  if (entry.points.length < 2) return none("comparison_needs_two_dates");
+  const from = entry.points[0];
+  const to = entry.points[entry.points.length - 1];
+  return Object.freeze({
+    metric: entry.metric,
+    status: "valid" as const,
+    reason: null,
+    from_date: from.date,
+    to_date: to.date,
+    from_value: from.value,
+    to_value: to.value,
+    delta: round(to.value - from.value),
+    unit: entry.unit,
+    comparability_key: comparability,
   });
 }
 

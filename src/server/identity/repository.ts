@@ -79,6 +79,11 @@ export interface IdentityRepository {
   setStatus(userId: string, status: UserStatus): Promise<ArnoldUser>;
   /** Every identity connected to one user. For the account-info endpoint. */
   connectionsFor(userId: string): Promise<IdentityConnection[]>;
+  /**
+   * Deletes the user and every identity connected to it (account deletion).
+   * A later login with the same identity creates a new, empty user.
+   */
+  remove(userId: string): Promise<boolean>;
 }
 
 const nowIso = () => new Date().toISOString();
@@ -175,6 +180,17 @@ abstract class BaseIdentityRepository implements IdentityRepository {
     return state.identity_connections
       .filter((entry) => entry.user_id === userId)
       .map((entry) => ({ ...entry }));
+  }
+
+  async remove(userId: string): Promise<boolean> {
+    return this.mutate((state) => {
+      const before = state.users.length;
+      state.users = state.users.filter((entry) => entry.user_id !== userId);
+      state.identity_connections = state.identity_connections.filter(
+        (entry) => entry.user_id !== userId,
+      );
+      return state.users.length < before;
+    });
   }
 }
 

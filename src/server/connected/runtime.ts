@@ -1,4 +1,6 @@
+import { googleReauthWriteError } from "../google/reauth.js";
 import { createHash, randomUUID } from "node:crypto";
+import { readFile, readdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { z } from "zod";
 import {
@@ -33,7 +35,14 @@ import {
   type ArnoldWriteRepository,
   type AuthorizationGuard,
 } from "../workout/infrastructure.js";
+import { DeletionTokens, deletionSummary } from "./account-deletion.js";
 import { newTrackerDataset } from "./catalog.js";
+import {
+  DEFAULT_RETENTION_DAYS,
+  pruneUserDirectory,
+  retentionCutoff,
+} from "./retention.js";
+import { describeStoredData } from "./stored-data.js";
 import { GoogleTrackerApi } from "./google-api.js";
 import { LocalAuditLog, LocalDraftRepository, LocalState } from "./state.js";
 
@@ -42,6 +51,17 @@ export const SetupClaimSchema = z.strictObject({
   session_token: z.string().min(1),
 });
 export type SetupClaim = z.infer<typeof SetupClaimSchema>;
+
+/** A claim-free Google connection before the account is set up (B14). */
+export class AccountSetupRequiredError extends Error {
+  readonly code = "SETUP_REQUIRED" as const;
+  constructor() {
+    super(
+      "Arnold ist für dieses Konto noch nicht eingerichtet. Zuerst die Einrichtung fortsetzen (show_arnold_onboarding); Google wird dort mit dem Sitzungsnachweis verbunden.",
+    );
+    this.name = "AccountSetupRequiredError";
+  }
+}
 const ManifestSchema = z.strictObject({
   userId: z.string(),
   trackerId: z.string(),
@@ -58,13 +78,33 @@ export interface ConnectedRuntimeOptions {
   auth: AuthSurface;
   connections: GoogleConnectionService;
   fetchImpl?: FetchLike;
+  /** Clock for confirmation tokens; injectable for tests. */
+  now?: () => number;
+  /** Retention period in days, as reported to the user (B7/B8). */
+  retentionDays?: number;
 }
+
+const sheetUrl = (spreadsheetId: string) =>
+  `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+
+/**
+ * The answer of a verified setup (B16): the link and, when Google reported
+ * one, the file's actual name. A missing name stays missing, never invented.
+ */
+const setupResult = (spreadsheetId: string, file: { name?: string }) => ({
+  spreadsheet_url: sheetUrl(spreadsheetId),
+  ...(typeof file.name === "string" && file.name.trim()
+    ? { spreadsheet_name: file.name }
+    : {}),
+});
 
 /** Single-instance development integration. Production still requires Task 007-D. */
 export class ConnectedArnoldRuntime {
   private users = new Map<string, Promise<ConnectedUserRuntime>>();
   private requests = new InProcessWriteCoordinator();
+  readonly deletionTokens: DeletionTokens;
   constructor(readonly options: ConnectedRuntimeOptions) {
+    this.deletionTokens = new DeletionTokens(options.now);
     if (
       options.auth.summary.mode !== "oidc" ||
       options.auth.summary.identityStore !== "file"
@@ -73,14 +113,148 @@ export class ConnectedArnoldRuntime {
         "Arnold Connected benötigt OIDC und einen dauerhaften Datei-Identitätsspeicher.",
       );
   }
+  /** One directory per user; the name is a hash, never the user id. */
+  userDirectory(userId: string) {
+    return resolve(
+      this.options.directory,
+      createHash("sha256").update(userId).digest("hex"),
+    );
+  }
+  /**
+   * The stored tracker mapping, read without creating anything. Undefined
+   * when this user never started a setup.
+   */
+  async storedManifest(userId: string): Promise<Manifest | undefined> {
+    try {
+      const raw = await readFile(
+        resolve(this.userDirectory(userId), "tracker.json"),
+        "utf8",
+      );
+      const manifest = ManifestSchema.parse(JSON.parse(raw));
+      if (manifest.userId !== userId)
+        throw new Error("Fremde Tracker-Zuordnung im Speicher.");
+      return manifest;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      throw error;
+    }
+  }
+  /** B7: what Arnold keeps about this user, without creating anything. */
+  async storedData(context: AuthenticatedArnoldContext) {
+    await this.options.auth.assertActive(context);
+    const manifest = await this.storedManifest(context.userId);
+    const connection = await this.options.connections.status(context);
+    const retentionDays = this.options.retentionDays ?? DEFAULT_RETENTION_DAYS;
+    return {
+      items: await describeStoredData({
+        directory: this.userDirectory(context.userId),
+        retentionDays,
+        account: await this.options.auth.accountDates(context.userId),
+        google: connection
+          ? {
+              connected_at_utc: connection.connected_at_utc,
+              updated_at_utc: connection.updated_at_utc,
+              has_email: connection.google_email !== null,
+            }
+          : null,
+      }),
+      google_sheet_url: manifest?.spreadsheetId
+        ? sheetUrl(manifest.spreadsheetId)
+        : null,
+      retention_days: retentionDays,
+    };
+  }
+  /** First stage of account deletion: what goes, what stays, and a token. */
+  async prepareAccountDeletion(context: AuthenticatedArnoldContext) {
+    await this.options.auth.assertActive(context);
+    const manifest = await this.storedManifest(context.userId);
+    const connection = await this.options.connections.status(context);
+    const { token, expiresAt } = this.deletionTokens.issue(context.userId);
+    return {
+      stage: "confirm" as const,
+      summary: deletionSummary({
+        googleConnected: connection !== null,
+        sheetExists: Boolean(manifest?.spreadsheetId),
+      }),
+      confirmation_token: token,
+      expires_at: expiresAt,
+    };
+  }
+  /**
+   * Second stage: deletes everything Arnold stores about this user.
+   *
+   * Order matters for a retry after a failure halfway: Google is revoked
+   * while the credential still exists, local data goes next, and the
+   * identity is removed last, so the same login can finish the deletion.
+   * The user's Google sheet is never touched.
+   */
+  async deleteAccount(
+    context: AuthenticatedArnoldContext,
+    confirmationToken: string,
+  ) {
+    await this.options.auth.assertActive(context);
+    this.deletionTokens.redeem(context.userId, confirmationToken);
+    const manifest = await this.storedManifest(context.userId);
+    await this.options.connections.disconnect(context);
+    this.users.delete(context.userId);
+    await rm(this.userDirectory(context.userId), {
+      recursive: true,
+      force: true,
+    });
+    await this.options.auth.removeUser(context.userId);
+    return {
+      stage: "deleted" as const,
+      google_sheet_kept: true as const,
+      sheet_url: manifest?.spreadsheetId
+        ? sheetUrl(manifest.spreadsheetId)
+        : null,
+    };
+  }
+  /**
+   * Applies the retention period to every user directory (B8). Each user is
+   * pruned under the same lock as that user's writes.
+   */
+  async applyRetention(days: number, now = Date.now()) {
+    const cutoff = retentionCutoff(days, now);
+    const totals = {
+      users: 0,
+      journal: 0,
+      audit: 0,
+      snapshots: 0,
+      setup_sessions: 0,
+    };
+    let names: string[];
+    try {
+      names = await readdir(this.options.directory);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return totals;
+      throw error;
+    }
+    for (const name of names) {
+      if (!/^[0-9a-f]{64}$/.test(name)) continue;
+      const directory = resolve(this.options.directory, name);
+      const userId = await readFile(resolve(directory, "tracker.json"), "utf8")
+        .then((raw) => ManifestSchema.parse(JSON.parse(raw)).userId)
+        .catch(() => undefined);
+      // A directory without a readable owner has no writer to race with.
+      const prune = () => pruneUserDirectory(directory, cutoff);
+      const result =
+        userId && this.userDirectory(userId) === directory
+          ? await this.requests.exclusive(userId, prune)
+          : await prune();
+      totals.users += 1;
+      totals.journal += result.journal;
+      totals.audit += result.audit;
+      totals.snapshots += result.snapshots;
+      totals.setup_sessions += result.setup_sessions;
+    }
+    return totals;
+  }
   async forUser(context: AuthenticatedArnoldContext) {
     await this.options.auth.assertActive(context);
     let runtime = this.users.get(context.userId);
     if (!runtime) {
-      const directory = resolve(
-        this.options.directory,
-        createHash("sha256").update(context.userId).digest("hex"),
-      );
+      const directory = this.userDirectory(context.userId);
       runtime = ConnectedUserRuntime.create(
         directory,
         context.userId,
@@ -138,10 +312,7 @@ export class ConnectedUserRuntime {
     const connection = await this.options.connections.status(caller);
     const manifest = await this.manifest.read();
     if (!connection || connection.status !== "CONNECTED")
-      throw new WriteError(
-        "AUTH_REQUIRED",
-        "Bitte Google verbinden oder die Freigabe erneuern.",
-      );
+      throw googleReauthWriteError();
     if (
       manifest.googleSubject &&
       manifest.googleSubject !== connection.google_subject
@@ -359,26 +530,44 @@ export class ConnectedUserRuntime {
       );
     return handoff;
   }
+  /**
+   * The binding a Google connection is checked against.
+   *
+   * A set-up account (phase ready) binds through the verified account alone,
+   * whatever claim is sent (B14): a reconnect after an expired grant must not
+   * depend on a setup session the chat may have lost. The stored Google
+   * subject still decides which Google account may connect. Before that, the
+   * setup claim is required.
+   */
   async connectionBinding(
-    claim: SetupClaim,
+    claim: SetupClaim | null,
     context: AuthenticatedArnoldContext,
   ) {
+    await this.caller(context);
     const manifest = await this.manifest.read();
-    const state = await this.onboarding.getOnboardingState(claim, context);
-    if (
-      manifest.phase === "ready" &&
-      manifest.sessionId === claim.onboarding_session_id &&
-      state.session.status === "COMPLETED"
-    )
+    if (manifest.phase === "ready")
       return {
-        binding: manifest.binding!,
+        binding: manifest.binding ?? `ready:${manifest.trackerId}`,
         googleSubject: manifest.googleSubject ?? undefined,
+        ready: true as const,
       };
+    if (!claim) throw new AccountSetupRequiredError();
     return {
       binding: (await this.bindingFor(claim, context)).handoff
         .oauth_state_binding!,
       googleSubject: manifest.googleSubject ?? undefined,
+      ready: false as const,
     };
+  }
+  /** After reconnecting a set-up account: its own file must still be there. */
+  async verifyTracker(context: AuthenticatedArnoldContext) {
+    const manifest = await this.manifest.read();
+    const google = await this.google(context);
+    const file = await google.verifyFile(
+      manifest.spreadsheetId!,
+      manifest.trackerId,
+    );
+    return setupResult(manifest.spreadsheetId!, file);
   }
   async provision(claim: SetupClaim, context: AuthenticatedArnoldContext) {
     await this.caller(context);
@@ -390,15 +579,16 @@ export class ConnectedUserRuntime {
           "PERMISSION_DENIED",
           "Für dieses Konto ist bereits eine Trainingsdatei eingerichtet.",
         );
-      await google.verifyFile(manifest.spreadsheetId!, manifest.trackerId);
+      const file = await google.verifyFile(
+        manifest.spreadsheetId!,
+        manifest.trackerId,
+      );
       await this.onboarding.completeProvisioning(
         claim,
         manifest.binding!,
         context,
       );
-      return {
-        spreadsheet_url: `https://docs.google.com/spreadsheets/d/${manifest.spreadsheetId}/edit`,
-      };
+      return setupResult(manifest.spreadsheetId!, file);
     }
     const { handoff } = await this.bindingFor(claim, context);
     if (manifest.binding && manifest.binding !== handoff.oauth_state_binding)
@@ -487,7 +677,10 @@ export class ConnectedUserRuntime {
       manifest = { ...manifest, spreadsheetId: matches[0].id };
       await this.manifest.save(manifest);
     }
-    await google.verifyFile(manifest.spreadsheetId!, manifest.trackerId);
+    const file = await google.verifyFile(
+      manifest.spreadsheetId!,
+      manifest.trackerId,
+    );
     const seed = await this.seed.read();
     const reader = new ArnoldSheetsReadAdapter(
       {
@@ -527,8 +720,6 @@ export class ConnectedUserRuntime {
       manifest.binding!,
       context,
     );
-    return {
-      spreadsheet_url: `https://docs.google.com/spreadsheets/d/${manifest.spreadsheetId}/edit`,
-    };
+    return setupResult(manifest.spreadsheetId!, file);
   }
 }

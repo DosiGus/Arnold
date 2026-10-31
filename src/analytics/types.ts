@@ -71,6 +71,9 @@ export const AnalyticsReasonSchema = z.enum([
   "workout_not_attributable_to_plan",
   "plan_changed_within_week",
   "working_set_not_planned",
+  // progress comparison (B18)
+  "comparison_needs_two_dates",
+  "comparison_mixed_load_basis",
 ]);
 export type AnalyticsReason = z.infer<typeof AnalyticsReasonSchema>;
 
@@ -330,6 +333,28 @@ export const ExerciseVariantSchema = z
   })
   .readonly();
 
+/**
+ * First against last measurement of one progress series (B18), computed only
+ * within one comparability class. When that is impossible the values are
+ * null and `reason` says why; the UI never computes a difference itself.
+ */
+export const ProgressComparisonSchema = z
+  .strictObject({
+    metric: z.string().min(1),
+    status: z.enum(["valid", "not_available"]),
+    reason: AnalyticsReasonSchema.nullable(),
+    from_date: isoDate.nullable(),
+    to_date: isoDate.nullable(),
+    from_value: finite.nullable(),
+    to_value: finite.nullable(),
+    delta: finite.nullable(),
+    unit: MetricUnitSchema,
+    /** All points of the comparison share this class; null when unavailable. */
+    comparability_key: z.string().min(1).nullable(),
+  })
+  .readonly();
+export type ProgressComparison = z.infer<typeof ProgressComparisonSchema>;
+
 export const ExerciseProgressSchema = z
   .strictObject({
     exercise_id: ArnoldIdSchema,
@@ -351,6 +376,8 @@ export const ExerciseProgressSchema = z
     nominal_volume: MetricValueSchema,
     variants: z.array(ExerciseVariantSchema).readonly(),
     series: z.array(SeriesSchema).readonly(),
+    /** One per series, same order; empty when series were not requested. */
+    comparisons: z.array(ProgressComparisonSchema).readonly(),
   })
   .readonly();
 export type ExerciseProgress = z.infer<typeof ExerciseProgressSchema>;

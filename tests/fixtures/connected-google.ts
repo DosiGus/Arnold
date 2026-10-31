@@ -17,6 +17,8 @@ type Sheet = {
 };
 type File = {
   id: string;
+  /** The file name as Google reports it; tests may rename it. */
+  name: string;
   owner: string;
   mimeType: string;
   appProperties: Record<string, string>;
@@ -49,6 +51,8 @@ export class ConnectedGoogle {
   loseWriteResponse = false;
   rejectInitialize = false;
   rejectCreate: number | undefined;
+  /** The grant expires exactly when the next sheet write arrives. */
+  expireGrantBeforeNextWrite = false;
   authorize(url: string, subject: string) {
     const authorization = new URL(url);
     const code = randomUUID();
@@ -125,6 +129,7 @@ export class ConnectedGoogle {
         const id = `spreadsheet_${++this.creates}_${owner}`;
         const file: File = {
           id,
+          name: body.name,
           owner,
           mimeType: body.mimeType,
           appProperties: body.appProperties,
@@ -173,6 +178,11 @@ export class ConnectedGoogle {
         (r: Record<string, unknown>) => r.addSheet,
       );
       if (initializing && this.rejectInitialize) return fail(503);
+      if (!initializing && this.expireGrantBeforeNextWrite) {
+        this.expireGrantBeforeNextWrite = false;
+        this.revoked.add(owner);
+        return fail(401);
+      }
       const next = structuredClone(file.sheets);
       for (const request of body.requests) {
         if (request.addSheet) {
@@ -268,6 +278,7 @@ export class ConnectedGoogle {
   private view(file: File) {
     return {
       id: file.id,
+      name: file.name,
       mimeType: file.mimeType,
       ownedByMe: true,
       trashed: false,

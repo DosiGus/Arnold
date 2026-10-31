@@ -25,6 +25,7 @@
 import { recoveryFor } from "../../shared/write-recovery.js";
 import {
   ARNOLD_SCHEMA_VERSION,
+  ArnoldExerciseSchema,
   type ArnoldDataset,
   type ArnoldExercise,
   type ArnoldPlanVersion,
@@ -73,6 +74,14 @@ import {
   canTransition,
 } from "./domain.js";
 import { PlanError, planError, toPlanError } from "./errors.js";
+
+/** The user's own exercises created alongside a new plan (B11). */
+interface OwnExercises {
+  changes: EntityChange[];
+  audit: AuditEvent[];
+  dataset?: ArnoldDataset;
+  input?: Record<string, unknown>;
+}
 import { validateProjection, validatePlanVersion } from "./validation.js";
 import {
   applyEdit,
@@ -455,8 +464,19 @@ export class TrainingPlanService {
     actor: Actor,
     now: string,
   ): CommitPlan<PlanWriteResult> {
-    const ctx: EditContext = { dataset, now, id: () => this.newId() };
     const warnings: string[] = [];
+    // B11: the user's own exercises are created in the same write as the plan.
+    let ownExercises: OwnExercises = { changes: [], audit: [] };
+    if (operation === "create_training_plan") {
+      ownExercises = this.ownExercises(input, dataset, actor, now);
+      if (ownExercises.dataset) dataset = ownExercises.dataset;
+      if (ownExercises.input) input = ownExercises.input;
+      if (ownExercises.changes.length)
+        warnings.push(
+          `${ownExercises.changes.length} eigene Übung(en) angelegt. Gerät, Muskel und Lastbasis bei Bedarf im Plan-Editor ergänzen.`,
+        );
+    }
+    const ctx: EditContext = { dataset, now, id: () => this.newId() };
 
     if (
       operation === "activate_training_plan" ||
@@ -571,9 +591,143 @@ export class TrainingPlanService {
       schema_limits: this.limitsFor(projected),
     };
     return {
-      changes,
+      changes: [...ownExercises.changes, ...changes],
       result,
-      audit: this.auditFor(operation, input, model, planChanges, actor, now),
+      audit: [
+        ...ownExercises.audit,
+        ...this.auditFor(operation, input, model, planChanges, actor, now),
+      ],
+    };
+  }
+
+  /**
+   * Resolves `custom:` keys in a new plan to exercise ids.
+   *
+   * An exercise with the same name (German or English, ignoring case and
+   * accents) or the same family key is reused; otherwise a new active
+   * exercise is created with conservative defaults. Only referenced keys are
+   * created, and a referenced key without a description is refused.
+   */
+  private ownExercises(
+    input: Record<string, unknown>,
+    dataset: ArnoldDataset,
+    actor: Actor,
+    now: string,
+  ): OwnExercises {
+    const parsed = PlanWriteInputs.create_training_plan.parse(input);
+    const declared = parsed.custom_exercises ?? [];
+    const referenced = new Set(
+      parsed.sessions.flatMap((session) =>
+        session.exercises
+          .map((exercise) => exercise.exercise_id)
+          .filter((id) => id.startsWith("custom:")),
+      ),
+    );
+    if (!declared.length && !referenced.size) return { changes: [], audit: [] };
+    const byKey = new Map<string, (typeof declared)[number]>();
+    for (const exercise of declared) {
+      if (byKey.has(exercise.key))
+        throw planError(
+          "VALIDATION_ERROR",
+          `Der Schlüssel ${exercise.key} ist in custom_exercises doppelt vergeben.`,
+        );
+      byKey.set(exercise.key, exercise);
+    }
+    const missing = [...referenced].filter((key) => !byKey.has(key));
+    if (missing.length)
+      throw planError(
+        "EXERCISE_NOT_FOUND",
+        "Eine eigene Übung wird in einer Einheit verwendet, ist aber nicht in custom_exercises beschrieben.",
+        missing,
+      );
+
+    const fold = (value: string) =>
+      value
+        .normalize("NFKD")
+        .replace(/\p{M}/gu, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+    const slug = (value: string) => fold(value).replace(/ /g, "-") || "eigene";
+    const exercises = [...dataset.exercises];
+    const mapping = new Map<string, string>();
+    const changes: EntityChange[] = [];
+    const audit: AuditEvent[] = [];
+    for (const key of referenced) {
+      const own = byKey.get(key)!;
+      const name = fold(own.name_de);
+      const family = slug(own.name_de);
+      const existing = exercises.find(
+        (exercise) =>
+          exercise.status === "active" &&
+          ([exercise.name_de, exercise.name_en].some(
+            (label) => label !== null && fold(label) === name,
+          ) ||
+            exercise.family_key === family),
+      );
+      if (existing) {
+        mapping.set(key, existing.exercise_id);
+        continue;
+      }
+      const mode = own.default_execution_mode ?? "bilateral_simultaneous";
+      const count = own.default_implement_count ?? 1;
+      if (
+        (mode === "unilateral" && count !== 1) ||
+        (mode === "alternating" && count > 2)
+      )
+        throw planError(
+          "VALIDATION_ERROR",
+          `Die Angaben zur eigenen Übung „${own.name_de}“ widersprechen sich (Ausführung und Geräteanzahl).`,
+        );
+      const row = ArnoldExerciseSchema.parse({
+        exercise_id: this.newId(),
+        name_de: own.name_de,
+        name_en: null,
+        family_key: family,
+        variant_key: "eigene",
+        equipment: own.equipment ?? "nicht angegeben",
+        primary_muscle: own.primary_muscle ?? "nicht angegeben",
+        default_load_basis: own.default_load_basis ?? "total",
+        default_execution_mode: mode,
+        default_implement_count: count,
+        status: "active",
+        created_at_utc: now,
+        updated_at_utc: now,
+        row_revision: 1,
+      });
+      exercises.push(row);
+      mapping.set(key, row.exercise_id);
+      changes.push({ table: "exercises", before: null, after: row });
+      audit.push(
+        this.event(
+          "EXERCISE_CREATED",
+          row.exercise_id,
+          String(input.request_id),
+          actor,
+          now,
+          {
+            previous: null,
+            next: 1,
+            fields: { name_de: { before: null, after: row.name_de } },
+          },
+        ),
+      );
+    }
+    return {
+      changes,
+      audit,
+      dataset: changes.length ? { ...dataset, exercises } : undefined,
+      input: {
+        ...input,
+        sessions: parsed.sessions.map((session) => ({
+          ...session,
+          exercises: session.exercises.map((exercise) => ({
+            ...exercise,
+            exercise_id:
+              mapping.get(exercise.exercise_id) ?? exercise.exercise_id,
+          })),
+        })),
+      },
     };
   }
 

@@ -1,3 +1,7 @@
+import {
+  googleReauthWriteError,
+  isGoogleReauthRequired,
+} from "./google/reauth.js";
 import { GoogleAuth } from "google-auth-library";
 import {
   ARNOLD_TABLE_HEADERS,
@@ -131,6 +135,8 @@ const statusOf = (error: unknown) => {
 };
 function apiFailure(error: unknown, writing: boolean): WriteError {
   if (error instanceof WriteError) return error;
+  // The grant is refreshed before a request is sent: nothing was written.
+  if (isGoogleReauthRequired(error)) return googleReauthWriteError();
   if (error instanceof ArnoldDataError)
     return new WriteError(
       "SCHEMA_MISMATCH",
@@ -387,16 +393,42 @@ export class ArnoldSheetsWriteAdapter implements ArnoldWriteRepository {
         appends.set(table, rows);
       }
     }
-    for (const [table, rows] of appends)
+    const limits = this.reader.limits;
+    for (const [table, rows] of appends) {
+      const properties = this.metadata!.sheets.find(
+        (s) => s.properties.title === table,
+      )!.properties;
+      // appendCells writes after the last row holding data, counting internal
+      // gaps; spare grid rows below it are reused before the grid grows.
+      const usedRows = this.rows(table).reduce(
+        (last, row, index) =>
+          row.some((cell) => cell !== null && cell !== undefined && cell !== "")
+            ? index + 1
+            : last,
+        0,
+      );
+      const resultingRows = Math.max(
+        properties.gridProperties.rowCount,
+        usedRows + rows.length,
+      );
+      if (
+        resultingRows > limits.rows ||
+        resultingRows * properties.gridProperties.columnCount > limits.cells
+      )
+        throw new WriteError(
+          "SHEET_CAPACITY_EXCEEDED",
+          "Deine Trainingstabelle ist voll: Arnold könnte sie nach diesem Speichern nicht mehr lesen. Es wurde nichts geschrieben. Bitte wende dich an den Support.",
+          false,
+          [table, `resulting_rows=${resultingRows}`, `max_rows=${limits.rows}`],
+        );
       requests.push({
         appendCells: {
-          sheetId: this.metadata!.sheets.find(
-            (s) => s.properties.title === table,
-          )!.properties.sheetId,
+          sheetId: properties.sheetId,
           rows,
           fields: "userEnteredValue",
         },
       });
+    }
     try {
       for (let attempt = 0; ; attempt++) {
         try {
@@ -414,7 +446,18 @@ export class ArnoldSheetsWriteAdapter implements ArnoldWriteRepository {
     } catch (error) {
       throw apiFailure(error, true);
     }
-    const observed = await this.read();
+    let observed: ArnoldDataset;
+    try {
+      observed = await this.read();
+    } catch {
+      // The batch was accepted; only its readback failed (for example an
+      // expired grant). The outcome is unknown, never "not written".
+      throw new WriteError(
+        "COMMIT_STATUS_UNKNOWN",
+        "Google hat gespeichert, die Kontrolle steht noch aus. Mit derselben request_id erneut prüfen.",
+        true,
+      );
+    }
     if (fingerprint(observed) !== this.allowedNext)
       throw new WriteError(
         "COMMIT_STATUS_UNKNOWN",

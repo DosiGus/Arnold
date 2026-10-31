@@ -9,11 +9,27 @@ import {
   type GoogleConnectionService,
 } from "../google/connection-service.js";
 import type { ConnectedArnoldRuntime, SetupClaim } from "./runtime.js";
-import { SetupClaimSchema } from "./runtime.js";
+import {
+  ConnectGoogleInputSchema,
+  type ConnectGoogleInput,
+} from "../../shared/account-contract.js";
+
+/** The setup claim, when both fields were sent. */
+export function claimFrom(input: ConnectGoogleInput): SetupClaim | null {
+  return input.onboarding_session_id !== undefined &&
+    input.session_token !== undefined
+    ? {
+        onboarding_session_id: input.onboarding_session_id,
+        session_token: input.session_token,
+      }
+    : null;
+}
 
 type BrowserFlow = {
   context: AuthenticatedArnoldContext;
-  claim: SetupClaim;
+  /** Null for a reconnect of a set-up account (B14). */
+  claim: SetupClaim | null;
+  ready: boolean;
   binding: string;
   state: string;
   authorizationUrl: string;
@@ -124,12 +140,17 @@ export class GoogleBrowserFlow {
             expectedOnboardingBinding: current.binding,
             expectedGoogleSubject: current.googleSubject,
           });
-          await user.provision(flow.claim, flow.context);
+          // A set-up account only reconnects; its file already exists and is
+          // verified. Setup still provisions through the claim.
+          if (current.ready) await user.verifyTracker(flow.context);
+          else await user.provision(flow.claim!, flow.context);
         });
         res
           .type("text/plain")
           .send(
-            "Google ist verbunden und deine Trainingsdatei ist eingerichtet. Kehre zu Arnold zurück und aktualisiere den Einrichtungsstand.",
+            flow.ready
+              ? "Google ist wieder verbunden. Deine Trainingsdatei ist unverändert. Kehre zu Arnold zurück."
+              : "Google ist verbunden und deine Trainingsdatei ist eingerichtet. Kehre zu Arnold zurück und aktualisiere den Einrichtungsstand.",
           );
       } catch (error) {
         // No provider bodies, callback parameters or credentials in this response.
@@ -157,7 +178,8 @@ export class GoogleBrowserFlow {
     };
     this.router.post("/start", auth.bearerGate, async (req, res) => {
       const caller = await context(req);
-      const claim = SetupClaimSchema.parse(req.body);
+      const input = ConnectGoogleInputSchema.parse(req.body ?? {});
+      const claim = claimFrom(input);
       res.json(
         await runtime.exclusive(caller, () => this.start(caller, claim)),
       );
@@ -190,7 +212,7 @@ export class GoogleBrowserFlow {
       },
     );
   }
-  async start(context: AuthenticatedArnoldContext, claim: SetupClaim) {
+  async start(context: AuthenticatedArnoldContext, claim: SetupClaim | null) {
     this.purge();
     const user = await this.runtime.forUser(context);
     const current = await user.connectionBinding(claim, context);
@@ -201,6 +223,7 @@ export class GoogleBrowserFlow {
     this.tickets.set(hash(ticket), {
       context,
       claim,
+      ready: current.ready,
       binding: current.binding,
       state: started.state,
       authorizationUrl: started.authorizationUrl,

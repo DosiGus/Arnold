@@ -9,6 +9,8 @@ import { loadTokenCipher } from "./google/crypto.js";
 import { createHttpApp, type ServerOptions } from "./http.js";
 import { ConnectedArnoldRuntime } from "./connected/runtime.js";
 import { GoogleBrowserFlow } from "./connected/google-browser.js";
+import { retentionDaysFrom, scheduleRetention } from "./connected/retention.js";
+import { logServerError } from "./tool-log.js";
 
 /** Async startup actually performs the OIDC discovery required by buildAuthSurface. */
 export async function createConfiguredHttpApp(
@@ -80,11 +82,20 @@ export async function createConfiguredHttpApp(
       jwksUri: "https://www.googleapis.com/oauth2/v3/certs",
     }),
   });
+  // D4: journals, snapshots and audit are deleted after the retention period,
+  // at start and then daily. An invalid period stops the start (fail closed).
+  const retentionDays = retentionDaysFrom(env);
   const runtime = new ConnectedArnoldRuntime({
     directory: resolve(directory, "users"),
     auth,
     connections,
+    retentionDays,
   });
+  scheduleRetention(() =>
+    runtime.applyRetention(retentionDays).catch((error: unknown) => {
+      logServerError("retention failed", error);
+    }),
+  );
   const browser = new GoogleBrowserFlow(runtime, connections, auth, base);
   return createHttpApp({
     ...options,
