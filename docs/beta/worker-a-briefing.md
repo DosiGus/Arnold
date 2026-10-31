@@ -31,6 +31,12 @@ Seit Commit `3af023a` in `main`, du kannst direkt darauf bauen:
   - Ist es ungültig oder abgelaufen, kommt `_meta.arnold.code = "CONFIRMATION_INVALID"` mit `recovery: "start_over"`. Die Karte bietet dann an, neu zu beginnen.
 - Neuer Fehlercode `SHEET_CAPACITY_EXCEEDED` mit `recovery: "contact_support"`.
 
+**Nachtrag vom 31.10., Branch `feat/beta-backend` (`9282cdb`), kommt mit dem Merge von B nach `main`:**
+
+- **Neu verbinden (A5):** Die Karte ruft `connect_google_account` mit `{}` auf (`ConnectGoogleInputSchema` in `account-contract.ts`); bei eingerichtetem Konto ist kein Einrichtungsnachweis nötig. Vor der Einrichtung kommt `SETUP_REQUIRED` mit `recovery: "finish_setup"`.
+- **Ungewöhnliche Werte (Satzkarte):** Über 500 kg oder über 100 Wiederholungen antwortet `log_workout_sets` bzw. `update_set` mit `CONFIRMATION_REQUIRED`. Die Karte fragt „Stimmt das?“ und sendet bei Ja erneut mit `confirm_unusual_values: true`. Grenzen in `UNUSUAL_SET_LIMITS` (`workout-contract.ts`).
+- **Datum in der Zukunft:** `DATE_IN_FUTURE` mit `recovery: "none"`; die Karte zeigt einen kurzen Hinweis.
+
 ## Designprinzipien (verbindlich, freigegeben am 30.10.)
 
 - **Eine Karte, ein Gedanke.** Pro Karte höchstens 2 Buttons unten und höchstens 4 Zahlen. Eine dritte, leise Textaktion („Training abbrechen“) ist erlaubt.
