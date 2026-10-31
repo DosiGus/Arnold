@@ -1,0 +1,60 @@
+# Runs the same checks as `npm run check` plus the format check on every push
+# and pull request. `main` only accepts changes once this job is green.
+name: check
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Same major version as the Docker image.
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Format
+        run: npm run format:check
+
+      - name: Build and typecheck
+        run: npm run build
+
+      - name: Unit and integration tests (Vitest)
+        run: npm test
+
+      - name: Install Playwright browsers
+        # Chromium always; WebKit too once the Playwright config uses it.
+        run: |
+          browsers=chromium
+          grep -qi webkit playwright.config.ts && browsers="chromium webkit"
+          npx playwright install --with-deps $browsers
+
+      - name: Browser tests (Playwright)
+        run: npm run test:e2e
+
+      - name: Keep Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
