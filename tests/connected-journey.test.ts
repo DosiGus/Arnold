@@ -1115,3 +1115,112 @@ describe("B7: get_arnold_stored_data", () => {
     expect(data.google_sheet_url).toBeNull();
   });
 });
+
+describe("B14: reconnecting a set-up account without the setup claim", () => {
+  const meta = (result: CallToolResult) =>
+    (result._meta as { arnold?: { code?: string; recovery?: string } })?.arnold;
+  async function reconnect(subject: string, googleSubject = subject) {
+    const started = await call(subject, "connect_google_account", {});
+    expect(started.isError, JSON.stringify(started.content)).toBeFalsy();
+    const launched = await fetch(
+      (started.structuredContent as { authorization_url: string })
+        .authorization_url,
+      { redirect: "manual" },
+    );
+    expect(launched.status).toBe(303);
+    const authorization = launched.headers.get("location")!;
+    const cookie = launched.headers.get("set-cookie")!.split(";")[0];
+    const code = google.authorize(authorization, googleSubject);
+    const state = new URL(authorization).searchParams.get("state")!;
+    return fetch(
+      `${base}/auth/google/callback?${new URLSearchParams({ code, state })}`,
+      { headers: { cookie } },
+    );
+  }
+
+  it("reconnects after an expired grant with no claim and loses no data", async () => {
+    await connected("alice");
+    const workout = await startWorkout("alice");
+    const first = WriteResponseSchema.parse(
+      (
+        await call("alice", "log_workout_sets", {
+          request_id: "before-expiry",
+          workout_id: workout.workout_id,
+          sets: [setInput],
+        })
+      ).structuredContent,
+    );
+    expect(first.ok, first.error?.message).toBe(true);
+
+    google.revoked.add("alice");
+    const pending = {
+      request_id: "while-expired",
+      workout_id: workout.workout_id,
+      sets: [{ ...setInput, reps: 6 }],
+    };
+    const refused = WriteResponseSchema.parse(
+      (await call("alice", "log_workout_sets", pending)).structuredContent,
+    );
+    expect(refused.error?.code).toBe("GOOGLE_REAUTH_REQUIRED");
+
+    // A new chat: the setup claim is gone, the verified account is enough.
+    const response = await reconnect("alice");
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(await response.text()).toContain("wieder verbunden");
+    expect(google.creates).toBe(1);
+    expect(
+      (await call("alice", "get_google_connection")).structuredContent,
+    ).toMatchObject({ connection: { status: "CONNECTED" } });
+
+    const retried = WriteResponseSchema.parse(
+      (await call("alice", "log_workout_sets", pending)).structuredContent,
+    );
+    expect(retried.ok, retried.error?.message).toBe(true);
+    const sets = WorkoutContextSchema.parse(
+      (await call("alice", "get_workout", { workout_id: workout.workout_id }))
+        .structuredContent,
+    ).sets;
+    expect(sets.map((set) => set.reps).sort()).toEqual([10, 6].sort());
+    expect((await call("alice", "get_arnold_dashboard")).isError).toBeFalsy();
+  });
+
+  it("refuses a different Google account and keeps the tracker untouched", async () => {
+    await connected("alice");
+    await startWorkout("alice");
+    google.revoked.add("alice");
+    expect((await call("alice", "get_workout")).isError).toBe(true);
+
+    const foreign = await reconnect("alice", "mallory");
+    expect(foreign.status).toBe(400);
+    expect(await foreign.text()).toContain("dasselbe Google-Konto");
+    expect(
+      (await readFile(join(directory, "connections.json"), "utf8")).includes(
+        "mallory",
+      ),
+    ).toBe(false);
+    expect(google.creates).toBe(1);
+
+    // The right account still works afterwards.
+    expect((await reconnect("alice")).status).toBe(200);
+    expect((await call("alice", "get_workout")).isError).toBeFalsy();
+  });
+
+  it("still needs the setup claim before the account is set up", async () => {
+    await setup("bob");
+    const refused = await call("bob", "connect_google_account", {});
+    expect(refused.isError).toBe(true);
+    expect(meta(refused)).toMatchObject({
+      code: "SETUP_REQUIRED",
+      recovery: "finish_setup",
+    });
+    expect(google.creates).toBe(0);
+  });
+
+  it("accepts the claim fields only together", async () => {
+    await connected("alice");
+    const result = await call("alice", "connect_google_account", {
+      onboarding_session_id: "only-one-field",
+    });
+    expect(result.isError).toBe(true);
+  });
+});

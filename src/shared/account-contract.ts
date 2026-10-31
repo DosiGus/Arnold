@@ -14,6 +14,27 @@ import { z } from "zod";
 
 const isoDateTime = z.string().datetime({ offset: true });
 
+/**
+ * Input of `connect_google_account` (B14).
+ *
+ * During setup the session claim is required: it ties the Google file to the
+ * confirmed plan. Once the account is set up, reconnecting (for example after
+ * the 7-day grant expired) needs no claim: the verified account is enough,
+ * and only the same Google account may reconnect. Both fields or neither.
+ */
+export const ConnectGoogleInputSchema = z
+  .strictObject({
+    onboarding_session_id: z.string().min(1).optional(),
+    session_token: z.string().min(1).optional(),
+  })
+  .refine(
+    (input) =>
+      (input.onboarding_session_id === undefined) ===
+      (input.session_token === undefined),
+    "onboarding_session_id und session_token nur gemeinsam angeben.",
+  );
+export type ConnectGoogleInput = z.infer<typeof ConnectGoogleInputSchema>;
+
 export const DeleteAccountInputSchema = z.strictObject({
   confirmation_token: z.string().min(16).max(256).optional(),
 });

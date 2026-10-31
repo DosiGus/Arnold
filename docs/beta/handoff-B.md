@@ -26,6 +26,7 @@ Stand 31.10.2026, Branch `feat/beta-backend`. Mergen in `main` macht Worker C (C
 - Neue Fehlercodes: `SHEET_CAPACITY_EXCEEDED` (Workout und Plan, `contact_support`), `GOOGLE_REAUTH_REQUIRED` auch im Onboarding.
 - Dashboard-Fehler: `_meta.arnold` hat zusätzlich `code` (Großbuchstaben, z. B. `GOOGLE_REAUTH_REQUIRED`, `UNAVAILABLE`), `retryable`, `recovery`; `failure` bleibt.
 - `create_training_plan` und `submit_onboarding_plan_proposal` haben optional `custom_exercises`.
+- **B14:** `connect_google_account` nimmt `ConnectGoogleInputSchema` (`src/shared/account-contract.ts`): `onboarding_session_id` und `session_token` sind optional, aber nur gemeinsam. Ist Arnold eingerichtet, wird ein Claim ignoriert und allein über das geprüfte Konto neu verbunden; nur dasselbe Google-Konto wird angenommen. Vor der Einrichtung ohne Claim: `_meta.arnold.code = SETUP_REQUIRED`, `recovery: "finish_setup"`. Die Reconnect-Karte (A5) ruft also einfach `connect_google_account` mit `{}` auf. Gleiches gilt für `POST /auth/google/start`.
 
 ## Offen
 

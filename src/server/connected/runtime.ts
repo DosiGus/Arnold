@@ -51,6 +51,17 @@ export const SetupClaimSchema = z.strictObject({
   session_token: z.string().min(1),
 });
 export type SetupClaim = z.infer<typeof SetupClaimSchema>;
+
+/** A claim-free Google connection before the account is set up (B14). */
+export class AccountSetupRequiredError extends Error {
+  readonly code = "SETUP_REQUIRED" as const;
+  constructor() {
+    super(
+      "Arnold ist für dieses Konto noch nicht eingerichtet. Zuerst die Einrichtung fortsetzen (show_arnold_onboarding); Google wird dort mit dem Sitzungsnachweis verbunden.",
+    );
+    this.name = "AccountSetupRequiredError";
+  }
+}
 const ManifestSchema = z.strictObject({
   userId: z.string(),
   trackerId: z.string(),
@@ -501,26 +512,41 @@ export class ConnectedUserRuntime {
       );
     return handoff;
   }
+  /**
+   * The binding a Google connection is checked against.
+   *
+   * A set-up account (phase ready) binds through the verified account alone,
+   * whatever claim is sent (B14): a reconnect after an expired grant must not
+   * depend on a setup session the chat may have lost. The stored Google
+   * subject still decides which Google account may connect. Before that, the
+   * setup claim is required.
+   */
   async connectionBinding(
-    claim: SetupClaim,
+    claim: SetupClaim | null,
     context: AuthenticatedArnoldContext,
   ) {
+    await this.caller(context);
     const manifest = await this.manifest.read();
-    const state = await this.onboarding.getOnboardingState(claim, context);
-    if (
-      manifest.phase === "ready" &&
-      manifest.sessionId === claim.onboarding_session_id &&
-      state.session.status === "COMPLETED"
-    )
+    if (manifest.phase === "ready")
       return {
-        binding: manifest.binding!,
+        binding: manifest.binding ?? `ready:${manifest.trackerId}`,
         googleSubject: manifest.googleSubject ?? undefined,
+        ready: true as const,
       };
+    if (!claim) throw new AccountSetupRequiredError();
     return {
       binding: (await this.bindingFor(claim, context)).handoff
         .oauth_state_binding!,
       googleSubject: manifest.googleSubject ?? undefined,
+      ready: false as const,
     };
+  }
+  /** After reconnecting a set-up account: its own file must still be there. */
+  async verifyTracker(context: AuthenticatedArnoldContext) {
+    const manifest = await this.manifest.read();
+    const google = await this.google(context);
+    await google.verifyFile(manifest.spreadsheetId!, manifest.trackerId);
+    return { spreadsheet_url: sheetUrl(manifest.spreadsheetId!) };
   }
   async provision(claim: SetupClaim, context: AuthenticatedArnoldContext) {
     await this.caller(context);

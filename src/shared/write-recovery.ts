@@ -102,7 +102,7 @@ export const RECOVERY_HINT: Record<Recovery, string> = {
     "Nächster Schritt: aktuellen Stand neu laden, dem Nutzer die Änderung zeigen und dann neu versuchen.",
   start_over: "Nächster Schritt: den Vorgang neu beginnen.",
   reconnect_google:
-    "Nächster Schritt: den Nutzer bitten, Google über die Karte neu zu verbinden; danach dieselbe Anfrage wiederholen.",
+    "Nächster Schritt: den Nutzer bitten, Google über die Karte neu zu verbinden (connect_google_account, bei eingerichtetem Arnold ohne Sitzungsangaben); danach dieselbe Anfrage wiederholen.",
   finish_setup:
     "Nächster Schritt: zuerst die Einrichtung abschließen (show_arnold_onboarding).",
   contact_support:

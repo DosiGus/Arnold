@@ -6,10 +6,12 @@ import {
   DeleteAccountConfirmSchema,
   DeleteAccountDeletedSchema,
   DeleteAccountInputSchema,
+  ConnectGoogleInputSchema,
   DeleteAccountPublicResponseSchema,
   StoredDataSchema,
 } from "../../shared/account-contract.js";
 import { DeletionConfirmationError } from "./account-deletion.js";
+import { claimFrom } from "./google-browser.js";
 import { ARNOLD_RESOURCE_URI } from "../mcp-arnold.js";
 import { GoogleConnectionError } from "../google/connection-service.js";
 import {
@@ -20,7 +22,11 @@ import { OnboardingAccessError } from "../onboarding/access.js";
 import { OnboardingError } from "../onboarding/service.js";
 import { WriteError } from "../workout/infrastructure.js";
 import type { GoogleBrowserFlow } from "./google-browser.js";
-import { SetupClaimSchema, type ConnectedArnoldRuntime } from "./runtime.js";
+import {
+  AccountSetupRequiredError,
+  SetupClaimSchema,
+  type ConnectedArnoldRuntime,
+} from "./runtime.js";
 
 export function registerGoogleTools(
   server: McpServer,
@@ -50,10 +56,10 @@ export function registerGoogleTools(
     "connect_google_account",
     {
       title: "Google-Konto verbinden",
-      inputSchema: SetupClaimSchema,
+      inputSchema: ConnectGoogleInputSchema,
       outputSchema: z.object({ authorization_url: z.string().url() }),
       description:
-        "Verbindet nach ausdrücklicher Planbestätigung Google mit Arnold. Den zurückgegebenen Link öffnen und selbst bei Google freigeben. Danach erstellt Arnold die eigene Trainingsdatei und übernimmt genau den bestätigten Plan. Keine Dateierstellung vor dieser Freigabe.",
+        "Verbindet Google mit Arnold. Während der Einrichtung nach ausdrücklicher Planbestätigung mit onboarding_session_id und session_token aufrufen: Danach erstellt Arnold die eigene Trainingsdatei und übernimmt genau den bestätigten Plan; keine Dateierstellung vor dieser Freigabe. Ist Arnold schon eingerichtet und die Google-Freigabe abgelaufen (GOOGLE_REAUTH_REQUIRED), ohne Angaben aufrufen: Das verbindet dasselbe Google-Konto neu, die bestehende Trainingsdatei bleibt. Den zurückgegebenen Link öffnen und selbst bei Google freigeben.",
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -63,7 +69,7 @@ export function registerGoogleTools(
     async (claim) =>
       guarded(async () =>
         response(
-          await browser.start(context(), claim),
+          await browser.start(context(), claimFrom(claim)),
           "Öffne den Verbindungslink und erteile die Google-Freigabe. Die Einrichtung ist erst nach erfolgreicher Dateiprüfung abgeschlossen.",
         ),
       ),
@@ -244,6 +250,7 @@ export function accountToolFailure(error: unknown) {
   if (isGoogleReauthRequired(error)) return googleReauthToolResult();
   const known =
     error instanceof DeletionConfirmationError ||
+    error instanceof AccountSetupRequiredError ||
     error instanceof WriteError ||
     error instanceof GoogleConnectionError ||
     error instanceof OnboardingError ||
