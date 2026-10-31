@@ -56,8 +56,8 @@ test("starts today's session, logs with plus and minus, corrects and completes",
   ).toBeVisible();
   await page.getByLabel("Gewicht pro Hantel", { exact: true }).fill("20");
   await page
-    .getByRole("group", { name: "Wie schwer war der Satz?" })
-    .getByRole("button", { name: "Passt" })
+    .getByRole("group", { name: "Wiederholungen im Tank" })
+    .getByRole("button", { name: "2", exact: true })
     .click();
   await button(page, "Satz speichern").click();
   await expect(saved(page)).toHaveCount(1);
@@ -102,7 +102,9 @@ test("recovers a lost response across reload with the same operation ID and no d
   await page.getByLabel("Gewicht", { exact: true }).fill("55");
   await page.getByLabel("Wiederholungen", { exact: true }).fill("9");
   await button(page, "Satz speichern").click();
-  await expect(page.getByRole("alert")).toContainText("Status unklar");
+  await expect(page.getByRole("alert")).toContainText(
+    "Deine Eingaben bleiben erhalten",
+  );
   // Nothing new can be saved while the outcome is unknown.
   await expect(button(page, "Satz speichern")).toHaveCount(0);
 
@@ -111,11 +113,13 @@ test("recovers a lost response across reload with the same operation ID and no d
   await expect(
     page.getByRole("heading", { name: "Demo Bankdrücken" }),
   ).toBeVisible();
-  await expect(page.getByRole("alert")).toContainText("nicht bestätigt");
+  await expect(page.getByRole("alert")).toContainText(
+    "Deine Eingaben bleiben erhalten",
+  );
   await button(page, "Erneut prüfen").click();
   await expect(
-    page.getByRole("status").filter({ hasText: "Bereits" }),
-  ).toHaveText("Bereits gespeichert · keine doppelte Änderung.");
+    page.getByRole("status").filter({ hasText: "Satz gespeichert" }),
+  ).toHaveText("Satz gespeichert.");
   await expect(saved(page)).toHaveCount(1);
   await expect(saved(page).first()).toContainText("55 kg × 9");
   expect(new Set(ids).size).toBe(1);

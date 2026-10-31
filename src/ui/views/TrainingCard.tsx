@@ -34,6 +34,7 @@ import {
   formatSetLine,
   UNKNOWN,
 } from "../format";
+import { RecoveryCard, RecoveryNotice } from "../components/recovery";
 import type { CardId } from "../cards";
 
 type Logger = ReturnType<typeof useWorkoutLogger>;
@@ -76,9 +77,10 @@ export function TrainingCard({
 
   if (!data)
     return logger.error ? (
-      <ArnoldCard label="Training" title="Training konnte nicht geladen werden">
-        <CardNote tone="error">{logger.error}</CardNote>
-      </ArnoldCard>
+      <RecoveryCard
+        recovery={logger.failure?.recovery ?? "retry_same_request"}
+        onAction={() => void logger.reload()}
+      />
     ) : (
       <CardSkeleton />
     );
@@ -249,7 +251,21 @@ function TodayCard({
   const notes = (
     <>
       {cancelled && <CardNote>Das Training wurde abgebrochen.</CardNote>}
-      {logger.error && <CardNote tone="error">{logger.error}</CardNote>}
+      {logger.error && (
+        <RecoveryNotice
+          message={logger.failure?.message}
+          code={logger.failure?.code}
+          recovery={logger.failure?.recovery ?? "retry_same_request"}
+          onAction={
+            logger.pending
+              ? undefined
+              : logger.failure?.recovery === "reload_then_retry"
+                ? () => void logger.reload()
+                : undefined
+          }
+          busy={logger.busy}
+        />
+      )}
       {logger.pending && (
         <CardNote>
           Der Start ist noch nicht bestätigt. Prüfe ihn, bevor du etwas Neues
@@ -344,9 +360,10 @@ function TodayCard({
 
 /** How a set felt, stored as reps in reserve. Optional; nothing is guessed. */
 const FEEL = [
-  { value: "4", label: "Leicht" },
-  { value: "2", label: "Passt" },
-  { value: "0", label: "Am Limit" },
+  { value: "0", label: "0" },
+  { value: "1", label: "1" },
+  { value: "2", label: "2" },
+  { value: "3", label: "3+" },
 ] as const;
 type Feel = (typeof FEEL)[number]["value"];
 
@@ -366,8 +383,10 @@ const LOAD_LABEL: Record<ArnoldSet["load_basis"], string> = {
 
 type Form = {
   weight: number;
+  weightKnown: boolean;
   reps: number;
   feel?: Feel;
+  reserve?: number;
   warmup: boolean;
   side: ArnoldSet["side"];
 };
@@ -446,7 +465,12 @@ function SetLogger({
     options[0];
 
   const [exerciseId, setExerciseId] = useState(firstOpen);
+  const [invalidFields, setInvalidFields] = useState<Record<string, boolean>>(
+    {},
+  );
   const [edit, setEdit] = useState<ArnoldSet>();
+  const [unusualSending, setUnusualSending] = useState(false);
+  const [confirmVoid, setConfirmVoid] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const itemsForExercise = items.filter((i) => i.exercise_id === exerciseId);
   const item = itemsForExercise.length === 1 ? itemsForExercise[0] : undefined;
@@ -465,6 +489,7 @@ function SetLogger({
     const rule = conventions(target, id ? exercises.get(id) : undefined);
     return {
       weight: last?.load_kg ?? target?.target_load_kg ?? 0,
+      weightKnown: last?.load_kg != null || target?.target_load_kg != null,
       reps: last?.reps ?? target?.rep_max ?? target?.rep_min ?? 8,
       warmup: false,
       side: last?.side ?? defaultSide(rule.execution_mode),
@@ -479,6 +504,7 @@ function SetLogger({
   };
   const choose = (id: string | undefined) => {
     if (!id) return;
+    setInvalidFields({});
     setExerciseId(id);
     setEdit(undefined);
     touched.current = false;
@@ -494,7 +520,11 @@ function SetLogger({
     const basis = rules.load_basis;
     let active = true;
     void client
-      .workouts({ exercise_ids: [exerciseId], limit: 1 })
+      .workouts({
+        exercise_ids: [exerciseId],
+        workout_statuses: ["completed"],
+        limit: 5,
+      })
       .then((history) => {
         const earlier = history.workouts.find(
           (w) => w.workout_id !== workout.workout_id,
@@ -505,7 +535,12 @@ function SetLogger({
         const last = block?.sets
           .filter(
             (s) =>
-              !s.voided && s.set_type !== "warmup" && s.load_basis === basis,
+              !s.voided &&
+              s.set_type !== "warmup" &&
+              s.load_basis === basis &&
+              s.execution_mode === rules.execution_mode &&
+              s.implement_count === rules.implement_count &&
+              s.side === form.side,
           )
           .at(-1);
         if (!active || !earlier || !last) return;
@@ -514,6 +549,7 @@ function SetLogger({
           setFormState((f) => ({
             ...f,
             weight: last.load_kg ?? f.weight,
+            weightKnown: last.load_kg !== null || f.weightKnown,
             reps: last.reps,
           }));
       })
@@ -521,7 +557,14 @@ function SetLogger({
     return () => {
       active = false;
     };
-  }, [exerciseId]);
+  }, [
+    exerciseId,
+    rules.load_basis,
+    rules.execution_mode,
+    rules.implement_count,
+    form.side,
+    workout.workout_id,
+  ]);
 
   const done = sets.filter((s) => s.exercise_id === exerciseId);
   const doneWorking = exerciseId ? workingSets(exerciseId) : 0;
@@ -542,8 +585,13 @@ function SetLogger({
     }),
   );
 
-  async function save() {
-    if (!exerciseId) return;
+  async function save(confirmedUnusual = false) {
+    if (
+      !exerciseId ||
+      Object.values(invalidFields).some(Boolean) ||
+      (!bodyweight && !form.weightKnown)
+    )
+      return;
     const fields = {
       set_type: form.warmup
         ? "warmup"
@@ -558,13 +606,19 @@ function SetLogger({
       execution_mode: rules.execution_mode,
       side: form.side,
       rpe: edit?.rpe ?? null,
-      rir: form.feel === undefined ? (edit?.rir ?? null) : Number(form.feel),
+      rir:
+        form.feel === undefined
+          ? (edit?.rir ?? null)
+          : form.feel === "3"
+            ? (form.reserve ?? 3)
+            : Number(form.feel),
     };
     const response = edit
       ? await logger.write("update_set", {
           set_id: edit.set_id,
           expected_row_revision: edit.row_revision,
           changes: fields,
+          ...(confirmedUnusual ? { confirm_unusual_values: true } : {}),
         })
       : await logger.write("log_workout_sets", {
           workout_id: workout.workout_id,
@@ -576,6 +630,7 @@ function SetLogger({
             },
           ],
           source: "ui",
+          ...(confirmedUnusual ? { confirm_unusual_values: true } : {}),
         });
     if (!response?.ok) return;
     setEdit(undefined);
@@ -592,12 +647,94 @@ function SetLogger({
     setEdit(set);
     setFormState({
       weight: set.load_kg ?? 0,
+      weightKnown: set.load_kg !== null,
       reps: set.reps,
       warmup: set.set_type === "warmup",
       side: set.side,
-      feel: FEEL.find((f) => Number(f.value) === set.rir)?.value,
+      feel:
+        set.rir === null
+          ? undefined
+          : set.rir >= 3
+            ? "3"
+            : FEEL.find((f) => Number(f.value) === set.rir)?.value,
+      reserve: set.rir ?? undefined,
     });
   }
+
+  if (logger.failure?.code === "CONFIRMATION_REQUIRED" || unusualSending)
+    return (
+      <ArnoldCard
+        label={exercise?.name_de}
+        title="Stimmt das?"
+        subtitle="Dieser Satz liegt über den üblichen Eingabewerten. Prüfe Gewicht und Wiederholungen."
+      >
+        <p className="ac-section-title">
+          {bodyweight ? "Körpergewicht" : `${formatNumber(form.weight, 2)} kg`}{" "}
+          × {form.reps}
+        </p>
+        <CardActions
+          primary={{
+            label: unusualSending
+              ? "Wird gespeichert …"
+              : "Ja, diese Werte speichern",
+            disabled: logger.busy || unusualSending,
+            onClick: () => {
+              setUnusualSending(true);
+              void save(true).finally(() => setUnusualSending(false));
+            },
+          }}
+          secondary={{
+            label: "Werte korrigieren",
+            disabled: logger.busy || unusualSending,
+            onClick: () => logger.clearError(),
+          }}
+        />
+      </ArnoldCard>
+    );
+
+  if (confirmVoid && edit)
+    return (
+      <ArnoldCard
+        label={exercise?.name_de}
+        title="Diesen Satz verwerfen?"
+        subtitle={`${formatSetLine(edit)} · Der Satz bleibt im Verlauf als verworfen sichtbar.`}
+      >
+        {logger.error && (
+          <RecoveryNotice
+            message={logger.failure?.message}
+            code={logger.failure?.code}
+            recovery={logger.failure?.recovery ?? "retry_same_request"}
+          />
+        )}
+        <CardActions
+          primary={{
+            label: logger.pending ? "Erneut prüfen" : "Ja, Satz verwerfen",
+            tone: "danger",
+            disabled: logger.busy,
+            onClick: () => {
+              void (
+                logger.pending
+                  ? logger.retry()
+                  : logger.write("void_set", {
+                      set_id: edit.set_id,
+                      expected_row_revision: edit.row_revision,
+                    })
+              ).then((result) => {
+                if (result?.ok) {
+                  setConfirmVoid(false);
+                  choose(exerciseId);
+                }
+              });
+            },
+          }}
+          secondary={{
+            label: "Satz behalten",
+            disabled: disabled,
+            onClick: () => setConfirmVoid(false),
+          }}
+        />
+      </ArnoldCard>
+    );
 
   if (confirmCancel)
     return (
@@ -606,7 +743,21 @@ function SetLogger({
         title="Training abbrechen?"
         subtitle="Das Training wird als abgebrochen gespeichert und zählt nicht in deine Auswertung."
       >
-        {logger.error && <CardNote tone="error">{logger.error}</CardNote>}
+        {logger.error && (
+          <RecoveryNotice
+            message={logger.failure?.message}
+            code={logger.failure?.code}
+            recovery={logger.failure?.recovery ?? "retry_same_request"}
+            onAction={
+              logger.pending
+                ? undefined
+                : logger.failure?.recovery === "reload_then_retry"
+                  ? () => void logger.reload()
+                  : undefined
+            }
+            busy={logger.busy}
+          />
+        )}
         <CardActions
           primary={{
             label: "Ja, abbrechen",
@@ -673,7 +824,6 @@ function SetLogger({
       {options.length > 1 && (
         <ChipGroup
           label="Übung"
-          scroll
           options={options.map((id) => ({
             value: id,
             label: exercises.get(id)?.name_de ?? "Übung",
@@ -683,19 +833,34 @@ function SetLogger({
           disabled={disabled || !!edit}
         />
       )}
+      {!bodyweight && !form.weightKnown && (
+        <p className="ac-caption">
+          Stelle zuerst dein Gewicht ein. Es ist noch kein Gewicht hinterlegt.
+        </p>
+      )}
       <div className="ac-steppers">
         {!bodyweight && (
           <Stepper
+            key={`${exerciseId}-weight`}
+            onValidityChange={(valid) =>
+              setInvalidFields((f) => ({ ...f, weight: !valid }))
+            }
             label={LOAD_LABEL[rules.load_basis]}
             value={form.weight}
             unit="kg"
             step={rules.load_basis === "per_implement" ? 1 : 2.5}
-            onChange={(weight) => setForm((f) => ({ ...f, weight }))}
+            onChange={(weight) =>
+              setForm((f) => ({ ...f, weight, weightKnown: true }))
+            }
             disabled={disabled}
             format={(v) => formatNumber(v, 2)}
           />
         )}
         <Stepper
+          key={`${exerciseId}-reps`}
+          onValidityChange={(valid) =>
+            setInvalidFields((f) => ({ ...f, reps: !valid }))
+          }
           label="Wiederholungen"
           value={form.reps}
           step={1}
@@ -706,7 +871,7 @@ function SetLogger({
       </div>
       {previous && !edit && (
         <p className="ac-hint">
-          Letztes Mal {previous.line} · {dateLabel(previous.date)}
+          Letztes Mal: {previous.line} · {dateLabel(previous.date)}
         </p>
       )}
       {rules.execution_mode === "unilateral" && (
@@ -722,24 +887,56 @@ function SetLogger({
           disabled={disabled}
         />
       )}
-      <div className="ac-chips">
+      <div className="ac-field">
+        <p className="ac-text">
+          Wie viel wäre noch gegangen?{" "}
+          <span className="ac-optional">Freiwillig</span>
+        </p>
+        <p className="ac-caption" id="rir-help">
+          RIR heißt: Wiederholungen, die du noch geschafft hättest. 0 bedeutet
+          am Limit.
+        </p>
         <ChipGroup
-          label="Wie schwer war der Satz?"
+          label="Wiederholungen im Tank"
           options={FEEL}
           value={form.feel}
-          onChange={(feel) => setForm((f) => ({ ...f, feel }))}
+          onChange={(feel) =>
+            setForm((f) => ({
+              ...f,
+              feel,
+              reserve: feel === "3" ? (f.reserve ?? 3) : undefined,
+            }))
+          }
           disabled={disabled}
           allowNone
         />
-        <ChipGroup
-          label="Satztyp"
-          options={[{ value: "warmup", label: "Aufwärmsatz" }] as const}
-          value={form.warmup ? "warmup" : undefined}
-          onChange={(v) => setForm((f) => ({ ...f, warmup: v === "warmup" }))}
-          disabled={disabled}
-          allowNone
-        />
+        {form.feel === "3" && (
+          <Stepper
+            onValidityChange={(valid) =>
+              setInvalidFields((f) => ({ ...f, reserve: !valid }))
+            }
+            label="Noch mögliche Wiederholungen"
+            value={form.reserve ?? 3}
+            min={3}
+            step={1}
+            onChange={(reserve) => setForm((f) => ({ ...f, reserve }))}
+            disabled={disabled}
+          />
+        )}
       </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={form.warmup}
+        className="ac-switch"
+        disabled={disabled}
+        onClick={() => setForm((f) => ({ ...f, warmup: !f.warmup }))}
+      >
+        <span>Aufwärmsatz</span>
+        <span className="ac-switch-track" aria-hidden="true">
+          <i />
+        </span>
+      </button>
       {done.length > 0 && (
         <div className="ac-chips" role="group" aria-label="Gespeicherte Sätze">
           {done.map((set) => (
@@ -761,7 +958,21 @@ function SetLogger({
           ))}
         </div>
       )}
-      {logger.error && <CardNote tone="error">{logger.error}</CardNote>}
+      {logger.error && (
+        <RecoveryNotice
+          message={logger.failure?.message}
+          code={logger.failure?.code}
+          recovery={logger.failure?.recovery ?? "retry_same_request"}
+          onAction={
+            logger.pending
+              ? undefined
+              : logger.failure?.recovery === "reload_then_retry"
+                ? () => void logger.reload()
+                : undefined
+          }
+          busy={logger.busy}
+        />
+      )}
       {logger.message && !logger.error && (
         <p className="ac-hint ac-good" role="status">
           <Check size={14} aria-hidden="true" />
@@ -787,18 +998,15 @@ function SetLogger({
           primary={{
             label: logger.busy ? "Wird gespeichert …" : "Korrektur speichern",
             onClick: () => void save(),
-            disabled,
+            disabled:
+              disabled ||
+              Object.values(invalidFields).some(Boolean) ||
+              (!bodyweight && !form.weightKnown),
           }}
           secondary={{
-            label: "Satz löschen",
+            label: "Satz verwerfen",
             disabled,
-            onClick: () =>
-              void logger
-                .write("void_set", {
-                  set_id: edit.set_id,
-                  expected_row_revision: edit.row_revision,
-                })
-                .then((r) => r?.ok && choose(exerciseId)),
+            onClick: () => setConfirmVoid(true),
           }}
         />
       ) : (
@@ -806,7 +1014,11 @@ function SetLogger({
           primary={{
             label: logger.busy ? "Wird gespeichert …" : "Satz speichern",
             onClick: () => void save(),
-            disabled: disabled || !exerciseId,
+            disabled:
+              disabled ||
+              !exerciseId ||
+              Object.values(invalidFields).some(Boolean) ||
+              (!bodyweight && !form.weightKnown),
           }}
           secondary={{
             label: "Training beenden",
