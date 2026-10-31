@@ -150,8 +150,11 @@ export function PlanDialog({
   footer?: ReactNode;
 }) {
   const panel = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
     const dialog = panel.current;
+    const previousFocus = document.activeElement as HTMLElement | null;
     // Focus the first field the dialog is actually about — the search box, the
     // first input — and only fall back to a button when it has none. Landing on
     // the close button would make every dialog open on "cancel".
@@ -171,7 +174,7 @@ export function PlanDialog({
 
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        onClose();
+        onCloseRef.current();
         return;
       }
       // `aria-modal` promises the rest of the page is inert, so Tab must stay
@@ -194,8 +197,11 @@ export function PlanDialog({
       }
     };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, []);
   return (
     <div className="plan-dialog-backdrop" onClick={onClose}>
       <div
@@ -370,12 +376,14 @@ export function targetsFromDraft(draft: TargetDraft) {
  * target weight are also editable inline on the card itself.
  */
 export function ExerciseSettingsPanel({
+  error,
   exercise,
   busy,
   onSave,
   onClose,
 }: {
   exercise: PlannedExercise;
+  error?: string;
   busy?: boolean;
   onSave: (draft: TargetDraft) => void;
   onClose: () => void;
@@ -407,6 +415,11 @@ export function ExerciseSettingsPanel({
         </>
       }
     >
+      {error && (
+        <p className="plan-notice warning" role="alert">
+          {error}
+        </p>
+      )}
       <div className="form-row">
         <label>
           Zielsätze
@@ -1063,7 +1076,6 @@ export function PlanValidationPanel({
                   key={`${issue.code}-${index}`}
                   className={SEVERITY[severity].tone}
                 >
-                  <span className="plan-issue-code">{issue.code}</span>
                   {issue.message}
                 </li>
               ))}
@@ -1317,9 +1329,8 @@ export function PlanActivationDialog({
         </span>
       </p>
       <p className="plan-hint">
-        Bestätigt wird genau Planversion {plan.plan_version_id} in Revision{" "}
-        {plan.row_revision}. Änderst du den Entwurf danach noch, ist eine neue
-        Bestätigung nötig.
+        Du bestätigst die angezeigte Version deines Plans. Deine bisherigen
+        Trainings bleiben erhalten.
       </p>
     </PlanDialog>
   );

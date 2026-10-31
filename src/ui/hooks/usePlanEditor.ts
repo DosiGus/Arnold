@@ -57,10 +57,13 @@ const newRequestId = () =>
 
 export type PlanEditor = ReturnType<typeof usePlanEditor>;
 
+import { asFailure, RECOVERY_COPY, type UiFailure } from "../recovery";
+
 export function usePlanEditor(client: ArnoldMcpClient, onChanged: () => void) {
   const [context, setContext] = useState<PlanContext>();
   const [state, setState] = useState<PlanEditorState>("NO_PLAN");
   const [error, setError] = useState("");
+  const [failure, setFailure] = useState<UiFailure>();
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState<Pending>();
   const [comparison, setComparison] = useState<PlanVersionComparison>();
@@ -112,7 +115,7 @@ export function usePlanEditor(client: ArnoldMcpClient, onChanged: () => void) {
             setPending(saved as Pending);
             setState("CONFLICT");
             setError(
-              "Eine Planänderung ist noch unbestätigt. Mit derselben Operations-ID prüfen, bevor weiter bearbeitet wird.",
+              "Eine Planänderung ist noch unbestätigt. Prüfe sie, bevor du weiter bearbeitest.",
             );
           }
         } catch {
@@ -122,7 +125,10 @@ export function usePlanEditor(client: ArnoldMcpClient, onChanged: () => void) {
       .catch((e: Error) => {
         if (!active) return;
         setState("ERROR");
-        setError(e.message);
+        setFailure(asFailure(e, "retry_same_request"));
+        setError(
+          RECOVERY_COPY[asFailure(e, "retry_same_request").recovery].body,
+        );
       });
     return () => {
       active = false;
@@ -164,19 +170,14 @@ export function usePlanEditor(client: ArnoldMcpClient, onChanged: () => void) {
         if (!response.ok) {
           const code = response.error?.code;
           const unclear =
-            code === "COMMIT_STATUS_UNKNOWN" || code === "STORAGE_UNAVAILABLE";
+            response.error?.recovery === "retry_same_request" ||
+            code === "STORAGE_UNAVAILABLE";
           if (unclear) throw new Error(`${code}: ${response.error?.message}`);
           setPending(undefined);
           if (tracker) client.clearPendingPlan(tracker);
-          setError(
-            [
-              response.error?.code,
-              response.error?.message,
-              ...(response.error?.details ?? []),
-            ]
-              .filter(Boolean)
-              .join(" · "),
-          );
+          const failure = asFailure(response.error);
+          setFailure(failure);
+          setError(RECOVERY_COPY[failure.recovery].body);
           // A revision conflict means someone else changed the plan. Reload so
           // the user sees the current state, but keep their input visible.
           if (code === "REVISION_CONFLICT") {
@@ -215,9 +216,9 @@ export function usePlanEditor(client: ArnoldMcpClient, onChanged: () => void) {
       } catch (e) {
         // No optimistic success. The exact request is kept for reconciliation.
         setState("CONFLICT");
-        setError(
-          `${(e as Error).message} Status unklar: Vorgang prüfen, bevor weitere Änderungen gespeichert werden.`,
-        );
+        const failure = asFailure(e, "retry_same_request");
+        setFailure(failure);
+        setError(RECOVERY_COPY[failure.recovery].body);
         try {
           await load(request.input.plan_version_id as string | undefined);
         } catch {
@@ -306,7 +307,8 @@ export function usePlanEditor(client: ArnoldMcpClient, onChanged: () => void) {
       );
     } catch (e) {
       setState("ERROR");
-      setError((e as Error).message);
+      setFailure(asFailure(e, "retry_same_request"));
+      setError(RECOVERY_COPY[asFailure(e, "retry_same_request").recovery].body);
     }
   }, [client]);
 
@@ -502,12 +504,25 @@ export function usePlanEditor(client: ArnoldMcpClient, onChanged: () => void) {
     })),
   ];
 
+  useEffect(
+    () =>
+      client.subscribeRefresh(() => {
+        void load(contextRef.current?.plan?.plan_version_id).catch(() => {});
+      }),
+    [client, load],
+  );
+  useEffect(() => {
+    if (!message) return;
+    const timer = setTimeout(() => setMessage(""), 3000);
+    return () => clearTimeout(timer);
+  }, [message]);
   return {
     context,
     plan,
     sessions,
     state,
     error,
+    failure,
     message,
     pending,
     comparison,

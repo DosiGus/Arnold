@@ -20,6 +20,12 @@ const CONFLICT_URL = "http://127.0.0.1:8799";
 async function openCard(page: Page, url: string, card: string) {
   await page.goto(`${url}/preview?card=${card}`);
   await expect(page.locator(`main[data-card="${card}"]`)).toBeVisible();
+  if (card === "plan")
+    await page
+      .getByRole("button", {
+        name: /^(Plan bearbeiten|Plan ansehen|Plan selbst anlegen)$/,
+      })
+      .click();
 }
 
 const button = (page: Page, name: string) =>
@@ -261,10 +267,14 @@ test("reviews an invalid draft, fixes it, then confirms and activates", async ({
   await dialog.getByLabel("Wiederholungen bis", { exact: true }).fill("8");
   await dialog.getByRole("button", { name: "Übernehmen" }).click();
   // The server refuses it outright and names the reason.
-  await expect(
-    page.getByText(/INVALID_REP_RANGE|Wiederholungsminimum/),
-  ).toBeVisible();
+  await expect(dialog.getByText(/Wiederholungsminimum/)).toBeVisible();
 
+  await expect(
+    dialog.getByLabel("Wiederholungen von", { exact: true }),
+  ).toHaveValue("12");
+  await dialog.getByLabel("Wiederholungen von", { exact: true }).fill("6");
+  await dialog.getByRole("button", { name: "Übernehmen", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
   // Review shows the difference to the active plan.
   await button(page, "Änderungen prüfen").click();
   await expect(
@@ -281,7 +291,7 @@ test("reviews an invalid draft, fixes it, then confirms and activates", async ({
     name: "Trainingsplan aktivieren",
   });
   await expect(confirm).toBeVisible();
-  await expect(confirm.getByText(/Revision \d+/)).toBeVisible();
+  await expect(confirm.getByText(/angezeigte Version/)).toBeVisible();
   await expect(confirm.getByText(/archiviert und bleibt lesbar/)).toBeVisible();
   await confirm
     .getByRole("button", { name: "Bestätigen und aktivieren" })
@@ -509,7 +519,9 @@ test("surfaces a revision conflict instead of overwriting", async ({
   await push
     .getByRole("button", { name: "Demo Bankdrücken aus dem Entwurf entfernen" })
     .click();
-  await expect(page.getByText(/REVISION_CONFLICT/)).toBeVisible();
+  await expect(
+    page.getByText("Der Stand hat sich geändert", { exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByText("Es gibt einen offenen oder konkurrierenden Vorgang."),
   ).toBeVisible();
