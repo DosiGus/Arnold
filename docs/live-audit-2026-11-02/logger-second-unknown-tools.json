@@ -1,0 +1,39 @@
+[
+  {
+    "jsonPayload": {
+      "ms": 827,
+      "outcome": "ok",
+      "tool": "get_workout"
+    },
+    "severity": "INFO",
+    "timestamp": "2026-11-02T16:53:21.758949Z"
+  },
+  {
+    "jsonPayload": {
+      "ms": 801,
+      "outcome": "ok",
+      "tool": "get_arnold_dashboard"
+    },
+    "severity": "INFO",
+    "timestamp": "2026-11-02T16:53:26.314222Z"
+  },
+  {
+    "jsonPayload": {
+      "code": "COMMIT_STATUS_UNKNOWN",
+      "ms": 4790,
+      "outcome": "error",
+      "tool": "log_workout_sets"
+    },
+    "severity": "WARNING",
+    "timestamp": "2026-11-02T16:53:37.518578Z"
+  },
+  {
+    "jsonPayload": {
+      "ms": 1473,
+      "outcome": "error",
+      "tool": "get_workout"
+    },
+    "severity": "WARNING",
+    "timestamp": "2026-11-02T16:53:42.715262Z"
+  }
+]

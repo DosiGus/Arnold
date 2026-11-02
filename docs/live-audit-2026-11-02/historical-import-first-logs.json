@@ -1,0 +1,27 @@
+[
+  {
+    "jsonPayload": {
+      "ms": 927,
+      "outcome": "ok",
+      "tool": "get_arnold_workouts"
+    },
+    "timestamp": "2026-11-02T16:58:51.719521Z"
+  },
+  {
+    "jsonPayload": {
+      "ms": 4344,
+      "outcome": "ok",
+      "tool": "start_workout"
+    },
+    "timestamp": "2026-11-02T16:59:04.310795Z"
+  },
+  {
+    "jsonPayload": {
+      "code": "COMMIT_STATUS_UNKNOWN",
+      "ms": 4451,
+      "outcome": "error",
+      "tool": "log_workout_sets"
+    },
+    "timestamp": "2026-11-02T16:59:16.844425Z"
+  }
+]

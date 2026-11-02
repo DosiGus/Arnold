@@ -1,0 +1,9 @@
+{
+  "events": 67,
+  "byObject": {
+    "identities.json": 67
+  },
+  "first": "2026-11-02T16:43:42.760640Z",
+  "last": "2026-11-02T18:37:06.833427Z",
+  "note": "GCSFuse retry log events; not final failed user actions."
+}

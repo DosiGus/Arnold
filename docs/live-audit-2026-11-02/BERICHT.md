@@ -1,6 +1,6 @@
 # Arnold: Live-Abnahme und Nutzungstest
 
-Datum: 2. November 2026. Ausschließlich erfundene Trainingsdaten. Zwischenbericht: Onboarding und Planabläufe geprüft; Google-Freigabe ausstehend, Trainingslogging noch nicht live abgenommen.
+Datum: 2. November 2026. Ausschließlich erfundene Trainingsdaten. Dieser Teil dokumentiert zunächst die Abnahme vor der Google-Freigabe. **Aktueller Gesamtstand:** Google ist verbunden; sechs Trainingstage mit 26 eindeutigen Satz-IDs wurden erfasst. Fünf Einheiten sind abgeschlossen, ein dauerhaft offener Abschluss sperrt weitere Workout- und Planänderungen. Der Logger benötigt etwa 13–14 Sekunden pro Satz. Vollständige Ergebnisse, Ursachen und Prioritäten stehen in der [Fortsetzung des Live-Tests](FORTSETZUNG.md).
 
 ## Veröffentlichung
 
@@ -157,7 +157,7 @@ Im Zeitfenster 14:42–14:58 UTC wurden 81 erfolgreiche HTTP-POST-Anfragen diese
 
 Das zweite Deployment wurde zunächst durch 429 auf einem Leseaufruf der Cloud Resource Manager-Verwaltungs-API gestoppt. Nach dem Kontingentfenster war derselbe unveränderte Aufruf wieder erfolgreich; das bestehende Deployment-Skript wurde erneut gestartet. Keine Kontingente wurden erhöht, keine weiteren APIs dafür aktiviert. Dieser Verwaltungsfehler ist vom GCS-Laufzeitbefund getrennt.
 
-## Hinterlassener Teststand
+## Teststand vor der Fortsetzung (15:19 UTC)
 
 Am Ende bestehen zwei synthetische Planentwürfe (alter PPL-Plan, neuer bestätigter Ganzkörperplan), keine persönliche Google-Datei, kein verbundenes Google-Konto, null Workouts und null Sätze. Der Anfangsreset wurde nicht wiederholt, damit dieser konkret geprüfte Stand fortgesetzt werden kann. Es wurden keine zusätzlichen OAuth-Testnutzer gespeichert und keine Google-Dateirechte erteilt. Die Freigabeentscheidung des Nutzers ist ausstehend. Screenshots mit der persönlichen Browserumgebung bleiben ausschließlich lokal unter `data/live-audit-2026-11-02/`; die versionierten Nachweise enthalten keine Tokens oder persönlichen Trainingsdaten.
 
