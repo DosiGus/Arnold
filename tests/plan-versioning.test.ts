@@ -1,3 +1,4 @@
+import type { EntityChange } from "../src/server/workout/infrastructure";
 import { describe, expect, it } from "vitest";
 import {
   exerciseNames,
@@ -226,7 +227,7 @@ describe("creating a new plan version", () => {
     const data = await h.dataset();
     const item = rawItems(data, "pfx-v2")[0];
     await expect(
-      h.repository.apply([
+      apply(h, [
         {
           table: "planItems",
           before: item,
@@ -246,7 +247,7 @@ describe("creating a new plan version", () => {
       (p) => p.plan_version_id === "pfx-v1",
     )!;
     await expect(
-      h.repository.apply([
+      apply(h, [
         {
           table: "plans",
           before: plan,
@@ -269,3 +270,17 @@ describe("creating a new plan version", () => {
     expect(error.code).toBe("PLAN_VERSION_NOT_FOUND");
   });
 });
+
+/** Writes raw row changes straight into the store, bypassing the service. */
+function apply(h: ReturnType<typeof harness>, changes: EntityChange[]) {
+  return h.store.write((tx) =>
+    tx.commit({
+      requestId: `raw-${Math.random()}`,
+      fingerprint: "raw",
+      actor: "test",
+      changes,
+      audit: [],
+      result: { workout: null, sets: [], exercise: null, warnings: [] },
+    }),
+  );
+}

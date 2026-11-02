@@ -9,16 +9,10 @@ import { TrainingPlanService } from "../src/server/plan/service";
 import {
   DenyAuthorizationGuard,
   FixtureAuthorizationGuard,
-  InMemoryArnoldWriteRepository,
+  InMemoryArnoldStore,
   InMemoryAuditLog,
-  InMemoryOperationLedger,
-  InProcessWriteCoordinator,
   canonical,
 } from "../src/server/workout/infrastructure";
-import {
-  ARNOLD_MASTER_SPREADSHEET_ID,
-  ArnoldSheetsWriteAdapter,
-} from "../src/server/arnold-sheets-write-adapter";
 import { ArnoldDatasetSchema } from "../src/shared/arnold-schema-v1";
 
 /** Service over a given dataset and guard, for the negative cases. */
@@ -31,21 +25,15 @@ function serviceWith(
   } = {},
 ) {
   const dataset = options.dataset ?? planFixtureDataset();
-  const repository = new InMemoryArnoldWriteRepository(dataset);
   return new TrainingPlanService({
     mode: options.mode ?? "fixture",
     trackerId: options.trackerId ?? dataset.config.tracker_id,
-    repository,
-    read: () => repository.read(),
-    ledger: new InMemoryOperationLedger(),
-    coordinator: new InProcessWriteCoordinator(),
-    audit: new InMemoryAuditLog(),
+    store: new InMemoryArnoldStore(dataset),
     authorization:
       (options.guard as never) ??
       new FixtureAuthorizationGuard(
         options.trackerId ?? dataset.config.tracker_id,
       ),
-    invalidate: () => {},
   });
 }
 
@@ -79,47 +67,19 @@ describe("write protection", () => {
     expect(response.error!.code).toBe("TEMPLATE_WRITE_FORBIDDEN");
   });
 
-  it("never offers a Google write path for plan tables", () => {
-    // The Google test-sheet adapter writes three tables only; PLANS and
-    // PLAN_ITEMS have no production or test-sheet write surface in Task 005.
+  it("refuses a database write mode over an in-memory store", () => {
+    const dataset = planFixtureDataset();
     expect(
       () =>
-        new ArnoldSheetsWriteAdapter(
-          {
-            spreadsheetId: ARNOLD_MASTER_SPREADSHEET_ID,
-            dedicatedTestSpreadsheetId: ARNOLD_MASTER_SPREADSHEET_ID,
-            allowTestSheetWrites: true,
-            trackerId: "x",
-            privateConnection: true,
-            authorizeWrite: async () => {
-              throw new Error("never called");
-            },
-          },
-          { get: async () => ({}) as never, batchUpdate: async () => {} },
-        ),
-    ).toThrow(/Masterdatei/);
-  });
-
-  it("refuses to construct a plan service in a production write mode", () => {
-    const dataset = planFixtureDataset();
-    const repository = new InMemoryArnoldWriteRepository(dataset);
-    for (const mode of ["production", "test_sheet"] as const)
-      expect(
-        () =>
-          new TrainingPlanService({
-            mode,
-            trackerId: dataset.config.tracker_id,
-            repository,
-            read: () => repository.read(),
-            ledger: new InMemoryOperationLedger(),
-            coordinator: new InProcessWriteCoordinator(),
-            audit: new InMemoryAuditLog(),
-            authorization: new FixtureAuthorizationGuard(
-              dataset.config.tracker_id,
-            ),
-            invalidate: () => {},
-          }),
-      ).toThrow();
+        new TrainingPlanService({
+          mode: "database",
+          trackerId: dataset.config.tracker_id,
+          store: new InMemoryArnoldStore(dataset),
+          authorization: new FixtureAuthorizationGuard(
+            dataset.config.tracker_id,
+          ),
+        }),
+    ).toThrow();
   });
 
   it("refuses every write when the mode is disabled", async () => {
@@ -331,7 +291,7 @@ describe("concurrency and idempotency", () => {
 describe("the audit trail", () => {
   it("records plan creation with business-readable events", async () => {
     const runtime = createFixturePlanning(planFixtureDataset("empty"));
-    const audit = runtime.audit as InMemoryAuditLog;
+    const audit = runtime.store.audit as InMemoryAuditLog;
     const response = await runtime.plans.createTrainingPlan({
       request_id: "audit-1",
       name: "Auditplan",
@@ -353,7 +313,7 @@ describe("the audit trail", () => {
 
   it("records an activation and the archiving of its predecessor", async () => {
     const runtime = createFixturePlanning(planFixtureDataset());
-    const audit = runtime.audit as InMemoryAuditLog;
+    const audit = runtime.store.audit as InMemoryAuditLog;
     const created = await runtime.plans.createPlanVersion({
       request_id: "a1",
       source_plan_version_id: "pfx-v2",
@@ -385,7 +345,7 @@ describe("the audit trail", () => {
 
   it("records a replacement and a removal distinctly", async () => {
     const runtime = createFixturePlanning(planFixtureDataset());
-    const audit = runtime.audit as InMemoryAuditLog;
+    const audit = runtime.store.audit as InMemoryAuditLog;
     const created = await runtime.plans.createPlanVersion({
       request_id: "a1",
       source_plan_version_id: "pfx-v2",
@@ -414,7 +374,7 @@ describe("the audit trail", () => {
 
   it("does not double-log a replayed operation", async () => {
     const runtime = createFixturePlanning(planFixtureDataset("empty"));
-    const audit = runtime.audit as InMemoryAuditLog;
+    const audit = runtime.store.audit as InMemoryAuditLog;
     const input = {
       request_id: "once",
       name: "Einmal",

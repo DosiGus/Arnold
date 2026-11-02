@@ -19,10 +19,9 @@
  * expiry check lives in the guard, not in the caller, so a forgotten check
  * cannot let a stale session keep writing.
  *
- * Third, `COMPLETED` needs provisioning evidence that only the verified Google
- * setup can produce. Without it the machine refuses the transition with
- * `OAUTH_NOT_IMPLEMENTED` instead of reporting a Google setup that never
- * happened.
+ * Third, `COMPLETED` needs evidence that the confirmed plan was activated,
+ * which only the server's finishing step can produce. Without it the machine
+ * refuses the transition instead of reporting a setup that never happened.
  */
 import {
   PROFILE_STEPS,
@@ -63,8 +62,8 @@ export type OnboardingEvent =
   | { type: "REVISE_PLAN" }
   | { type: "CONFIRM_PLAN" }
   | { type: "PREPARE_HANDOFF" }
-  /** Only verified Google provisioning sets `provisioning_verified`. */
-  | { type: "GOOGLE_CONNECTED"; provisioning_verified: boolean }
+  /** Only the server's finishing step, after activating the plan, sets `finish_verified`. */
+  | { type: "SETUP_FINISHED"; finish_verified: boolean }
   | { type: "CANCEL" }
   | { type: "EXPIRE" }
   /** Re-open a session without changing anything. */
@@ -216,7 +215,7 @@ export function transitionOnboarding(
       // to say. What it must not do is leave an approved plan standing.
       if (
         state.status === "PLAN_CONFIRMED" ||
-        state.status === "AWAITING_GOOGLE_CONNECTION"
+        state.status === "READY_TO_FINISH"
       )
         return move(state, "REVIEWING_PLAN", ["handoff_superseded"]);
       if (state.status === "REVIEWING_PLAN")
@@ -268,7 +267,7 @@ export function transitionOnboarding(
         return move(state, "WAITING_FOR_PLAN_PROPOSAL", ["handoff_not_ready"]);
       if (
         state.status === "PLAN_CONFIRMED" ||
-        state.status === "AWAITING_GOOGLE_CONNECTION"
+        state.status === "READY_TO_FINISH"
       )
         // A brand-new proposal replaces the draft entirely, so the old
         // confirmation has nothing left to refer to and is dropped.
@@ -309,7 +308,7 @@ export function transitionOnboarding(
         return { ok: true, state, effects: [] };
       if (
         state.status === "PLAN_CONFIRMED" ||
-        state.status === "AWAITING_GOOGLE_CONNECTION"
+        state.status === "READY_TO_FINISH"
       )
         // The whole point: a change request after the release takes the plan
         // back into editing and voids the approval of the old revision.
@@ -345,33 +344,32 @@ export function transitionOnboarding(
     }
 
     case "PREPARE_HANDOFF": {
-      if (state.status === "AWAITING_GOOGLE_CONNECTION")
-        return move(state, "AWAITING_GOOGLE_CONNECTION", ["handoff_ready"]);
+      if (state.status === "READY_TO_FINISH")
+        return move(state, "READY_TO_FINISH", ["handoff_ready"]);
       if (state.status !== "PLAN_CONFIRMED")
         return refuse(
           "HANDOFF_NOT_READY",
-          "Die Google-Verbindung wird erst nach einer ausdrücklichen Planbestätigung vorbereitet.",
+          "Die Einrichtung wird erst nach einer ausdrücklichen Planbestätigung abgeschlossen.",
         );
       if (!state.has_confirmation)
         return refuse(
           "CONFIRMATION_REQUIRED",
           "Für die Übergabe fehlt eine gültige Bestätigung des Plans.",
         );
-      return move(state, "AWAITING_GOOGLE_CONNECTION", ["handoff_ready"]);
+      return move(state, "READY_TO_FINISH", ["handoff_ready"]);
     }
 
-    case "GOOGLE_CONNECTED": {
-      if (state.status !== "AWAITING_GOOGLE_CONNECTION")
+    case "SETUP_FINISHED": {
+      if (state.status !== "READY_TO_FINISH")
         return refuse(
           "INVALID_STATE_TRANSITION",
-          "Die Google-Verbindung setzt einen bestätigten Plan und den Zustand AWAITING_GOOGLE_CONNECTION voraus.",
+          "Der Abschluss setzt einen bestätigten Plan und den Zustand READY_TO_FINISH voraus.",
         );
-      // Without verified provisioning this is the honest answer rather than a
-      // status that claims a Google file exists.
-      if (!event.provisioning_verified)
+      // Only the server's finishing step proves that the plan is active.
+      if (!event.finish_verified)
         return refuse(
-          "OAUTH_NOT_IMPLEMENTED",
-          "Die Google-Verbindung und das Anlegen deiner persönlichen Trainingsdatei sind noch nicht verfügbar. Dieser Schritt folgt im nächsten Entwicklungsschritt.",
+          "HANDOFF_NOT_READY",
+          "Die Einrichtung wird abgeschlossen, sobald der bestätigte Plan aktiviert ist.",
         );
       return move(state, "COMPLETED", ["handoff_ready"]);
     }
@@ -395,7 +393,7 @@ export function allowedEvents(
     { type: "REVISE_PLAN" },
     { type: "CONFIRM_PLAN" },
     { type: "PREPARE_HANDOFF" },
-    { type: "GOOGLE_CONNECTED", provisioning_verified: false },
+    { type: "SETUP_FINISHED", finish_verified: false },
     { type: "CANCEL" },
     { type: "RESUME" },
   ];

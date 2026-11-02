@@ -163,7 +163,7 @@ export function rawDataset(parts: DatasetParts = {}): unknown {
   };
 }
 
-/** A dataset that passed the same validation the Google read adapter applies. */
+/** A dataset that passed the same validation the store applies on read. */
 export function dataset(parts: DatasetParts = {}): ArnoldDataset {
   return ArnoldDatasetSchema.parse(rawDataset(parts));
 }

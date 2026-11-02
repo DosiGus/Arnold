@@ -35,7 +35,7 @@ export type ArnoldEnvironment = (typeof ARNOLD_ENVIRONMENTS)[number];
 export const AUTH_MODES = ["open", "oidc"] as const;
 export type AuthMode = (typeof AUTH_MODES)[number];
 
-export const IDENTITY_STORES = ["memory", "file", "postgres"] as const;
+export const IDENTITY_STORES = ["memory", "postgres"] as const;
 export type IdentityStoreKind = (typeof IDENTITY_STORES)[number];
 
 /** A URL-shaped string. Kept as a refine so it reads the same on any zod 4.x. */
@@ -81,7 +81,6 @@ const RawConfigSchema = z.object({
     )
     .optional(),
   IDENTITY_STORE: z.enum(IDENTITY_STORES).optional(),
-  IDENTITY_STORE_FILE: z.string().optional(),
   DATABASE_URL: z.string().optional(),
 });
 
@@ -106,10 +105,7 @@ export interface ArnoldAuthConfig {
         scopeClaim: string | undefined;
       }
     | undefined;
-  identityStore:
-    | { kind: "memory" }
-    | { kind: "file"; path: string }
-    | { kind: "postgres"; url: string };
+  identityStore: { kind: "memory" } | { kind: "postgres"; url: string };
 }
 
 export class ConfigurationError extends Error {
@@ -235,13 +231,6 @@ export function loadAuthConfig(
   let identityStore: ArnoldAuthConfig["identityStore"];
   if (storeKind === "memory") {
     identityStore = { kind: "memory" };
-  } else if (storeKind === "file") {
-    identityStore = {
-      kind: "file",
-      path:
-        raw.IDENTITY_STORE_FILE ??
-        fail("IDENTITY_STORE_FILE fehlt für IDENTITY_STORE=file."),
-    };
   } else {
     identityStore = {
       kind: "postgres",

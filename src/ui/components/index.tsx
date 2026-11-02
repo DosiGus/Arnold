@@ -2,7 +2,7 @@
  * Reusable presentational components for the v2 dashboard.
  *
  * They receive finished view data and render it. None of them knows about MCP,
- * Google Sheets rows or metric arithmetic, and none interprets a load basis on
+ * stored rows or metric arithmetic, and none interprets a load basis on
  * its own — weight wording always comes from `format.ts`.
  */
 import type { ReactNode } from "react";

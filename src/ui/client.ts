@@ -286,7 +286,8 @@ export class ArnoldClient {
    * Tells the model what the app shows, without starting a turn. The host
    * keeps only the latest update and hands it to the model with the user's
    * next message. Skipped where the host does not offer it, and when nothing
-   * changed since the last update.
+   * changed since the last update. Card state is background context for the
+   * assistant, so ChatGPT must not turn it into a visible composer attachment.
    */
   async updateModelContext(text: string): Promise<boolean> {
     if (!this.app || text === this.lastModelContext) return false;
@@ -294,7 +295,9 @@ export class ArnoldClient {
     this.lastModelContext = text;
     try {
       await this.app.updateModelContext({
-        content: [{ type: "text", text }],
+        content: [
+          { type: "text", text, annotations: { audience: ["assistant"] } },
+        ],
       });
       return true;
     } catch {

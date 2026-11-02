@@ -56,7 +56,7 @@ const profile = (state: typeof fresh) => (
 describe("question-card onboarding with real server states", () => {
   it("offers two clear paths in the shared card system", () => {
     const html = render(
-      <WelcomeStep onChoose={noop} busy={false} canWritePlan googleAvailable />,
+      <WelcomeStep onChoose={noop} busy={false} canWritePlan />,
     );
     expect(html).toContain("Willkommen bei Arnold");
     expect(html).toContain("Trainingsbegleiter");
@@ -64,12 +64,11 @@ describe("question-card onboarding with real server states", () => {
     expect(html).not.toContain("onb-");
     expect(html).not.toContain("brand-icon");
   });
-  it("does not claim a Google connection in a preview", () => {
+  it("does not mention Google anywhere", () => {
     const html = render(
       <WelcomeStep onChoose={noop} busy={false} canWritePlan />,
     );
-    expect(html).toContain("Es wird keine Datei erstellt");
-    expect(html).not.toContain("Google ist verbunden");
+    expect(html).not.toContain("Google");
   });
   it("keeps unavailable plan actions disabled", () => {
     expect(
@@ -111,7 +110,7 @@ describe("question-card onboarding with real server states", () => {
     expect(html).toContain('checked=""');
     expect(html).not.toContain(">knee<");
   });
-  it("does not imply provisioning before a confirmed completion", () => {
+  it("does not imply a finished setup before the completion", () => {
     const client = {} as ArnoldMcpClient;
     const html = render(<OnboardingView client={client} initial={fresh} />);
     expect(html).not.toContain("Google ist verbunden");

@@ -26,13 +26,12 @@ describe("D10 confirmation rules", () => {
     );
   });
 
-  it("asks in the chat before discarding, cancelling, activating and disconnecting", () => {
+  it("asks in the chat before discarding, cancelling and activating", () => {
     for (const tool of [
       "void_set",
       "cancel_workout",
       "archive_plan_draft",
       "activate_training_plan",
-      "disconnect_google_account",
       "cancel_onboarding",
     ])
       expect(rule(tool), tool).toBe("ask_in_chat");

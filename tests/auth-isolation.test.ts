@@ -322,7 +322,7 @@ describe("tool guard in enforced mode", () => {
     const guard = guardWith();
     const refused = await guard
       .authorize(
-        "disconnect_google",
+        "delete_arnold_account",
         "ACCOUNT_MANAGEMENT",
         ctxWith(
           authFor("subject-alice", [
@@ -339,7 +339,7 @@ describe("tool guard in enforced mode", () => {
     expect(isAuthError(refused, "INSUFFICIENT_SCOPE")).toBe(true);
 
     const granted = await guard.authorize(
-      "disconnect_google",
+      "delete_arnold_account",
       "ACCOUNT_MANAGEMENT",
       ctxWith(authFor("subject-alice", [ARNOLD_SCOPES.account])),
     );

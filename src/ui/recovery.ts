@@ -14,9 +14,9 @@ export const RECOVERY_COPY: Record<
     body: "Prüfe deine Angaben und versuche es erneut.",
   },
   retry_same_request: {
-    title: "Noch keine Bestätigung",
-    body: "Deine Eingaben bleiben erhalten. Prüfe denselben Vorgang erneut, damit nichts doppelt gespeichert wird.",
-    action: "Erneut prüfen",
+    title: "Das hat gerade nicht geklappt",
+    body: "Deine Eingaben bleiben erhalten. Versuche es noch einmal; dabei wird nichts doppelt gespeichert.",
+    action: "Erneut versuchen",
   },
   reload_then_retry: {
     title: "Der Stand hat sich geändert",
@@ -27,11 +27,6 @@ export const RECOVERY_COPY: Record<
     title: "Bitte neu beginnen",
     body: "Dieser Vorgang ist abgelaufen. Du kannst ihn sicher neu beginnen.",
     action: "Neu beginnen",
-  },
-  reconnect_google: {
-    title: "Google neu verbinden",
-    body: "Deine Google-Freigabe ist abgelaufen. Verbinde Google erneut, um weiterzumachen.",
-    action: "Google neu verbinden",
   },
   finish_setup: {
     title: "Deine Einrichtung ist noch offen",

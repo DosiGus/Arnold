@@ -1,11 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { ArnoldPlanVersionSchema } from "../src/shared/arnold-schema-v1";
-import {
-  ArnoldDataError,
-  parseArnoldTables,
-} from "../src/server/arnold-sheet-parser";
-import { stamp, v1Tables, setCell } from "./fixtures/arnold-v1";
-const plan = () => parseArnoldTables(v1Tables()).plans[1];
+import { ArnoldDatasetSchema } from "../src/shared/arnold-schema-v1";
+import { setField, stamp, v1Data } from "./fixtures/arnold-v1";
+const plan = () => ArnoldDatasetSchema.parse(v1Data()).plans[1];
 const earlier = "2026-09-30T12:00:00Z";
 describe("QA F1: plan lifecycle", () => {
   it.each([
@@ -55,21 +52,16 @@ describe("QA F1: plan lifecycle", () => {
         ).toBe(true);
     },
   );
-  it("reports an invalid active plan at its physical sheet row", () => {
-    const tables = v1Tables();
-    setCell(tables, "PLANS", 1, "activated_at_utc", null);
-    try {
-      parseArnoldTables(tables);
-      throw Error("Expected lifecycle rejection");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ArnoldDataError);
-      expect((error as ArnoldDataError).issues).toContainEqual(
-        expect.objectContaining({
-          table: "PLANS",
-          row: 3,
-          column: "activated_at_utc",
-        }),
-      );
-    }
+  it("reports an invalid active plan at its dataset path", () => {
+    const data = v1Data();
+    setField(data, "plans", 1, "activated_at_utc", null);
+    const result = ArnoldDatasetSchema.safeParse(data);
+    expect(result.success).toBe(false);
+    if (!result.success)
+      expect(result.error.issues.map((issue) => issue.path)).toContainEqual([
+        "plans",
+        1,
+        "activated_at_utc",
+      ]);
   });
 });

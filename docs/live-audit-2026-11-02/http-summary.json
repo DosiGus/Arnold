@@ -1,8 +1,0 @@
-{
-  "windowUtc": ["2026-11-02T14:42:00Z", "2026-11-02T14:58:00Z"],
-  "successfulPostRequests": 81,
-  "medianMs": 516,
-  "p95NearestLowerMs": 2364,
-  "maxMs": 2928,
-  "note": "All successful POST requests in this service window, not one-to-one tool calls. No browser/host/model time included."
-}

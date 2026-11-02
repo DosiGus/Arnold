@@ -1,36 +1,23 @@
 /**
- * Arnold users and the external identities that map onto them.
+ * Arnold users and the login identities that map onto them.
  *
- * This is the first two tables of the Task 007 §16 data model — `users` and
- * `identity_connections` — behind an interface, with an in-memory and a
- * file-backed implementation. The PostgreSQL implementation belongs to 007-D;
- * what matters now is that the *shape* is the one a relational store can
- * honour, so that swapping the implementation is not a redesign.
+ * `users` and `identity_connections` behind an interface, with an in-memory
+ * implementation (fixture profile, tests) and a Postgres one
+ * (src/server/db/identity.ts).
  *
- * Two invariants carry the multi-user safety of Task 007 §17, and both are
- * enforced here rather than left to callers:
+ * Two invariants carry the multi-user safety, and both implementations
+ * enforce them rather than leaving them to callers:
  *
- * **One Arnold user per external identity.** `(issuer, subject)` is unique.
- * Without that uniqueness, two concurrent first-time requests for the same
- * ChatGPT user could each create a user row, and the same person would own two
- * Arnold accounts — which later means two trackers, split history, and no
- * obvious way to merge them. `registerIdentity` is therefore idempotent under
- * concurrency: it returns the existing mapping rather than creating a second.
+ * **One Arnold user per login identity.** `(issuer, subject)` is unique.
+ * Without that, two concurrent first requests for the same person could each
+ * create a user, and that person would own two Arnold accounts with split
+ * history. `register` is therefore idempotent under concurrency.
  *
  * **Identity is never the email address.** The key is the issuer's stable
- * subject identifier, per Task 007 §8. An email address is a display
- * attribute: it can be changed, reassigned by a workspace administrator, or
- * differ in case, and any of those would silently re-point an account.
- *
- * What is deliberately *not* here: anything about training. No workouts, no
- * plans, no sets. The internal database holds identity and technical state;
- * the user's own Google Sheet holds their training data (Task 007 §3). Keeping
- * that boundary visible in the type surface is what stops the backend from
- * quietly becoming a second, contradictory source of training truth.
+ * subject identifier. An email address can be changed or reassigned, and
+ * either would silently re-point an account.
  */
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
 
 export const USER_STATUSES = ["ACTIVE", "DISABLED"] as const;
 export type UserStatus = (typeof USER_STATUSES)[number];
@@ -220,73 +207,4 @@ export class InMemoryIdentityRepository extends BaseIdentityRepository {
       })),
     };
   }
-}
-
-/**
- * A JSON-file store, for local development across restarts.
- *
- * Explicitly **not** a production store, and Task 007 §16 says why: a file
- * plus an in-process promise queue coordinates writes within one process and
- * not at all between two. It is here so that a developer restarting the server
- * does not lose their identity mapping, and it is rejected by the production
- * configuration guard in `config.ts`.
- */
-export class FileIdentityRepository extends BaseIdentityRepository {
-  private cache: IdentityState | undefined;
-  private queue: Promise<unknown> = Promise.resolve();
-
-  constructor(private readonly path: string) {
-    super();
-  }
-
-  protected async read(): Promise<IdentityState> {
-    if (this.cache) return this.cache;
-    try {
-      const parsed = JSON.parse(await readFile(this.path, "utf8")) as unknown;
-      this.cache = normalizeState(parsed);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      this.cache = { users: [], identity_connections: [] };
-    }
-    return this.cache;
-  }
-
-  protected mutate<T>(
-    change: (state: IdentityState) => T | Promise<T>,
-  ): Promise<T> {
-    const result = this.queue.then(async () => {
-      const state = structuredClone(await this.read());
-      const value = await change(state);
-      await this.persist(state);
-      this.cache = state;
-      return value;
-    });
-    this.queue = result.catch(() => undefined);
-    return result;
-  }
-
-  private async persist(state: IdentityState): Promise<void> {
-    await mkdir(dirname(this.path), { recursive: true });
-    const temp = `${this.path}.${randomUUID()}.tmp`;
-    await writeFile(temp, JSON.stringify(state, null, 2), { mode: 0o600 });
-    // Atomic replace, so a crash mid-write cannot leave a truncated store.
-    await rename(temp, this.path);
-  }
-}
-
-function normalizeState(parsed: unknown): IdentityState {
-  if (parsed === null || typeof parsed !== "object")
-    throw new Error("Identitätsspeicher ist kein Objekt.");
-  const candidate = parsed as Partial<IdentityState>;
-  if (
-    !Array.isArray(candidate.users) ||
-    !Array.isArray(candidate.identity_connections)
-  )
-    throw new Error("Identitätsspeicher enthält keine gültigen Kontotabellen.");
-  return {
-    users: Array.isArray(candidate.users) ? candidate.users : [],
-    identity_connections: Array.isArray(candidate.identity_connections)
-      ? candidate.identity_connections
-      : [],
-  };
 }

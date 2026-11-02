@@ -29,7 +29,6 @@ import { ALL_ARNOLD_SCOPES } from "./scopes.js";
 import { ArnoldTokenVerifier } from "./token-verifier.js";
 import { ArnoldToolGuard, type GuardEvent } from "./tool-guard.js";
 import {
-  FileIdentityRepository,
   InMemoryIdentityRepository,
   type IdentityRepository,
 } from "../identity/repository.js";
@@ -83,12 +82,11 @@ export interface AuthSurface {
 function createRepository(config: ArnoldAuthConfig): IdentityRepository {
   const store = config.identityStore;
   if (store.kind === "memory") return new InMemoryIdentityRepository();
-  if (store.kind === "file") return new FileIdentityRepository(store.path);
-  // 007-D replaces this with the PostgreSQL implementation. Failing loudly
-  // beats silently falling back to a store that cannot survive a restart or
-  // coordinate between instances.
+  // The Postgres store shares the server's database connection, so the
+  // caller builds it and passes it in (bootstrap.ts). Never a silent
+  // fallback to memory.
   throw new Error(
-    "IDENTITY_STORE=postgres ist noch nicht implementiert (Task 007-D). Bis dahin ist kein produktiver Mehrnutzerbetrieb möglich.",
+    "IDENTITY_STORE=postgres benötigt eine übergebene Datenbankverbindung (STORAGE_MODE=arnold_database).",
   );
 }
 

@@ -5,7 +5,7 @@
  * No component may re-interpret `load_basis`, `execution_mode`, `reps_basis` or
  * `side` on its own: a second interpretation is how "60 kg pro Hantel" silently
  * turns into "60 kg total". Everything here is pure string formatting over the
- * values stored in the sheet; nothing is converted, summed or normalised, so a
+ * values as stored; nothing is converted, summed or normalised, so a
  * displayed number is always the number the user entered.
  */
 import type {

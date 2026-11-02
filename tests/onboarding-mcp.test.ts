@@ -217,8 +217,13 @@ describe("tool discovery", () => {
       /ausdrücklich/i,
     );
     expect(byName.get("get_onboarding_handoff")!.description).toMatch(
-      /keine Google-Datei/i,
+      /Aktiviert selbst nichts/i,
     );
+    expect(byName.get("finish_arnold_setup")!.description).toMatch(
+      /wiederholbar/i,
+    );
+    for (const tool of byName.values())
+      expect(tool.description ?? "", tool.name).not.toMatch(/Google/);
   });
 
   it("tells every conversation that the onboarding comes first", async () => {
@@ -498,7 +503,7 @@ describe("the flow a chat turn drives", () => {
     const { state } = await withProposal();
     expect(state.session.status).toBe("REVIEWING_PLAN");
     expect(state.plan!.status).toBe("draft");
-    const dataset = await runtime.repository.read();
+    const dataset = await runtime.store.read();
     expect(dataset.plans.filter((p) => p.status === "active")).toHaveLength(0);
   });
 
@@ -555,63 +560,92 @@ describe("the flow a chat turn drives", () => {
 /* -------------------------------------------------- confirmation and handoff */
 
 describe("confirmation over MCP", () => {
-  it("confirms the current revision and reaches the handoff", async () => {
+  const confirmation = (plan: {
+    plan_version_id: string;
+    row_revision: number;
+  }) => ({
+    plan_version_id: plan.plan_version_id,
+    row_revision: plan.row_revision,
+    confirmed: true as const,
+  });
+
+  /** Confirms through the service, so the setup stops at READY_TO_FINISH. */
+  async function confirmedWithoutFinish() {
+    const { claim, state } = await withProposal();
+    const plan = state.plan!;
+    const confirmed = await runtime.onboarding.confirmPlan({
+      request_id: rid(),
+      ...claim,
+      confirmation: confirmation(plan),
+    });
+    expect(confirmed.state!.session.status).toBe("READY_TO_FINISH");
+    return { claim, plan };
+  }
+
+  it("confirms the current revision and finishes the setup in one step", async () => {
     const { claim, state } = await withProposal();
     const plan = state.plan!;
     const result = await call("confirm_onboarding_plan", {
       request_id: rid(),
       ...claim,
-      confirmation: {
-        plan_version_id: plan.plan_version_id,
-        row_revision: plan.row_revision,
-        confirmed: true,
-      },
+      confirmation: confirmation(plan),
     });
     const payload = OnboardingResponseSchema.parse(result.structuredContent);
     expect(payload.ok, payload.error?.message).toBe(true);
-    expect(payload.state!.session.status).toBe("AWAITING_GOOGLE_CONNECTION");
-    // The text must not suggest a Google file now exists.
-    const text = textOf(result);
-    expect(text).toMatch(/noch nicht verfügbar|nicht verfügbar/i);
-    expect(text).not.toMatch(/Datei wurde erstellt|erfolgreich verbunden/i);
+    expect(payload.state!.session.status).toBe("COMPLETED");
+    expect(payload.state!.handoff.status).toBe("completed");
+    expect(textOf(result)).toMatch(/eingerichtet/);
+    expect(textOf(result)).not.toMatch(/Google/);
+    // Exactly the confirmed version is active now.
+    const dataset = await runtime.store.read();
+    const active = dataset.plans.filter((p) => p.status === "active");
+    expect(active.map((p) => p.plan_version_id)).toEqual([
+      plan.plan_version_id,
+    ]);
+    expect(active[0].row_revision).toBe(plan.row_revision + 1);
   });
 
-  it("reports the handoff without a secret and never as completed", async () => {
-    const { claim, state } = await withProposal();
-    const plan = state.plan!;
-    await write("confirm_onboarding_plan", {
-      request_id: rid(),
-      ...claim,
-      confirmation: {
-        plan_version_id: plan.plan_version_id,
-        row_revision: plan.row_revision,
-        confirmed: true,
-      },
-    });
+  it("reports the handoff without a secret before the finishing step", async () => {
+    const { claim, plan } = await confirmedWithoutFinish();
     const result = await call("get_onboarding_handoff", claim);
     const handoff = OnboardingHandoffSchema.parse(
       (result.structuredContent as { handoff: unknown }).handoff,
     );
-    expect(handoff.status).toBe("ready_for_google_connection");
-    expect(handoff.google_connection_pending).toBe(true);
+    expect(handoff.status).toBe("ready_to_finish");
+    expect(handoff.finish_pending).toBe(true);
     expect(handoff.confirmed_plan_version_id).toBe(plan.plan_version_id);
-    expect(handoff.oauth_state_binding).toBeTruthy();
+    expect(handoff.setup_binding).toBeTruthy();
     expect(JSON.stringify(handoff)).not.toContain(claim.session_token);
-    expect(textOf(result)).toContain("keine Google-Datei");
+    expect(textOf(result)).toContain("finish_arnold_setup");
+    // Reading the handoff activates nothing.
+    const dataset = await runtime.store.read();
+    expect(dataset.plans.filter((p) => p.status === "active")).toHaveLength(0);
   });
 
-  it("invalidates the confirmation after an editor change", async () => {
-    const { claim, state } = await withProposal();
-    const plan = state.plan!;
-    await write("confirm_onboarding_plan", {
+  it("finishes an interrupted setup with finish_arnold_setup, once", async () => {
+    const { claim, plan } = await confirmedWithoutFinish();
+    const requestId = rid();
+    const first = await write("finish_arnold_setup", {
+      request_id: requestId,
+      ...claim,
+    });
+    expect(first.ok, first.error?.message).toBe(true);
+    expect(first.state!.session.status).toBe("COMPLETED");
+    const again = await write("finish_arnold_setup", {
       request_id: rid(),
       ...claim,
-      confirmation: {
-        plan_version_id: plan.plan_version_id,
-        row_revision: plan.row_revision,
-        confirmed: true,
-      },
     });
+    expect(again.ok).toBe(true);
+    expect(again.replayed).toBe(true);
+    const active = (await runtime.store.read()).plans.filter(
+      (p) => p.status === "active",
+    );
+    expect(active).toHaveLength(1);
+    expect(active[0].plan_version_id).toBe(plan.plan_version_id);
+  });
+
+  it("invalidates the confirmation after an editor change and activates nothing", async () => {
+    const { claim, plan } = await confirmedWithoutFinish();
     await call("update_plan_draft", {
       request_id: rid(),
       plan_version_id: plan.plan_version_id,
@@ -629,29 +663,28 @@ describe("confirmation over MCP", () => {
       (result.structuredContent as { handoff: unknown }).handoff,
     );
     expect(handoff.status).toBe("superseded");
-    expect(handoff.oauth_state_binding).toBeNull();
+    expect(handoff.setup_binding).toBeNull();
     expect(textOf(result)).toContain("Noch nicht übergabebereit");
-  });
-
-  it("never activates a plan through the onboarding path", async () => {
-    const { claim, state } = await withProposal();
-    const plan = state.plan!;
-    await write("confirm_onboarding_plan", {
+    const finish = await write("finish_arnold_setup", {
       request_id: rid(),
       ...claim,
-      confirmation: {
-        plan_version_id: plan.plan_version_id,
-        row_revision: plan.row_revision,
-        confirmed: true,
-      },
     });
-    const dataset = await runtime.repository.read();
+    expect(finish.ok).toBe(false);
+    expect(
+      (await runtime.store.read()).plans.map((p) => p.status),
+    ).not.toContain("active");
+  });
+
+  it("does not activate a plan before the confirmation", async () => {
+    const { claim } = await withProposal();
+    const finish = await write("finish_arnold_setup", {
+      request_id: rid(),
+      ...claim,
+    });
+    expect(finish.ok).toBe(false);
+    expect(finish.error?.code).toBe("CONFIRMATION_REQUIRED");
+    const dataset = await runtime.store.read();
     expect(dataset.plans.filter((p) => p.status === "active")).toHaveLength(0);
-    const stored = dataset.plans.find(
-      (p) => p.plan_version_id === plan.plan_version_id,
-    );
-    expect(stored?.status).toBe("draft");
-    expect(stored?.activated_at_utc).toBeNull();
   });
 });
 
@@ -697,7 +730,7 @@ describe("no duplicate operations", () => {
     await write("submit_onboarding_plan_proposal", payload);
     const second = await write("submit_onboarding_plan_proposal", payload);
     expect(second.replayed).toBe(true);
-    const dataset = await runtime.repository.read();
+    const dataset = await runtime.store.read();
     expect(dataset.plans).toHaveLength(1);
   });
 });

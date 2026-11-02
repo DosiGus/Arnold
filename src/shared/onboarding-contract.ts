@@ -12,7 +12,7 @@
  *   2b. Own plan: the user pastes or photographs their plan in the chat, and
  *       the model transcribes it into a draft.
  *   3. Review, change by chat or editor, confirm exactly one revision.
- *   4. Connect Google; Arnold creates the personal file with that plan.
+ *   4. Arnold activates exactly that plan and the setup is complete.
  *
  * Four rules shape everything here.
  *
@@ -33,8 +33,8 @@
  * could disagree with the editor.
  *
  * Fourth, a confirmation names one plan version *and* one revision. It means
- * "the user released this for setup", never "this is live in a Google file".
- * Only the Google provisioning step can complete a setup.
+ * "the user released exactly this plan". Only the finishing step, which
+ * activates that plan, can complete a setup.
  */
 import { z } from "zod";
 import { toolErrorSchema } from "./write-recovery.js";
@@ -102,8 +102,8 @@ export const ONBOARDING_STATUSES = [
   "WAITING_FOR_PLAN_PROPOSAL",
   "REVIEWING_PLAN",
   "PLAN_CONFIRMED",
-  "AWAITING_GOOGLE_CONNECTION",
-  /** Reachable only through verified Google provisioning. */
+  "READY_TO_FINISH",
+  /** Reachable only through the finishing step, after the plan is active. */
   "COMPLETED",
   "CANCELLED",
   "EXPIRED",
@@ -126,7 +126,7 @@ export const ONBOARDING_STEPS = [
   "plan_proposal",
   "plan_review",
   "confirmation",
-  "google_connection",
+  "finishing",
   "done",
 ] as const;
 export const OnboardingStepSchema = z.enum(ONBOARDING_STEPS);
@@ -161,8 +161,8 @@ export function stepForStatus(
       return "plan_review";
     case "PLAN_CONFIRMED":
       return "confirmation";
-    case "AWAITING_GOOGLE_CONNECTION":
-      return "google_connection";
+    case "READY_TO_FINISH":
+      return "finishing";
     case "COMPLETED":
       return "done";
     default:
@@ -181,10 +181,10 @@ export const HANDOFF_STATUSES = [
   /** No confirmed plan yet. */
   "not_ready",
   /** A confirmed plan exists and matches the stored revision. */
-  "ready_for_google_connection",
+  "ready_to_finish",
   /** The plan moved on after the confirmation; it must be confirmed again. */
   "superseded",
-  /** Google provisioning finished. */
+  /** The setup is finished and the plan is active. */
   "completed",
 ] as const;
 export const HandoffStatusSchema = z.enum(HANDOFF_STATUSES);
@@ -596,11 +596,10 @@ export type OnboardingPlanConfirmation = z.infer<
 >;
 
 /**
- * What the Google provisioning step receives.
+ * What the finishing step receives.
  *
- * Only validated references, no session secret and no personal data: this
- * object travels into an OAuth flow, so everything in it is safe to log.
- * `oauth_state_binding` ties a callback to this session.
+ * Only validated references, no session secret and no personal data, so
+ * everything in it is safe to log.
  */
 export const OnboardingHandoffSchema = z.strictObject({
   onboarding_session_id: id,
@@ -612,14 +611,15 @@ export const OnboardingHandoffSchema = z.strictObject({
   /** The draft's revision as of *now*. Differs from the confirmed one when superseded. */
   current_plan_revision: positiveInt.nullable(),
   /**
-   * Opaque value an OAuth `state` is bound to. Null until a confirmed plan
-   * exists; never a credential and never sufficient to read a session.
+   * Opaque value naming this session and confirmed revision. Null until a
+   * confirmed plan exists; never a credential and never sufficient to read a
+   * session.
    */
-  oauth_state_binding: z.string().min(1).nullable(),
+  setup_binding: z.string().min(1).nullable(),
   /** Why the handoff is not ready, when it is not. */
   blocked_reason: z.string().nullable(),
-  /** True until provisioning has written the personal Google file. */
-  google_connection_pending: z.boolean(),
+  /** True until the setup is finished. */
+  finish_pending: z.boolean(),
 });
 export type OnboardingHandoff = z.infer<typeof OnboardingHandoffSchema>;
 
@@ -782,7 +782,7 @@ export const OnboardingStateSchema = z.strictObject({
   split_options: z.array(SplitSchema),
   /** `production` when the setup belongs to a verified account. */
   mode: z.enum(["fixture", "production"]),
-  google_connection_available: z.boolean().default(false),
+  setup_finish_available: z.boolean().default(false),
   /** False when this deployment cannot write a plan draft at all. */
   can_write_plan: z.boolean(),
   /**
@@ -846,14 +846,11 @@ export const ONBOARDING_ERROR_CODES = [
   "CONFIRMATION_REQUIRED",
   "HANDOFF_NOT_READY",
   "HANDOFF_SUPERSEDED",
-  /** Reaching COMPLETED needs verified Google provisioning. */
-  "OAUTH_NOT_IMPLEMENTED",
   /** This account is already set up; the onboarding runs only once. */
   "ONBOARDING_ALREADY_COMPLETED",
   "PLAN_WRITE_UNAVAILABLE",
   "STORAGE_UNAVAILABLE",
   "DUPLICATE_OPERATION",
-  "GOOGLE_REAUTH_REQUIRED",
 ] as const;
 export const OnboardingErrorCodeSchema = z.enum(ONBOARDING_ERROR_CODES);
 export type OnboardingErrorCode = z.infer<typeof OnboardingErrorCodeSchema>;
@@ -951,6 +948,8 @@ export const OnboardingToolInputs = {
     reason: freeText.optional(),
   }),
   get_onboarding_handoff: z.strictObject({ ...claim }),
+  /** Activates the confirmed plan and completes the setup. Safe to repeat. */
+  finish_arnold_setup: z.strictObject({ ...request, ...claim }),
   cancel_onboarding: z.strictObject({
     ...request,
     ...claim,
@@ -1090,7 +1089,7 @@ export const STATUS_LABEL: Record<OnboardingStatus, string> = {
   WAITING_FOR_PLAN_PROPOSAL: "Plan wird erstellt",
   REVIEWING_PLAN: "Plan wird geprüft",
   PLAN_CONFIRMED: "Plan bestätigt",
-  AWAITING_GOOGLE_CONNECTION: "Warten auf die Google-Verbindung",
+  READY_TO_FINISH: "Bereit zum Abschluss",
   COMPLETED: "Einrichtung abgeschlossen",
   CANCELLED: "Einrichtung abgebrochen",
   EXPIRED: "Einrichtung abgelaufen",
@@ -1103,7 +1102,7 @@ export const STEP_LABEL: Record<OnboardingStep, string> = {
   plan_proposal: "Planvorschlag",
   plan_review: "Plan prüfen",
   confirmation: "Bestätigen",
-  google_connection: "Google verbinden",
+  finishing: "Abschließen",
   done: "Fertig",
 };
 

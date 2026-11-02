@@ -5,7 +5,7 @@ import {
   DeletionConfirmationError,
   DeletionTokens,
   deletionSummary,
-} from "../src/server/connected/account-deletion";
+} from "../src/server/account/deletion";
 
 describe("deletion confirmation token", () => {
   it("works once, for its own user, before it expires", () => {
@@ -56,18 +56,10 @@ describe("deletion confirmation token", () => {
 });
 
 describe("deletion summary", () => {
-  it("names the Google grant only when one exists and always keeps the sheet", () => {
-    const connected = deletionSummary({
-      googleConnected: true,
-      sheetExists: true,
-    });
-    expect(connected.stored_items.join(" ")).toContain("Google-Freigabe");
-    expect(connected.keeps).toHaveLength(1);
-    const fresh = deletionSummary({
-      googleConnected: false,
-      sheetExists: false,
-    });
-    expect(fresh.stored_items.join(" ")).not.toContain("Google-Freigabe");
-    expect(fresh.keeps).toEqual([]);
+  it("names the training data and nothing about Google", () => {
+    const summary = deletionSummary();
+    expect(summary.stored_items.join(" ")).toContain("Trainings");
+    expect(summary.stored_items.join(" ")).not.toMatch(/Google/);
+    expect(summary).not.toHaveProperty("keeps");
   });
 });

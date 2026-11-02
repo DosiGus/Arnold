@@ -2,9 +2,8 @@
  * Synthetic onboarding runtime.
  *
  * Onboarding runs against an isolated in-memory tracker, the same one Task 005
- * uses for plan management. Nothing here touches Google, the Arnold master file
- * or any real tracker, no Google token is created or stored, and the access
- * guard grants only its own synthetic subject.
+ * uses for plan management. Nothing here touches the database or a real
+ * account, and the access guard grants only its own synthetic subject.
  *
  * The onboarding service is wired to the *same* plan service, audit log and
  * read path as the plan editor. That is what makes "chat and UI share one
@@ -22,14 +21,12 @@ import {
 } from "../plan/fixture.js";
 import type { TrainingPlanService } from "../plan/service.js";
 import type { WorkoutLoggingService } from "../workout/service.js";
-import type { AuditLogRepository } from "../workout/infrastructure.js";
 import {
   DenyOnboardingAccessControl,
   FixtureOnboardingAccessControl,
   type OnboardingAccessControl,
 } from "./access.js";
 import {
-  FileOnboardingRepository,
   InMemoryOnboardingRepository,
   type OnboardingStateRepository,
 } from "./repository.js";
@@ -40,19 +37,10 @@ export type OnboardingFixtureRuntime = PlanFixtureRuntime & {
   onboardingRepository: OnboardingStateRepository;
 };
 
-/**
- * One synthetic tracker served by the plan, logging and onboarding services.
- *
- * `storeFile` turns on the local file journal, which is what the resumption
- * tests need: a session has to survive a server restart for "reopen the chat
- * later" to mean anything. Without it the repository is per process and the
- * state says so.
- */
+/** One synthetic tracker served by the plan, logging and onboarding services. */
 export function createFixtureOnboarding(
   options: {
     dataset?: ArnoldDataset;
-    /** Path of the local session journal. Omitted keeps sessions in memory. */
-    storeFile?: string;
     repository?: OnboardingStateRepository;
     access?: OnboardingAccessControl;
     sessionTtlMs?: number;
@@ -67,18 +55,15 @@ export function createFixtureOnboarding(
     clock: options.clock,
     id: options.id,
   });
-  const repository =
-    options.repository ??
-    (options.storeFile
-      ? new FileOnboardingRepository(options.storeFile)
-      : new InMemoryOnboardingRepository());
+  const repository = options.repository ?? new InMemoryOnboardingRepository();
   const onboarding = new OnboardingService({
     repository,
     access: options.access ?? new FixtureOnboardingAccessControl(),
     plans: planning.plans,
-    read: () => planning.repository.read(),
+    read: () => planning.store.read(),
     trackerId: dataset.config.tracker_id,
-    audit: planning.audit as AuditLogRepository,
+    audit: planning.store.audit,
+    setupFinishAvailable: true,
     sessionTtlMs: options.sessionTtlMs,
     clock: options.clock,
     id: options.id,

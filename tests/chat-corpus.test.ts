@@ -14,10 +14,7 @@ import {
 import type { Server } from "node:http";
 import {
   FixtureAuthorizationGuard,
-  InMemoryArnoldWriteRepository,
-  InMemoryAuditLog,
-  InMemoryOperationLedger,
-  InProcessWriteCoordinator,
+  InMemoryArnoldStore,
 } from "../src/server/workout/infrastructure";
 import { WorkoutLoggingService } from "../src/server/workout/service";
 import { planFixtureDataset } from "../src/server/plan/fixture";
@@ -30,19 +27,15 @@ const NOW = "2026-10-31T23:30:00Z";
 
 function service() {
   const dataset = planFixtureDataset();
-  const memory = new InMemoryArnoldWriteRepository(dataset);
+  const memory = new InMemoryArnoldStore(dataset);
   return {
     memory,
     logging: new WorkoutLoggingService({
       mode: "fixture",
       trackerId: dataset.config.tracker_id,
-      repository: memory,
-      ledger: new InMemoryOperationLedger(),
-      audit: new InMemoryAuditLog(),
-      coordinator: new InProcessWriteCoordinator(),
+      store: memory,
       authorization: new FixtureAuthorizationGuard(dataset.config.tracker_id),
       clock: () => new Date(NOW),
-      invalidate() {},
     }),
   };
 }

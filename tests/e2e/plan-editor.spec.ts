@@ -3,7 +3,7 @@
  *
  * Driven entirely through what a user can see and operate — roles, labels and
  * visible text — against an isolated synthetic tracker. No real plan, workout
- * or Google file is involved.
+ * or real account is involved.
  */
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";

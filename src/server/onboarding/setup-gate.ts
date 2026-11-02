@@ -9,8 +9,8 @@
  * so the model usually opens the onboarding before it ever gets here.
  *
  * Plan tools are deliberately *not* gated: the onboarding's own plan editor
- * uses them on the draft. Onboarding and Google account tools are never gated.
- * Deployments without a verified account (fixture, read-only sheets) report
+ * uses them on the draft. Onboarding and account tools are never gated.
+ * Deployments without a verified account (fixture) report
  * "set up" and are unaffected; see `OnboardingService.setupRequired`.
  */
 import type { McpServer } from "@modelcontextprotocol/server";

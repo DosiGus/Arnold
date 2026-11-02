@@ -1,18 +1,18 @@
-import { resolve } from "node:path";
 import { loadAuthConfig } from "./auth/config.js";
 import { fetchAuthorizationServerMetadata } from "./auth/discovery.js";
-import { JwksCache } from "./auth/jwks.js";
 import { buildAuthSurface } from "./auth/router.js";
-import { GoogleConnectionService } from "./google/connection-service.js";
-import { FileGoogleCredentialRepository } from "./google/credential-repository.js";
-import { loadTokenCipher } from "./google/crypto.js";
 import { createHttpApp, type ServerOptions } from "./http.js";
-import { ConnectedArnoldRuntime } from "./connected/runtime.js";
-import { GoogleBrowserFlow } from "./connected/google-browser.js";
-import { retentionDaysFrom, scheduleRetention } from "./connected/retention.js";
+import { Database } from "./db/database.js";
+import { PostgresIdentityRepository } from "./db/identity.js";
+import { DatabaseArnoldRuntime } from "./db/runtime.js";
+import { retentionDaysFrom, scheduleRetention } from "./account/retention.js";
 import { logServerError } from "./tool-log.js";
 
-/** Async startup actually performs the OIDC discovery required by buildAuthSurface. */
+/**
+ * Builds the app from the environment. Async because the login provider's
+ * metadata is fetched, and in the database profile the database is checked
+ * before the first request is accepted.
+ */
 export async function createConfiguredHttpApp(
   options: Pick<ServerOptions, "root" | "host"> = {},
   env: NodeJS.ProcessEnv = process.env,
@@ -23,72 +23,41 @@ export async function createConfiguredHttpApp(
         issuer: config.oidc.authorizationServer,
       })
     : undefined;
-  const auth = buildAuthSurface({
-    config,
-    authorizationServerMetadata: metadata,
-  });
-  if (env.STORAGE_MODE !== "arnold_connected")
+  if (env.STORAGE_MODE !== "arnold_database") {
+    const auth = buildAuthSurface({
+      config,
+      authorizationServerMetadata: metadata,
+    });
     return createHttpApp({ ...options, env, auth });
-  if (
-    config.environment !== "development" ||
-    config.mode !== "oidc" ||
-    config.identityStore.kind !== "file"
-  )
+  }
+
+  // Real accounts: a login is required and the identity store is the
+  // database. Anything else stops the start (fail closed).
+  if (config.mode !== "oidc" || config.identityStore.kind !== "postgres")
     throw new Error(
-      "arnold_connected ist ein Einzelserver-Entwicklungsprofil und benötigt ARNOLD_ENV=development, AUTH_MODE=oidc und IDENTITY_STORE=file.",
+      "arnold_database benötigt AUTH_MODE=oidc und IDENTITY_STORE=postgres.",
     );
   if ((env.ARNOLD_WRITE_MODE ?? "disabled") !== "disabled")
     throw new Error(
-      "Das Connected-Profil aktiviert seine geprüfte Nutzerruntime selbst. ARNOLD_WRITE_MODE muss disabled bleiben.",
+      "Das Datenbankprofil schaltet Schreibzugriffe pro Nutzer selbst frei. ARNOLD_WRITE_MODE muss disabled bleiben.",
     );
-  const root = options.root ?? process.cwd();
-  const directory = resolve(
-    root,
-    env.ARNOLD_STATE_DIRECTORY ?? "data/connected",
-  );
-  const clientId = env.GOOGLE_CLIENT_ID;
-  const clientSecret = env.GOOGLE_CLIENT_SECRET;
-  const redirectUri = env.GOOGLE_REDIRECT_URI;
-  const base = new URL(config.publicBaseUrl.origin);
-  if (
-    config.resourceUrl.origin !== base.origin ||
-    config.resourceUrl.pathname !== "/mcp"
-  )
-    throw new Error(
-      "Connected-Profil benötigt /mcp auf derselben öffentlichen Basisadresse.",
-    );
-  if (!clientId || !clientSecret || !redirectUri)
-    throw new Error(
-      "GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET und GOOGLE_REDIRECT_URI sind für das Connected-Profil erforderlich.",
-    );
-  if (redirectUri !== new URL("/auth/google/callback", base).href)
-    throw new Error(
-      "GOOGLE_REDIRECT_URI muss exakt auf /auth/google/callback der öffentlichen Arnold-Adresse zeigen.",
-    );
-  if (
-    base.protocol !== "https:" &&
-    !["localhost", "127.0.0.1", "[::1]"].includes(base.hostname)
-  )
-    throw new Error(
-      "Die Google-Rücksprungadresse benötigt HTTPS oder Loopback.",
-    );
-  const connections = new GoogleConnectionService({
-    config: { clientId, clientSecret, redirectUri },
-    repository: new FileGoogleCredentialRepository(
-      resolve(directory, "google-connections.json"),
-    ),
-    cipher: loadTokenCipher(env),
-    idTokenKeys: new JwksCache({
-      jwksUri: "https://www.googleapis.com/oauth2/v3/certs",
-    }),
+  const db = new Database({
+    url: config.identityStore.url,
+    maxConnections: databaseConnectionsFrom(env),
+    caCert: env.DATABASE_CA_CERT || undefined,
   });
-  // D4: journals, snapshots and audit are deleted after the retention period,
-  // at start and then daily. An invalid period stops the start (fail closed).
+  await db.assertReady();
+  const identities = new PostgresIdentityRepository(db);
+  const auth = buildAuthSurface({
+    config,
+    authorizationServerMetadata: metadata,
+    repository: identities,
+  });
   const retentionDays = retentionDaysFrom(env);
-  const runtime = new ConnectedArnoldRuntime({
-    directory: resolve(directory, "users"),
+  const runtime = new DatabaseArnoldRuntime({
+    db,
     auth,
-    connections,
+    identities,
     retentionDays,
   });
   scheduleRetention(() =>
@@ -96,11 +65,15 @@ export async function createConfiguredHttpApp(
       logServerError("retention failed", error);
     }),
   );
-  const browser = new GoogleBrowserFlow(runtime, connections, auth, base);
-  return createHttpApp({
-    ...options,
-    env,
-    auth,
-    connected: { runtime, browser },
-  });
+  return createHttpApp({ ...options, env, auth, database: runtime });
+}
+
+/** Connections per instance. Fails closed on anything but a small integer. */
+function databaseConnectionsFrom(env: NodeJS.ProcessEnv): number {
+  const raw = env.DATABASE_MAX_CONNECTIONS;
+  if (raw === undefined || raw === "") return 10;
+  const value = Number(raw);
+  if (!/^\d+$/.test(raw) || value < 1 || value > 50)
+    throw new Error("DATABASE_MAX_CONNECTIONS muss zwischen 1 und 50 liegen.");
+  return value;
 }

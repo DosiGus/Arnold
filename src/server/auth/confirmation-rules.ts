@@ -36,18 +36,8 @@ const setup: ConfirmationEntry = {
 };
 
 export const CONFIRMATION_RULES: Readonly<Record<string, ConfirmationEntry>> = {
-  // Google and account
-  connect_google_account: {
-    rule: "direct",
-    reason: "Öffnet nur den Google-Dialog; der Nutzer gibt dort selbst frei.",
-  },
+  // Account
   finish_arnold_setup: setup,
-  get_google_connection: read,
-  disconnect_google_account: {
-    rule: "ask_in_chat",
-    reason:
-      "Trennen widerruft den Zugriff; danach kann Arnold nicht mehr speichern.",
-  },
   delete_arnold_account: {
     rule: "ask_and_card_click",
     reason: "Nicht umkehrbar: alle Arnold-Daten des Nutzers werden gelöscht.",

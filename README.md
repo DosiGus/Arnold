@@ -1,8 +1,8 @@
 # Arnold
 
-Persönlicher Trainingsbegleiter als **MCP-App** für ChatGPT und andere MCP-Hosts. Ein Node-Server stellt Tools bereit (Dashboard, Workout-Logging, Trainingsplan, Einrichtung); eine React-Oberfläche läuft im Chat als eingebettetes iframe. Trainingsdaten liegen in einer Google-Tabelle des Nutzers.
+Persönlicher Trainingsbegleiter als **MCP-App** für ChatGPT und andere MCP-Hosts. Ein Node-Server stellt Tools bereit (Dashboard, Workout-Logging, Trainingsplan, Einrichtung); eine React-Oberfläche läuft im Chat als eingebettetes iframe. Nutzer melden sich über WorkOS an; ihre Trainingsdaten liegen in Postgres (Supabase), streng getrennt pro Nutzer.
 
-TypeScript, Express, `@modelcontextprotocol/*` 2.x, React 19, Recharts, Zod 4, Vitest, Playwright. Node **22.12+** (empfohlen 24).
+TypeScript, Express, `@modelcontextprotocol/*` 2.x, React 19, Recharts, Zod 4, `pg`, Vitest, Playwright. Node **22.12+** (empfohlen 24).
 
 ## Schnellstart
 
@@ -23,14 +23,16 @@ npm start          # synthetische Daten auf http://localhost:8787
 
 ## Befehle
 
-| Befehl              | Wirkung                                            |
-| ------------------- | -------------------------------------------------- |
-| `npm run dev`       | UI bauen, Server mit Watch starten                 |
-| `npm run build:ui`  | Nur die beiden UI-Bundles (App und Host) neu bauen |
-| `npm run check`     | Build + Typecheck + Unit-Tests + Browser-Tests     |
-| `npm test`          | Vitest (Unit und Integration)                      |
-| `npm run test:e2e`  | Playwright (Chromium)                              |
-| `npm run inspector` | MCP Inspector                                      |
+| Befehl               | Wirkung                                            |
+| -------------------- | -------------------------------------------------- |
+| `npm run dev`        | UI bauen, Server mit Watch starten                 |
+| `npm run build:ui`   | Nur die beiden UI-Bundles (App und Host) neu bauen |
+| `npm run check`      | Build + Typecheck + Unit-Tests + Browser-Tests     |
+| `npm test`           | Vitest, inklusive Tests gegen eine lokale Postgres |
+| `npm run test:e2e`   | Playwright (Chromium, WebKit)                      |
+| `npm run db:migrate` | Migrationen anwenden (`DATABASE_ADMIN_URL`)        |
+| `npm run db:setup`   | Supabase und Secret Manager einrichten             |
+| `npm run inspector`  | MCP Inspector                                      |
 
 ## Betriebsarten
 
@@ -38,15 +40,16 @@ Der Server wählt über `STORAGE_MODE` (und `AUTH_MODE`) eine Betriebsart. Detai
 
 | Modus                       | Daten                                       | Anmeldung | Zweck                                                   |
 | --------------------------- | ------------------------------------------- | --------- | ------------------------------------------------------- |
-| `arnold_fixture` (Standard) | Synthetisch, im Arbeitsspeicher, alle Tools | keine     | Erste Schritte, UI-Entwicklung, ChatGPT-Test per Tunnel |
-| `arnold_sheets`             | Eigene Google-Tabelle, nur lesend           | privat    | Lokale Auswertung                                       |
-| `arnold_connected`          | Pro Nutzer eine eigene Google-Tabelle       | OIDC      | Ende-zu-Ende-Entwicklung                                |
+| `arnold_fixture` (Standard) | Synthetisch, im Arbeitsspeicher, alle Tools | optional  | Erste Schritte, UI-Entwicklung, ChatGPT-Test per Tunnel |
+| `arnold_database`           | Pro Nutzer in Postgres (Supabase)           | OIDC      | Echte Nutzer                                            |
 
 Echte Daten gehen nie über einen öffentlichen Tunnel ohne Anmeldung; der Server weigert sich zu starten.
 
 ## Dokumentation
 
 - [CLAUDE.md](CLAUDE.md) – Orientierung für die Entwicklung: Befehle, Regeln, Stolperfallen.
-- [docs/GUIDE.md](docs/GUIDE.md) – Aufbau, Datenmodell, Fachregeln, Authentifizierung, Konfiguration, ChatGPT-Test, Connected-Profil, offene Punkte.
+- [docs/GUIDE.md](docs/GUIDE.md) – Aufbau, Datenmodell, Nutzertrennung, Fachregeln, Authentifizierung, Datenbank, Hosting, offene Punkte.
+- [docs/BETRIEB.md](docs/BETRIEB.md) – Deploy, Rollback, Sicherung, Alarme.
+- [docs/DESIGN.md](docs/DESIGN.md) – Gestaltungsregeln der Karten.
 
-Ältere ausführliche Verträge und Abschlussberichte stehen im Git-Tag `archive/docs-before-cleanup` (`git show archive/docs-before-cleanup:docs/<datei>`).
+Ältere Berichte und Verträge stehen in der Git-Historie (`git log -- docs/`) und im Tag `archive/docs-before-cleanup`.

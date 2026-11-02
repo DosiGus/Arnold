@@ -424,10 +424,10 @@ describe("empty tracker and master template over MCP", () => {
 });
 
 describe("failure handling over MCP", () => {
-  it("reports a Google outage as an error without falling back to demo data", async () => {
+  it("reports a storage outage as an error without falling back to demo data", async () => {
     source.setFailure({
       code: "unavailable",
-      message: "Google Sheets ist vorübergehend nicht verfügbar.",
+      message: "Die Datenbank ist vorübergehend nicht verfügbar.",
       retryable: true,
     });
     const result = await call("get_arnold_dashboard");
@@ -439,20 +439,6 @@ describe("failure handling over MCP", () => {
     expect(text).toContain("nicht verfügbar");
     // No synthetic substitute may be served in place of real data.
     expect(text).not.toMatch(/Demo|synthetisch/i);
-  });
-
-  it("reports a missing Google authorisation as non-retryable", async () => {
-    source.setFailure({
-      code: "auth_missing",
-      message: "Google-Anmeldung fehlt oder ist abgelaufen.",
-      retryable: false,
-    });
-    const result = await call("show_arnold_dashboard");
-    expect(result.isError).toBe(true);
-    expect(
-      (result._meta as { arnold?: { failure?: { code?: string } } })?.arnold
-        ?.failure?.code,
-    ).toBe("auth_missing");
   });
 
   it("reports an incompatible schema as its own failure code", async () => {

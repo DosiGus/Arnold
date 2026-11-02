@@ -7,7 +7,7 @@
  * address, and everything else must be allowed — including a synthetic
  * deployment, which is the whole point of a tunnel or a hosted test instance.
  *
- * A regression here is not a failing feature, it is an exposed Google file.
+ * A regression here is not a failing feature, it is exposed training data.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -32,7 +32,7 @@ const PUBLIC = {
   allowedOrigins: [],
 };
 
-/** A source that reads a real Google file, as far as the guard is concerned. */
+/** A source with real training data, as far as the guard is concerned. */
 function realSource(): ArnoldDataSource {
   const source = new StaticArnoldDataSource(fullDataset(), {
     label: "Arnold · echte Datei",
@@ -132,7 +132,7 @@ describe("the binding rule for Arnold sources", () => {
     ).toThrow();
   });
 
-  it("names the three ways out in its refusal", () => {
+  it("names the ways out in its refusal", () => {
     try {
       requireSafeArnoldBinding({
         synthetic: false,
@@ -143,7 +143,6 @@ describe("the binding rule for Arnold sources", () => {
     } catch (error) {
       const message = (error as Error).message;
       // A refusal that does not say what to do instead gets worked around.
-      expect(message).toMatch(/Loopback|Tunnel/);
       expect(message).toMatch(/AUTH_MODE=oidc/);
       expect(message).toMatch(/arnold_fixture/);
     }

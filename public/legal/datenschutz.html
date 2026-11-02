@@ -111,38 +111,35 @@
 
       <p>
         Arnold ist ein Trainingsbegleiter in ChatGPT. Du trägst Krafttraining im
-        Chat oder in den Arnold-Karten ein, Arnold speichert es in einer
-        Google-Tabelle in deinem eigenen Google Drive und zeigt dir Woche,
-        Fortschritt und Plan. Die Beta ist kostenlos und nur für eingeladene
-        Testerinnen und Tester. Hier steht, welche Daten dabei wo liegen, wofür
-        und wie lange, und wie du sie löschst.
+        Chat oder in den Arnold-Karten ein, Arnold speichert es in deinem
+        Arnold-Konto und zeigt dir Woche, Fortschritt und Plan. Die Beta ist
+        kostenlos und nur für eingeladene Testerinnen und Tester. Hier steht,
+        welche Daten dabei wo liegen, wofür und wie lange, und wie du sie
+        löschst.
       </p>
-
       <h2>1. Wer ist verantwortlich?</h2>
       <p>
         <mark>[PLATZHALTER: Name und Anschrift des Verantwortlichen]</mark
         ><br />
         E-Mail: <mark>[PLATZHALTER: Kontaktadresse]</mark>
       </p>
-
       <h2>2. Kurz gesagt</h2>
       <ul>
         <li>
-          Deine Trainingsdaten liegen in <strong>deiner</strong> Google-Tabelle.
-          Sie gehört dir und bleibt, auch wenn du Arnold löschst.
+          Deine Trainingsdaten liegen in deinem Arnold-Konto, in einer Datenbank
+          in der EU (Frankfurt). Nur du siehst sie; die Datenbank selbst lässt
+          jede Anfrage nur an die Daten des angemeldeten Kontos.
         </li>
         <li>
-          Bei uns liegt nur, was Arnold zum Betrieb braucht: Kennungen, die
-          verschlüsselte Google-Freigabe, deine Angaben aus der Einrichtung und
-          für 30 Tage ein Protokoll der Speichervorgänge.
-        </li>
-        <li>
-          „Lösch mein Arnold-Konto“ im Chat löscht alles bei uns sofort.
-          Sicherungskopien verschwinden spätestens 7 Tage danach.
+          „Lösch mein Arnold-Konto“ im Chat löscht alles bei uns sofort, auch
+          deine Trainingsdaten.
+          <mark
+            >[PLATZHALTER: Aufbewahrung der Datenbank-Sicherungen nach gewähltem
+            Supabase-Tarif eintragen]</mark
+          >
         </li>
         <li>Keine Werbung, kein Verkauf von Daten, keine Analyse-Werkzeuge.</li>
       </ul>
-
       <h2>3. Welche Daten liegen wo?</h2>
       <div class="table">
         <table>
@@ -156,38 +153,33 @@
           <tbody>
             <tr>
               <td>
-                <strong>Dein Google Drive</strong><br />(dein Google-Konto)
+                <strong>Arnold-Datenbank bei Supabase</strong><br />(Region
+                Frankfurt, EU)
               </td>
               <td>
-                Die Arnold-Tabelle: Übungen, Pläne, Trainings, Sätze mit
-                Gewicht, Wiederholungen, Anstrengung und Notizen.
+                Interne Nutzerkennung und Login-Kennung (keine E-Mail-Adresse);
+                Übungen, Pläne, Trainings, Sätze mit Gewicht, Wiederholungen,
+                Anstrengung und Notizen; deine Angaben aus der Einrichtung
+                (Ziel, Erfahrung, Trainingstage, Geräte und freiwillig Alter,
+                Geschlecht, Größe, Gewicht, zu schonende Körperbereiche);
+                Quittungen der Speichervorgänge und ein Änderungsprotokoll.
               </td>
               <td>
-                Dein Trainingsprotokoll. Arnold darf nur Dateien öffnen, die
-                Arnold selbst angelegt hat (Berechtigung
-                <code>drive.file</code>), sonst nichts in deinem Drive.
+                Dein Trainingsprotokoll; damit Arnold dich wiedererkennt, einen
+                passenden Plan vorschlägt und ein unterbrochener Speichervorgang
+                sicher wiederholt werden kann, ohne doppelte Einträge.
               </td>
             </tr>
             <tr>
               <td>
-                <strong>Arnold bei Google Cloud</strong><br />(Region Belgien,
-                EU)
+                <strong>Arnold-Server bei Google Cloud</strong><br />(Region
+                Belgien, EU)
               </td>
               <td>
-                Interne Nutzerkennung und Login-Kennung; Google-Kennung,
-                E-Mail-Adresse des verbundenen Google-Kontos und die
-                Google-Freigabe (verschlüsselt); Verweis auf deine Tabelle;
-                deine Angaben aus der Einrichtung (Ziel, Erfahrung,
-                Trainingstage, Geräte und freiwillig Alter, Geschlecht, Größe,
-                Gewicht, zu schonende Körperbereiche); Protokoll der
-                Speichervorgänge mit den geänderten Trainingswerten.
+                Verarbeitet deine Anfragen; speichert selbst keine
+                Trainingsdaten.
               </td>
-              <td>
-                Damit Arnold dich wiedererkennt, in deine Tabelle schreiben
-                kann, einen passenden Plan vorschlägt und ein unterbrochener
-                Speichervorgang sicher wiederholt werden kann, ohne doppelte
-                Einträge.
-              </td>
+              <td>Betrieb von Arnold.</td>
             </tr>
             <tr>
               <td>
@@ -225,12 +217,7 @@
           </tbody>
         </table>
       </div>
-      <p>
-        Beim Verbinden mit Google setzt Arnold für wenige Minuten ein technisch
-        notwendiges Cookie, damit die Antwort von Google deinem Anmeldevorgang
-        zugeordnet werden kann. Weitere Cookies setzt Arnold nicht.
-      </p>
-
+      <p>Arnold setzt keine Cookies.</p>
       <h2>4. Wie lange?</h2>
       <div class="table">
         <table>
@@ -242,37 +229,28 @@
           </thead>
           <tbody>
             <tr>
-              <td>Kennungen, Google-Freigabe, Verweis auf deine Tabelle</td>
+              <td>Kennungen, Trainingsdaten, abgeschlossene Einrichtung</td>
+              <td>bis du dein Arnold-Konto löschst</td>
+            </tr>
+            <tr>
+              <td>Nicht abgeschlossene Einrichtung</td>
               <td>
-                bis du dein Arnold-Konto löschst (die Google-Freigabe auch, wenn
-                du Google trennst)
+                bis zu ihrem Ablauf plus 30 Tage, dann automatisch gelöscht
               </td>
             </tr>
             <tr>
-              <td>Angaben aus der Einrichtung und Planentwürfe</td>
-              <td>
-                30 Tage nach abgeschlossener Einrichtung, dann automatisch
-                gelöscht
-              </td>
-            </tr>
-            <tr>
-              <td>Protokoll der Speichervorgänge und Änderungsprotokoll</td>
-              <td>
-                30 Tage, dann automatisch gelöscht (ein noch nicht
-                abgeschlossener Vorgang bleibt, bis er abgeschlossen ist)
-              </td>
+              <td>Quittungen der Speichervorgänge und Änderungsprotokoll</td>
+              <td>30 Tage, dann automatisch gelöscht</td>
             </tr>
             <tr>
               <td>Server-Protokolle</td>
               <td>30 Tage</td>
             </tr>
             <tr>
-              <td>Sicherungskopien gelöschter Dateien</td>
-              <td>7 Tage</td>
-            </tr>
-            <tr>
-              <td>Deine Google-Tabelle</td>
-              <td>so lange du willst; du löschst sie selbst in Google Drive</td>
+              <td>Sicherungskopien der Datenbank</td>
+              <td>
+                <mark>[PLATZHALTER: laut gewähltem Supabase-Tarif]</mark>
+              </td>
             </tr>
             <tr>
               <td>Login bei WorkOS</td>
@@ -281,22 +259,13 @@
           </tbody>
         </table>
       </div>
-
       <h2>5. So löschst du deine Daten</h2>
       <ul>
         <li>
           <strong>Arnold-Konto löschen:</strong> Schreib in ChatGPT „Lösch mein
-          Arnold-Konto“. Arnold zeigt dir, was gelöscht wird und was bleibt.
-          Erst wenn du in der Karte auf Löschen tippst, wird alles bei uns
-          gelöscht und die Google-Freigabe bei Google widerrufen.
-        </li>
-        <li>
-          <strong>Nur Google trennen:</strong> „Trenn mein Google-Konto“. Arnold
-          kann danach nicht mehr in deine Tabelle schreiben.
-        </li>
-        <li>
-          <strong>Tabelle löschen:</strong> in Google Drive wie jede andere
-          Datei.
+          Arnold-Konto“. Arnold zeigt dir, was gelöscht wird. Erst wenn du in
+          der Karte auf Löschen tippst, wird alles bei uns gelöscht, auch deine
+          Trainingsdaten.
         </li>
         <li>
           <strong>Login bei WorkOS löschen:</strong> per E-Mail an
@@ -307,7 +276,6 @@
           über mich?“ zeigt dir Art, Anzahl und Datum.
         </li>
       </ul>
-
       <h2>6. Rechtsgrundlagen</h2>
       <p>
         <mark>[PLATZHALTER: von der Datenschutzberatung prüfen lassen]</mark>
@@ -318,31 +286,25 @@
         Einwilligung (Art. 9 Abs. 2 lit. a DSGVO), die du jederzeit widerrufen
         kannst, indem du die Angaben weglässt oder dein Konto löschst.
       </p>
-
       <h2>7. Empfänger und Übermittlung in Drittländer</h2>
       <p>
-        Arnold nutzt als Dienstleister Google Cloud (Betrieb, Speicherung in der
-        EU), WorkOS (Anmeldung, USA) und die Google-APIs für Drive und Tabellen
-        (in deinem eigenen Google-Konto). ChatGPT nutzt du über dein eigenes
-        Konto bei OpenAI.
+        Arnold nutzt als Dienstleister Supabase (Datenbank, Speicherung in
+        Frankfurt), Google Cloud (Betrieb in der EU) und WorkOS (Anmeldung,
+        USA). ChatGPT nutzt du über dein eigenes Konto bei OpenAI.
         <mark
           >[PLATZHALTER: Auftragsverarbeitungsverträge und Grundlage für die
           Übermittlung in die USA, etwa EU-US Data Privacy Framework oder
           Standardvertragsklauseln, prüfen und benennen]</mark
         >
       </p>
-
       <h2>8. Deine Rechte</h2>
       <p>
         Du hast das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung
-        der Verarbeitung, Datenübertragbarkeit und Widerspruch. Deine
-        Trainingsdaten hast du jederzeit vollständig in deiner eigenen Tabelle.
-        Schreib uns an
+        der Verarbeitung, Datenübertragbarkeit und Widerspruch. Schreib uns an
         <mark>[PLATZHALTER: Kontaktadresse]</mark>. Du kannst dich auch bei
         einer Datenschutz-Aufsichtsbehörde beschweren, zum Beispiel
         <mark>[PLATZHALTER: zuständige Aufsichtsbehörde]</mark>.
       </p>
-
       <h2>9. Beta-Befragung</h2>
       <p>
         Am Ende der Beta fragen wir dich, wie Arnold war. Die Teilnahme ist

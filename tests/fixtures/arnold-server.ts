@@ -4,15 +4,12 @@ import {
   planFixtureDataset,
 } from "../../src/server/plan/fixture";
 import { createFixtureOnboarding } from "../../src/server/onboarding/fixture";
-import { rmSync } from "node:fs";
-import { resolve } from "node:path";
 /**
  * Fixture servers for the Arnold v2 browser tests.
  *
  * One port per state, so a Playwright test can simply visit the one it needs
  * instead of mutating a shared server. Every one of them is backed by a
- * synthetic in-memory dataset: no Google call is made and no real training data
- * is read or written.
+ * synthetic in-memory dataset: no real training data is read or written.
  */
 import { createHttpApp } from "../../src/server/http";
 import { StaticArnoldDataSource } from "../../src/server/arnold-source";
@@ -50,7 +47,7 @@ createHttpApp({
     label: "Arnold · Testdatei",
     failure: {
       code: "unavailable",
-      message: "Google Sheets ist vorübergehend nicht verfügbar.",
+      message: "Die Datenbank ist vorübergehend nicht erreichbar.",
       retryable: true,
     },
   }),
@@ -86,30 +83,25 @@ createHttpApp({ ...common, workoutRuntime: createFixturePlanning() }).listen(
   "127.0.0.1",
 );
 
-/**
- * Task 006 onboarding, on an empty synthetic tracker.
- *
- * The session journal is a file so the resumption test can restart a browser
- * context and still find the setup. It lives under test-results and holds only
- * synthetic answers plus a token *hash*.
- */
-const onboardingStore = resolve("test-results/e2e-onboarding-sessions.json");
-const onboardingStoreB = resolve("test-results/e2e-onboarding-sessions-b.json");
-// Each run starts from an empty journal, so a leftover session from a previous
-// run cannot make a test pass or fail for the wrong reason.
-for (const path of [onboardingStore, onboardingStoreB])
-  rmSync(path, { force: true });
-
+/** Task 006 onboarding, on an empty synthetic tracker. */
 createHttpApp({
   ...common,
-  workoutRuntime: createFixtureOnboarding({ storeFile: onboardingStore }),
+  workoutRuntime: createFixtureOnboarding(),
 }).listen(8800, "127.0.0.1");
 
-/** A second, independent onboarding tracker, so two tests cannot collide. */
+/**
+ * Independent onboarding trackers for the plan-edit test, one per browser
+ * project: a completed setup activates its plan, and the next run must start
+ * without it.
+ */
 createHttpApp({
   ...common,
-  workoutRuntime: createFixtureOnboarding({ storeFile: onboardingStoreB }),
+  workoutRuntime: createFixtureOnboarding(),
 }).listen(8801, "127.0.0.1");
+createHttpApp({
+  ...common,
+  workoutRuntime: createFixtureOnboarding(),
+}).listen(8803, "127.0.0.1");
 
 /** A short-lived setup, for the expiry and restart states. */
 createHttpApp({

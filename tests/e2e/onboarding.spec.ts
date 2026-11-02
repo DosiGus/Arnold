@@ -9,7 +9,7 @@ import {
   submitProposal,
 } from "./helpers";
 
-test("question cards reach a revision-bound plan confirmation and an honest Google handoff", async ({
+test("question cards reach a revision-bound plan confirmation that finishes the setup", async ({
   page,
 }) => {
   await openWizard(page);
@@ -33,19 +33,24 @@ test("question cards reach a revision-bound plan confirmation and an honest Goog
   expect(
     (await callTool(page, "get_onboarding_state", claim)).handoff.status,
   ).toBe("not_ready");
+  const confirmed = (await callTool(page, "get_onboarding_state", claim)).plan;
   await page
     .getByRole("button", { name: "Plan bestätigen", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Dein Trainingsplan ist bereit" }),
+    page.getByRole("heading", { name: "Bereit für dein erstes Training" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Google-Konto verbinden" }),
-  ).toBeDisabled();
-  await expect(wizard(page)).not.toContainText("Google ist verbunden");
-  expect(
-    (await callTool(page, "get_onboarding_handoff", claim)).handoff.status,
-  ).toBe("ready_for_google_connection");
+    page.getByRole("button", { name: "Erstes Training starten" }),
+  ).toBeEnabled();
+  await expect(wizard(page)).not.toContainText("Google");
+  const state = await callTool(page, "get_onboarding_state", claim);
+  expect(state.session.status).toBe("COMPLETED");
+  expect(state.handoff.status).toBe("completed");
+  expect(state.handoff.confirmed_plan_version_id).toBe(
+    confirmed.plan_version_id,
+  );
+  expect(state.handoff.confirmed_plan_revision).toBe(confirmed.row_revision);
 });
 
 test("optional personal questions keep decimal input exact and can be skipped individually", async ({
@@ -168,8 +173,14 @@ test("own-plan entry hands off to chat and reaches the same confirmation", async
 
 test("plan edits invalidate an earlier revision before confirmation", async ({
   page,
-}) => {
-  await openWizard(page);
+}, testInfo) => {
+  // Its own tracker per browser: this test activates its plan at the end.
+  await openWizard(
+    page,
+    testInfo.project.name === "webkit"
+      ? "http://127.0.0.1:8803"
+      : "http://127.0.0.1:8801",
+  );
   await fillProfile(page);
   await page
     .getByRole("button", { name: "Plan erstellen", exact: true })
@@ -205,7 +216,7 @@ test("plan edits invalidate an earlier revision before confirmation", async ({
     .getByRole("button", { name: "Plan bestätigen", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Dein Trainingsplan ist bereit" }),
+    page.getByRole("heading", { name: "Bereit für dein erstes Training" }),
   ).toBeVisible();
   expect(
     (await callTool(page, "get_onboarding_state", claim)).handoff
@@ -245,7 +256,7 @@ test("an unconfirmed profile write survives reload and retries the same request"
   );
   await page.reload();
   await page
-    .getByRole("button", { name: "Erneut prüfen", exact: true })
+    .getByRole("button", { name: "Erneut versuchen", exact: true })
     .click();
   expect(new Set(ids).size).toBe(1);
   await expect(

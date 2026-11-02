@@ -33,7 +33,7 @@ export function AccountCard({
   useModelContext(
     client,
     response.stage === "deleted"
-      ? "Arnold bestätigt: Das Arnold-Konto wurde gelöscht. Eine vorhandene Google-Tabelle bleibt beim Nutzer."
+      ? "Arnold bestätigt: Das Arnold-Konto und alle Trainingsdaten wurden gelöscht."
       : cancelled
         ? "Die Kontolöschung wurde abgebrochen. Es wurde nichts gelöscht."
         : "Arnold zeigt die Zusammenfassung zur Kontolöschung. Nur der ausdrückliche Klick in der Karte darf löschen; das Modell darf die Löschung nicht bestätigen.",
@@ -84,17 +84,8 @@ export function AccountCard({
         <ArnoldCard
           label="Erledigt"
           title="Dein Arnold-Konto ist gelöscht"
-          subtitle="Deine bei Arnold gespeicherten Daten wurden entfernt. Deine Google-Tabelle bleibt in deinem Drive."
-        >
-          {response.sheet_url && (
-            <CardActions
-              primary={{
-                label: "Google-Tabelle öffnen",
-                onClick: () => void client.openLink(response.sheet_url!),
-              }}
-            />
-          )}
-        </ArnoldCard>
+          subtitle="Alle bei Arnold gespeicherten Daten wurden entfernt, auch deine Trainingspläne und Trainings."
+        />
       ) : expired ? (
         <RecoveryCard
           recovery="start_over"
@@ -117,12 +108,7 @@ export function AccountCard({
             </ul>
           </div>
           <CardNote>
-            <strong>Das bleibt bei dir</strong>
-            <ul className="ac-plain-list">
-              {response.summary.keeps.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
+            Deine Trainingspläne und Trainings sind danach nicht mehr abrufbar.
           </CardNote>
           <CardActions
             primary={{

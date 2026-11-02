@@ -37,7 +37,7 @@ const byText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
  *
  * Sessions are ordered by `session_order`, then by name and id so that two
  * sessions that (invalidly) share an order still come out deterministically
- * instead of in sheet row order.
+ * instead of in storage row order.
  */
 export function sessionsOf(
   dataset: ArnoldDataset,

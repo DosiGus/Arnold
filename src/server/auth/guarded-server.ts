@@ -66,7 +66,7 @@ export interface GuardRegistrationOptions {
    * Treat the write classes as `SYNTHETIC_SANDBOX` for this server.
    *
    * The same tool name means different things depending on what it writes to.
-   * `log_workout_sets` against a user's Google tracker is a write to personal
+   * `log_workout_sets` against a user's account is a write to personal
    * data and needs `arnold.write`; the identical tool against Task 004's
    * synthetic fixture runtime touches process-local invented data owned by
    * nobody. Classifying by name alone cannot express that, so the runtime says

@@ -28,7 +28,7 @@ export const ARNOLD_SCOPES = {
   write: "arnold.write",
   /** Create, edit and activate the caller's own training plans. */
   plan: "arnold.plan",
-  /** Connect or disconnect Google, and act on deletion requests. */
+  /** See what Arnold stores about the account, and delete it. */
   account: "arnold.account",
 } as const;
 

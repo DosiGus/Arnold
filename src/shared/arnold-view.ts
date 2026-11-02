@@ -68,7 +68,7 @@ export const ViewMetricSchema = z.object({
 export type ViewMetric = z.infer<typeof ViewMetricSchema>;
 
 /** Operating mode of the server; decides which tools and UI path are in play. */
-export const ViewModeSchema = z.enum(["demo", "arnold_sheets"]);
+export const ViewModeSchema = z.enum(["arnold"]);
 
 /**
  * Where the numbers come from, in the user's words. `file_role` keeps the master
@@ -77,7 +77,7 @@ export const ViewModeSchema = z.enum(["demo", "arnold_sheets"]);
  */
 export const ViewSourceSchema = z.object({
   mode: ViewModeSchema,
-  /** Short label, e.g. "Arnold · Google Sheets". */
+  /** Short label, e.g. "Arnold · Mein Training". */
   label: z.string().min(1),
   /** Longer sentence for the source note. */
   description: z.string().min(1),

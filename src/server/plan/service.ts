@@ -16,11 +16,11 @@
  *     the same atomic batch as the activation;
  *   - completed and running workouts keep the plan version they were recorded
  *     against — this service never writes to WORKOUTS or SETS at all;
- *   - success is reported only after the data contract, a storage readback,
- *     the audit append and the ledger commit have all succeeded.
+ *   - success is reported only after the data contract held and the change,
+ *     its audit events and its receipt were stored in one transaction.
  *
- * Writes run in the fixture mode and in the connected profile
- * (src/server/connected); the read-only Sheets profile never writes plans.
+ * Writes run in the fixture profile and against the database
+ * (src/server/db).
  */
 import { recoveryFor } from "../../shared/write-recovery.js";
 import {
@@ -50,14 +50,11 @@ import {
 import {
   fingerprint,
   type Actor,
-  type ArnoldWriteRepository,
+  type ArnoldStore,
   type AuditEvent,
-  type AuditLogRepository,
   type AuthorizationGuard,
   type EntityChange,
-  type OperationLedger,
   type Permission,
-  type WriteCoordinator,
   type WriteMode,
 } from "../workout/infrastructure.js";
 import { commitWrite, type CommitPlan } from "./commit.js";
@@ -96,14 +93,8 @@ import {
 export interface PlanServiceOptions {
   mode: WriteMode;
   trackerId: string;
-  repository: ArnoldWriteRepository;
-  /** Cached read path; writes always re-read through the repository. */
-  read: () => Promise<ArnoldDataset>;
-  ledger: OperationLedger;
-  coordinator: WriteCoordinator;
-  audit: AuditLogRepository;
+  store: ArnoldStore;
   authorization: AuthorizationGuard;
-  invalidate: () => void;
   clock?: () => Date;
   id?: () => string;
 }
@@ -138,20 +129,10 @@ export class TrainingPlanService {
 
   constructor(private options: PlanServiceOptions) {
     this.mode = options.mode;
-    if (this.mode === "production")
+    if (this.mode !== "disabled" && this.mode !== options.store.kind)
       throw planError(
         "PERMISSION_DENIED",
-        "Produktive Planänderungen bleiben bis zur abgeschlossenen Nutzerauthentifizierung gesperrt.",
-      );
-    if (this.mode === "test_sheet")
-      throw planError(
-        "PERMISSION_DENIED",
-        "Für PLANS und PLAN_ITEMS existiert noch kein Google-Schreibpfad. Planänderungen sind ausschließlich im Fixture-Modus möglich.",
-      );
-    if (this.mode !== "disabled" && this.mode !== options.repository.kind)
-      throw planError(
-        "PERMISSION_DENIED",
-        "Schreibmodus passt nicht zum Repository.",
+        "Schreibmodus passt nicht zum Speicher.",
       );
   }
 
@@ -175,7 +156,7 @@ export class TrainingPlanService {
     if (
       actor.trackerId !== this.options.trackerId ||
       !actor.permissions.includes(permission) ||
-      actor.kind !== (this.mode === "connected" ? "authenticated" : "fixture")
+      actor.kind !== (this.mode === "database" ? "authenticated" : "fixture")
     )
       throw planError(
         "PERMISSION_DENIED",
@@ -215,7 +196,7 @@ export class TrainingPlanService {
     plan: TrainingPlanVersion;
     validation: PlanValidationResult | null;
   }> {
-    const dataset = await this.options.read();
+    const dataset = await this.options.store.read();
     const plan = input.plan_version_id
       ? findPlan(dataset, input.plan_version_id)
       : (activePlan(dataset) ?? draftPlans(dataset)[0]);
@@ -244,7 +225,7 @@ export class TrainingPlanService {
       plan_family_id?: string;
     } = {},
   ): Promise<TrainingPlanList> {
-    const dataset = await this.options.read();
+    const dataset = await this.options.store.read();
     const families = projectFamilies(dataset)
       .filter(
         (family) =>
@@ -277,7 +258,7 @@ export class TrainingPlanService {
    * Unterschiede zum aktuellen Plan" is actionable, a bare list of dates is not.
    */
   async history(input: { plan_family_id?: string } = {}): Promise<PlanHistory> {
-    const dataset = await this.options.read();
+    const dataset = await this.options.store.read();
     const active = activePlan(dataset);
     const activeProjection = active ? projectVersion(dataset, active) : null;
     const plans = dataset.plans
@@ -309,7 +290,7 @@ export class TrainingPlanService {
   async validate(input: {
     plan_version_id: string;
   }): Promise<PlanValidationResult> {
-    const dataset = await this.options.read();
+    const dataset = await this.options.store.read();
     const result = validatePlanVersion(dataset, input.plan_version_id);
     if (!result)
       throw planError(
@@ -323,7 +304,7 @@ export class TrainingPlanService {
     from_plan_version_id: string;
     to_plan_version_id: string;
   }): Promise<PlanVersionComparison> {
-    const dataset = await this.options.read();
+    const dataset = await this.options.store.read();
     const from = findPlan(dataset, input.from_plan_version_id);
     const to = findPlan(dataset, input.to_plan_version_id);
     if (!from || !to)
@@ -346,7 +327,7 @@ export class TrainingPlanService {
     input: { plan_version_id?: string } = {},
     actorContext?: unknown,
   ): Promise<PlanContext> {
-    const dataset = await this.options.read();
+    const dataset = await this.options.store.read();
     let canWrite = false;
     try {
       await this.actor(actorContext);
@@ -412,11 +393,7 @@ export class TrainingPlanService {
       const input = PlanWriteInputs[operation].parse(raw);
       const outcome = await commitWrite<PlanWriteResult>({
         trackerId: this.options.trackerId,
-        repository: this.options.repository,
-        ledger: this.options.ledger,
-        coordinator: this.options.coordinator,
-        audit: this.options.audit,
-        invalidate: this.options.invalidate,
+        store: this.options.store,
         requestId: input.request_id,
         fingerprint: fingerprint({ operation, input }),
         actorSubject: actor.subject,

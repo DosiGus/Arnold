@@ -281,7 +281,7 @@ export function registerPlanTools(
     server.registerTool(
       operation,
       {
-        description: `${WRITE_DESCRIPTIONS[operation]} Dieselbe request_id erneut senden, um einen unklaren Vorgang zu prüfen statt ihn zu wiederholen. Erfolg wird erst nach Datenvertrag, Readback, Audit und Journal gemeldet. Aktiver Modus: ${plans.mode}.`,
+        description: `${WRITE_DESCRIPTIONS[operation]} Bei einem Fehler mit retry_same_request denselben Aufruf mit derselben request_id wiederholen; ein bereits gespeicherter Vorgang wird nicht doppelt ausgeführt. Erfolg wird erst gemeldet, wenn Änderung, Protokoll und Quittung gemeinsam gespeichert sind. Aktiver Modus: ${plans.mode}.`,
         inputSchema: PlanWriteInputs[operation],
         outputSchema: PlanWriteResponseSchema,
         annotations: {

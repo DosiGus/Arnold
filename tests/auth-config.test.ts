@@ -220,14 +220,10 @@ describe("production hardening", () => {
     );
   });
 
-  it("refuses a file identity store", () => {
-    expect(() =>
-      load({
-        ...production,
-        IDENTITY_STORE: "file",
-        IDENTITY_STORE_FILE: "data/identity.json",
-      }),
-    ).toThrow(/Mehrnutzerbetrieb/);
+  it("knows no file identity store any more", () => {
+    expect(() => load({ ...production, IDENTITY_STORE: "file" })).toThrow(
+      /IDENTITY_STORE/,
+    );
   });
 
   it("defaults to postgres and then demands a DATABASE_URL", () => {
@@ -248,20 +244,20 @@ describe("production hardening", () => {
 });
 
 describe("identity store selection", () => {
-  it("requires a path for the file store", () => {
-    expect(() => load({ IDENTITY_STORE: "file" })).toThrow(
-      /IDENTITY_STORE_FILE fehlt/,
-    );
+  it("refuses the removed file store, also in development", () => {
+    expect(() => load({ IDENTITY_STORE: "file" })).toThrow(/IDENTITY_STORE/);
   });
 
-  it("accepts a file store with a path in development", () => {
-    const config = load({
-      IDENTITY_STORE: "file",
-      IDENTITY_STORE_FILE: "data/identity.json",
-    });
-    expect(config.identityStore).toEqual({
-      kind: "file",
-      path: "data/identity.json",
+  it("uses memory by default in development and postgres with a URL", () => {
+    expect(load({}).identityStore).toEqual({ kind: "memory" });
+    expect(
+      load({
+        IDENTITY_STORE: "postgres",
+        DATABASE_URL: "postgres://arnold_app@localhost/arnold",
+      }).identityStore,
+    ).toEqual({
+      kind: "postgres",
+      url: "postgres://arnold_app@localhost/arnold",
     });
   });
 });

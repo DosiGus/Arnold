@@ -9,10 +9,6 @@ import {
 } from "../shared/workout-contract.js";
 import type { ArnoldDataSource } from "./arnold-source.js";
 import type { WorkoutLoggingService } from "./workout/service.js";
-import {
-  googleReauthToolResult,
-  isGoogleReauthRequired,
-} from "./google/reauth.js";
 
 const descriptions: Record<WriteOperation, string> = {
   start_workout:
@@ -109,7 +105,6 @@ export function registerWorkoutTools(
           structuredContent: payload,
         };
       } catch (error) {
-        if (isGoogleReauthRequired(error)) return googleReauthToolResult();
         return {
           isError: true,
           content: [
@@ -139,7 +134,7 @@ export function registerWorkoutTools(
     server.registerTool(
       operation,
       {
-        description: `${descriptions[operation]} Erfolg wird erst nach Readback, Audit und Ledger-Bestätigung gemeldet. Aktiver Modus: ${logging.mode}.`,
+        description: `${descriptions[operation]} Erfolg wird erst gemeldet, wenn Änderung, Protokoll und Quittung gemeinsam gespeichert sind. Bei einem Fehler mit retry_same_request denselben Aufruf mit derselben request_id wiederholen. Aktiver Modus: ${logging.mode}.`,
         inputSchema: WriteInputs[operation],
         outputSchema: WriteResponseSchema,
         annotations: {
@@ -150,7 +145,7 @@ export function registerWorkoutTools(
             "update_set",
           ].includes(operation),
           idempotentHint: true,
-          openWorldHint: logging.mode === "test_sheet",
+          openWorldHint: false,
         },
       },
       async (input: unknown) => {

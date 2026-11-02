@@ -1,29 +1,23 @@
 /**
  * Synthetic plan runtime.
  *
- * Writable plan management runs only against an in-memory dataset. Nothing here
- * touches Google, the Arnold master file or any real tracker, and the tracker id
- * is a fixture id that the authorization guard accepts only for itself.
+ * Writable plan management against an in-memory dataset. Nothing here touches
+ * the database or a real account, and the tracker id is a fixture id that the
+ * authorization guard accepts only for itself.
  *
- * The plan service and the workout logging service are deliberately wired to
- * the *same* repository, ledger, coordinator and audit log. That is what makes
- * the two domains safe together: a plan activation and a set write on the same
- * tracker serialise against each other, a repeated `request_id` is recognised
- * across both, and one audit trail describes the whole tracker.
+ * The plan service and the workout logging service share one store. That is
+ * what makes the two domains safe together: a plan activation and a set write
+ * serialise against each other, a repeated `request_id` is recognised across
+ * both, and one audit trail describes the whole tracker.
  */
 import {
   ArnoldDatasetSchema,
   type ArnoldDataset,
 } from "../../shared/arnold-schema-v1.js";
-import type { ArnoldDataSource } from "../arnold-source.js";
+import { storeSource, type ArnoldDataSource } from "../arnold-source.js";
 import {
   FixtureAuthorizationGuard,
-  InMemoryArnoldWriteRepository,
-  InMemoryAuditLog,
-  InMemoryOperationLedger,
-  InProcessWriteCoordinator,
-  type AuditLogRepository,
-  type OperationLedger,
+  InMemoryArnoldStore,
 } from "../workout/infrastructure.js";
 import { WorkoutLoggingService } from "../workout/service.js";
 import { TrainingPlanService } from "./service.js";
@@ -692,10 +686,7 @@ export type PlanFixtureRuntime = {
   source: ArnoldDataSource;
   plans: TrainingPlanService;
   service: WorkoutLoggingService;
-  repository: InMemoryArnoldWriteRepository;
-  ledger: OperationLedger;
-  audit: InMemoryAuditLog | AuditLogRepository;
-  readonly generation: number;
+  store: InMemoryArnoldStore;
 };
 
 /**
@@ -707,61 +698,28 @@ export type PlanFixtureRuntime = {
 export function createFixturePlanning(
   dataset: ArnoldDataset = planFixtureDataset(),
   options: {
-    ledger?: OperationLedger;
-    audit?: AuditLogRepository;
     clock?: () => Date;
     id?: () => string;
   } = {},
 ): PlanFixtureRuntime {
-  const repository = new InMemoryArnoldWriteRepository(dataset);
-  const ledger = options.ledger ?? new InMemoryOperationLedger();
-  const audit = options.audit ?? new InMemoryAuditLog();
-  const coordinator = new InProcessWriteCoordinator();
-  const authorization = new FixtureAuthorizationGuard(
-    dataset.config.tracker_id,
-  );
-  let generation = 0;
-  const source: ArnoldDataSource = {
-    mode: "arnold_sheets",
+  const store = new InMemoryArnoldStore(dataset);
+  const source = storeSource(store, {
     synthetic: true,
     label: "Arnold · Plan-Fixture",
     description:
-      "Ausschließlich synthetische Trainingspläne. Lokaler Testmodus; kein persönliches Nutzerkonto und keine Google-Datei.",
-    async load() {
-      return {
-        dataset: await repository.read(),
-        fetchedAt: new Date().toISOString(),
-        ageMs: 0,
-      };
-    },
-    invalidate() {
-      generation++;
-    },
-  };
+      "Ausschließlich synthetische Trainingspläne. Lokaler Testmodus; kein persönliches Nutzerkonto.",
+  });
   const shared = {
     trackerId: dataset.config.tracker_id,
-    repository,
-    ledger,
-    coordinator,
-    audit,
-    authorization,
-    invalidate: () => source.invalidate(),
+    store,
+    authorization: new FixtureAuthorizationGuard(dataset.config.tracker_id),
     clock: options.clock,
     id: options.id,
   };
   return {
     source,
-    repository,
-    ledger,
-    audit,
-    plans: new TrainingPlanService({
-      mode: "fixture",
-      read: async () => repository.read(),
-      ...shared,
-    }),
+    store,
+    plans: new TrainingPlanService({ mode: "fixture", ...shared }),
     service: new WorkoutLoggingService({ mode: "fixture", ...shared }),
-    get generation() {
-      return generation;
-    },
   };
 }

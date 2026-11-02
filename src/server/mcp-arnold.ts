@@ -288,7 +288,7 @@ export function createArnoldMcpServer(
         // and need arnold.write / arnold.plan like any other write; each user
         // then has their own fixture (see FixtureSandboxes in http.ts).
         syntheticWrites: logging?.mode === "fixture" && guard.mode === "open",
-        authenticatedOnboarding: logging?.mode === "connected",
+        authenticatedOnboarding: logging?.mode === "database",
       })
     : bare;
   // Onboarding first: a verified account that is not set up yet gets
@@ -301,7 +301,7 @@ export function createArnoldMcpServer(
   const context = (snapshot: DatasetSnapshot) => ({
     generatedAt: snapshot.fetchedAt,
     mode: {
-      mode: "arnold_sheets" as const,
+      mode: "arnold" as const,
       label: source.label,
       description: source.description,
     },

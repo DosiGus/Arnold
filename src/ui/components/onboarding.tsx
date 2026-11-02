@@ -166,12 +166,10 @@ export function WelcomeStep({
   onChoose,
   busy,
   canWritePlan,
-  googleAvailable,
 }: {
   onChoose: (path: OnboardingPath) => void;
   busy: boolean;
   canWritePlan: boolean;
-  googleAvailable?: boolean;
 }) {
   return (
     <ArnoldCard
@@ -185,12 +183,6 @@ export function WelcomeStep({
           Hier kannst du die Einrichtung ansehen. Ein Plan kann in dieser
           Verbindung noch nicht gespeichert werden.
         </CardNote>
-      )}
-      {!googleAvailable && (
-        <p className="ac-caption">
-          In dieser Vorschau ist Google nicht verfügbar. Es wird keine Datei
-          erstellt.
-        </p>
       )}
       <CardActions
         primary={{

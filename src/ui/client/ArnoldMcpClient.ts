@@ -1,10 +1,6 @@
 import { OnboardingProfileBuffer } from "./OnboardingProfileBuffer";
 import { ArnoldToolError } from "../recovery";
-import {
-  DeleteAccountResponseSchema,
-  FinishSetupOutputSchema,
-  StoredDataSchema,
-} from "../../shared/account-contract";
+import { DeleteAccountResponseSchema } from "../../shared/account-contract";
 import {
   WorkoutContextSchema,
   WriteResponseSchema,
@@ -139,14 +135,6 @@ export class ArnoldMcpClient {
     this.refreshListeners.forEach((listener) => listener());
     window.dispatchEvent(new Event("arnold:refresh"));
   }
-  async googleConnected() {
-    const result = z
-      .object({ connection: z.object({ status: z.string() }).nullable() })
-      .parse(
-        await this.client.call("get_google_connection", {}, { publish: false }),
-      );
-    return result.connection?.status === "CONNECTED";
-  }
   async showOnboarding() {
     await this.client.call(
       "show_arnold_onboarding",
@@ -167,43 +155,6 @@ export class ArnoldMcpClient {
   }
   async displayMode(mode: "inline" | "fullscreen") {
     return this.client.displayMode(mode);
-  }
-  async connectGoogle(reconnect = false) {
-    const result = z
-      .object({ authorization_url: z.string().url() })
-      .parse(
-        await this.client.call(
-          "connect_google_account",
-          reconnect ? {} : (this.getOnboardingClaim() ?? {}),
-        ),
-      );
-    await this.client.openExternal(result.authorization_url);
-  }
-  async finishSetup() {
-    return FinishSetupOutputSchema.parse(
-      await this.client.call("finish_arnold_setup", this.claim()),
-    );
-  }
-  async setupFile() {
-    if (this.getOnboardingClaim()) {
-      try {
-        return await this.finishSetup();
-      } catch {
-        /* A completed account can outlive its setup credential. */
-      }
-    }
-    const stored = StoredDataSchema.parse(
-      await this.client.call("get_arnold_stored_data", {}, { publish: false }),
-    );
-    if (!stored.google_sheet_url)
-      throw new ArnoldToolError({
-        code: "SHEET_UNAVAILABLE",
-        recovery: "contact_support",
-      });
-    return {
-      spreadsheet_url: stored.google_sheet_url,
-      spreadsheet_name: undefined,
-    };
   }
   async openDashboard() {
     await this.client.call("show_arnold_dashboard", { card: "today" });
@@ -374,6 +325,7 @@ export class ArnoldMcpClient {
               "request_onboarding_plan",
               "submit_onboarding_plan_proposal",
               "confirm_onboarding_plan",
+              "finish_arnold_setup",
               "revise_onboarding_plan",
               "cancel_onboarding",
             ]),
@@ -470,6 +422,11 @@ export class ArnoldMcpClient {
     };
   }) {
     return this.writeOnboarding("confirm_onboarding_plan", input);
+  }
+
+  /** Activates the confirmed plan and completes the setup. Safe to repeat. */
+  async finishOnboarding(input: { request_id: string }) {
+    return this.writeOnboarding("finish_arnold_setup", input);
   }
 
   async reviseOnboardingPlan(input: {

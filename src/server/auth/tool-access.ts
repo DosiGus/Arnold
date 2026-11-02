@@ -29,10 +29,7 @@ import type { ToolAccessClass } from "./scopes.js";
  * to be configured.
  */
 export const TOOL_ACCESS: Readonly<Record<string, ToolAccessClass>> = {
-  connect_google_account: "ACCOUNT_MANAGEMENT",
-  finish_arnold_setup: "ACCOUNT_MANAGEMENT",
-  get_google_connection: "ACCOUNT_MANAGEMENT",
-  disconnect_google_account: "ACCOUNT_MANAGEMENT",
+  // ── account/mcp-account.ts ──
   // Two stages; the second needs the token only the card sends (B6).
   delete_arnold_account: "ACCOUNT_MANAGEMENT",
   // Read only, but about the account itself (B7).
@@ -88,6 +85,8 @@ export const TOOL_ACCESS: Readonly<Record<string, ToolAccessClass>> = {
   confirm_onboarding_plan: "ONBOARDING_PREVIEW",
   revise_onboarding_plan: "ONBOARDING_PREVIEW",
   get_onboarding_handoff: "ONBOARDING_PREVIEW",
+  // Activates the confirmed plan; behind a login it needs arnold.plan.
+  finish_arnold_setup: "ONBOARDING_PREVIEW",
   cancel_onboarding: "ONBOARDING_PREVIEW",
 };
 

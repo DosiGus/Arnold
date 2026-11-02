@@ -3,17 +3,14 @@
  *
  * Onboarding state never touches the six Arnold tables. `CONFIG` says so
  * itself — `onboarding_storage: BACKEND_ONLY` — and the reason is structural:
- * setup answers are not training data, they belong to a setup conversation that
- * may be abandoned, and a Google file does not exist yet at the time they are
- * collected.
+ * setup answers are not training data, and they belong to a setup conversation
+ * that may be abandoned.
  *
  * Two implementations:
  *
- *   - `InMemoryOnboardingRepository` for unit tests and a single process.
- *   - `FileOnboardingRepository`, a local journal that survives a server
- *     restart, which is what makes the Task 006 resumption tests meaningful.
- *     It is explicitly *not* a distributed store: `durability` says so, and the
- *     state surfaces it instead of promising continuity it cannot deliver.
+ *   - `InMemoryOnboardingRepository` for the fixture profile and tests.
+ *   - `PostgresOnboardingRepository` (src/server/db/onboarding.ts) for real
+ *     accounts.
  *
  * Both enforce the same two retention rules, because an abandoned setup must
  * not accumulate forever:
@@ -26,16 +23,10 @@
  * The stored record carries a *hash* of the session secret, never the secret.
  * See `access.ts` for why.
  */
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
 import { z } from "zod";
 import {
-  ONBOARDING_SCHEMA_VERSION,
   OnboardingSessionSchema,
-  stepForStatus,
-  type OnboardingPath,
   type OnboardingSession,
-  type OnboardingStatus,
 } from "../../shared/onboarding-contract.js";
 import { InProcessWriteCoordinator } from "../workout/infrastructure.js";
 
@@ -265,116 +256,4 @@ export class InMemoryOnboardingRepository extends BaseOnboardingRepository {
   get size() {
     return this.records.length;
   }
-}
-
-/**
- * A local file journal.
- *
- * Written through a temporary file and an atomic rename at mode 0600, the same
- * way the Task 004 operation ledger does it, so a crash mid-write cannot leave
- * a half-written session file behind.
- */
-export class FileOnboardingRepository extends BaseOnboardingRepository {
-  readonly durability = "local" as const;
-  private seenFile = false;
-  constructor(private path: string) {
-    super();
-    this.lock = path;
-  }
-  protected async load(): Promise<OnboardingRecord[]> {
-    try {
-      const raw = JSON.parse(await readFile(this.path, "utf8")) as unknown;
-      const records = z
-        .array(OnboardingRecordSchema)
-        .parse(Array.isArray(raw) ? raw.map(migrateLegacyRecord) : raw);
-      this.seenFile = true;
-      return records;
-    } catch (error) {
-      // A missing file before the first write is an empty store. A missing file
-      // *after* one, or unreadable content, is a real failure and must not be
-      // silently treated as "no sessions" — that would wipe live state.
-      if ((error as NodeJS.ErrnoException).code === "ENOENT" && !this.seenFile)
-        return [];
-      throw new Error("Einrichtungsspeicher ist nicht lesbar.");
-    }
-  }
-  protected async store(records: OnboardingRecord[]) {
-    await mkdir(dirname(this.path), { recursive: true });
-    const temp = `${this.path}.${Math.random().toString(36).slice(2)}.tmp`;
-    await writeFile(temp, JSON.stringify(records), {
-      mode: 0o600,
-      flush: true,
-    });
-    await rename(temp, this.path);
-    this.seenFile = true;
-  }
-}
-
-/* ---------------------------------------------------------------- migration */
-
-const LEGACY_PATH: Record<string, OnboardingPath | null> = {
-  new_plan: "arnold_plan",
-  existing_plan: "own_plan",
-  undecided: null,
-};
-const LEGACY_GOAL: Record<string, string> = { recomposition: "fat_loss" };
-
-/**
- * Lifts a stored 1.0.0 session to the current profile shape.
- *
- * Deterministic and lossy only where the old shape had no counterpart (free
- * text split names, starting loads): the answers a plan needs survive, so a
- * user mid-setup does not have to start over. Anything that still does not
- * parse afterwards fails the load, as before — a store is never silently
- * treated as empty.
- */
-export function migrateLegacyRecord(raw: unknown): unknown {
-  const record = raw as {
-    session?: {
-      schema_version?: string;
-      status?: OnboardingStatus;
-      current_step?: string;
-      profile?: Record<string, unknown> & {
-        preferences?: { notes?: string };
-      };
-    };
-  };
-  const session = record?.session;
-  if (!session || session.schema_version !== "1.0.0" || !session.profile)
-    return raw;
-  const old = session.profile;
-  const answered = [
-    "primary_goal",
-    "experience",
-    "days_per_week",
-    "session_minutes",
-    "environment",
-  ].some((key) => old[key] !== null && old[key] !== undefined);
-  const path =
-    LEGACY_PATH[String(old.starting_point)] ??
-    (answered ? "arnold_plan" : null);
-  const goal = old.primary_goal as string | null;
-  const status = session.status ?? "COLLECTING_PROFILE";
-  return {
-    ...record,
-    session: {
-      ...session,
-      schema_version: ONBOARDING_SCHEMA_VERSION,
-      current_step: stepForStatus(status, path),
-      profile: {
-        path,
-        person: {},
-        training: {
-          primary_goal: goal ? (LEGACY_GOAL[goal] ?? goal) : null,
-          experience: old.experience ?? null,
-          days_per_week: old.days_per_week ?? null,
-          session_minutes: old.session_minutes ?? null,
-          environment: old.environment ?? null,
-          ...(old.preferences?.notes ? { notes: old.preferences.notes } : {}),
-        },
-        revision: old.revision ?? 0,
-        updated_at_utc: old.updated_at_utc ?? null,
-      },
-    },
-  };
 }

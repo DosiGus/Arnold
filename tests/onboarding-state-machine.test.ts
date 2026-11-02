@@ -145,7 +145,7 @@ describe("stepping back", () => {
     expect(
       reject(base({ status: "COLLECTING_PROFILE" }), {
         type: "GO_BACK",
-        step: "google_connection",
+        step: "finishing",
       }).code,
     ).toBe("VALIDATION_ERROR");
   });
@@ -294,7 +294,7 @@ describe("changing a plan after the confirmation", () => {
 
   it("does the same from the handoff state", () => {
     const result = pass(
-      { ...confirmed, status: "AWAITING_GOOGLE_CONNECTION" },
+      { ...confirmed, status: "READY_TO_FINISH" },
       { type: "REVISE_PLAN" },
     );
     expect(result.state.status).toBe("REVIEWING_PLAN");
@@ -320,7 +320,7 @@ describe("changing a plan after the confirmation", () => {
   });
 });
 
-describe("the OAuth handoff", () => {
+describe("the finishing handoff", () => {
   it("needs a confirmed plan", () => {
     expect(
       reject(
@@ -348,7 +348,7 @@ describe("the OAuth handoff", () => {
     ).toBe("CONFIRMATION_REQUIRED");
   });
 
-  it("moves to AWAITING_GOOGLE_CONNECTION and is idempotent", () => {
+  it("moves to READY_TO_FINISH and is idempotent", () => {
     const state = base({
       status: "PLAN_CONFIRMED",
       has_plan_draft: true,
@@ -356,26 +356,34 @@ describe("the OAuth handoff", () => {
       profile_complete: true,
     });
     const first = pass(state, { type: "PREPARE_HANDOFF" });
-    expect(first.state.status).toBe("AWAITING_GOOGLE_CONNECTION");
+    expect(first.state.status).toBe("READY_TO_FINISH");
     const second = pass(first.state, { type: "PREPARE_HANDOFF" });
-    expect(second.state.status).toBe("AWAITING_GOOGLE_CONNECTION");
+    expect(second.state.status).toBe("READY_TO_FINISH");
   });
 });
 
-describe("COMPLETED is out of reach for Task 006", () => {
+describe("COMPLETED needs the server's finishing step", () => {
   const awaiting = base({
-    status: "AWAITING_GOOGLE_CONNECTION",
+    status: "READY_TO_FINISH",
     has_plan_draft: true,
     has_confirmation: true,
     profile_complete: true,
   });
 
-  it("refuses the completion without verified provisioning", () => {
+  it("refuses the completion without an activated plan", () => {
     const error = reject(awaiting, {
-      type: "GOOGLE_CONNECTED",
-      provisioning_verified: false,
+      type: "SETUP_FINISHED",
+      finish_verified: false,
     });
-    expect(error.code).toBe("OAUTH_NOT_IMPLEMENTED");
+    expect(error.code).toBe("HANDOFF_NOT_READY");
+  });
+
+  it("completes once the finishing step verified the activation", () => {
+    const result = pass(awaiting, {
+      type: "SETUP_FINISHED",
+      finish_verified: true,
+    });
+    expect(result.state.status).toBe("COMPLETED");
   });
 
   it("is never offered as an allowed event", () => {
@@ -389,7 +397,7 @@ describe("COMPLETED is out of reach for Task 006", () => {
             profile_complete: true,
           }),
         ),
-      ).not.toContain("GOOGLE_CONNECTED");
+      ).not.toContain("SETUP_FINISHED");
   });
 
   it("cannot be reached by skipping the confirmation", () => {
@@ -402,8 +410,8 @@ describe("COMPLETED is out of reach for Task 006", () => {
     ] satisfies OnboardingStatus[])
       expect(
         reject(base({ status, profile_complete: true, has_plan_draft: true }), {
-          type: "GOOGLE_CONNECTED",
-          provisioning_verified: true,
+          type: "SETUP_FINISHED",
+          finish_verified: true,
         }).code,
       ).toBe("INVALID_STATE_TRANSITION");
   });
@@ -446,7 +454,7 @@ describe("expiry and cancellation", () => {
 
   it("voids a confirmation on cancellation and expiry", () => {
     const state = base({
-      status: "AWAITING_GOOGLE_CONNECTION",
+      status: "READY_TO_FINISH",
       has_plan_draft: true,
       has_confirmation: true,
       profile_complete: true,
@@ -525,8 +533,8 @@ describe("allowed events drive the UI", () => {
               ? { type, profile_complete: complete, path: "arnold_plan" }
               : type === "GO_BACK"
                 ? { type, step: "welcome" }
-                : type === "GOOGLE_CONNECTED"
-                  ? { type, provisioning_verified: false }
+                : type === "SETUP_FINISHED"
+                  ? { type, finish_verified: false }
                   : { type }
           ) as OnboardingEvent;
           expect(

@@ -13,7 +13,6 @@ COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 # Privacy notice, terms and support, served as /datenschutz, /bedingungen, /support.
 COPY --from=build --chown=node:node /app/public ./public
-RUN mkdir -p data && chown node:node data
 USER node
 EXPOSE 8787
 CMD ["node", "dist/server/main.js"]

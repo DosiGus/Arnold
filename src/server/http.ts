@@ -12,23 +12,19 @@ import { resolve } from "node:path";
 import { ARNOLD_UI_CONTRACT } from "../shared/arnold-view.js";
 import { createArnoldMcpServer } from "./mcp-arnold.js";
 import type { ArnoldDataSource } from "./arnold-source.js";
-import {
-  createArnoldSource,
-  isArnoldMode,
-  requireSafeArnoldBinding,
-} from "./storage-config.js";
+import { requireSafeArnoldBinding } from "./storage-config.js";
 import { loadAuthConfig } from "./auth/config.js";
 import { buildAuthSurface, type AuthSurface } from "./auth/router.js";
-import type { ConnectedArnoldRuntime } from "./connected/runtime.js";
-import type { GoogleBrowserFlow } from "./connected/google-browser.js";
-import { registerGoogleTools } from "./connected/mcp-google.js";
+import type { DatabaseArnoldRuntime } from "./db/runtime.js";
+import { registerAccountTools } from "./account/mcp-account.js";
 import { withArnoldContext } from "./auth/guarded-server.js";
 import { FixtureSandboxes } from "./fixture-sandboxes.js";
 
 export interface ServerOptions {
   env?: NodeJS.ProcessEnv;
-  connected?: { runtime: ConnectedArnoldRuntime; browser: GoogleBrowserFlow };
-  /** Arnold schema v1 read source; selects the v2 dashboard mode. */
+  /** Signed-in users with their data in Postgres (`arnold_database`). */
+  database?: DatabaseArnoldRuntime;
+  /** A fixed read-only source; for tests. */
   arnoldSource?: ArnoldDataSource;
   workoutRuntime?: {
     source: ArnoldDataSource;
@@ -53,7 +49,7 @@ export interface ServerOptions {
 }
 /**
  * With nothing configured the server runs the synthetic fixture profile:
- * invented data in memory, every tool available, no Google account involved.
+ * invented data in memory, every tool available, no account involved.
  * Any explicit `STORAGE_MODE` or injected runtime is left exactly as given.
  */
 function withDefaultProfile(options: ServerOptions): NodeJS.ProcessEnv {
@@ -61,7 +57,7 @@ function withDefaultProfile(options: ServerOptions): NodeJS.ProcessEnv {
   if (
     env.STORAGE_MODE !== undefined ||
     env.ARNOLD_WRITE_MODE !== undefined ||
-    options.connected ||
+    options.database ||
     options.arnoldSource ||
     options.workoutRuntime
   )
@@ -114,11 +110,11 @@ export function createHttpApp(options: ServerOptions = {}) {
   const release = releaseFrom(env);
   const mode = writeModeFromEnv(env);
   if (
-    options.connected &&
+    options.database &&
     (options.arnoldSource || options.workoutRuntime || mode !== "disabled")
   )
     throw new Error(
-      "Arnold Connected benötigt einen eigenen Datenpfad ohne Fixture-Schreibmodus.",
+      "Arnold mit Datenbank benötigt einen eigenen Datenpfad ohne Fixture-Schreibmodus.",
     );
   const runtime: NonNullable<ServerOptions["workoutRuntime"]> | undefined =
     options.workoutRuntime ??
@@ -133,22 +129,12 @@ export function createHttpApp(options: ServerOptions = {}) {
     throw new Error(
       "Workout-Runtime muss denselben Lese- und Schreibpfad besitzen.",
     );
-  if (
-    runtime?.service.mode === "test_sheet" &&
-    !("actorContext" in runtime && runtime.actorContext)
-  )
+  // Exactly one data path is active per process: the synthetic fixture
+  // runtime, a fixed test source, or the per-user database runtime.
+  const arnoldSource = runtime?.source ?? options.arnoldSource;
+  if (!arnoldSource && !options.database)
     throw new Error(
-      "Test-Sheet benötigt einen geprüften Request-Authentifizierer.",
-    );
-  // Exactly one data path is active per process: the synthetic fixture runtime,
-  // the read-only Arnold Sheets source, or the connected per-user runtime.
-  const arnoldSource =
-    runtime?.source ??
-    options.arnoldSource ??
-    (isArnoldMode(env) ? createArnoldSource(root, env) : undefined);
-  if (!arnoldSource && !options.connected)
-    throw new Error(
-      "STORAGE_MODE muss arnold_fixture, arnold_sheets oder arnold_connected sein.",
+      "STORAGE_MODE muss arnold_fixture oder arnold_database sein.",
     );
   const host = options.host ?? env.HOST ?? "127.0.0.1";
   const allowedHosts = options.allowedHosts ??
@@ -166,12 +152,11 @@ export function createHttpApp(options: ServerOptions = {}) {
   const auth =
     options.auth ?? buildAuthSurface({ config: loadAuthConfig(env) });
   if (
-    options.connected &&
-    (auth.summary.mode !== "oidc" ||
-      options.connected.runtime.options.auth !== auth)
+    options.database &&
+    (auth.summary.mode !== "oidc" || options.database.options.auth !== auth)
   )
     throw new Error(
-      "Connected-Runtime und HTTP-Endpunkt benötigen dieselbe aktive Authentifizierung.",
+      "Datenbank-Runtime und HTTP-Endpunkt benötigen dieselbe aktive Authentifizierung.",
     );
   // A synthetic fixture behind a login: one invented dataset per user rather
   // than one shared by everyone who signs in. Only for the fixture this file
@@ -179,7 +164,7 @@ export function createHttpApp(options: ServerOptions = {}) {
   const sandboxes =
     auth.summary.mode === "oidc" &&
     !options.workoutRuntime &&
-    !options.connected &&
+    !options.database &&
     runtime?.service.mode === "fixture"
       ? new FixtureSandboxes(auth)
       : undefined;
@@ -245,8 +230,6 @@ export function createHttpApp(options: ServerOptions = {}) {
   // Discovery first: an unauthenticated client must be able to read the
   // protected-resource document in order to learn how to authenticate.
   if (auth.metadataRouter) app.use(auth.metadataRouter);
-  if (options.connected)
-    app.use("/auth/google", options.connected.browser.router);
   app.get("/health", (_req, res) =>
     res.json({
       status: "ok",
@@ -256,8 +239,8 @@ export function createHttpApp(options: ServerOptions = {}) {
       // answer: reporting `false` for a synthetic fixture would tell an
       // operator checking whether real training data is exposed exactly the
       // wrong thing.
-      synthetic: options.connected ? false : arnoldSource!.synthetic,
-      source: options.connected ? "arnold_connected" : "arnold_sheets",
+      synthetic: options.database ? false : arnoldSource!.synthetic,
+      source: options.database ? "arnold_database" : "arnold_fixture",
       ui_contract: ARNOLD_UI_CONTRACT,
       version: "0.5.0",
       // The deployed commit, set by the deploy (ARNOLD_RELEASE); null locally.
@@ -309,10 +292,8 @@ export function createHttpApp(options: ServerOptions = {}) {
   );
   app.all("/mcp", auth.bearerGate, async (req, res) => {
     const handle = async () => {
-      const userRuntime = options.connected
-        ? await options.connected.runtime.forUser(
-            await auth.resolveRequest(req),
-          )
+      const userRuntime = options.database
+        ? await options.database.forUser(await auth.resolveRequest(req))
         : sandboxes
           ? await sandboxes.forUser(await auth.resolveRequest(req))
           : runtime;
@@ -329,12 +310,7 @@ export function createHttpApp(options: ServerOptions = {}) {
         userRuntime?.onboarding,
         auth.guard,
       );
-      if (options.connected)
-        registerGoogleTools(
-          server,
-          options.connected.runtime,
-          options.connected.browser,
-        );
+      if (options.database) registerAccountTools(server, options.database);
       const transport = new NodeStreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
         enableJsonResponse: true,
@@ -356,7 +332,7 @@ export function createHttpApp(options: ServerOptions = {}) {
           });
       }
     };
-    const perUser = options.connected?.runtime ?? sandboxes;
+    const perUser = options.database ?? sandboxes;
     if (perUser) {
       const context = await auth.resolveRequest(req);
       if (req.method === "POST") await perUser.exclusive(context, handle);

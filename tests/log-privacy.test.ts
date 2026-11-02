@@ -103,12 +103,14 @@ describe("server log privacy", () => {
       status: 400,
     });
     expect(
-      JSON.stringify(describeErrorForLog(new Error(`Google sagt ${MARKER}`))),
+      JSON.stringify(
+        describeErrorForLog(new Error(`Datenbank sagt ${MARKER}`)),
+      ),
     ).not.toContain(MARKER);
   });
 
   it("refuses free text as a tool log code", () => {
-    expect(safeCode("GOOGLE_REAUTH_REQUIRED")).toBe("GOOGLE_REAUTH_REQUIRED");
+    expect(safeCode("STORAGE_UNAVAILABLE")).toBe("STORAGE_UNAVAILABLE");
     expect(safeCode(`invalid ${MARKER}`)).toBe("unlabelled");
     const before = lines.length;
     logToolCall({

@@ -2,7 +2,7 @@
  * Session isolation, credentials, persistence and retention.
  *
  * The rule under test throughout: **a session id submitted by a client is not a
- * permission.** Before Task 007 a setup session is anonymous, so an id alone
+ * permission.** Without a login a setup session is anonymous, so an id alone
  * must be worthless — otherwise anyone who guessed one could read someone
  * else's answers.
  *
@@ -10,21 +10,17 @@
  * server restart to be resumable at all, and an abandoned one must not be kept
  * forever.
  */
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   DenyOnboardingAccessControl,
   FixtureOnboardingAccessControl,
   createSessionToken,
   fingerprintToken,
-  oauthStateBinding,
+  setupBinding,
   tokenMatches,
 } from "../src/server/onboarding/access";
 import {
-  FileOnboardingRepository,
   InMemoryOnboardingRepository,
   ONBOARDING_RETENTION_MS,
   OnboardingRecordSchema,
@@ -36,18 +32,6 @@ import { createFixtureOnboarding } from "../src/server/onboarding/fixture";
 import { ONBOARDING_SCHEMA_VERSION } from "../src/shared/onboarding-contract";
 
 const rid = () => randomUUID();
-const temporary: string[] = [];
-
-afterEach(async () => {
-  for (const path of temporary.splice(0))
-    await rm(path, { recursive: true, force: true });
-});
-
-async function tempDir() {
-  const dir = await mkdtemp(join(tmpdir(), "arnold-onb-"));
-  temporary.push(dir);
-  return dir;
-}
 
 const TRAINING = {
   primary_goal: "muscle_gain",
@@ -467,26 +451,12 @@ describe("retention", () => {
   });
 });
 
-describe("the file repository", () => {
-  it("reports local durability", async () => {
-    const path = join(await tempDir(), "sessions.json");
-    expect(new FileOnboardingRepository(path).durability).toBe("local");
-  });
-
-  it("survives a new repository instance over the same file", async () => {
-    const path = join(await tempDir(), "sessions.json");
-    const first = new FileOnboardingRepository(path);
-    await first.createSession(record("onb-1"));
-
-    // A new instance stands in for a restarted server process.
-    const second = new FileOnboardingRepository(path);
-    const read = await second.getSession("onb-1");
-    expect(read?.session.onboarding_session_id).toBe("onb-1");
-  });
-
-  it("resumes a setup after a simulated server restart", async () => {
-    const path = join(await tempDir(), "sessions.json");
-    const first = createFixtureOnboarding({ storeFile: path });
+describe("a restarted server", () => {
+  // A new runtime over the same session store stands in for a restarted
+  // process; in production that store is Postgres (src/server/db).
+  it("resumes a setup with the answers already given", async () => {
+    const repository = new InMemoryOnboardingRepository();
+    const first = createFixtureOnboarding({ repository });
     const started = await first.onboarding.startOnboarding({
       request_id: rid(),
     });
@@ -500,26 +470,24 @@ describe("the file repository", () => {
       profile: COMPLETE,
     });
 
-    // A brand-new runtime over the same journal: the answers are still there.
-    const second = createFixtureOnboarding({ storeFile: path });
+    const second = createFixtureOnboarding({ repository });
     const resumed = await second.onboarding.getOnboardingState(claim);
     expect(resumed.session.profile.training.days_per_week).toBe(3);
     expect(resumed.session.profile.training.primary_goal).toBe("muscle_gain");
     expect(resumed.progress.profile_complete).toBe(true);
-    expect(resumed.resume.durable).toBe(true);
-    // Still never promised across devices: that needs a verified identity.
+    // Never promised across devices without a verified identity.
     expect(resumed.resume.cross_device).toBe(false);
   });
 
-  it("still refuses a wrong token after a restart", async () => {
-    const path = join(await tempDir(), "sessions.json");
-    const first = createFixtureOnboarding({ storeFile: path });
+  it("still refuses a wrong token", async () => {
+    const repository = new InMemoryOnboardingRepository();
+    const first = createFixtureOnboarding({ repository });
     const started = await first.onboarding.startOnboarding({
       request_id: rid(),
     });
     const id = started.state!.session.onboarding_session_id;
 
-    const second = createFixtureOnboarding({ storeFile: path });
+    const second = createFixtureOnboarding({ repository });
     await expect(
       second.onboarding.getOnboardingState({
         onboarding_session_id: id,
@@ -528,39 +496,41 @@ describe("the file repository", () => {
     ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
   });
 
-  it("writes no plaintext secret to disk", async () => {
-    const path = join(await tempDir(), "sessions.json");
-    const runtime = createFixtureOnboarding({ storeFile: path });
+  it("stores no plaintext secret", async () => {
+    const repository = new InMemoryOnboardingRepository();
+    const runtime = createFixtureOnboarding({ repository });
     const started = await runtime.onboarding.startOnboarding({
       request_id: rid(),
     });
     const token = started.session_token!;
-    const contents = await readFile(path, "utf8");
-    expect(contents).not.toContain(token);
-    expect(contents).toContain("token_fingerprint");
+    const stored = JSON.stringify(
+      await repository.getSession(started.state!.session.onboarding_session_id),
+    );
+    expect(stored).not.toContain(token);
+    expect(stored).toContain("token_fingerprint");
   });
 });
 
-/* ---------------------------------------------------------- oauth binding */
+/* --------------------------------------------------------- setup binding */
 
-describe("the OAuth state binding", () => {
+describe("the setup binding", () => {
   it("is stable for one confirmed revision and differs across revisions", () => {
     const stored = record("onb-1");
-    const first = oauthStateBinding(stored, 1);
-    expect(oauthStateBinding(stored, 1)).toBe(first);
-    expect(oauthStateBinding(stored, 2)).not.toBe(first);
+    const first = setupBinding(stored, 1);
+    expect(setupBinding(stored, 1)).toBe(first);
+    expect(setupBinding(stored, 2)).not.toBe(first);
   });
 
   it("differs between two sessions", () => {
-    expect(oauthStateBinding(record("onb-1"), 1)).not.toBe(
-      oauthStateBinding(record("onb-2"), 1),
+    expect(setupBinding(record("onb-1"), 1)).not.toBe(
+      setupBinding(record("onb-2"), 1),
     );
   });
 
   it("does not reveal the session secret", () => {
     const token = createSessionToken();
     const stored = record("onb-1", { token });
-    const binding = oauthStateBinding(stored, 1);
+    const binding = setupBinding(stored, 1);
     expect(binding).toHaveLength(64);
     expect(binding).not.toContain(token);
     expect(binding).not.toContain(stored.token_fingerprint);

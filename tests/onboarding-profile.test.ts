@@ -21,9 +21,8 @@ import {
   validateProposalAgainstProfile,
 } from "../src/server/onboarding/profile";
 import { mergeProfile } from "../src/server/onboarding/service";
-import { migrateLegacyRecord } from "../src/server/onboarding/repository";
 import { planFixtureDataset } from "../src/server/plan/fixture";
-import { newTrackerDataset } from "../src/server/connected/catalog";
+import { newTrackerDataset } from "../src/server/account/catalog";
 import {
   OnboardingBriefSchema,
   OnboardingProfilePatchSchema,
@@ -626,67 +625,5 @@ describe("proposal fit against the profile", () => {
     ]);
     expect(result.valid).toBe(true);
     expect(result.warnings).toEqual([]);
-  });
-});
-
-describe("a setup stored before the two paths", () => {
-  const legacy = (
-    profile: Record<string, unknown>,
-    status = "PROFILE_READY",
-  ) => ({
-    session: {
-      onboarding_session_id: "onb-legacy",
-      status,
-      current_step: "summary",
-      schema_version: "1.0.0",
-      created_at_utc: "2026-05-01T10:00:00Z",
-      updated_at_utc: "2026-05-01T10:00:00Z",
-      expires_at_utc: "2026-05-02T10:00:00Z",
-      revision: 4,
-      profile: {
-        primary_goal: "recomposition",
-        experience: "beginner",
-        days_per_week: 3,
-        session_minutes: 45,
-        environment: "home",
-        starting_point: "new_plan",
-        preferences: { notes: "morgens", preferred_split: "PPL" },
-        revision: 3,
-        updated_at_utc: "2026-05-01T10:00:00Z",
-        ...profile,
-      },
-      plan_draft_reference: null,
-      confirmed_plan_reference: null,
-      handoff_status: "not_ready",
-      last_error: null,
-      tracker_id: "trk_test",
-    },
-  });
-
-  it("keeps the answers a plan needs and lands on the right screen", () => {
-    const migrated = migrateLegacyRecord(legacy({})) as {
-      session: unknown;
-    };
-    const session = OnboardingSessionSchema.parse(migrated.session);
-    expect(session.profile.path).toBe("arnold_plan");
-    expect(session.profile.training.primary_goal).toBe("fat_loss");
-    expect(session.profile.training.days_per_week).toBe(3);
-    expect(session.profile.training.notes).toBe("morgens");
-    expect(session.current_step).toBe("profile");
-    expect(session.revision).toBe(4);
-  });
-
-  it("maps an existing plan to the own-plan path", () => {
-    const migrated = migrateLegacyRecord(
-      legacy({ starting_point: "existing_plan" }),
-    ) as { session: unknown };
-    expect(OnboardingSessionSchema.parse(migrated.session).profile.path).toBe(
-      "own_plan",
-    );
-  });
-
-  it("leaves a current record untouched", () => {
-    const current = { session: { schema_version: "2.0.0" } };
-    expect(migrateLegacyRecord(current)).toBe(current);
   });
 });

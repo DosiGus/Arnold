@@ -2,17 +2,12 @@ import {
   ArnoldDatasetSchema,
   type ArnoldDataset,
 } from "../../shared/arnold-schema-v1.js";
-import type { ArnoldDataSource } from "../arnold-source.js";
+import { storeSource } from "../arnold-source.js";
 import { WorkoutLoggingService } from "./service.js";
 import {
   FixtureAuthorizationGuard,
-  InMemoryArnoldWriteRepository,
-  InMemoryAuditLog,
-  InMemoryOperationLedger,
-  InProcessWriteCoordinator,
+  InMemoryArnoldStore,
   WriteError,
-  type OperationLedger,
-  type AuditLogRepository,
 } from "./infrastructure.js";
 
 export function workoutFixtureDataset(): ArnoldDataset {
@@ -148,74 +143,42 @@ export function workoutFixtureDataset(): ArnoldDataset {
     sets: [],
   });
 }
-export function createFixtureLogging(
-  dataset = workoutFixtureDataset(),
-  ledger: OperationLedger = new InMemoryOperationLedger(),
-  audit: AuditLogRepository = new InMemoryAuditLog(),
-) {
-  const repository = new InMemoryArnoldWriteRepository(dataset);
-  let generation = 0;
-  const source: ArnoldDataSource = {
-    mode: "arnold_sheets",
+export function createFixtureLogging(dataset = workoutFixtureDataset()) {
+  const store = new InMemoryArnoldStore(dataset);
+  const source = storeSource(store, {
     synthetic: true,
     label: "Arnold · Schreib-Fixture",
     description:
       "Ausschließlich synthetische Trainingsdaten. Lokaler Testmodus; kein persönliches Nutzerkonto.",
-    async load() {
-      return {
-        dataset: await repository.read(),
-        fetchedAt: new Date().toISOString(),
-        ageMs: 0,
-      };
-    },
-    invalidate() {
-      generation++;
-    },
-  };
+  });
   const service = new WorkoutLoggingService({
     mode: "fixture",
     trackerId: dataset.config.tracker_id,
-    repository,
-    ledger,
-    audit,
-    coordinator: new InProcessWriteCoordinator(),
+    store,
     authorization: new FixtureAuthorizationGuard(dataset.config.tracker_id),
-    invalidate: () => source.invalidate(),
   });
-  return {
-    source,
-    service,
-    repository,
-    ledger,
-    audit,
-    get generation() {
-      return generation;
-    },
-  };
+  return { source, service, store };
 }
+/**
+ * The write mode the environment asks for. Only the fixture profile is chosen
+ * this way; the database profile builds its own per-user services.
+ */
 export function writeModeFromEnv(env: NodeJS.ProcessEnv = process.env) {
   const mode = env.ARNOLD_WRITE_MODE ?? "disabled";
-  if (!["disabled", "fixture", "test_sheet", "production"].includes(mode))
-    throw new WriteError("VALIDATION_ERROR", "ARNOLD_WRITE_MODE ist ungültig.");
-  if (mode === "production")
+  if (mode !== "disabled" && mode !== "fixture")
     throw new WriteError(
-      "PERMISSION_DENIED",
-      "Produktion ist bis Task 007 gesperrt.",
-    );
-  if (mode === "test_sheet")
-    throw new WriteError(
-      "AUTH_REQUIRED",
-      "Test-Sheets erfordern eine programmatisch eingebundene geprüfte Autorisierung; Umgebungswerte reichen nicht.",
+      "VALIDATION_ERROR",
+      "ARNOLD_WRITE_MODE ist ungültig (erlaubt: disabled, fixture).",
     );
   if (mode === "fixture" && env.STORAGE_MODE !== "arnold_fixture")
     throw new WriteError(
       "PERMISSION_DENIED",
-      "Fixture-Writes erfordern STORAGE_MODE=arnold_fixture; echte Sheets bleiben ausgeschlossen.",
+      "Fixture-Writes erfordern STORAGE_MODE=arnold_fixture.",
     );
   if (env.STORAGE_MODE === "arnold_fixture" && mode !== "fixture")
     throw new WriteError(
       "PERMISSION_DENIED",
       "Arnold-Fixture erfordert ausdrücklich ARNOLD_WRITE_MODE=fixture.",
     );
-  return mode as "disabled" | "fixture";
+  return mode;
 }

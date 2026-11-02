@@ -1,7 +1,0 @@
-{
-  "count": 38,
-  "object": "connected/identities.json",
-  "first": "2026-11-02T14:41:23.127125Z",
-  "last": "2026-11-02T14:56:48.663883Z",
-  "meaning": "retry events, not necessarily failed user actions"
-}

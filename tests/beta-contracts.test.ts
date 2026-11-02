@@ -20,29 +20,26 @@ import {
   WriteResponseSchema,
 } from "../src/shared/workout-contract.js";
 import {
-  GOOGLE_REAUTH_MESSAGE,
-  GOOGLE_REAUTH_REQUIRED,
   RecoverySchema,
   ToolFailureMetaSchema,
   recoveryFor,
 } from "../src/shared/write-recovery.js";
 
 const reauthError = {
-  code: GOOGLE_REAUTH_REQUIRED,
-  message: GOOGLE_REAUTH_MESSAGE,
-  retryable: false,
+  code: "STORAGE_UNAVAILABLE",
+  message: "Speichern war gerade nicht möglich.",
+  retryable: true,
   details: [],
-  recovery: "reconnect_google",
+  recovery: "retry_same_request",
 } as const;
 
 describe("recovery field", () => {
-  it("has exactly the seven agreed values", () => {
+  it("has exactly the six agreed values", () => {
     expect(RecoverySchema.options).toEqual([
       "none",
       "retry_same_request",
       "reload_then_retry",
       "start_over",
-      "reconnect_google",
       "finish_setup",
       "contact_support",
     ]);
@@ -125,31 +122,28 @@ describe("recovery field", () => {
   });
 
   it("maps the shared codes to their default next step", () => {
-    expect(recoveryFor(GOOGLE_REAUTH_REQUIRED, false)).toBe("reconnect_google");
     expect(recoveryFor("SETUP_REQUIRED", false)).toBe("finish_setup");
     expect(recoveryFor("REVISION_CONFLICT", false)).toBe("reload_then_retry");
-    expect(recoveryFor("COMMIT_STATUS_UNKNOWN", true)).toBe(
+    expect(recoveryFor("DUPLICATE_OPERATION", false)).toBe(
       "retry_same_request",
     );
     expect(recoveryFor("SESSION_EXPIRED", false)).toBe("start_over");
-    expect(recoveryFor("SHEET_CAPACITY_EXCEEDED", false)).toBe(
-      "contact_support",
-    );
+    expect(recoveryFor("PERMISSION_DENIED", false)).toBe("contact_support");
     expect(recoveryFor("STORAGE_UNAVAILABLE", true)).toBe("retry_same_request");
     expect(recoveryFor("VALIDATION_ERROR", false)).toBe("none");
   });
 });
 
-describe("GOOGLE_REAUTH_REQUIRED", () => {
-  it("is a code of the workout and plan write tools", () => {
-    expect(WriteErrorCodeSchema.options).toContain(GOOGLE_REAUTH_REQUIRED);
-    expect(PlanErrorCodeSchema.options).toContain(GOOGLE_REAUTH_REQUIRED);
-  });
-
-  it("tells ChatGPT to reconnect through the card", () => {
-    expect(GOOGLE_REAUTH_MESSAGE).toBe(
-      "Die Google-Freigabe ist abgelaufen. Bitte über die Karte neu verbinden.",
-    );
+describe("write error codes", () => {
+  it("no longer know an unclear commit or a Google grant", () => {
+    for (const code of [
+      "COMMIT_STATUS_UNKNOWN",
+      "GOOGLE_REAUTH_REQUIRED",
+      "SHEET_CAPACITY_EXCEEDED",
+    ]) {
+      expect(WriteErrorCodeSchema.options).not.toContain(code);
+      expect(PlanErrorCodeSchema.options).not.toContain(code);
+    }
   });
 });
 
@@ -203,7 +197,6 @@ describe("delete_arnold_account", () => {
         stage: "confirm",
         summary: {
           stored_items: ["Anmeldung bei Arnold"],
-          keeps: ["Deine Google-Tabelle"],
         },
         confirmation_token: "x".repeat(43),
         expires_at: "2026-10-31T12:05:00.000Z",
@@ -211,18 +204,13 @@ describe("delete_arnold_account", () => {
     ).toBe(true);
   });
 
-  it("answers the second stage with the kept sheet", () => {
+  it("answers the second stage with nothing left behind", () => {
     expect(
-      DeleteAccountResponseSchema.safeParse({
-        stage: "deleted",
-        google_sheet_kept: true,
-        sheet_url: "https://docs.google.com/spreadsheets/d/abc/edit",
-      }).success,
+      DeleteAccountResponseSchema.safeParse({ stage: "deleted" }).success,
     ).toBe(true);
     expect(
       DeleteAccountResponseSchema.safeParse({
         stage: "deleted",
-        google_sheet_kept: false,
         sheet_url: null,
       }).success,
     ).toBe(false);

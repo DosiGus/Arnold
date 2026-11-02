@@ -1,7 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import {
   createFixtureLogging,
   workoutFixtureDataset,
@@ -10,16 +7,13 @@ import {
 import { WorkoutLoggingService } from "../src/server/workout/service";
 import {
   DenyAuthorizationGuard,
-  FileOperationLedger,
   FixtureAuthorizationGuard,
-  InMemoryArnoldWriteRepository,
+  InMemoryArnoldStore,
   InMemoryAuditLog,
-  InMemoryOperationLedger,
-  InProcessWriteCoordinator,
   WriteError,
   uuid7,
-  type ArnoldWriteRepository,
-  type OperationLedger,
+  type ArnoldStore,
+  type ArnoldTransaction,
 } from "../src/server/workout/infrastructure";
 import { buildArnoldDashboardAnalytics } from "../src/analytics";
 import { ArnoldDatasetSchema } from "../src/shared/arnold-schema-v1";
@@ -73,21 +67,48 @@ async function withSet() {
   ).sets[0];
   return { ...r, set };
 }
-function custom(
-  repository: ArnoldWriteRepository,
-  ledger: OperationLedger = new InMemoryOperationLedger(),
-  audit = new InMemoryAuditLog(),
-) {
+function custom(store: ArnoldStore) {
   return new WorkoutLoggingService({
     mode: "fixture",
     trackerId: "arnold-fixture-tracker",
-    repository,
-    ledger,
-    audit,
-    coordinator: new InProcessWriteCoordinator(),
+    store,
     authorization: new FixtureAuthorizationGuard("arnold-fixture-tracker"),
-    invalidate() {},
   });
+}
+/** A store whose next write fails once in the given way. */
+function faulty(
+  memory = new InMemoryArnoldStore(workoutFixtureDataset()),
+  fault: "unreachable" | "before_commit" | "lost_answer",
+) {
+  let pending = true;
+  let writes = 0;
+  const store: ArnoldStore = {
+    kind: "fixture",
+    audit: memory.audit,
+    read: () => memory.read(),
+    async write(work) {
+      writes++;
+      const failing = pending;
+      pending = false;
+      if (failing && fault === "unreachable")
+        throw new WriteError("STORAGE_UNAVAILABLE", "unreachable", true);
+      if (failing && fault === "before_commit")
+        return memory.write(async (tx) => {
+          await work(tx);
+          throw new Error("connection lost");
+        });
+      const result = await memory.write(work);
+      if (failing) throw new Error("socket hang up");
+      return result;
+    },
+  };
+  return {
+    memory,
+    store,
+    get writes() {
+      return writes;
+    },
+  };
 }
 
 describe("WorkoutLoggingService: creation and references", () => {
@@ -103,12 +124,12 @@ describe("WorkoutLoggingService: creation and references", () => {
       session_name_snapshot: "Freies Demo-Training",
     });
     expect(w.workout_id).toMatch(/^[0-9a-f-]{14}7[0-9a-f-]{21}$/);
-    expect((await r.repository.read()).workouts).toEqual([w]);
+    expect((await r.store.read()).workouts).toEqual([w]);
     expect(uuid7()).not.toBe(uuid7());
   });
   it("resolves only an unambiguous active session and preserves plan version", async () => {
     const r = createFixtureLogging();
-    const before = await r.repository.read();
+    const before = await r.store.read();
     const w = ok(
       await r.service.startWorkout(startInput({ session_name: "Demo Push" })),
     ).workout!;
@@ -116,7 +137,7 @@ describe("WorkoutLoggingService: creation and references", () => {
       plan_version_id: "fixture-plan-v1",
       session_id: "fixture-push",
     });
-    expect((await r.repository.read()).plans).toEqual(before.plans);
+    expect((await r.store.read()).plans).toEqual(before.plans);
   });
   it.each([
     { activated: "2026-11-01T00:00:00Z", linked: false },
@@ -132,13 +153,13 @@ describe("WorkoutLoggingService: creation and references", () => {
           plans: data.plans.map((p) => ({ ...p, activated_at_utc: activated })),
         }),
       );
-      const before = await r.repository.read();
+      const before = await r.store.read();
       const workout = ok(
         await r.service.startWorkout(startInput({ session_name: "Demo Push" })),
       ).workout!;
       expect(workout.plan_version_id).toBe(linked ? "fixture-plan-v1" : null);
       expect(workout.session_id).toBe(linked ? "fixture-push" : null);
-      expect((await r.repository.read()).plans).toEqual(before.plans);
+      expect((await r.store.read()).plans).toEqual(before.plans);
     },
   );
   it("does not guess an ambiguous session", async () => {
@@ -172,7 +193,7 @@ describe("WorkoutLoggingService: creation and references", () => {
   ])("rejects invalid plan/date/timezone %j", async (extra) => {
     const r = createFixtureLogging();
     code(await r.service.startWorkout(startInput(extra)), "VALIDATION_ERROR");
-    expect((await r.repository.read()).workouts).toHaveLength(0);
+    expect((await r.store.read()).workouts).toHaveLength(0);
   });
   it("replays identical request and rejects changed payload or operation", async () => {
     const r = createFixtureLogging(),
@@ -192,7 +213,7 @@ describe("WorkoutLoggingService: creation and references", () => {
       }),
       "DUPLICATE_OPERATION",
     );
-    expect((await r.repository.read()).workouts).toHaveLength(1);
+    expect((await r.store.read()).workouts).toHaveLength(1);
   });
 });
 
@@ -218,7 +239,7 @@ describe("sets and execution semantics", () => {
       row_revision: 1,
     });
     expect(Object.keys(result.sets[0])).not.toContain("volume");
-    expect((await r.repository.read()).sets).toEqual(result.sets);
+    expect((await r.store.read()).sets).toEqual(result.sets);
   });
   it.each([
     setInput({ exercise_id: "missing" }),
@@ -248,7 +269,7 @@ describe("sets and execution semantics", () => {
       sets: [setInput(), bad],
     });
     expect(response.ok).toBe(false);
-    expect((await r.repository.read()).sets).toHaveLength(0);
+    expect((await r.store.read()).sets).toHaveLength(0);
   });
   it("rejects missing workout and retired exercises", async () => {
     const r = await running();
@@ -329,7 +350,7 @@ describe("sets and execution semantics", () => {
         }),
       );
       expect(
-        buildArnoldDashboardAnalytics(await r.repository.read()).volume
+        buildArnoldDashboardAnalytics(await r.store.read()).volume
           .nominal_volume.value,
       ).toBe(expected);
     },
@@ -445,7 +466,7 @@ describe("corrections, tombstones and lifecycle", () => {
       }),
       "SET_NOT_FOUND",
     );
-    expect((r.audit as InMemoryAuditLog).events.size).toBe(3);
+    expect((r.store.audit as InMemoryAuditLog).events.size).toBe(3);
   });
   it("voids without deletion, retries idempotently and rejects later mutations", async () => {
     const r = await withSet();
@@ -457,7 +478,7 @@ describe("corrections, tombstones and lifecycle", () => {
     const a = ok(await r.service.voidSet(input));
     expect(a.sets[0]).toMatchObject({ status: "voided", row_revision: 2 });
     expect((await r.service.voidSet(input)).replayed).toBe(true);
-    expect((await r.repository.read()).sets).toHaveLength(1);
+    expect((await r.store.read()).sets).toHaveLength(1);
     code(
       await r.service.updateSet({
         request_id: "revive",
@@ -508,7 +529,7 @@ describe("corrections, tombstones and lifecycle", () => {
         correction_reason: "Tippfehler",
       }),
     );
-    const analytics = buildArnoldDashboardAnalytics(await r.repository.read());
+    const analytics = buildArnoldDashboardAnalytics(await r.store.read());
     expect(analytics.volume.nominal_volume.value).toBe(750);
     expect(JSON.stringify(analytics.records)).toContain("75");
     ok(
@@ -521,11 +542,11 @@ describe("corrections, tombstones and lifecycle", () => {
       }),
     );
     expect(
-      buildArnoldDashboardAnalytics(await r.repository.read()).volume
-        .nominal_volume.value,
+      buildArnoldDashboardAnalytics(await r.store.read()).volume.nominal_volume
+        .value,
     ).toBe(0);
     expect(
-      [...(r.audit as InMemoryAuditLog).events.values()].at(-1)
+      [...(r.store.audit as InMemoryAuditLog).events.values()].at(-1)
         ?.correction_reason,
     ).toBe("Doppelter Satz");
   });
@@ -538,9 +559,9 @@ describe("corrections, tombstones and lifecycle", () => {
         expected_row_revision: 1,
       }),
     );
-    expect((await r.repository.read()).sets).toHaveLength(1);
+    expect((await r.store.read()).sets).toHaveLength(1);
     expect(
-      buildArnoldDashboardAnalytics(await r.repository.read()).activity
+      buildArnoldDashboardAnalytics(await r.store.read()).activity
         .completed_workouts.value,
     ).toBe(0);
     code(
@@ -595,11 +616,11 @@ describe("catalog and safety modes", () => {
   };
   it("creates a variant and audit event without modifying plans", async () => {
     const r = createFixtureLogging(),
-      before = await r.repository.read();
+      before = await r.store.read();
     expect(ok(await r.service.createExercise(exercise)).exercise).toMatchObject(
       { status: "active", row_revision: 1 },
     );
-    expect((await r.repository.read()).plans).toEqual(before.plans);
+    expect((await r.store.read()).plans).toEqual(before.plans);
     code(
       await r.service.createExercise({ ...exercise, request_id: "again" }),
       "EXERCISE_MATCH_FOUND",
@@ -633,27 +654,19 @@ describe("catalog and safety modes", () => {
     const service = new WorkoutLoggingService({
       mode: "fixture",
       trackerId: "arnold-fixture-tracker",
-      repository: r.repository,
-      ledger: r.ledger,
-      audit: r.audit,
-      coordinator: new InProcessWriteCoordinator(),
+      store: r.store,
       authorization: new DenyAuthorizationGuard(),
-      invalidate() {},
     });
     code(await service.startWorkout(startInput()), "AUTH_REQUIRED");
     const foreign = new WorkoutLoggingService({
       mode: "fixture",
       trackerId: "foreign",
-      repository: r.repository,
-      ledger: r.ledger,
-      audit: r.audit,
-      coordinator: new InProcessWriteCoordinator(),
+      store: r.store,
       authorization: new FixtureAuthorizationGuard("foreign"),
-      invalidate() {},
     });
     code(await foreign.startWorkout(startInput()), "PERMISSION_DENIED");
   });
-  it("rejects template repository and mismatched/production modes", async () => {
+  it("rejects a template dataset and a mode that does not match the store", async () => {
     const d = workoutFixtureDataset(),
       config = {
         ...d.config,
@@ -679,14 +692,10 @@ describe("catalog and safety modes", () => {
     expect(
       () =>
         new WorkoutLoggingService({
-          mode: "production",
+          mode: "database",
           trackerId: "x",
-          repository: r.repository,
-          ledger: r.ledger,
-          audit: r.audit,
-          coordinator: new InProcessWriteCoordinator(),
+          store: r.store,
           authorization: new DenyAuthorizationGuard(),
-          invalidate() {},
         }),
     ).toThrow();
   });
@@ -711,7 +720,7 @@ describe("idempotency, concurrency and recovery", () => {
       r.service.logWorkoutSets({ ...base, request_id: "b" }),
     ]);
     different.forEach(ok);
-    expect((await r.repository.read()).sets.map((s) => s.set_number)).toEqual([
+    expect((await r.store.read()).sets.map((s) => s.set_number)).toEqual([
       1, 2, 3,
     ]);
   });
@@ -729,103 +738,47 @@ describe("idempotency, concurrency and recovery", () => {
     expect(results.filter((r) => r.ok)).toHaveLength(1);
     expect(results.find((r) => !r.ok)?.error?.code).toBe("REVISION_CONFLICT");
   });
-  it("reconciles response loss after commit without appending a second entity", async () => {
-    const repo = new InMemoryArnoldWriteRepository(workoutFixtureDataset());
-    let calls = 0;
-    const wrapper: ArnoldWriteRepository = {
-      kind: "fixture",
-      read: () => repo.read(),
-      async apply(changes) {
-        calls++;
-        await repo.apply(changes);
-        throw new WriteError("COMMIT_STATUS_UNKNOWN", "lost");
-      },
-    };
-    const svc = custom(wrapper);
+  it("replays a write whose answer was lost after the commit, without a second entity", async () => {
+    const f = faulty(undefined, "lost_answer");
+    const svc = custom(f.store);
     const a = await svc.startWorkout(startInput());
-    ok(a);
+    expect(a.error).toMatchObject({
+      code: "STORAGE_UNAVAILABLE",
+      recovery: "retry_same_request",
+    });
     const b = await svc.startWorkout(startInput());
+    ok(b);
     expect(b.replayed).toBe(true);
-    expect(calls).toBe(1);
+    expect((await f.memory.read()).workouts).toHaveLength(1);
+    expect(f.memory.operations.size).toBe(1);
   });
-  it("survives a process restart with the local durable prepared journal after ledger acknowledgement failure", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "arnold-ledger-"));
-    try {
-      const file = join(dir, "operations.json"),
-        durable = new FileOperationLedger(file),
-        repo = new InMemoryArnoldWriteRepository(workoutFixtureDataset());
-      const failing: OperationLedger = {
-        durability: "local",
-        get: (...args) => durable.get(...args),
-        pending: (t) => durable.pending(t),
-        async save(e) {
-          if (e.state === "committed") throw Error("ack lost");
-          await durable.save(e);
-        },
-      };
-      code(
-        await custom(repo, failing).startWorkout(startInput()),
-        "COMMIT_STATUS_UNKNOWN",
-      );
-      expect((await repo.read()).workouts).toHaveLength(1);
-      const restarted = custom(repo, new FileOperationLedger(file));
-      const response = await restarted.startWorkout(startInput());
-      ok(response);
-      expect(response.replayed).toBe(true);
-      expect((await repo.read()).workouts).toHaveLength(1);
-      expect((await restarted.startWorkout(startInput())).replayed).toBe(true);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+  it("recognises a repeated request in a second service over the same store", async () => {
+    const store = new InMemoryArnoldStore(workoutFixtureDataset());
+    ok(await custom(store).startWorkout(startInput()));
+    const restarted = await custom(store).startWorkout(startInput());
+    ok(restarted);
+    expect(restarted.replayed).toBe(true);
+    expect((await store.read()).workouts).toHaveLength(1);
   });
-  it("blocks all new writes when timeout remains ambiguous even if no rows are visible", async () => {
-    const repo = new InMemoryArnoldWriteRepository(workoutFixtureDataset());
-    let calls = 0;
-    const wrapper: ArnoldWriteRepository = {
-      kind: "fixture",
-      read: () => repo.read(),
-      async apply() {
-        calls++;
-        throw new WriteError("COMMIT_STATUS_UNKNOWN", "timeout");
-      },
-    };
-    const svc = custom(wrapper);
-    code(await svc.startWorkout(startInput()), "COMMIT_STATUS_UNKNOWN");
-    code(await svc.startWorkout(startInput()), "COMMIT_STATUS_UNKNOWN");
-    code(
-      await svc.startWorkout(startInput({ request_id: "different" })),
-      "COMMIT_STATUS_UNKNOWN",
-    );
-    expect(calls).toBe(1);
+  it("stores nothing when the transaction fails before its commit", async () => {
+    const f = faulty(undefined, "before_commit");
+    const svc = custom(f.store);
+    code(await svc.startWorkout(startInput()), "STORAGE_UNAVAILABLE");
+    expect((await f.memory.read()).workouts).toHaveLength(0);
+    expect(f.memory.operations.size).toBe(0);
+    expect(f.memory.audit.events.size).toBe(0);
+    const retried = await svc.startWorkout(startInput());
+    ok(retried);
+    expect(retried.replayed).toBe(false);
+    expect((await f.memory.read()).workouts).toHaveLength(1);
   });
-  it("does not dispatch when preparing the ledger fails", async () => {
-    const repo = new InMemoryArnoldWriteRepository(workoutFixtureDataset());
-    const ledger = new InMemoryOperationLedger();
-    ledger.save = async () => {
-      throw Error("disk full");
-    };
-    code(
-      await custom(repo, ledger).startWorkout(startInput()),
-      "STORAGE_UNAVAILABLE",
-    );
-    expect((await repo.read()).workouts).toHaveLength(0);
-  });
-  it("does not announce success until audit persistence is confirmed", async () => {
-    const repo = new InMemoryArnoldWriteRepository(workoutFixtureDataset()),
-      ledger = new InMemoryOperationLedger(),
-      audit = new InMemoryAuditLog();
-    audit.append = async () => {
-      throw Error("audit unavailable");
-    };
-    code(
-      await custom(repo, ledger, audit).startWorkout(startInput()),
-      "COMMIT_STATUS_UNKNOWN",
-    );
-    const repaired = custom(repo, ledger);
-    const replay = await repaired.startWorkout(startInput());
-    ok(replay);
-    expect(replay.replayed).toBe(true);
-    expect((await repo.read()).workouts).toHaveLength(1);
+  it("never blocks later writes after a failure", async () => {
+    const f = faulty(undefined, "unreachable");
+    const svc = custom(f.store);
+    code(await svc.startWorkout(startInput()), "STORAGE_UNAVAILABLE");
+    ok(await svc.startWorkout(startInput({ request_id: "different" })));
+    ok(await svc.startWorkout(startInput()));
+    expect((await f.memory.read()).workouts).toHaveLength(2);
   });
 });
 
@@ -901,7 +854,7 @@ describe("additional safety boundaries", () => {
           sets: [setInput()],
         }),
       );
-      const before = await r.repository.read();
+      const before = await r.store.read();
       const result = await r.service.completeWorkout({
         request_id: "complete",
         workout_id: workout.workout_id,
@@ -912,39 +865,10 @@ describe("additional safety boundaries", () => {
         expect(ok(result).workout!.ended_at_utc).toBe(end);
       } else {
         code(result, "VALIDATION_ERROR");
-        expect(await r.repository.read()).toEqual(before);
+        expect(await r.store.read()).toEqual(before);
       }
     },
   );
-  it("blocks partial storage outcomes and leaves the whole tracker closed", async () => {
-    const repo = new InMemoryArnoldWriteRepository(workoutFixtureDataset()),
-      base = custom(repo);
-    const w = ok(await base.startWorkout(startInput())).workout!;
-    let dispatches = 0;
-    const partial: ArnoldWriteRepository = {
-      kind: "fixture",
-      read: () => repo.read(),
-      async apply(changes) {
-        dispatches++;
-        await repo.apply(changes.slice(0, 1));
-        throw new WriteError("COMMIT_STATUS_UNKNOWN", "partial");
-      },
-    };
-    const service = custom(partial),
-      input = {
-        request_id: "partial",
-        workout_id: w.workout_id,
-        sets: [setInput(), setInput()],
-      };
-    code(await service.logWorkoutSets(input), "COMMIT_STATUS_UNKNOWN");
-    code(await service.logWorkoutSets(input), "COMMIT_STATUS_UNKNOWN");
-    code(
-      await service.startWorkout(startInput({ request_id: "after-partial" })),
-      "COMMIT_STATUS_UNKNOWN",
-    );
-    expect(dispatches).toBe(1);
-    expect((await repo.read()).sets).toHaveLength(1);
-  });
   it("cannot correct a completed workout without the separate permission", async () => {
     const r = await withSet();
     ok(
@@ -968,12 +892,8 @@ describe("additional safety boundaries", () => {
     const service = new WorkoutLoggingService({
       mode: "fixture",
       trackerId: "arnold-fixture-tracker",
-      repository: r.repository,
-      ledger: r.ledger,
-      audit: r.audit,
+      store: r.store,
       authorization: guard,
-      coordinator: new InProcessWriteCoordinator(),
-      invalidate() {},
     });
     code(
       await service.updateSet({
@@ -986,7 +906,7 @@ describe("additional safety boundaries", () => {
       }),
       "PERMISSION_DENIED",
     );
-    expect((await r.repository.read()).sets[0].load_kg).toBe(70);
+    expect((await r.store.read()).sets[0].load_kg).toBe(70);
   });
   it("persists numeric before/after audit values without copying free-text notes", async () => {
     const r = await withSet();
@@ -998,7 +918,9 @@ describe("additional safety boundaries", () => {
         changes: { load_kg: 75, notes: "private synthetic note" },
       }),
     );
-    const event = [...(r.audit as InMemoryAuditLog).events.values()].at(-1)!;
+    const event = [...(r.store.audit as InMemoryAuditLog).events.values()].at(
+      -1,
+    )!;
     expect(event.changes.load_kg).toEqual({ before: 70, after: 75 });
     expect(JSON.stringify(event)).not.toContain("private synthetic note");
     expect(event.changed_fields).toContain("notes");
@@ -1036,11 +958,25 @@ describe("additional safety boundaries", () => {
   it("rejects a lost committed dataset instead of claiming that missing rows remain stored", async () => {
     const r = createFixtureLogging();
     ok(await r.service.startWorkout(startInput()));
-    const empty = new InMemoryArnoldWriteRepository(workoutFixtureDataset());
+    // A receipt whose rows are gone: the data no longer matches it.
+    const empty = new InMemoryArnoldStore(workoutFixtureDataset());
+    const mismatched: ArnoldStore = {
+      kind: "fixture",
+      audit: empty.audit,
+      read: () => empty.read(),
+      write: (work) =>
+        empty.write((tx) =>
+          work({
+            ...tx,
+            operation: async (id) => r.store.operations.get(id),
+          } satisfies ArnoldTransaction),
+        ),
+    };
     code(
-      await custom(empty, r.ledger).startWorkout(startInput()),
-      "COMMIT_STATUS_UNKNOWN",
+      await custom(mismatched).startWorkout(startInput()),
+      "SCHEMA_MISMATCH",
     );
+    expect((await empty.read()).workouts).toHaveLength(0);
   });
   it("replays a prior result after a later authorized correction without reverting it", async () => {
     const r = await withSet();
@@ -1059,6 +995,6 @@ describe("additional safety boundaries", () => {
     });
     expect(replay.replayed).toBe(true);
     expect(replay.result?.sets[0].load_kg).toBe(70);
-    expect((await r.repository.read()).sets[0].load_kg).toBe(80);
+    expect((await r.store.read()).sets[0].load_kg).toBe(80);
   });
 });

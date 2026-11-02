@@ -16,8 +16,6 @@ export const RecoverySchema = z.enum([
   "reload_then_retry",
   /** Start the operation from the beginning. */
   "start_over",
-  /** The Google authorization expired or was revoked: reconnect Google. */
-  "reconnect_google",
   /** Finish the Arnold setup first (SETUP_REQUIRED). */
   "finish_setup",
   /** The user cannot fix this alone. */
@@ -25,15 +23,8 @@ export const RecoverySchema = z.enum([
 ]);
 export type Recovery = z.infer<typeof RecoverySchema>;
 
-/** Error code for an expired or revoked Google authorization. */
-export const GOOGLE_REAUTH_REQUIRED = "GOOGLE_REAUTH_REQUIRED" as const;
-
-/** The sentence ChatGPT and the card show for an expired Google grant. */
-export const GOOGLE_REAUTH_MESSAGE =
-  "Die Google-Freigabe ist abgelaufen. Bitte über die Karte neu verbinden.";
-
 /**
- * The error object of every write or Google tool:
+ * The error object of every write tool:
  * `{ code, message, retryable, details, recovery }`.
  */
 export function toolErrorSchema<Code extends z.ZodType<string>>(code: Code) {
@@ -65,9 +56,6 @@ export type ToolFailureMeta = z.infer<typeof ToolFailureMetaSchema>;
  */
 export function recoveryFor(code: string, retryable: boolean): Recovery {
   switch (code) {
-    case GOOGLE_REAUTH_REQUIRED:
-    case "GOOGLE_NOT_CONNECTED":
-      return "reconnect_google";
     case "SETUP_REQUIRED":
       return "finish_setup";
     case "REVISION_CONFLICT":
@@ -75,7 +63,6 @@ export function recoveryFor(code: string, retryable: boolean): Recovery {
     case "VERSION_NUMBER_CONFLICT":
     case "ACTIVE_PLAN_CONFLICT":
       return "reload_then_retry";
-    case "COMMIT_STATUS_UNKNOWN":
     case "DUPLICATE_OPERATION":
       return "retry_same_request";
     case "SESSION_EXPIRED":
@@ -86,7 +73,6 @@ export function recoveryFor(code: string, retryable: boolean): Recovery {
     case "SCHEMA_MISMATCH":
     case "TEMPLATE_WRITE_FORBIDDEN":
     case "PERMISSION_DENIED":
-    case "SHEET_CAPACITY_EXCEEDED":
       return "contact_support";
     default:
       return retryable ? "retry_same_request" : "none";
@@ -101,8 +87,6 @@ export const RECOVERY_HINT: Record<Recovery, string> = {
   reload_then_retry:
     "Nächster Schritt: aktuellen Stand neu laden, dem Nutzer die Änderung zeigen und dann neu versuchen.",
   start_over: "Nächster Schritt: den Vorgang neu beginnen.",
-  reconnect_google:
-    "Nächster Schritt: den Nutzer bitten, Google über die Karte neu zu verbinden (connect_google_account, bei eingerichtetem Arnold ohne Sitzungsangaben); danach dieselbe Anfrage wiederholen.",
   finish_setup:
     "Nächster Schritt: zuerst die Einrichtung abschließen (show_arnold_onboarding).",
   contact_support:

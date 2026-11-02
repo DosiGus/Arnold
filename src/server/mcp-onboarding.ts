@@ -109,10 +109,10 @@ function sourceFor(state: OnboardingState, resumed: boolean) {
     label: "Arnold · Einrichtung",
     description:
       state.session.status === "COMPLETED"
-        ? "Abgeschlossene Einrichtung mit persönlicher Google-Trainingsdatei."
+        ? "Abgeschlossene Einrichtung mit aktivem Trainingsplan."
         : resumed
-          ? "Gespeicherter Einrichtungsstand. Die Google-Datei wird erst nach der Planbestätigung angelegt."
-          : "Neue Einrichtung. Die Google-Datei wird erst nach der Planbestätigung angelegt.",
+          ? "Gespeicherter Einrichtungsstand. Der Plan wird erst nach deiner Bestätigung aktiv."
+          : "Neue Einrichtung. Der Plan wird erst nach deiner Bestätigung aktiv.",
     schema_version: ONBOARDING_SCHEMA_VERSION,
   };
 }
@@ -137,11 +137,11 @@ function summarize(state: OnboardingState): string {
   const training = session.profile.training;
   const where = `${STATUS_LABEL[session.status]} · Schritt "${STEP_LABEL[session.current_step]}"`;
   if (session.status === "COMPLETED")
-    return "Arnold ist eingerichtet: Die persönliche Google-Trainingsdatei ist geprüft und der bestätigte Plan übernommen. Die Einrichtung läuft nur einmal. Für Trainingsüberblick und Training show_arnold_dashboard verwenden; Planänderungen über die Plan-Werkzeuge.";
+    return "Arnold ist eingerichtet: Der bestätigte Plan ist aktiv. Die Einrichtung läuft nur einmal. Für Trainingsüberblick und Training show_arnold_dashboard verwenden; Planänderungen über die Plan-Werkzeuge.";
   if (session.status === "CANCELLED" || session.status === "EXPIRED")
     return `${where}. Eine neue Einrichtung über show_arnold_onboarding öffnen.`;
-  if (session.status === "AWAITING_GOOGLE_CONNECTION")
-    return `${where}. Der Trainingsplan ist bestätigt. ${state.google_connection_available ? "Als Nächstes Google verbinden: connect_google_account aufrufen und den Link dem Nutzer geben. Erst nach Freigabe und Dateiprüfung ist die Einrichtung abgeschlossen." : "Die Google-Verbindung und das Anlegen der persönlichen Trainingsdatei sind in dieser Umgebung noch nicht verfügbar."}`;
+  if (session.status === "READY_TO_FINISH")
+    return `${where}. Der Trainingsplan ist bestätigt, aber noch nicht aktiv. ${state.setup_finish_available ? "finish_arnold_setup aufrufen, um die Einrichtung abzuschließen." : "Der Abschluss ist in dieser Umgebung nicht verfügbar."}`;
   if (handoff.status === "superseded")
     return `${where}. ${handoff.blocked_reason}`;
   if (session.status === "REVIEWING_PLAN" && state.plan)
@@ -221,7 +221,7 @@ export function registerOnboardingTools(
         resourceUri,
         {
           description:
-            "Geführte Einrichtung von Arnold: Begrüßung mit Wahl des Weges, Angaben zu Person und Training oder Übernahme eines eigenen Plans, Planvorschlag, Planbearbeitung, Bestätigung und Google-Verbindung.",
+            "Geführte Einrichtung von Arnold: Begrüßung mit Wahl des Weges, Angaben zu Person und Training oder Übernahme eines eigenen Plans, Planvorschlag, Planbearbeitung und Bestätigung.",
           mimeType: RESOURCE_MIME_TYPE,
           _meta: {
             ui: {
@@ -400,7 +400,7 @@ export function registerOnboardingTools(
     {
       title: "Trainingsplanvorschlag übergeben",
       description:
-        "Übergibt einen vollständig strukturierten Trainingsplanvorschlag und speichert ihn nach serverseitiger Prüfung als bearbeitbaren Entwurf. Jede Trainingseinheit braucht einen frei wählbaren Namen und mindestens eine Übung; es gibt keinen vorgeschriebenen Split. exercise_id-Werte müssen aus dem Übungskatalog des Briefs stammen – unbekannte IDs werden abgelehnt. Eine Übung, die es im Katalog nicht gibt, in custom_exercises beschreiben (key custom:1, custom:2 …, name_de) und in der Einheit den key als exercise_id verwenden; Arnold legt sie als eigene Übung an. Zielgewichte nur angeben, wenn der Nutzer sie genannt hat; unbekannte Gewichte bleiben leer. origin: ai_proposal für einen selbst erstellten Vorschlag (Weg arnold_plan), existing_routine für die Übernahme des eigenen Plans des Nutzers aus Text oder Foto (Weg own_plan), manual für eine vom Nutzer diktierte Struktur. Bei vollständigen Angaben ist kein vorheriger request_onboarding_plan nötig. Der Plan wird NICHT aktiviert und in keine Google-Datei geschrieben; dafür ist eine ausdrückliche Bestätigung des Nutzers über confirm_onboarding_plan nötig. Dieselbe request_id erneut senden, um einen unklaren Vorgang zu prüfen statt einen zweiten Entwurf anzulegen.",
+        "Übergibt einen vollständig strukturierten Trainingsplanvorschlag und speichert ihn nach serverseitiger Prüfung als bearbeitbaren Entwurf. Jede Trainingseinheit braucht einen frei wählbaren Namen und mindestens eine Übung; es gibt keinen vorgeschriebenen Split. exercise_id-Werte müssen aus dem Übungskatalog des Briefs stammen – unbekannte IDs werden abgelehnt. Eine Übung, die es im Katalog nicht gibt, in custom_exercises beschreiben (key custom:1, custom:2 …, name_de) und in der Einheit den key als exercise_id verwenden; Arnold legt sie als eigene Übung an. Zielgewichte nur angeben, wenn der Nutzer sie genannt hat; unbekannte Gewichte bleiben leer. origin: ai_proposal für einen selbst erstellten Vorschlag (Weg arnold_plan), existing_routine für die Übernahme des eigenen Plans des Nutzers aus Text oder Foto (Weg own_plan), manual für eine vom Nutzer diktierte Struktur. Bei vollständigen Angaben ist kein vorheriger request_onboarding_plan nötig. Der Plan wird NICHT aktiviert; dafür ist eine ausdrückliche Bestätigung des Nutzers über confirm_onboarding_plan nötig. Dieselbe request_id erneut senden, um einen unklaren Vorgang zu prüfen statt einen zweiten Entwurf anzulegen.",
       inputSchema: OnboardingToolInputs.submit_onboarding_plan_proposal,
       outputSchema: OnboardingResponseSchema,
       annotations: writing,
@@ -445,13 +445,51 @@ export function registerOnboardingTools(
     {
       title: "Trainingsplan bestätigen",
       description:
-        "Speichert die ausdrückliche Freigabe des Nutzers für genau eine Planversion und genau eine Revision. Nur aufrufen, wenn der Nutzer den Plan gesehen und seine Bestätigung ausdrücklich erteilt hat – eine erfolgreiche Prüfung ist keine Bestätigung, und ein Planvorschlag darf nie im Namen des Nutzers bestätigt werden. Die confirmation muss plan_version_id und row_revision des aktuellen Entwurfs nennen; eine veraltete Revision wird mit STALE_CONFIRMATION abgelehnt. Nach erfolgreicher Bestätigung wechselt die Einrichtung nach AWAITING_GOOGLE_CONNECTION. Die Bestätigung bedeutet ausschließlich 'vom Nutzer zur Einrichtung freigegeben' – der Plan ist damit NICHT aktiviert und in keine persönliche Google-Datei übernommen.",
+        "Speichert die ausdrückliche Freigabe des Nutzers für genau eine Planversion und genau eine Revision. Nur aufrufen, wenn der Nutzer den Plan gesehen und seine Bestätigung ausdrücklich erteilt hat – eine erfolgreiche Prüfung ist keine Bestätigung, und ein Planvorschlag darf nie im Namen des Nutzers bestätigt werden. Die confirmation muss plan_version_id und row_revision des aktuellen Entwurfs nennen; eine veraltete Revision wird mit STALE_CONFIRMATION abgelehnt. Nach erfolgreicher Bestätigung aktiviert Arnold genau diese Planversion und schließt die Einrichtung ab. Scheitert nur dieser Abschluss, bleibt die Bestätigung gespeichert (READY_TO_FINISH) und finish_arnold_setup schließt später ab.",
       inputSchema: OnboardingToolInputs.confirm_onboarding_plan,
       outputSchema: OnboardingResponseSchema,
       annotations: writing,
     },
+    async (input: unknown) => {
+      const confirmed = await onboarding.confirmPlan(input, actorContext);
+      // The confirmation is the user's last action in the setup. Finishing
+      // right away spares a second button that would only repeat it; if it
+      // fails, the confirmation stands and finish_arnold_setup can retry.
+      if (
+        !confirmed.ok ||
+        confirmed.state?.session.status !== "READY_TO_FINISH" ||
+        !confirmed.state.setup_finish_available
+      )
+        return respond(confirmed);
+      const claim = input as {
+        request_id: string;
+        onboarding_session_id: string;
+        session_token: string;
+      };
+      const finished = await onboarding.finishSetup(
+        {
+          request_id: `${claim.request_id}:finish`,
+          onboarding_session_id: claim.onboarding_session_id,
+          session_token: claim.session_token,
+        },
+        actorContext,
+      );
+      return respond(finished.ok ? finished : confirmed);
+    },
+  );
+
+  server.registerTool(
+    "finish_arnold_setup",
+    {
+      title: "Einrichtung abschließen",
+      description:
+        "Schließt eine bestätigte Einrichtung ab: Arnold aktiviert genau die bestätigte Planversion, danach stehen Trainingsüberblick und Training zur Verfügung. Nur nötig, wenn die Einrichtung nach der Bestätigung in READY_TO_FINISH stehen geblieben ist; confirm_onboarding_plan schließt normalerweise selbst ab. Beliebig oft wiederholbar: ein bereits abgeschlossener Abschluss wird nicht doppelt ausgeführt.",
+      inputSchema: OnboardingToolInputs.finish_arnold_setup,
+      outputSchema: OnboardingResponseSchema,
+      annotations: writing,
+    },
     async (input: unknown) =>
-      respond(await onboarding.confirmPlan(input, actorContext)),
+      respond(await onboarding.finishSetup(input, actorContext)),
   );
 
   server.registerTool(
@@ -471,9 +509,9 @@ export function registerOnboardingTools(
   server.registerTool(
     "get_onboarding_handoff",
     {
-      title: "Bereitschaft für die Google-Verbindung prüfen",
+      title: "Bereitschaft für den Abschluss prüfen",
       description:
-        "Prüft, ob die Einrichtung für die Google-Verbindung bereit ist, und liefert die Übergabedaten: Sitzungs-ID, bestätigte Planversion, bestätigte Revision, Profilrevision, Bestätigungszeitpunkt und eine Bindung für den späteren OAuth-Vorgang. Status ready_for_google_connection bedeutet, dass ein gültig bestätigter Plan vorliegt; superseded bedeutet, dass der Plan nach der Bestätigung geändert wurde und erneut bestätigt werden muss; not_ready bedeutet, dass noch keine Bestätigung vorliegt. Erstellt selbst keine Google-Datei; das geschieht erst nach der Google-Freigabe über connect_google_account.",
+        "Prüft, ob die Einrichtung abgeschlossen werden kann, und liefert die Übergabedaten: Sitzungs-ID, bestätigte Planversion, bestätigte Revision, Profilrevision und Bestätigungszeitpunkt. Status ready_to_finish bedeutet, dass ein gültig bestätigter Plan vorliegt; superseded bedeutet, dass der Plan nach der Bestätigung geändert wurde und erneut bestätigt werden muss; not_ready bedeutet, dass noch keine Bestätigung vorliegt. Aktiviert selbst nichts; das macht finish_arnold_setup.",
       inputSchema: OnboardingToolInputs.get_onboarding_handoff,
       outputSchema: z.strictObject({
         handoff: OnboardingHandoffSchema,
@@ -483,14 +521,14 @@ export function registerOnboardingTools(
     },
     async (input) => {
       try {
-        const result = await onboarding.prepareGoogleHandoff(
+        const result = await onboarding.prepareSetupHandoff(
           input,
           actorContext,
         );
         return ok(
           result,
-          result.handoff.status === "ready_for_google_connection"
-            ? `Der Trainingsplan ist bestätigt und für die Einrichtung freigegeben (Planversion ${result.handoff.confirmed_plan_version_id}, Revision ${result.handoff.confirmed_plan_revision}). ${result.state.google_connection_available ? "Google kann jetzt über connect_google_account verbunden werden." : "Die Google-Verbindung ist in dieser Umgebung nicht verfügbar; bisher wurde keine Google-Datei erstellt."}`
+          result.handoff.status === "ready_to_finish"
+            ? `Der Trainingsplan ist bestätigt und für die Einrichtung freigegeben (Planversion ${result.handoff.confirmed_plan_version_id}, Revision ${result.handoff.confirmed_plan_revision}). ${result.state.setup_finish_available ? "finish_arnold_setup schließt die Einrichtung ab." : "Der Abschluss ist in dieser Umgebung nicht verfügbar."}`
             : `Noch nicht übergabebereit: ${result.handoff.blocked_reason}`,
         );
       } catch (error) {

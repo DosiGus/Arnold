@@ -34,7 +34,7 @@ export function safeCode(value: unknown): string {
 
 /**
  * What may be logged about an error: its type and HTTP status. Never the
- * message, which can quote request bodies, Google API answers or user text.
+ * message, which can quote request bodies, database values or user text.
  */
 export function describeErrorForLog(error: unknown): {
   type: string;

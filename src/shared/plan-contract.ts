@@ -49,7 +49,7 @@ const planRow = ArnoldPlanVersionSchema.unwrap().shape;
 const itemRow = ArnoldPlanItemSchema.unwrap().shape;
 
 /**
- * What the current Google Sheets schema cannot represent.
+ * What the current data model cannot represent.
  *
  * These are product-visible limits, not implementation details, so they travel
  * with the contract and are surfaced in tool output rather than discovered by a
@@ -334,7 +334,7 @@ export const PlanActivationResultSchema = z.strictObject({
   row_revision: positiveInt,
   archived_plan_version_id: id.nullable(),
   archived_at_utc: ArnoldUtcTimestampSchema.nullable(),
-  /** Only ever true after a verified readback of both rows. */
+  /** Only ever true once both rows are stored in one transaction. */
   verified: z.literal(true),
 });
 export type PlanActivationResult = z.infer<typeof PlanActivationResultSchema>;
@@ -582,9 +582,6 @@ export const PlanErrorCodeSchema = z.enum([
   "AUTH_REQUIRED",
   "PERMISSION_DENIED",
   "STORAGE_UNAVAILABLE",
-  "COMMIT_STATUS_UNKNOWN",
-  "GOOGLE_REAUTH_REQUIRED",
-  "SHEET_CAPACITY_EXCEEDED",
 ]);
 export type PlanErrorCode = z.infer<typeof PlanErrorCodeSchema>;
 
@@ -636,13 +633,7 @@ export const PlanContextSchema = z.strictObject({
   families: z.array(TrainingPlanSchema),
   exercises: z.array(PlanExerciseOptionSchema),
   validation: PlanValidationResultSchema.nullable(),
-  write_mode: z.enum([
-    "disabled",
-    "fixture",
-    "test_sheet",
-    "connected",
-    "production",
-  ]),
+  write_mode: z.enum(["disabled", "fixture", "database"]),
   can_write: z.boolean(),
   schema_limits: z.array(PlanSchemaLimitSchema),
   generated_at: ArnoldUtcTimestampSchema,

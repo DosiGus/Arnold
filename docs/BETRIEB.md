@@ -2,22 +2,22 @@
 
 Kurze Schrittfolgen für Deploy, Rollback, Wiederherstellung und Alarme. Hintergrund zu Profilen und Einrichtung: `docs/GUIDE.md`, Teil 2.
 
-| Was         | Wert                                                                          |
-| ----------- | ----------------------------------------------------------------------------- |
-| Projekt     | `arnold-513219`                                                               |
-| Region      | `europe-west1`                                                                |
-| Dienst      | `arnold` (Cloud Run, Profil `arnold_connected`, höchstens 1 Instanz)          |
-| Adresse     | `https://arnold-789221393068.europe-west1.run.app/mcp`                        |
-| Zustand     | Bucket `arnold-513219-state`, im Container als `/app/data`                    |
-| Geheimnisse | Secret Manager: Google-Client, Client-Secret, Token-Verschlüsselungsschlüssel |
-| Login       | WorkOS AuthKit                                                                |
-| CI          | GitHub Actions, `.github/workflows/check.yml`                                 |
+| Was         | Wert                                                                  |
+| ----------- | --------------------------------------------------------------------- |
+| Projekt     | `arnold-513219`                                                       |
+| Region      | `europe-west1`                                                        |
+| Dienst      | `arnold` (Cloud Run, Profil `arnold_database`, höchstens 1 Instanz)   |
+| Adresse     | `https://arnold-789221393068.europe-west1.run.app/mcp`                |
+| Daten       | Supabase Postgres (Frankfurt), Schema `arnold`                        |
+| Geheimnisse | Secret Manager: `arnold-database-url` (optional `arnold-database-ca`) |
+| Login       | WorkOS AuthKit                                                        |
+| CI          | GitHub Actions, `.github/workflows/check.yml`                         |
 
 Alle Befehle setzen `gcloud config set project arnold-513219` voraus.
 
 ## Deploy
 
-Während der Beta: nur in ruhigen Zeiten und vorher ankündigen. Ein Deploy setzt keine Nutzerdaten zurück; sie liegen im Bucket.
+Während der Beta: nur in ruhigen Zeiten und vorher ankündigen. Ein Deploy setzt keine Nutzerdaten zurück; sie liegen in der Datenbank. Braucht ein Stand eine neue Migration, zuerst `npm run db:migrate` (mit `DATABASE_ADMIN_URL`), dann deployen: Der Server startet nur auf genau dem erwarteten Schemastand.
 
 1. Stand auf `main` committen und pushen. Warten, bis die CI für diesen Commit grün ist.
 2. Im Haupt-Checkout auf `main`:
@@ -66,34 +66,18 @@ Wenn ein neuer Stand Fehler macht: Traffic zurück auf die vorherige Revision. D
 
 Wichtig:
 
-- Ein Rollback tauscht nur den Code. Die Daten im Bucket bleiben, wie der neue Stand sie geschrieben hat. Ändert ein Stand das Format der Zustandsdateien, vorher prüfen, ob der alte Stand sie lesen kann.
+- Ein Rollback tauscht nur den Code. Die Datenbank bleibt, wie der neue Stand sie geschrieben hat. Hat der neue Stand eine Migration gebracht, startet ein alter Stand nicht mehr (falsche Schemaversion); dann vorwärts reparieren statt zurückrollen.
 - Solange der Traffic festgehalten ist, bekommt eine neue Revision keinen Traffic. Darum stellt das Deploy-Skript ihn immer auf `--to-latest`.
 
-Geübt am 31.10.2026, siehe `docs/beta/handoff-C.md`.
+Geübt am 31.10.2026.
 
-## Wiederherstellen einer Zustandsdatei
+## Sicherung und Wiederherstellung
 
-Der Bucket hat **Soft Delete mit 7 Tagen**: Jede gelöschte oder überschriebene Datei bleibt 7 Tage lang als frühere Generation erhalten und lässt sich zurückholen. Objektversionierung gibt es nicht, weil der Bucket einen hierarchischen Namensraum hat (nötig für sichere Umbenennungen beim Schreiben); Google erlaubt beides nicht zusammen. Soft Delete deckt Löschen und Überschreiben ab.
+Die Daten liegen in Supabase. Supabase sichert die Datenbank täglich (Umfang und Aufbewahrung je nach Tarif; Point-in-Time-Recovery ist ein Zusatz). Wiederherstellen: Supabase-Dashboard → Database → Backups. Eine Wiederherstellung setzt die **ganze** Datenbank auf den gewählten Zeitpunkt zurück, also für alle Nutzer.
 
-Aufbau im Bucket: `connected/identities.json`, `connected/google-connections.json` und je Nutzer `connected/users/<hash>/` mit `tracker.json`, `onboarding.json`, `draft.json`, `provisioning.json`, `operations.json`, `audit.json`. `<hash>` ist der SHA-256 der internen Nutzerkennung.
+Einzelne Fehler lassen sich meist ohne Wiederherstellung beheben: Arnold löscht keine Trainingszeilen (verworfene Sätze bleiben als Tombstone), und `arnold.audit_events` zeigt, welche Änderung wann geschrieben wurde. Abfragen dafür nur mit der Owner-Verbindung im SQL-Editor von Supabase, nie mit `arnold_app`.
 
-Die Google-Freigaben in `google-connections.json` sind mit dem Schlüssel `arnold-token-encryption-key` aus Secret Manager verschlüsselt. Eine wiederhergestellte Datei ist nur mit demselben Schlüssel lesbar: **Schlüsselversionen nie löschen oder zerstören.**
-
-1. Frühere Generationen anzeigen:
-   ```bash
-   gcloud storage ls --soft-deleted --long gs://arnold-513219-state/connected/<pfad>
-   ```
-   Spalten: Größe, Zeit, `<pfad>#<generation>`. Die richtige Generation ist die letzte vor dem Schaden.
-2. Zurückholen:
-   ```bash
-   gcloud storage restore gs://arnold-513219-state/connected/<pfad>#<generation>
-   ```
-   Gibt es die Datei noch in kaputtem Zustand, zusätzlich `--allow-overwrite` setzen. Die kaputte Fassung wird dabei selbst zu einer gelöschten Generation und ist nicht verloren.
-3. Prüfen: `gcloud storage cat gs://arnold-513219-state/connected/<pfad>` zeigt gültiges JSON. Der Dienst liest die Datei beim nächsten Zugriff (Dateisystem-Cache bis etwa 1 Minute). Bei Zweifel eine neue Revision starten: `gcloud run services update arnold --region europe-west1 --update-labels restart=<datum>`.
-
-Geübt mit `bash scripts/backup-drill.sh`: nur eine synthetische Datei unter `drill/`, nie Nutzerdaten.
-
-Beachten für den Datenschutz: Was „Konto löschen“ entfernt, bleibt noch bis zu 7 Tage als gelöschte Generation im Bucket und verschwindet dann endgültig. Das steht im Datenschutzhinweis.
+Das Passwort von `arnold_app` lässt sich jederzeit erneuern: `npm run db:setup -- arnold-513219` erneut ausführen, danach deployen.
 
 ## Alarme
 
@@ -102,7 +86,7 @@ Eingerichtet mit `bash scripts/setup-monitoring.sh` (wiederholbar). Die E-Mails 
 | Alarm                              | Bedeutung                                                        | Erste Schritte                                                                                   |
 | ---------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | Arnold: /health nicht erreichbar   | `/health` antwortet aus mindestens zwei Regionen nicht mit `ok`. | `curl /health`. Logs ansehen (unten). Kam es direkt nach einem Deploy: Rollback.                 |
-| Arnold: Serverfehler (5xx) gehäuft | Mehr als 4 Antworten 5xx in 5 Minuten.                           | Logs nach `severity>=ERROR` filtern. Nach Deploy: Rollback. Sonst Google-Status prüfen.          |
+| Arnold: Serverfehler (5xx) gehäuft | Mehr als 4 Antworten 5xx in 5 Minuten.                           | Logs nach `severity>=ERROR` filtern. Nach Deploy: Rollback. Sonst Supabase-Status prüfen.        |
 | Arnold: Tool-Aufruf abgestürzt     | Ein Tool ist mit einer unerwarteten Ausnahme abgebrochen.        | Logzeile ansehen: Tool, Zeit, interne Nutzerkennung. Als Issue mit Label `beta-bug` an Worker B. |
 
 Logs ansehen:
@@ -123,13 +107,15 @@ bash scripts/setup-monitoring.sh drill-cleanup  # Übungsregeln entfernen
 
 ## Aufbewahrung
 
-| Was                             | Wo                        | Wie lange                                |
-| ------------------------------- | ------------------------- | ---------------------------------------- |
-| Server- und Anfrage-Logs        | Cloud Logging `_Default`  | 30 Tage                                  |
-| Verwaltungsprotokoll von Google | Cloud Logging `_Required` | 400 Tage (fest, enthält keine Nutzdaten) |
-| Gelöschte Zustandsdateien       | Bucket, Soft Delete       | 7 Tage                                   |
-| Journale, Einrichtung, Audit    | Bucket                    | 30 Tage (Arnold löscht selbst, B8/B15)   |
+| Was                                        | Wo                        | Wie lange                                                                 |
+| ------------------------------------------ | ------------------------- | ------------------------------------------------------------------------- |
+| Server- und Anfrage-Logs                   | Cloud Logging `_Default`  | 30 Tage                                                                   |
+| Verwaltungsprotokoll von Google            | Cloud Logging `_Required` | 400 Tage (fest, enthält keine Nutzdaten)                                  |
+| Trainingsdaten, abgeschlossene Einrichtung | Supabase                  | bis der Nutzer sein Konto löscht                                          |
+| Quittungen, Änderungsprotokoll             | Supabase                  | 30 Tage (`arnold.prune`, täglich)                                         |
+| Nicht abgeschlossene Einrichtungen         | Supabase                  | bis Ablauf plus 30 Tage                                                   |
+| Datenbank-Sicherungen                      | Supabase                  | je nach Tarif; gelöschte Konten bleiben dort bis zum Ablauf der Sicherung |
 
 ## Kosten
 
-Kein Budgetalarm durch Claude möglich (keine Rechte am Abrechnungskonto). Kevin legt ihn an (K5): Abrechnung → Budgets und Benachrichtigungen → Budget erstellen, Projekt `arnold-513219`, 25 € pro Monat, Warnungen bei 50, 90 und 100 Prozent.
+Kein Budgetalarm durch Claude möglich (keine Rechte am Abrechnungskonto). Kevin legt ihn an: Abrechnung → Budgets und Benachrichtigungen → Budget erstellen, Projekt `arnold-513219`, 25 € pro Monat, Warnungen bei 50, 90 und 100 Prozent. Supabase rechnet getrennt ab.

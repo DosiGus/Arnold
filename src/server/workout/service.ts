@@ -1,12 +1,7 @@
-import {
-  googleReauthWriteError,
-  isGoogleReauthRequired,
-} from "../google/reauth.js";
 import { recoveryFor } from "../../shared/write-recovery.js";
 import { z } from "zod";
 import { analyzeSetLoad } from "../../analytics/load.js";
 import {
-  ArnoldDatasetSchema,
   ArnoldExerciseSchema,
   ArnoldSetSchema,
   ArnoldWorkoutSchema,
@@ -22,24 +17,19 @@ import {
   type WriteResponse,
   type WriteResult,
 } from "../../shared/workout-contract.js";
+import { STORAGE_RETRY_MESSAGE, commitWrite } from "../plan/commit.js";
 import {
   WriteError,
   canonical,
-  changedDataset,
-  createdAt,
   entityId,
   fingerprint,
-  inspectChanges,
   uuid7,
   type Actor,
-  type ArnoldWriteRepository,
-  type AuditLogRepository,
+  type ArnoldStore,
+  type AuditEvent,
   type AuthorizationGuard,
   type EntityChange,
-  type LedgerEntry,
-  type OperationLedger,
   type Permission,
-  type WriteCoordinator,
   type WriteMode,
 } from "./infrastructure.js";
 
@@ -71,12 +61,8 @@ function assertUsualValues(
 export interface LoggingOptions {
   mode: WriteMode;
   trackerId: string;
-  repository: ArnoldWriteRepository;
-  ledger: OperationLedger;
-  coordinator: WriteCoordinator;
-  audit: AuditLogRepository;
+  store: ArnoldStore;
   authorization: AuthorizationGuard;
-  invalidate: () => void;
   clock?: () => Date;
   id?: () => string;
 }
@@ -95,19 +81,76 @@ const normalize = (s: string) =>
     .replace(/\p{M}/gu, "")
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]/gu, "");
+/** Fields whose before/after values an audit event records. */
+const AUDITED_FIELDS = [
+  "status",
+  "reps",
+  "reps_basis",
+  "load_kg",
+  "load_basis",
+  "implement_count",
+  "execution_mode",
+  "side",
+  "rpe",
+  "rir",
+  "default_load_basis",
+  "default_execution_mode",
+  "default_implement_count",
+] as const;
+
+/** One audit event per changed row, with the business-relevant fields only. */
+function auditEvents(
+  operation: WriteOperation,
+  input: Record<string, unknown>,
+  changes: readonly EntityChange[],
+  actor: Actor,
+  now: string,
+): AuditEvent[] {
+  const value = (row: object | null, key: string) =>
+    row ? (row as Record<string, unknown>)[key] : undefined;
+  return changes.map((c) => ({
+    operation_id: String(input.request_id),
+    event_type: events[operation],
+    entity_id: entityId(c.after),
+    at: now,
+    actor: actor.subject,
+    previous_revision: c.before?.row_revision ?? null,
+    new_revision: c.after.row_revision,
+    result: "verified",
+    changed_fields: Object.keys(c.after).filter(
+      (key) =>
+        !c.before ||
+        canonical(value(c.after, key)) !== canonical(value(c.before, key)),
+    ),
+    correction_reason:
+      typeof input.correction_reason === "string"
+        ? input.correction_reason
+        : null,
+    changes: Object.fromEntries(
+      AUDITED_FIELDS.filter(
+        (field) =>
+          field in c.after &&
+          (!c.before ||
+            canonical(value(c.after, field)) !==
+              canonical(value(c.before, field))),
+      ).map((field) => [
+        field,
+        {
+          before: c.before ? value(c.before, field) : null,
+          after: value(c.after, field),
+        },
+      ]),
+    ),
+  }));
+}
 export class WorkoutLoggingService {
   readonly mode: WriteMode;
   constructor(private options: LoggingOptions) {
     this.mode = options.mode;
-    if (this.mode === "production")
+    if (this.mode !== "disabled" && this.mode !== options.store.kind)
       throw new WriteError(
         "PERMISSION_DENIED",
-        "Produktiver Schreibmodus bleibt bis Task 007 gesperrt.",
-      );
-    if (this.mode !== "disabled" && this.mode !== options.repository.kind)
-      throw new WriteError(
-        "PERMISSION_DENIED",
-        "Schreibmodus passt nicht zum Repository.",
+        "Schreibmodus passt nicht zum Speicher.",
       );
   }
   async actor(
@@ -132,8 +175,7 @@ export class WorkoutLoggingService {
     if (
       actor.trackerId !== this.options.trackerId ||
       !actor.permissions.includes(permission) ||
-      ((this.mode === "test_sheet" || this.mode === "connected") &&
-        actor.kind !== "authenticated") ||
+      (this.mode === "database" && actor.kind !== "authenticated") ||
       (this.mode === "fixture" && actor.kind !== "fixture")
     )
       throw new WriteError(
@@ -141,27 +183,6 @@ export class WorkoutLoggingService {
         "Keine Berechtigung für diesen Tracker oder Vorgang.",
       );
     return actor;
-  }
-  private validateTracker(data: ArnoldDataset) {
-    if (data.config.file_role === "MASTER_TEMPLATE")
-      throw new WriteError(
-        "TEMPLATE_WRITE_FORBIDDEN",
-        "Die Master-Vorlage darf niemals beschrieben werden.",
-      );
-    if (
-      data.config.tracker_id === "TEMPLATE_UNASSIGNED" ||
-      data.config.tracker_id !== this.options.trackerId
-    )
-      throw new WriteError(
-        "PERMISSION_DENIED",
-        "Tracker-Zuordnung stimmt nicht überein.",
-      );
-  }
-  private async finish(entry: LedgerEntry) {
-    // Replayed audit writes must themselves deduplicate (operation, entity, event).
-    this.options.invalidate();
-    await this.options.audit.append(entry.audit);
-    await this.options.ledger.save({ ...entry, state: "committed" });
   }
   async execute(
     operation: WriteOperation,
@@ -179,242 +200,28 @@ export class WorkoutLoggingService {
       const actor = await this.actor(context);
       const input = WriteInputs[operation].parse(raw);
       const hash = fingerprint({ operation, input });
-      const outcome = await this.options.coordinator.exclusive(
-        this.options.trackerId,
-        async () => {
-          const parsed = ArnoldDatasetSchema.safeParse(
-            await this.options.repository.read(),
+      const outcome = await commitWrite<WriteResult>({
+        trackerId: this.options.trackerId,
+        store: this.options.store,
+        requestId: input.request_id,
+        fingerprint: hash,
+        actorSubject: actor.subject,
+        clock: this.options.clock ?? (() => new Date()),
+        build: async (dataset, now) => {
+          const built = await this.build(
+            operation,
+            raw,
+            dataset,
+            actor,
+            context,
+            now,
           );
-          if (!parsed.success)
-            throw new WriteError(
-              "SCHEMA_MISMATCH",
-              "Gespeicherte Daten verletzen Schema v1.",
-            );
-          this.validateTracker(parsed.data);
-          let entry = await this.options.ledger.get(
-            this.options.trackerId,
-            input.request_id,
-          );
-          if (
-            entry &&
-            (entry.fingerprint !== hash || entry.actor !== actor.subject)
-          )
-            throw new WriteError(
-              "DUPLICATE_OPERATION",
-              "Operations-ID wurde bereits für einen anderen Payload oder Akteur verwendet.",
-            );
-          if (entry?.state === "committed") {
-            // A historical result may have been superseded by a later correction,
-            // but missing or regressed rows must never be reported as stored.
-            for (const change of entry.changes) {
-              const current = parsed.data[change.table].find(
-                (row) => entityId(row) === entityId(change.after),
-              );
-              if (
-                !current ||
-                createdAt(current) !== createdAt(change.after) ||
-                current.row_revision < change.after.row_revision ||
-                (current.row_revision === change.after.row_revision &&
-                  canonical(current) !== canonical(change.after))
-              )
-                throw new WriteError(
-                  "COMMIT_STATUS_UNKNOWN",
-                  "Bereits bestätigte Datensätze fehlen oder wurden außerhalb des Journals verändert.",
-                  true,
-                );
-            }
-            return { result: entry.result, replayed: true };
-          }
-          // A pending unrelated operation must be reconciled before another write.
-          for (const pending of await this.options.ledger.pending(
-            this.options.trackerId,
-          )) {
-            if (pending.requestId === input.request_id) continue;
-            if (
-              (await inspectChanges(
-                this.options.repository,
-                pending.changes,
-              )) !== "applied"
-            )
-              throw new WriteError(
-                "COMMIT_STATUS_UNKNOWN",
-                "Ein früherer Schreibvorgang muss zuerst geklärt werden.",
-                true,
-                [pending.requestId],
-              );
-            try {
-              await this.finish(pending);
-            } catch {
-              throw new WriteError(
-                "COMMIT_STATUS_UNKNOWN",
-                "Bestätigung eines früheren Vorgangs steht aus.",
-                true,
-              );
-            }
-          }
-          const replayed = !!entry;
-          if (!entry) {
-            const now = (this.options.clock?.() ?? new Date()).toISOString();
-            const built = await this.build(
-              operation,
-              raw,
-              parsed.data,
-              actor,
-              context,
-              now,
-            );
-            // Enforce the complete data contract before preparing ANY side effect.
-            changedDataset(parsed.data, built.changes);
-            entry = {
-              trackerId: this.options.trackerId,
-              requestId: input.request_id,
-              fingerprint: hash,
-              actor: actor.subject,
-              state: "prepared",
-              changes: built.changes,
-              result: built.result,
-              audit: built.changes.map((c) => ({
-                operation_id: input.request_id,
-                event_type: events[operation],
-                entity_id: entityId(c.after),
-                at: now,
-                actor: actor.subject,
-                previous_revision: c.before?.row_revision ?? null,
-                new_revision: c.after.row_revision,
-                result: "verified",
-                changed_fields: Object.keys(c.after).filter(
-                  (k) =>
-                    !c.before ||
-                    canonical(c.after[k as keyof typeof c.after]) !==
-                      canonical(c.before[k as keyof typeof c.before]),
-                ),
-                correction_reason:
-                  "correction_reason" in input
-                    ? (input.correction_reason ?? null)
-                    : null,
-                changes: Object.fromEntries(
-                  [
-                    "status",
-                    "reps",
-                    "reps_basis",
-                    "load_kg",
-                    "load_basis",
-                    "implement_count",
-                    "execution_mode",
-                    "side",
-                    "rpe",
-                    "rir",
-                    "default_load_basis",
-                    "default_execution_mode",
-                    "default_implement_count",
-                  ]
-                    .filter(
-                      (field) =>
-                        field in c.after &&
-                        (!c.before ||
-                          canonical(
-                            (c.after as unknown as Record<string, unknown>)[
-                              field
-                            ],
-                          ) !==
-                            canonical(
-                              (c.before as unknown as Record<string, unknown>)[
-                                field
-                              ],
-                            )),
-                    )
-                    .map((field) => [
-                      field,
-                      {
-                        before: c.before
-                          ? (c.before as unknown as Record<string, unknown>)[
-                              field
-                            ]
-                          : null,
-                        after: (c.after as unknown as Record<string, unknown>)[
-                          field
-                        ],
-                      },
-                    ]),
-                ),
-              })),
-            };
-            await this.options.ledger.save(entry);
-          }
-          const observed = await inspectChanges(
-            this.options.repository,
-            entry.changes,
-          );
-          if (
-            observed === "unknown" ||
-            (entry.state === "dispatching" && observed === "absent")
-          )
-            throw new WriteError(
-              "COMMIT_STATUS_UNKNOWN",
-              "Schreibstatus unklar. Nicht erneut anhängen; Vorgang mit derselben ID prüfen.",
-              true,
-            );
-          if (observed === "absent") {
-            entry = { ...entry, state: "dispatching" };
-            await this.options.ledger.save(entry); // Must persist BEFORE contacting storage.
-            try {
-              await this.options.repository.apply(entry.changes);
-            } catch (error) {
-              this.options.invalidate();
-              if (isGoogleReauthRequired(error)) {
-                // Refused before sending: safe to dispatch again after reconnecting.
-                await this.options.ledger.save({ ...entry, state: "prepared" });
-                throw googleReauthWriteError();
-              }
-              let state: string = "unknown";
-              try {
-                state = await inspectChanges(
-                  this.options.repository,
-                  entry.changes,
-                );
-              } catch {
-                /* fail closed */
-              }
-              if (state !== "applied") {
-                // Even an unchanged read cannot prove that a timed-out request will never commit.
-                if (
-                  error instanceof WriteError &&
-                  error.code !== "COMMIT_STATUS_UNKNOWN" &&
-                  state === "absent"
-                ) {
-                  // Definitive rejections are safe to dispatch again under the same operation ID.
-                  await this.options.ledger.save({
-                    ...entry,
-                    state: "prepared",
-                  });
-                  throw error;
-                }
-                throw new WriteError(
-                  "COMMIT_STATUS_UNKNOWN",
-                  "Speicherung konnte nicht eindeutig bestätigt werden.",
-                  true,
-                );
-              }
-            }
-          }
-          this.options.invalidate();
-          try {
-            if (
-              (await inspectChanges(this.options.repository, entry.changes)) !==
-              "applied"
-            )
-              throw new Error("Readback mismatch");
-            await this.finish(entry);
-          } catch {
-            throw new WriteError(
-              "COMMIT_STATUS_UNKNOWN",
-              "Daten, Audit oder Journal konnten noch nicht vollständig bestätigt werden.",
-              true,
-            );
-          }
-          return { result: entry.result, replayed };
+          return {
+            ...built,
+            audit: auditEvents(operation, input, built.changes, actor, now),
+          };
         },
-      );
+      });
       return WriteResponseSchema.parse({
         ok: true,
         operation,
@@ -426,20 +233,18 @@ export class WorkoutLoggingService {
       const failure =
         error instanceof WriteError
           ? error
-          : isGoogleReauthRequired(error)
-            ? googleReauthWriteError()
-            : error instanceof z.ZodError
-              ? new WriteError(
-                  "VALIDATION_ERROR",
-                  "Eingaben sind nicht eindeutig oder ungültig.",
-                  false,
-                  error.issues.map((i) => `${i.path.join(".")}: ${i.message}`),
-                )
-              : new WriteError(
-                  "STORAGE_UNAVAILABLE",
-                  "Schreibinfrastruktur derzeit nicht verfügbar.",
-                  true,
-                );
+          : error instanceof z.ZodError
+            ? new WriteError(
+                "VALIDATION_ERROR",
+                "Eingaben sind nicht eindeutig oder ungültig.",
+                false,
+                error.issues.map((i) => `${i.path.join(".")}: ${i.message}`),
+              )
+            : new WriteError(
+                "STORAGE_UNAVAILABLE",
+                STORAGE_RETRY_MESSAGE,
+                true,
+              );
       return {
         ok: false,
         operation,

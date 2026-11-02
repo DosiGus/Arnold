@@ -2,10 +2,9 @@
  * Access control for onboarding sessions.
  *
  * The rule this module exists to enforce: **a session id submitted by a client
- * is not a permission.** Before Task 007 there is no verified Google identity,
- * so a setup session is anonymous — and an anonymous resource addressed by a
- * guessable id would be readable by anyone who guessed it. Three mechanisms
- * prevent that.
+ * is not a permission.** Without a login a setup session is anonymous — and
+ * an anonymous resource addressed by a guessable id would be readable by
+ * anyone who guessed it. Three mechanisms prevent that.
  *
  * First, a session is created with a 256-bit secret. The client keeps it; the
  * server stores only its SHA-256. A stolen database holds no usable tokens, and
@@ -138,10 +137,9 @@ export class FixtureOnboardingAccessControl implements OnboardingAccessControl {
  * The production guard: refuses everything.
  *
  * Not a placeholder to be filled in later by accident — it is the safe default
- * for a mode whose identity binding does not exist yet. Task 007 replaces it
- * with a guard that resolves a verified Google subject; until then, a
- * deployment that flips the mode gets a clear refusal instead of an anonymous
- * session surface.
+ * for a mode without an identity binding. Real accounts use
+ * `AuthenticatedOnboardingAccessControl`; a deployment that flips the mode
+ * without one gets a clear refusal instead of an anonymous session surface.
  */
 export class DenyOnboardingAccessControl implements OnboardingAccessControl {
   readonly mode = "production" as const;
@@ -149,7 +147,7 @@ export class DenyOnboardingAccessControl implements OnboardingAccessControl {
   private deny(): never {
     throw new OnboardingAccessError(
       "AUTH_REQUIRED",
-      "Produktive Einrichtungssitzungen benötigen eine geprüfte Nutzeridentität. Diese wird mit der Google-Anbindung bereitgestellt.",
+      "Produktive Einrichtungssitzungen benötigen eine geprüfte Nutzeridentität.",
     );
   }
   async establish(_context?: unknown): Promise<OnboardingPrincipal> {
@@ -194,15 +192,14 @@ export class AuthenticatedOnboardingAccessControl implements OnboardingAccessCon
 }
 
 /**
- * The opaque value Task 007 binds an OAuth `state` parameter to.
+ * An opaque name for "this session with this confirmed revision".
  *
  * Derived from the session id, the confirmed revision and the stored token
  * fingerprint, so it is stable for one confirmed plan, changes when the plan
  * changes, and cannot be inverted back into the session secret. It is a
- * *binding*, not a credential: Task 007 must still authorize the session
- * itself. Task 006 deliberately implements no OAuth around it.
+ * *binding*, not a credential.
  */
-export function oauthStateBinding(
+export function setupBinding(
   record: OnboardingRecord,
   confirmedRevision: number,
 ): string {

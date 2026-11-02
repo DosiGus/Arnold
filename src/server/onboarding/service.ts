@@ -22,8 +22,8 @@
  *   - a confirmation binds one plan version *and* one revision, and is void the
  *     moment the draft moves on — including when it is moved by the plan editor
  *     without onboarding being involved;
- *   - `COMPLETED` is reached only through verified Google provisioning
- *     (`completeProvisioning`), never through a client call;
+ *   - `COMPLETED` is reached only through `finishSetup`, which activates
+ *     exactly the confirmed plan first;
  *   - where the caller is a verified account (`access.perOwner`), the setup
  *     belongs to that account: one open setup per user, found again in any
  *     new chat, and never started again once it is completed.
@@ -31,12 +31,7 @@
  * Onboarding state lives in its own repository, never in the six Arnold tables
  * (`CONFIG.onboarding_storage = BACKEND_ONLY`).
  */
-import {
-  GOOGLE_REAUTH_MESSAGE,
-  GOOGLE_REAUTH_REQUIRED,
-  recoveryFor,
-} from "../../shared/write-recovery.js";
-import { isGoogleReauthRequired } from "../google/reauth.js";
+import { recoveryFor } from "../../shared/write-recovery.js";
 import type {
   ArnoldDataset,
   ArnoldExercise,
@@ -46,6 +41,7 @@ import {
   ONBOARDING_CONTRACT,
   ONBOARDING_SCHEMA_VERSION,
   OnboardingResponseSchema,
+  OnboardingErrorCodeSchema,
   OnboardingStateSchema,
   OnboardingToolInputs,
   splitsForDays,
@@ -75,7 +71,7 @@ import {
   OnboardingAccessError,
   createSessionToken,
   fingerprintToken,
-  oauthStateBinding,
+  setupBinding,
   type OnboardingAccessControl,
   type OnboardingPrincipal,
 } from "./access.js";
@@ -122,8 +118,7 @@ const fail = (
 ) => new OnboardingError(code, message, false, details);
 
 export interface OnboardingServiceOptions {
-  googleConnectionAvailable?: boolean;
-  beforeMutation?: () => Promise<void>;
+  setupFinishAvailable?: boolean;
   repository: OnboardingStateRepository;
   access: OnboardingAccessControl;
   /** Task 005. Absent means this deployment cannot hold a plan draft. */
@@ -137,8 +132,7 @@ export interface OnboardingServiceOptions {
   /** Session lifetime. Default 24 hours. */
   sessionTtlMs?: number;
   /**
-   * The authoritative "this account is set up" check, where the deployment
-   * has one (the connected runtime: the personal Google file is ready).
+   * An external "this account is set up" check, where a deployment has one.
    * Without it, a completed onboarding session is the evidence.
    */
   setupComplete?: () => Promise<boolean>;
@@ -312,7 +306,7 @@ export class OnboardingService {
       if (effect === "clear_plan_draft")
         session = { ...session, plan_draft_reference: null };
       if (effect === "handoff_ready")
-        session = { ...session, handoff_status: "ready_for_google_connection" };
+        session = { ...session, handoff_status: "ready_to_finish" };
       if (effect === "handoff_not_ready")
         session = { ...session, handoff_status: "not_ready" };
       if (effect === "handoff_superseded")
@@ -466,20 +460,20 @@ export class OnboardingService {
       profile_revision: confirmation?.profile_revision ?? null,
       confirmation_timestamp: confirmation?.confirmed_at_utc ?? null,
       current_plan_revision: plan?.row_revision ?? null,
-      google_connection_pending: record.session.status !== "COMPLETED",
+      finish_pending: record.session.status !== "COMPLETED",
     };
     if (record.session.status === "COMPLETED")
       return {
         ...base,
         status: "completed",
-        oauth_state_binding: null,
+        setup_binding: null,
         blocked_reason: null,
       };
     if (!confirmation)
       return {
         ...base,
         status: "not_ready",
-        oauth_state_binding: null,
+        setup_binding: null,
         blocked_reason:
           "Es liegt noch keine Bestätigung eines Trainingsplans vor.",
       };
@@ -487,7 +481,7 @@ export class OnboardingService {
       return {
         ...base,
         status: "superseded",
-        oauth_state_binding: null,
+        setup_binding: null,
         blocked_reason:
           "Der bestätigte Planentwurf ist nicht mehr abrufbar. Bitte einen neuen Plan erstellen und bestätigen.",
       };
@@ -495,7 +489,7 @@ export class OnboardingService {
       return {
         ...base,
         status: "superseded",
-        oauth_state_binding: null,
+        setup_binding: null,
         blocked_reason:
           "Es liegt ein neuer Planvorschlag vor. Bitte prüfe und bestätige diese Planversion.",
       };
@@ -503,7 +497,7 @@ export class OnboardingService {
       return {
         ...base,
         status: "superseded",
-        oauth_state_binding: null,
+        setup_binding: null,
         blocked_reason: `Der Plan wurde nach der Bestätigung geändert (bestätigt: Revision ${confirmation.row_revision}, aktuell: Revision ${plan.row_revision}). Bitte erneut prüfen und bestätigen.`,
       };
     // The plan was released *for a given profile*. Changed answers mean the
@@ -513,24 +507,24 @@ export class OnboardingService {
       return {
         ...base,
         status: "superseded",
-        oauth_state_binding: null,
+        setup_binding: null,
         blocked_reason:
           "Du hast deine Angaben nach der Bestätigung geändert. Bitte sieh dir den Plan noch einmal an und bestätige ihn erneut.",
       };
     if (
       record.session.status !== "PLAN_CONFIRMED" &&
-      record.session.status !== "AWAITING_GOOGLE_CONNECTION"
+      record.session.status !== "READY_TO_FINISH"
     )
       return {
         ...base,
         status: "not_ready",
-        oauth_state_binding: null,
+        setup_binding: null,
         blocked_reason: "Die Einrichtung ist nicht im Übergabezustand.",
       };
     return {
       ...base,
-      status: "ready_for_google_connection",
-      oauth_state_binding: oauthStateBinding(record, confirmation.row_revision),
+      status: "ready_to_finish",
+      setup_binding: setupBinding(record, confirmation.row_revision),
       blocked_reason: null,
     };
   }
@@ -574,8 +568,7 @@ export class OnboardingService {
       exercise_choices: exerciseChoices(session.profile),
       split_options: splitsForDays(session.profile.training.days_per_week),
       mode: this.mode,
-      google_connection_available:
-        this.options.googleConnectionAvailable ?? false,
+      setup_finish_available: this.options.setupFinishAvailable ?? false,
       can_write_plan: Boolean(this.options.plans),
       resume: {
         durable: this.options.repository.durability !== "memory",
@@ -790,8 +783,7 @@ export class OnboardingService {
       // Set up, but the completed session was already deleted (B15).
       if (await this.accountSetUp()) throw this.alreadyDone();
       if (latest && this.resumable(latest)) {
-        // Opening is a read plus a new secret, so it also works while the
-        // Google file is being created and every setup write is locked.
+        // Opening is a read plus a new secret.
         const token = createSessionToken();
         const reissued = await this.options.repository.reissueToken(
           latest.session.onboarding_session_id,
@@ -802,7 +794,6 @@ export class OnboardingService {
       }
     }
     try {
-      await this.options.beforeMutation?.();
       return await this.begin({ request_id: `show-${this.newId()}` }, context);
     } catch (error) {
       throw this.normalize(error);
@@ -1072,7 +1063,7 @@ export class OnboardingService {
 
       const training = current.session.profile.training;
       // One plan write per onboarding request id, so a retried submission
-      // reconciles in the plan ledger instead of creating a second draft.
+      // is replayed by the plan service instead of creating a second draft.
       const response = await this.options.plans.createTrainingPlan(
         {
           request_id: `onb-plan-${input.request_id}`,
@@ -1166,11 +1157,10 @@ export class OnboardingService {
    * valid. A review that succeeded earlier is not a confirmation, and a
    * confirmation for an older revision is refused with `STALE_CONFIRMATION`.
    *
-   * What it does *not* mean: the plan is live anywhere. Nothing is activated and
-   * no Google file is touched — that is Task 007's provisioning step. On success
-   * the setup moves on to `AWAITING_GOOGLE_CONNECTION`, because the release is
-   * the user's last action in this phase and a second button that only repeats
-   * it would be a sham interaction.
+   * What it does *not* do: activate anything. On success the setup moves on to
+   * `READY_TO_FINISH`, and `finishSetup` activates exactly this revision. The
+   * confirm tool calls it right away, because the release is the user's last
+   * action and a second button that only repeats it would be a sham.
    */
   async confirmPlan(
     raw: unknown,
@@ -1269,7 +1259,7 @@ export class OnboardingService {
         },
       );
       // Both transitions are real machine transitions, run in order, so the
-      // documented path PLAN_CONFIRMED -> AWAITING_GOOGLE_CONNECTION holds.
+      // documented path PLAN_CONFIRMED -> READY_TO_FINISH holds.
       const stored = await this.commit(
         confirmed,
         { type: "PREPARE_HANDOFF" },
@@ -1324,7 +1314,7 @@ export class OnboardingService {
    * readiness it no longer has. That is what makes a stale handoff impossible to
    * act on even when the change came from the plan editor.
    */
-  async prepareGoogleHandoff(
+  async prepareSetupHandoff(
     raw: unknown,
     context?: unknown,
   ): Promise<{ handoff: OnboardingHandoff; state: OnboardingState }> {
@@ -1354,7 +1344,7 @@ export class OnboardingService {
 
     // Preparing is idempotent and only moves a confirmed session forward.
     if (
-      handoff.status === "ready_for_google_connection" &&
+      handoff.status === "ready_to_finish" &&
       record.session.status === "PLAN_CONFIRMED"
     ) {
       const stored = await this.commit(
@@ -1372,39 +1362,111 @@ export class OnboardingService {
     return { handoff, state: await this.project(record) };
   }
 
-  /** Trusted provisioning boundary; never registered as a client-callable tool. */
-  async completeProvisioning(
-    claim: { onboarding_session_id: string; session_token: string },
-    binding: string,
-    context: unknown,
-  ): Promise<void> {
-    const { record, principal } = await this.open(claim, context);
-    if (record.session.status === "COMPLETED") return;
-    const confirmed = record.session.confirmed_plan_reference;
-    if (
-      !this.options.googleConnectionAvailable ||
-      !confirmed ||
-      isExpired(record.session, this.clock()) ||
-      oauthStateBinding(record, confirmed.row_revision) !== binding ||
-      record.session.profile.revision !== confirmed.profile_revision
-    )
-      throw fail(
-        "HANDOFF_SUPERSEDED",
-        "Die Planbestätigung ist nicht mehr gültig.",
+  /**
+   * Finishes the setup: activates exactly the confirmed plan, then marks the
+   * setup completed.
+   *
+   * Safe to repeat. The activation's request id is derived from the session
+   * and the confirmed revision, so a retry after an interruption replays the
+   * stored activation instead of activating twice, and a setup that was
+   * already completed simply reports so.
+   */
+  async finishSetup(
+    raw: unknown,
+    context?: unknown,
+  ): Promise<OnboardingResponse> {
+    return this.run("finish_arnold_setup", raw, async (input) => {
+      const plans = this.options.plans;
+      if (!plans || !this.options.setupFinishAvailable)
+        throw fail(
+          "PLAN_WRITE_UNAVAILABLE",
+          "In dieser Umgebung kann die Einrichtung nicht abgeschlossen werden.",
+        );
+      const opened = await this.open(input, context);
+      let record = opened.record;
+      if (record.session.status === "COMPLETED")
+        return {
+          state: await this.project(record),
+          token: null,
+          replayed: true,
+        };
+      const confirmed = record.session.confirmed_plan_reference;
+      if (!confirmed)
+        throw fail(
+          "CONFIRMATION_REQUIRED",
+          "Zuerst den Trainingsplan ausdrücklich bestätigen.",
+        );
+      if (isExpired(record.session, this.clock()))
+        throw fail(
+          "SESSION_EXPIRED",
+          "Diese Einrichtungssitzung ist abgelaufen. Starte die Einrichtung neu.",
+        );
+      const activationId = `setup-${record.session.onboarding_session_id}-${confirmed.plan_version_id}-${confirmed.row_revision}`;
+      const stored = await plans
+        .getPlan({ plan_version_id: confirmed.plan_version_id })
+        .catch(() => null);
+      // Activated by an earlier, interrupted attempt of this very step.
+      const activated =
+        stored?.plan.status === "active" &&
+        stored.plan.row_revision === confirmed.row_revision + 1 &&
+        record.session.status === "READY_TO_FINISH" &&
+        record.session.profile.revision === confirmed.profile_revision;
+      if (!activated) {
+        const { handoff } = await this.prepareSetupHandoff(
+          {
+            onboarding_session_id: input.onboarding_session_id,
+            session_token: input.session_token,
+          },
+          context,
+        );
+        if (handoff.status !== "ready_to_finish")
+          throw fail(
+            handoff.status === "superseded"
+              ? "HANDOFF_SUPERSEDED"
+              : "HANDOFF_NOT_READY",
+            handoff.blocked_reason ??
+              "Der bestätigte Plan kann gerade nicht übernommen werden.",
+          );
+        const activation = await plans.activateTrainingPlan(
+          {
+            request_id: activationId,
+            plan_version_id: confirmed.plan_version_id,
+            expected_row_revision: confirmed.row_revision,
+            confirmation: {
+              plan_version_id: confirmed.plan_version_id,
+              row_revision: confirmed.row_revision,
+              confirmed: true,
+            },
+          },
+          context,
+        );
+        if (!activation.ok) {
+          const error = activation.error!;
+          const code = OnboardingErrorCodeSchema.safeParse(error.code);
+          throw new OnboardingError(
+            code.success ? code.data : "HANDOFF_NOT_READY",
+            error.message,
+            error.retryable,
+            error.details,
+          );
+        }
+        record = (await this.open(input, context)).record;
+      }
+      const done = await this.commit(
+        record,
+        { type: "SETUP_FINISHED", finish_verified: true },
+        {
+          principal: opened.principal,
+          operationId: input.request_id,
+          auditEvent: "ONBOARDING_COMPLETED",
+          mutate: (next) => ({
+            ...next,
+            session: { ...next.session, handoff_status: "completed" },
+          }),
+        },
       );
-    await this.commit(
-      record,
-      { type: "GOOGLE_CONNECTED", provisioning_verified: true },
-      {
-        principal,
-        operationId: `provision-${binding}`,
-        auditEvent: "ONBOARDING_COMPLETED",
-        mutate: (next) => ({
-          ...next,
-          session: { ...next.session, handoff_status: "completed" },
-        }),
-      },
-    );
+      return { state: await this.project(done), token: null };
+    });
   }
 
   /** Ends a setup deliberately. Always possible, never an error. */
@@ -1480,7 +1542,6 @@ export class OnboardingService {
       // Refusals that explain more than the deployment's write lock run first:
       // a finished account learns it is finished, not that writes are locked.
       await precheck?.();
-      await this.options.beforeMutation?.();
       const { state, token, replayed } = await action(input);
       return OnboardingResponseSchema.parse({
         ok: true,
@@ -1534,12 +1595,6 @@ export class OnboardingService {
   /** Normalises anything thrown into an `OnboardingError`. */
   private normalize(error: unknown): OnboardingError {
     if (error instanceof OnboardingError) return error;
-    if (isGoogleReauthRequired(error))
-      return new OnboardingError(
-        GOOGLE_REAUTH_REQUIRED,
-        GOOGLE_REAUTH_MESSAGE,
-        false,
-      );
     if (error instanceof OnboardingAccessError)
       return new OnboardingError(error.code, error.message);
     if (error instanceof RepositoryConflictError)
@@ -1568,4 +1623,4 @@ export class OnboardingService {
 
 /** The handoff statuses Task 007 may act on. Everything else must be refused. */
 export const ACTIONABLE_HANDOFF_STATUSES: readonly HandoffStatus[] =
-  HANDOFF_STATUSES.filter((status) => status === "ready_for_google_connection");
+  HANDOFF_STATUSES.filter((status) => status === "ready_to_finish");

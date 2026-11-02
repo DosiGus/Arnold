@@ -144,7 +144,7 @@ export function viewMetric(
 }
 
 export type ArnoldModeInfo = {
-  readonly mode: "arnold_sheets";
+  readonly mode: "arnold";
   readonly label: string;
   readonly description: string;
 };
@@ -169,15 +169,15 @@ function sourceOf(
 ): ViewSource {
   const template = analytics.metadata.file_role === "MASTER_TEMPLATE";
   return {
-    mode: "arnold_sheets",
+    mode: "arnold",
     label:
       context.mode?.label ??
-      (template ? "Master-Vorlage · Arnold" : "Arnold · Google Sheets"),
+      (template ? "Master-Vorlage · Arnold" : "Arnold · Mein Training"),
     description:
       context.mode?.description ??
       (template
         ? "Gelesen wird die gemeinsame Arnold-Master-Vorlage. Sie enthält bewusst keine persönlichen Trainingsdaten."
-        : "Deine Arnold-Trainingsdatei wird ausschließlich lesend über den Server ausgewertet."),
+        : "Deine Trainingsdaten, ausgewertet auf dem Arnold-Server."),
     synthetic: false,
     read_only: true,
     file_role: analytics.metadata.file_role,

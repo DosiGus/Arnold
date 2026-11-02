@@ -1,6 +1,4 @@
 import { createHash, randomBytes } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
 import { z } from "zod";
 import {
   ArnoldDatasetSchema,
@@ -33,8 +31,7 @@ export class WriteError extends Error {
     super(message);
   }
 }
-export type WriteMode =
-  "disabled" | "fixture" | "test_sheet" | "connected" | "production";
+export type WriteMode = "disabled" | "fixture" | "database";
 export type Permission = "write" | "correct_completed";
 export interface Actor {
   subject: string;
@@ -232,105 +229,101 @@ export class InMemoryAuditLog implements AuditLogRepository {
       );
   }
 }
-const EntrySchema = z.object({
-  trackerId: z.string(),
-  requestId: z.string(),
+/**
+ * The receipt of one write. Stored in the same transaction as the data it
+ * describes, so a receipt exists exactly when the write happened. A repeated
+ * request_id finds it and returns the stored result instead of writing twice.
+ */
+export const StoredOperationSchema = z.object({
+  requestId: z.string().min(1),
   fingerprint: z.string(),
   actor: z.string(),
-  state: z.enum(["prepared", "dispatching", "committed"]),
   changes: z.array(ChangeSchema),
   audit: z.array(AuditEventSchema),
-  // One ledger serves workout and plan writes, so a replay is deduplicated
-  // across both domains by (tracker, request_id) rather than per service.
+  // One store serves workout and plan writes, so a replay is deduplicated
+  // across both domains by request_id rather than per service.
   result: z.union([WriteResultSchema, PlanWriteResultSchema]),
-  /** Last write of this entry; drives the retention period (B8). */
-  recorded_at: z.string().optional(),
 });
-export type LedgerEntry = z.infer<typeof EntrySchema>;
-export interface OperationLedger {
-  readonly durability: "memory" | "local" | "distributed";
-  get(trackerId: string, requestId: string): Promise<LedgerEntry | undefined>;
-  pending(trackerId: string): Promise<LedgerEntry[]>;
-  save(entry: LedgerEntry): Promise<void>;
+export type StoredOperation = z.infer<typeof StoredOperationSchema>;
+
+/** One write in progress. Everything it sees and does belongs to one user. */
+export interface ArnoldTransaction {
+  /** The user's training data as of this transaction. */
+  read(): Promise<ArnoldDataset>;
+  /** The receipt for a request id, if that write already happened. */
+  operation(requestId: string): Promise<StoredOperation | undefined>;
+  /**
+   * Applies the changes, appends the audit events and stores the receipt.
+   * A change whose `before` no longer matches the stored row is refused.
+   */
+  commit(operation: StoredOperation): Promise<void>;
 }
-const ledgerKey = (tracker: string, request: string) =>
-  canonical([tracker, request]);
-export class InMemoryOperationLedger implements OperationLedger {
-  readonly durability = "memory" as const;
-  private entries = new Map<string, LedgerEntry>();
-  async get(tracker: string, request: string) {
-    const e = this.entries.get(ledgerKey(tracker, request));
-    return e && structuredClone(e);
-  }
-  async pending(tracker: string) {
-    return [...this.entries.values()]
-      .filter((e) => e.trackerId === tracker && e.state !== "committed")
-      .map((e) => structuredClone(e));
-  }
-  async save(entry: LedgerEntry) {
-    this.entries.set(
-      ledgerKey(entry.trackerId, entry.requestId),
-      EntrySchema.parse(structuredClone(entry)),
-    );
-  }
+
+/**
+ * Where one user's training data lives.
+ *
+ * `write` is the only way to change it: the work runs serialised per user and
+ * atomically, so either everything it committed is stored, or nothing is.
+ * There is no in-between state that would have to be reconciled later.
+ */
+export interface ArnoldStore {
+  readonly kind: "fixture" | "database";
+  read(): Promise<ArnoldDataset>;
+  write<T>(work: (tx: ArnoldTransaction) => Promise<T>): Promise<T>;
+  /** Audit events that belong to no data write (the setup conversation). */
+  readonly audit: AuditLogRepository;
 }
-/** Local crash-surviving journal. Single process only; NOT a distributed lock/ledger. */
-export class FileOperationLedger implements OperationLedger {
-  readonly durability = "local" as const;
+
+/** Synthetic data in memory, for the fixture profile and tests. */
+export class InMemoryArnoldStore implements ArnoldStore {
+  readonly kind = "fixture" as const;
+  readonly audit = new InMemoryAuditLog();
+  /** Stored receipts, by request id. Visible for tests. */
+  readonly operations = new Map<string, StoredOperation>();
+  private dataset: ArnoldDataset;
   private queue = new InProcessWriteCoordinator();
-  private seenFile = false;
-  constructor(private path: string) {}
-  private async read(): Promise<LedgerEntry[]> {
-    try {
-      const entries = z
-        .array(EntrySchema)
-        .parse(JSON.parse(await readFile(this.path, "utf8")));
-      this.seenFile = true;
-      return entries;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT" && !this.seenFile)
-        return [];
-      throw new WriteError(
-        "STORAGE_UNAVAILABLE",
-        "Operationsjournal nicht lesbar.",
-        true,
-      );
-    }
+  constructor(dataset: ArnoldDataset) {
+    this.dataset = ArnoldDatasetSchema.parse(dataset);
   }
-  async get(tracker: string, request: string) {
-    return (await this.read()).find(
-      (e) => e.trackerId === tracker && e.requestId === request,
-    );
+  async read() {
+    return structuredClone(this.dataset);
   }
-  async pending(tracker: string) {
-    return (await this.read()).filter(
-      (e) => e.trackerId === tracker && e.state !== "committed",
-    );
-  }
-  async save(entry: LedgerEntry) {
-    await this.queue.exclusive(this.path, async () => {
-      const entries = await this.read();
-      const next = entries.filter(
-        (e) =>
-          ledgerKey(e.trackerId, e.requestId) !==
-          ledgerKey(entry.trackerId, entry.requestId),
-      );
-      next.push(
-        EntrySchema.parse({ ...entry, recorded_at: new Date().toISOString() }),
-      );
-      await mkdir(dirname(this.path), { recursive: true });
-      const temp = `${this.path}.${uuid7()}.tmp`;
-      await writeFile(temp, JSON.stringify(next), { mode: 0o600, flush: true });
-      await rename(temp, this.path);
-      this.seenFile = true;
+  write<T>(work: (tx: ArnoldTransaction) => Promise<T>): Promise<T> {
+    return this.queue.exclusive("store", async () => {
+      // Work on a copy; only a completed transaction replaces the state.
+      let data = this.dataset;
+      const staged = new Map<string, StoredOperation>();
+      const tx: ArnoldTransaction = {
+        read: async () => structuredClone(data),
+        operation: async (requestId) => {
+          const found = staged.get(requestId) ?? this.operations.get(requestId);
+          return found && structuredClone(found);
+        },
+        commit: async (operation) => {
+          const parsed = StoredOperationSchema.parse(
+            structuredClone(operation),
+          );
+          if (
+            staged.has(parsed.requestId) ||
+            this.operations.has(parsed.requestId)
+          )
+            throw new WriteError(
+              "DUPLICATE_OPERATION",
+              "Operations-ID wurde bereits verwendet.",
+            );
+          data = changedDataset(data, parsed.changes);
+          staged.set(parsed.requestId, parsed);
+        },
+      };
+      const result = await work(tx);
+      this.dataset = data;
+      for (const [id, operation] of staged) {
+        this.operations.set(id, operation);
+        await this.audit.append(operation.audit);
+      }
+      return result;
     });
   }
-}
-export interface ArnoldWriteRepository {
-  readonly kind: "fixture" | "test_sheet" | "connected";
-  read(): Promise<ArnoldDataset>;
-  /** One logical atomic batch. Unknown outcomes must throw COMMIT_STATUS_UNKNOWN. */
-  apply(changes: readonly EntityChange[]): Promise<void>;
 }
 /** Stable columns per table: an update may never move a row's identity or its history references. */
 const STABLE_COLUMNS = {
@@ -468,38 +461,4 @@ export function changedDataset(
       parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`),
     );
   return parsed.data;
-}
-export async function inspectChanges(
-  repo: ArnoldWriteRepository,
-  changes: readonly EntityChange[],
-): Promise<"applied" | "absent" | "unknown"> {
-  const data = await repo.read();
-  const pairs = changes.map((c) => ({
-    c,
-    current:
-      (data[c.table] as readonly Entity[]).find(
-        (r) => entityId(r) === entityId(c.after),
-      ) ?? null,
-  }));
-  if (
-    pairs.every(({ c, current }) => canonical(current) === canonical(c.after))
-  )
-    return "applied";
-  if (
-    pairs.every(({ c, current }) => canonical(current) === canonical(c.before))
-  )
-    return "absent";
-  return "unknown";
-}
-export class InMemoryArnoldWriteRepository implements ArnoldWriteRepository {
-  readonly kind = "fixture" as const;
-  constructor(private dataset: ArnoldDataset) {
-    this.dataset = ArnoldDatasetSchema.parse(dataset);
-  }
-  async read() {
-    return ArnoldDatasetSchema.parse(structuredClone(this.dataset));
-  }
-  async apply(changes: readonly EntityChange[]) {
-    this.dataset = changedDataset(this.dataset, changes);
-  }
 }

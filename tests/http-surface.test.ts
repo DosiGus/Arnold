@@ -2,7 +2,7 @@
  * The HTTP surface of a server started with no configuration at all.
  *
  * With nothing set, Arnold runs the synthetic fixture profile: invented data in
- * memory, every tool registered, no Google account involved. These tests pin
+ * memory, every tool registered, no account involved. These tests pin
  * that default, the routes around `/mcp`, and the host/origin protection that
  * every deployment relies on.
  */
@@ -110,9 +110,12 @@ describe("routes and request protection", () => {
 });
 
 describe("removed profiles", () => {
-  it.each(["demo", "google_sheets"])("refuses STORAGE_MODE=%s", (mode) => {
-    expect(() => createHttpApp({ env: { STORAGE_MODE: mode } })).toThrow(
-      /arnold_fixture, arnold_sheets oder arnold_connected/,
-    );
-  });
+  it.each(["demo", "google_sheets", "arnold_sheets", "arnold_connected"])(
+    "refuses STORAGE_MODE=%s",
+    (mode) => {
+      expect(() => createHttpApp({ env: { STORAGE_MODE: mode } })).toThrow(
+        /arnold_fixture oder arnold_database/,
+      );
+    },
+  );
 });

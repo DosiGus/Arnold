@@ -8,17 +8,13 @@
  * preserves the two properties a client depends on — the code and whether a
  * retry with the same request_id is meaningful.
  */
-import { isGoogleReauthRequired } from "../google/reauth.js";
-import {
-  GOOGLE_REAUTH_MESSAGE,
-  GOOGLE_REAUTH_REQUIRED,
-} from "../../shared/write-recovery.js";
 import { z } from "zod";
 import {
   PlanErrorCodeSchema,
   type PlanErrorCode,
 } from "../../shared/plan-contract.js";
 import { WriteError } from "../workout/infrastructure.js";
+import { STORAGE_RETRY_MESSAGE } from "./commit.js";
 
 export class PlanError extends Error {
   constructor(
@@ -41,8 +37,6 @@ export const planError = (
 /** Normalises anything thrown during a plan write into a `PlanError`. */
 export function toPlanError(error: unknown): PlanError {
   if (error instanceof PlanError) return error;
-  if (isGoogleReauthRequired(error))
-    return new PlanError(GOOGLE_REAUTH_REQUIRED, GOOGLE_REAUTH_MESSAGE, false);
   if (error instanceof WriteError) {
     // Most infrastructure codes exist verbatim in the plan vocabulary. The
     // workout-only ones cannot arise here, so they fall back rather than leak.
@@ -61,9 +55,5 @@ export function toPlanError(error: unknown): PlanError {
       false,
       error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`),
     );
-  return new PlanError(
-    "STORAGE_UNAVAILABLE",
-    "Die Planverwaltung ist derzeit nicht verfügbar.",
-    true,
-  );
+  return new PlanError("STORAGE_UNAVAILABLE", STORAGE_RETRY_MESSAGE, true);
 }

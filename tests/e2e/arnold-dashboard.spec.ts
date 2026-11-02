@@ -98,7 +98,7 @@ test("empty and failed reads never turn into example numbers", async ({
   await page.goto("http://127.0.0.1:8794/preview");
   await expect(page.getByRole("alert")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Erneut prüfen", exact: true }),
+    page.getByRole("button", { name: "Erneut versuchen", exact: true }),
   ).toBeVisible();
   await expect(page.locator(".ac-big")).toHaveCount(0);
   await expect(page.locator("body")).not.toContainText("Demo");

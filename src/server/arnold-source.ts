@@ -1,42 +1,18 @@
 /**
- * Server-side Arnold data source.
+ * Server-side read path for the dashboard.
  *
- * The only place that reads Google Sheets. The UI never receives credentials and
- * never talks to Google: it calls MCP tools, and this module answers them from a
- * validated `ArnoldDataset`.
- *
- * The cache here is deliberately small — one dataset, one short TTL, one
- * in-flight read — but it is shaped for what comes later. A future writing tool
- * only has to call `invalidate()` after a successful write for the next read to
- * go back to Google; nothing else needs to know a cache exists. A read that
- * fails never replaces a good dataset with demo data and never presents a cached
- * dataset as fresh: `age_ms` travels with every answer.
+ * The UI never talks to the database: it calls MCP tools, and this module
+ * answers them from a validated `ArnoldDataset`. A read that fails never
+ * falls back to other data; it becomes a failure the UI can act on.
  */
-import {
-  ArnoldSheetsReadAdapter,
-  ArnoldSheetsReadError,
-  type ArnoldSheetsReadOptions,
-  type ArnoldSheetsReadTransport,
-} from "./arnold-sheets-read-adapter.js";
-import { ArnoldDataError } from "./arnold-sheet-parser.js";
-import {
-  GOOGLE_REAUTH_MESSAGE,
-  type Recovery,
-} from "../shared/write-recovery.js";
-import { isGoogleReauthRequired } from "./google/reauth.js";
+import { ArnoldDatasetSchema } from "../shared/arnold-schema-v1.js";
+import type { Recovery } from "../shared/write-recovery.js";
 import type { ArnoldDataset } from "../shared/arnold-schema-v1.js";
+import type { ArnoldStore } from "./workout/infrastructure.js";
 
 /** Why a dataset could not be produced, in terms the UI can act on. */
 export type ArnoldSourceFailure = {
-  readonly code:
-    | "auth_missing"
-    | "permission_denied"
-    | "not_found"
-    | "rate_limited"
-    | "unavailable"
-    | "schema_incompatible"
-    | "google_reauth_required"
-    | "unknown";
+  readonly code: "unavailable" | "schema_incompatible" | "unknown";
   readonly message: string;
   /** True when simply trying again can plausibly succeed. */
   readonly retryable: boolean;
@@ -51,76 +27,19 @@ export class ArnoldSourceError extends Error {
   }
 }
 
-/** Maps adapter and validation errors onto the UI-facing failure taxonomy. */
+/** Maps a read error onto the UI-facing failure taxonomy. */
 export function classifyFailure(error: unknown): ArnoldSourceFailure {
   if (error instanceof ArnoldSourceError) return error.failure;
-  if (isGoogleReauthRequired(error))
-    return {
-      code: "google_reauth_required",
-      message: GOOGLE_REAUTH_MESSAGE,
-      retryable: false,
-      recovery: "reconnect_google",
-    };
-  if (error instanceof ArnoldSheetsReadError) {
-    const map = {
-      AUTH: {
-        code: "auth_missing",
-        retryable: false,
-        recovery: "reconnect_google",
-      },
-      PERMISSION: {
-        code: "permission_denied",
-        retryable: false,
-        recovery: "contact_support",
-      },
-      NOT_FOUND: {
-        code: "not_found",
-        retryable: false,
-        recovery: "contact_support",
-      },
-      RATE_LIMIT: {
-        code: "rate_limited",
-        retryable: true,
-        recovery: "retry_same_request",
-      },
-      UNAVAILABLE: {
-        code: "unavailable",
-        retryable: true,
-        recovery: "retry_same_request",
-      },
-      API: { code: "unknown", retryable: true, recovery: "retry_same_request" },
-      GOOGLE_REAUTH_REQUIRED: {
-        code: "google_reauth_required",
-        retryable: false,
-        recovery: "reconnect_google",
-      },
-    } as const;
-    const mapped = map[error.code];
-    return {
-      code: mapped.code,
-      message: error.message,
-      retryable: mapped.retryable,
-      recovery: mapped.recovery,
-    };
-  }
-  if (error instanceof ArnoldDataError)
-    return {
-      code: "schema_incompatible",
-      message:
-        "Die Arnold-Datei passt nicht zum erwarteten Schema v1. Struktur und Spalten der sechs Tabellen prüfen.",
-      retryable: false,
-      recovery: "contact_support",
-    };
   return {
-    code: "unknown",
+    code: "unavailable",
     message:
-      "Die Trainingsdaten konnten nicht geladen werden. Verbindung und Serverprotokoll prüfen.",
+      "Die Trainingsdaten konnten gerade nicht geladen werden. Bitte gleich noch einmal versuchen.",
     retryable: true,
     recovery: "retry_same_request",
   };
 }
 
-/** A dataset plus how old it is, so nothing stale is ever shown as current. */
+/** A dataset plus when it was read. */
 export type DatasetSnapshot = {
   readonly dataset: ArnoldDataset;
   readonly fetchedAt: string;
@@ -128,116 +47,57 @@ export type DatasetSnapshot = {
 };
 
 export interface ArnoldDataSource {
-  readonly mode: "arnold_sheets";
   readonly label: string;
   readonly description: string;
   /**
-   * False only for a source that reads a real Google file.
+   * True when the source serves invented data only.
    *
-   * This is what decides whether the server may listen on a public address: a
-   * synthetic dataset has nothing to leak, a personal tracker has everything.
-   * It is a property of the source rather than of the environment, because
-   * tests and fixture runtimes inject sources directly and must be judged by
-   * what they actually serve. See `requireSafeArnoldBinding`.
+   * This decides whether the server may listen on a public address without a
+   * login: a synthetic dataset has nothing to leak, real training data has
+   * everything. See `requireSafeArnoldBinding`.
    */
   readonly synthetic: boolean;
   /** Validated dataset; throws `ArnoldSourceError` on any failure. */
   load(): Promise<DatasetSnapshot>;
-  /** Drops the cached dataset. Call after a successful write. */
-  invalidate(): void;
 }
 
-export type ArnoldSheetsSourceOptions = ArnoldSheetsReadOptions & {
-  /** How long a dataset may be reused. 0 disables reuse entirely. */
-  readonly cacheTtlMs?: number;
-  readonly label?: string;
-  readonly description?: string;
-  /** Injected for tests; production uses the adapter's Google transport. */
-  readonly transport?: ArnoldSheetsReadTransport;
-  readonly now?: () => number;
-};
-
-/**
- * Reads the Arnold workbook through the Task 001 adapter and caches the result
- * for `cacheTtlMs`. Concurrent callers share one in-flight read, so opening the
- * dashboard does not multiply Google requests.
- */
-export class ArnoldSheetsDataSource implements ArnoldDataSource {
-  readonly mode = "arnold_sheets" as const;
-  /** Reads a real Google file: never exposed on a public address unauthenticated. */
-  readonly synthetic = false;
-  readonly label: string;
-  readonly description: string;
-  private readonly adapter: ArnoldSheetsReadAdapter;
-  private readonly ttl: number;
-  private readonly now: () => number;
-  private generation = 0;
-  private cached?: { dataset: ArnoldDataset; at: number };
-  private pending?: Promise<DatasetSnapshot>;
-
-  constructor(options: ArnoldSheetsSourceOptions) {
-    const {
-      cacheTtlMs: _ttl,
-      label: _label,
-      description: _description,
-      transport,
-      now: _now,
-      ...readOptions
-    } = options;
-    this.adapter = new ArnoldSheetsReadAdapter(readOptions, transport);
-    this.ttl = Math.max(options.cacheTtlMs ?? 15_000, 0);
-    this.now = options.now ?? Date.now;
-    this.label = options.label ?? "Arnold · Google Sheets";
-    this.description =
-      options.description ??
-      "Deine Arnold-Trainingsdatei wird ausschließlich lesend über den Server ausgewertet.";
-  }
-
-  private snapshot(dataset: ArnoldDataset, at: number): DatasetSnapshot {
-    return {
-      dataset,
-      fetchedAt: new Date(at).toISOString(),
-      ageMs: Math.max(this.now() - at, 0),
-    };
-  }
-
-  async load(): Promise<DatasetSnapshot> {
-    const cached = this.cached;
-    if (cached && this.now() - cached.at < this.ttl)
-      return this.snapshot(cached.dataset, cached.at);
-    if (this.pending) return this.pending;
-    const generation = this.generation;
-    let pending!: Promise<DatasetSnapshot>;
-    pending = (async (): Promise<DatasetSnapshot> => {
-      let dataset: ArnoldDataset;
+/** The dashboard's view of a store: every read is fresh. */
+export function storeSource(
+  store: ArnoldStore,
+  options: { synthetic: boolean; label: string; description: string },
+): ArnoldDataSource {
+  return {
+    synthetic: options.synthetic,
+    label: options.label,
+    description: options.description,
+    async load() {
+      let raw: ArnoldDataset;
       try {
-        dataset = await this.adapter.getDataset();
+        raw = await store.read();
       } catch (error) {
         throw new ArnoldSourceError(classifyFailure(error));
-      } finally {
-        if (this.pending === pending) this.pending = undefined;
       }
-      // A read started before a write cannot repopulate the cache or be served
-      // as fresh after invalidation. Re-read only after the old adapter read ended.
-      if (generation !== this.generation) return this.load();
-      const at = this.now();
-      this.cached = { dataset, at };
-      return this.snapshot(dataset, at);
-    })();
-    this.pending = pending;
-    return pending;
-  }
-
-  invalidate(): void {
-    this.generation++;
-    this.cached = undefined;
-  }
+      const parsed = ArnoldDatasetSchema.safeParse(raw);
+      if (!parsed.success)
+        throw new ArnoldSourceError({
+          code: "schema_incompatible",
+          message:
+            "Die gespeicherten Trainingsdaten passen nicht zum erwarteten Format.",
+          retryable: false,
+          recovery: "contact_support",
+        });
+      return {
+        dataset: parsed.data,
+        fetchedAt: new Date().toISOString(),
+        ageMs: 0,
+      };
+    },
+  };
 }
 
-/** In-memory source over a fixed dataset; used by tests and fixture servers. */
+/** In-memory source over a fixed dataset; used by tests. */
 export class StaticArnoldDataSource implements ArnoldDataSource {
-  readonly mode = "arnold_sheets" as const;
-  /** Holds only the dataset it was constructed with; no Google file behind it. */
+  /** Holds only the dataset it was constructed with. */
   readonly synthetic = true;
   readonly label: string;
   readonly description: string;
@@ -250,10 +110,10 @@ export class StaticArnoldDataSource implements ArnoldDataSource {
       failure?: ArnoldSourceFailure;
     } = {},
   ) {
-    this.label = options.label ?? "Arnold · Testdatei";
+    this.label = options.label ?? "Arnold · Testdaten";
     this.description =
       options.description ??
-      "Synthetische Arnold-Fixture; ausschließlich lesend.";
+      "Synthetische Arnold-Daten; ausschließlich lesend.";
     this.failure = options.failure;
   }
   /** Lets a test flip the source into a failing state at runtime. */
@@ -271,5 +131,4 @@ export class StaticArnoldDataSource implements ArnoldDataSource {
       ageMs: 0,
     };
   }
-  invalidate(): void {}
 }

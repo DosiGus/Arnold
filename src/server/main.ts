@@ -10,11 +10,9 @@ const server = (await createConfiguredHttpApp({ host })).listen(
   () => {
     console.log(
       `Arnold · ${
-        process.env.STORAGE_MODE === "arnold_connected"
-          ? "Google Sheets (persönlich, authentifiziert, Einzelserver-Entwicklung)"
-          : process.env.STORAGE_MODE === "arnold_sheets"
-            ? "Google Sheets (lesend, privat)"
-            : "synthetische Daten"
+        process.env.STORAGE_MODE === "arnold_database"
+          ? "Datenbank (angemeldete Nutzer)"
+          : "synthetische Daten"
       }\nPreview: http://localhost:${port}/preview\nMCP Apps Test-Host: http://localhost:${port}/host\nMCP: http://localhost:${port}/mcp`,
     );
   },

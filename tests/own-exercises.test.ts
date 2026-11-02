@@ -47,7 +47,7 @@ const OWN = [
 describe("own plan with three unknown exercises", () => {
   it("creates them as own exercises and assigns them to the draft", async () => {
     const { runtime, claim, catalogId } = await ownPlanSetup();
-    const before = (await runtime.repository.read()).exercises.length;
+    const before = (await runtime.store.read()).exercises.length;
     const submitted = await runtime.onboarding.submitPlanProposal({
       request_id: rid(),
       ...claim,
@@ -79,7 +79,7 @@ describe("own plan with three unknown exercises", () => {
     expect(submitted.ok, JSON.stringify(submitted.error)).toBe(true);
     expect(submitted.state!.plan!.exercise_count).toBe(4);
 
-    const data = await runtime.repository.read();
+    const data = await runtime.store.read();
     expect(data.exercises.length).toBe(before + 3);
     const own = new Map(
       data.exercises
@@ -111,7 +111,7 @@ describe("own plan with three unknown exercises", () => {
 
   it("refuses a session that uses an undescribed key, without writing", async () => {
     const { runtime, claim } = await ownPlanSetup();
-    const before = await runtime.repository.read();
+    const before = await runtime.store.read();
     const refused = await runtime.onboarding.submitPlanProposal({
       request_id: rid(),
       ...claim,
@@ -127,7 +127,7 @@ describe("own plan with three unknown exercises", () => {
     });
     expect(refused.ok).toBe(false);
     expect(refused.error!.details.join(" ")).toContain("custom:9");
-    expect(await runtime.repository.read()).toEqual(before);
+    expect(await runtime.store.read()).toEqual(before);
   });
 
   it("tells ChatGPT to describe unknown exercises instead of dropping them", async () => {

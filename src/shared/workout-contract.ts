@@ -128,10 +128,7 @@ export const WriteErrorCodeSchema = z.enum([
   "AUTH_REQUIRED",
   "PERMISSION_DENIED",
   "STORAGE_UNAVAILABLE",
-  "COMMIT_STATUS_UNKNOWN",
   "EXERCISE_MATCH_FOUND",
-  "GOOGLE_REAUTH_REQUIRED",
-  "SHEET_CAPACITY_EXCEEDED",
   /** An unusual value needs the user's explicit yes (B13). */
   "CONFIRMATION_REQUIRED",
   /** The workout date is after today in the workout's time zone (B13). */
@@ -177,13 +174,7 @@ export const WorkoutContextSchema = z.strictObject({
   exercises: z.array(ArnoldExerciseSchema),
   plans: z.array(ArnoldPlanVersionSchema),
   plan_items: z.array(ArnoldPlanItemSchema),
-  write_mode: z.enum([
-    "disabled",
-    "fixture",
-    "test_sheet",
-    "connected",
-    "production",
-  ]),
+  write_mode: z.enum(["disabled", "fixture", "database"]),
   can_write: z.boolean(),
   can_correct_completed: z.boolean(),
 });

@@ -2,7 +2,7 @@
  * Arnold Analytics Engine v1.
  *
  * Pure calculation layer on top of a validated `ArnoldDataset`. It has no
- * Google, HTTP, MCP, React, file system or clock dependency, never mutates its
+ * database, HTTP, MCP, React, file system or clock dependency, never mutates its
  * input and returns JSON-serialisable, Zod-validated results. The calculation
  * conventions are summarised in docs/GUIDE.md and versioned by
  * `METRICS_VERSION`.

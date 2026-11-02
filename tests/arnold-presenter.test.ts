@@ -26,7 +26,7 @@ describe("ArnoldDataset to dashboard DTO", () => {
   it("carries the versioned contract, source identity and engine versions", () => {
     const result = view(oneWorkout([{ load_kg: 70, reps: 10 }]));
     expect(result.ui_contract).toBe(ARNOLD_UI_CONTRACT);
-    expect(result.source.mode).toBe("arnold_sheets");
+    expect(result.source.mode).toBe("arnold");
     expect(result.source.read_only).toBe(true);
     expect(result.source.synthetic).toBe(false);
     expect(result.source.generated_at).toBe(CONTEXT.generatedAt);

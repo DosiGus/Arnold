@@ -261,7 +261,7 @@ describe("plan MCP tools", () => {
     expect(rejected.structuredContent).toBeUndefined();
     // Nothing was written.
     expect(
-      (await runtime.repository.read()).plans.find(
+      (await runtime.store.read()).plans.find(
         (p) => p.plan_version_id === version.plan_version_id,
       )!.row_revision,
     ).toBe(version.row_revision);

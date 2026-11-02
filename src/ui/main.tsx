@@ -7,7 +7,7 @@ import { OnboardingView } from "./views/OnboardingView";
 import "./style.css";
 import { AccountCard } from "./views/AccountCard";
 import { CardSkeleton } from "./components/cards";
-import { GoogleRecovery, RecoveryCard } from "./components/recovery";
+import { RecoveryCard } from "./components/recovery";
 import { asFailure, type UiFailure } from "./recovery";
 import { parseCard, type CardId } from "./cards";
 
@@ -53,12 +53,7 @@ function Boot() {
     };
     client.onError = setError;
     client.onFailure = (next) => {
-      if (
-        next.recovery === "reconnect_google" ||
-        next.recovery === "finish_setup" ||
-        !payload
-      )
-        setFailure(next);
+      if (next.recovery === "finish_setup" || !payload) setFailure(next);
     };
     client.onStale = setStale;
     // The model picks the card through the tool's `card` argument.
@@ -101,32 +96,20 @@ function Boot() {
       card={card}
     />
   );
-  return (
-    <GoogleRecovery
-      client={mcp}
-      failure={failure}
-      onRecovered={() => {
-        setFailure(undefined);
-        setError("");
-        if (!payload) void mcp.openDashboard().catch(() => {});
-      }}
-    >
-      {failure?.recovery === "finish_setup" ? (
-        <main className="arnold-cards">
-          <RecoveryCard
-            recovery="finish_setup"
-            onAction={() => {
-              void mcp
-                .showOnboarding()
-                .then(() => setFailure(undefined))
-                .catch(() => {});
-            }}
-          />
-        </main>
-      ) : (
-        content
-      )}
-    </GoogleRecovery>
+  return failure?.recovery === "finish_setup" ? (
+    <main className="arnold-cards">
+      <RecoveryCard
+        recovery="finish_setup"
+        onAction={() => {
+          void mcp
+            .showOnboarding()
+            .then(() => setFailure(undefined))
+            .catch(() => {});
+        }}
+      />
+    </main>
+  ) : (
+    content
   );
 }
 

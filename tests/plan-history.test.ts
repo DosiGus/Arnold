@@ -434,7 +434,7 @@ describe("historical data stays intact across a plan change", () => {
       data,
       {
         generatedAt: "2026-06-01T08:00:00.000Z",
-        mode: { mode: "arnold_sheets", label: "Test", description: "Test" },
+        mode: { mode: "arnold", label: "Test", description: "Test" },
       },
       { reference_date: "2026-06-01" },
     );

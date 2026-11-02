@@ -2,9 +2,9 @@
  * `OnboardingService`: the full setup flow, the plan integration and the
  * confirmation rules.
  *
- * Everything here runs against synthetic in-memory trackers. No Google call is
- * made, no Google token exists, and the plan drafts live in a fixture
- * repository — which is also what several of these tests assert.
+ * Everything here runs against synthetic in-memory trackers, and the plan
+ * drafts live in a fixture store — which is also what several of these tests
+ * assert.
  *
  * The cases that matter most are the ones about the confirmation: it must bind
  * one revision, it must lapse when the draft moves, and it must lapse even when
@@ -140,9 +140,9 @@ describe("starting a setup", () => {
     expect(Date.parse(state.session.expires_at_utc)).toBeGreaterThan(
       Date.parse(state.session.created_at_utc),
     );
-    // Nothing is confirmed, nothing is pending with Google.
+    // Nothing is confirmed, nothing is finished.
     expect(state.handoff.status).toBe("not_ready");
-    expect(state.handoff.google_connection_pending).toBe(true);
+    expect(state.handoff.finish_pending).toBe(true);
     expect(state.session.status).not.toBe("COMPLETED");
   });
 
@@ -342,7 +342,7 @@ describe("the plan proposal", () => {
     expect(state.plan!.editable).toBe(true);
     expect(state.plan!.session_count).toBe(3);
     // Nothing became the active plan of the tracker.
-    const dataset = await runtime.repository.read();
+    const dataset = await runtime.store.read();
     expect(dataset.plans.filter((p) => p.status === "active")).toHaveLength(0);
   });
 
@@ -444,7 +444,7 @@ describe("the plan proposal", () => {
       ...claim,
       profile: { path: "arnold_plan" },
     });
-    const before = (await runtime.repository.read()).plans.length;
+    const before = (await runtime.store.read()).plans.length;
     const refused = await service.submitPlanProposal({
       request_id: rid(),
       ...claim,
@@ -459,7 +459,7 @@ describe("the plan proposal", () => {
     });
     expect(refused.ok).toBe(false);
     expect(refused.error?.code).toBe("PROFILE_INCOMPLETE");
-    expect((await runtime.repository.read()).plans.length).toBe(before);
+    expect((await runtime.store.read()).plans.length).toBe(before);
   });
 
   it("refuses a new proposal over a confirmed plan, without writing a draft", async () => {
@@ -473,7 +473,7 @@ describe("the plan proposal", () => {
         confirmed: true,
       },
     });
-    const before = (await runtime.repository.read()).plans.length;
+    const before = (await runtime.store.read()).plans.length;
     const refused = await service.submitPlanProposal({
       request_id: rid(),
       ...claim,
@@ -483,7 +483,7 @@ describe("the plan proposal", () => {
     });
     expect(refused.ok).toBe(false);
     expect(refused.error?.code).toBe("INVALID_STATE_TRANSITION");
-    expect((await runtime.repository.read()).plans.length).toBe(before);
+    expect((await runtime.store.read()).plans.length).toBe(before);
   });
 
   it("leaves an unstated target load empty rather than inventing one", async () => {
@@ -516,7 +516,7 @@ describe("the plan proposal", () => {
     expect(second.state!.session.plan_draft_reference!.plan_version_id).toBe(
       first.state!.session.plan_draft_reference!.plan_version_id,
     );
-    const dataset = await runtime.repository.read();
+    const dataset = await runtime.store.read();
     expect(dataset.plans).toHaveLength(1);
   });
 
@@ -613,12 +613,12 @@ describe("confirming the plan", () => {
       },
     });
     expect(confirmed.ok, confirmed.error?.message).toBe(true);
-    expect(confirmed.state!.session.status).toBe("AWAITING_GOOGLE_CONNECTION");
+    expect(confirmed.state!.session.status).toBe("READY_TO_FINISH");
     const confirmation = confirmed.state!.session.confirmed_plan_reference!;
     expect(confirmation.plan_version_id).toBe(plan.plan_version_id);
     expect(confirmation.row_revision).toBe(plan.row_revision);
     expect(confirmation.profile_revision).toBeGreaterThan(0);
-    expect(confirmed.state!.handoff.status).toBe("ready_for_google_connection");
+    expect(confirmed.state!.handoff.status).toBe("ready_to_finish");
   });
 
   it("refuses a confirmation naming an older revision", async () => {
@@ -728,10 +728,10 @@ describe("a change after the confirmation", () => {
     });
     expect(edit.ok).toBe(true);
 
-    const { handoff, state } = await service.prepareGoogleHandoff(claim);
+    const { handoff, state } = await service.prepareSetupHandoff(claim);
     expect(handoff.status).toBe("superseded");
     expect(state.session.status).toBe("REVIEWING_PLAN");
-    expect(handoff.oauth_state_binding).toBeNull();
+    expect(handoff.setup_binding).toBeNull();
     // The message names both revisions so the user learns what happened.
     expect(handoff.blocked_reason).toContain(String(plan.row_revision));
     expect(handoff.confirmed_plan_revision).toBe(plan.row_revision);
@@ -752,7 +752,7 @@ describe("a change after the confirmation", () => {
         },
       ],
     });
-    await service.prepareGoogleHandoff(claim);
+    await service.prepareSetupHandoff(claim);
     const refused = await service.confirmPlan({
       request_id: rid(),
       ...claim,
@@ -781,7 +781,7 @@ describe("a change after the confirmation", () => {
       ],
     });
     const next = edit.result!.plan!.version;
-    await service.prepareGoogleHandoff(claim);
+    await service.prepareSetupHandoff(claim);
     const again = await service.confirmPlan({
       request_id: rid(),
       ...claim,
@@ -792,8 +792,8 @@ describe("a change after the confirmation", () => {
       },
     });
     expect(again.ok, again.error?.message).toBe(true);
-    expect(again.state!.session.status).toBe("AWAITING_GOOGLE_CONNECTION");
-    expect(again.state!.handoff.status).toBe("ready_for_google_connection");
+    expect(again.state!.session.status).toBe("READY_TO_FINISH");
+    expect(again.state!.handoff.status).toBe("ready_to_finish");
     expect(again.state!.handoff.confirmed_plan_revision).toBe(
       next.row_revision,
     );
@@ -816,9 +816,7 @@ describe("a change after the confirmation", () => {
     const revised = await service.revisePlan({ request_id: rid(), ...claim });
     expect(revised.ok).toBe(true);
     expect(revised.state!.session.status).toBe("REVIEWING_PLAN");
-    expect(revised.state!.handoff.status).not.toBe(
-      "ready_for_google_connection",
-    );
+    expect(revised.state!.handoff.status).not.toBe("ready_to_finish");
   });
 
   it("reviews and confirms a replacement proposal instead of the historical confirmation", async () => {
@@ -876,12 +874,12 @@ describe("a change after the confirmation", () => {
     expect(accepted.state!.handoff.confirmed_plan_version_id).toBe(
       reference.plan_version_id,
     );
-    expect(accepted.state!.handoff.status).toBe("ready_for_google_connection");
+    expect(accepted.state!.handoff.status).toBe("ready_to_finish");
   });
 
-  it("produces a different OAuth binding for a different revision", async () => {
+  it("produces a different setup binding for a different revision", async () => {
     const { runtime, service, claim, plan, confirmedState } = await confirmed();
-    const first = confirmedState.handoff.oauth_state_binding;
+    const first = confirmedState.handoff.setup_binding;
     expect(first).toBeTruthy();
     const edit = await runtime.plans.updatePlanDraft({
       request_id: rid(),
@@ -895,7 +893,7 @@ describe("a change after the confirmation", () => {
         },
       ],
     });
-    await service.prepareGoogleHandoff(claim);
+    await service.prepareSetupHandoff(claim);
     const next = edit.result!.plan!.version;
     const again = await service.confirmPlan({
       request_id: rid(),
@@ -906,20 +904,20 @@ describe("a change after the confirmation", () => {
         confirmed: true,
       },
     });
-    expect(again.state!.handoff.oauth_state_binding).toBeTruthy();
-    expect(again.state!.handoff.oauth_state_binding).not.toBe(first);
+    expect(again.state!.handoff.setup_binding).toBeTruthy();
+    expect(again.state!.handoff.setup_binding).not.toBe(first);
   });
 });
 
 /* ----------------------------------------------------------- the handoff */
 
-describe("the Google handoff", () => {
+describe("the setup handoff", () => {
   it("is not ready before a confirmation", async () => {
     const { service, claim } = await withProposal();
-    const { handoff } = await service.prepareGoogleHandoff(claim);
+    const { handoff } = await service.prepareSetupHandoff(claim);
     expect(handoff.status).toBe("not_ready");
     expect(handoff.confirmed_plan_version_id).toBeNull();
-    expect(handoff.oauth_state_binding).toBeNull();
+    expect(handoff.setup_binding).toBeNull();
     expect(handoff.blocked_reason).toBeTruthy();
   });
 
@@ -935,17 +933,17 @@ describe("the Google handoff", () => {
         confirmed: true,
       },
     });
-    const { handoff } = await service.prepareGoogleHandoff(claim);
-    expect(handoff.status).toBe("ready_for_google_connection");
+    const { handoff } = await service.prepareSetupHandoff(claim);
+    expect(handoff.status).toBe("ready_to_finish");
     // Everything in the handoff is safe to log: no token, no profile content.
     const text = JSON.stringify(handoff);
     expect(text).not.toContain(claim.session_token);
     expect(text).not.toContain("muscle_gain");
     expect(handoff.confirmed_plan_version_id).toBe(plan.plan_version_id);
-    expect(handoff.google_connection_pending).toBe(true);
+    expect(handoff.finish_pending).toBe(true);
   });
 
-  it("never reports a completed Google setup", async () => {
+  it("completes nothing by the confirmation alone", async () => {
     const { service, claim, state, runtime } = await withProposal();
     const plan = state.plan!;
     const confirmed = await service.confirmPlan({
@@ -960,8 +958,137 @@ describe("the Google handoff", () => {
     expect(confirmed.state!.session.status).not.toBe("COMPLETED");
     expect(confirmed.state!.handoff.status).not.toBe("completed");
     // And the plan still is not active in any tracker.
-    const dataset = await runtime.repository.read();
+    const dataset = await runtime.store.read();
     expect(dataset.plans.filter((p) => p.status === "active")).toHaveLength(0);
+  });
+});
+
+/* ---------------------------------------------------- finishing the setup */
+
+describe("finishing the setup", () => {
+  async function confirmedSetup(runtime = createFixtureOnboarding()) {
+    const { service, claim, state } = await withProposal(runtime);
+    const plan = state.plan!;
+    const confirmed = await service.confirmPlan({
+      request_id: rid(),
+      ...claim,
+      confirmation: {
+        plan_version_id: plan.plan_version_id,
+        row_revision: plan.row_revision,
+        confirmed: true,
+      },
+    });
+    expect(confirmed.ok, confirmed.error?.message).toBe(true);
+    return { runtime, service, claim, plan };
+  }
+  const activePlans = async (
+    runtime: ReturnType<typeof createFixtureOnboarding>,
+  ) => (await runtime.store.read()).plans.filter((p) => p.status === "active");
+
+  it("activates exactly the confirmed revision and completes the setup", async () => {
+    const { runtime, service, claim, plan } = await confirmedSetup();
+    const finished = await service.finishSetup({ request_id: rid(), ...claim });
+    expect(finished.ok, finished.error?.message).toBe(true);
+    expect(finished.state!.session.status).toBe("COMPLETED");
+    expect(finished.state!.handoff.status).toBe("completed");
+    expect(finished.state!.handoff.finish_pending).toBe(false);
+    const active = await activePlans(runtime);
+    expect(active).toHaveLength(1);
+    expect(active[0].plan_version_id).toBe(plan.plan_version_id);
+    expect(active[0].row_revision).toBe(plan.row_revision + 1);
+  });
+
+  it("replays a repeated finish instead of activating twice", async () => {
+    const { runtime, service, claim } = await confirmedSetup();
+    await service.finishSetup({ request_id: rid(), ...claim });
+    const before = await runtime.store.read();
+    const again = await service.finishSetup({ request_id: rid(), ...claim });
+    expect(again.ok).toBe(true);
+    expect(again.replayed).toBe(true);
+    expect(again.state!.session.status).toBe("COMPLETED");
+    expect(await runtime.store.read()).toEqual(before);
+  });
+
+  it("completes a finish that was interrupted after the activation", async () => {
+    const { runtime, service, claim, plan } = await confirmedSetup();
+    // The activation went through, then the process died before the setup
+    // was marked completed: same request id as finishSetup uses.
+    const activated = await runtime.plans.activateTrainingPlan({
+      request_id: `setup-${claim.onboarding_session_id}-${plan.plan_version_id}-${plan.row_revision}`,
+      plan_version_id: plan.plan_version_id,
+      expected_row_revision: plan.row_revision,
+      confirmation: {
+        plan_version_id: plan.plan_version_id,
+        row_revision: plan.row_revision,
+        confirmed: true,
+      },
+    });
+    expect(activated.ok, activated.error?.message).toBe(true);
+    const finished = await service.finishSetup({ request_id: rid(), ...claim });
+    expect(finished.ok, finished.error?.message).toBe(true);
+    expect(finished.state!.session.status).toBe("COMPLETED");
+    const active = await activePlans(runtime);
+    expect(active).toHaveLength(1);
+    expect(active[0].row_revision).toBe(plan.row_revision + 1);
+  });
+
+  it("refuses a plan that changed after the confirmation and activates nothing", async () => {
+    const { runtime, service, claim, plan } = await confirmedSetup();
+    const edit = await runtime.plans.updatePlanDraft({
+      request_id: rid(),
+      plan_version_id: plan.plan_version_id,
+      expected_row_revision: plan.row_revision,
+      edits: [
+        {
+          type: "rename_session",
+          session_id: plan.sessions[0].session_id,
+          session_name: "Push neu",
+        },
+      ],
+    });
+    expect(edit.ok).toBe(true);
+    const finished = await service.finishSetup({ request_id: rid(), ...claim });
+    expect(finished.ok).toBe(false);
+    expect(finished.error?.code).toBe("HANDOFF_SUPERSEDED");
+    expect(finished.state!.session.status).not.toBe("COMPLETED");
+    expect(await activePlans(runtime)).toHaveLength(0);
+  });
+
+  it("refuses to finish without a confirmation", async () => {
+    const { runtime, service, claim } = await withProposal();
+    const finished = await service.finishSetup({ request_id: rid(), ...claim });
+    expect(finished.ok).toBe(false);
+    expect(finished.error?.code).toBe("CONFIRMATION_REQUIRED");
+    expect(await activePlans(runtime)).toHaveLength(0);
+  });
+
+  it("archives an earlier active plan in the same step", async () => {
+    const runtime = createFixtureOnboarding({ dataset: planFixtureDataset() });
+    const previous = await activePlans(runtime);
+    expect(previous).toHaveLength(1);
+    const { service, claim, plan } = await confirmedSetup(runtime);
+    const finished = await service.finishSetup({ request_id: rid(), ...claim });
+    expect(finished.ok, finished.error?.message).toBe(true);
+    const dataset = await runtime.store.read();
+    expect(
+      dataset.plans.find(
+        (p) => p.plan_version_id === previous[0].plan_version_id,
+      )?.status,
+    ).toBe("archived");
+    expect((await activePlans(runtime))[0].plan_version_id).toBe(
+      plan.plan_version_id,
+    );
+  });
+
+  it("is refused where no plan can be written", async () => {
+    const { onboarding } = createReadOnlyOnboarding();
+    const { claim } = await startSetup(onboarding);
+    const finished = await onboarding.finishSetup({
+      request_id: rid(),
+      ...claim,
+    });
+    expect(finished.ok).toBe(false);
+    expect(finished.error?.code).toBe("PLAN_WRITE_UNAVAILABLE");
   });
 });
 
@@ -986,16 +1113,14 @@ describe("cancelling", () => {
     });
     expect(cancelled.ok).toBe(true);
     expect(cancelled.state!.session.status).toBe("CANCELLED");
-    expect(cancelled.state!.handoff.status).not.toBe(
-      "ready_for_google_connection",
-    );
+    expect(cancelled.state!.handoff.status).not.toBe("ready_to_finish");
   });
 
   it("leaves the plan draft readable rather than deleting it", async () => {
     const { runtime, service, claim, state } = await withProposal();
     const planVersionId = state.plan!.plan_version_id;
     await service.cancelOnboarding({ request_id: rid(), ...claim });
-    const dataset = await runtime.repository.read();
+    const dataset = await runtime.store.read();
     expect(
       dataset.plans.find((p) => p.plan_version_id === planVersionId),
     ).toBeTruthy();
@@ -1148,7 +1273,7 @@ describe("the brief over the service", () => {
     const runtime = createFixtureOnboarding();
     const { claim } = await withProfile(runtime.onboarding);
     const brief = await runtime.onboarding.getBrief(claim);
-    const dataset = await runtime.repository.read();
+    const dataset = await runtime.store.read();
     const known = new Set(
       dataset.exercises
         .filter((row) => row.status === "active")
@@ -1203,12 +1328,12 @@ describe("production mode fails closed", () => {
   });
 });
 
-/* --------------------------------------------------------- no Google writes */
+/* ------------------------------------------------ setup state stays apart */
 
-describe("nothing reaches Google", () => {
+describe("setup state stays out of the training data", () => {
   it("keeps onboarding state out of the six Arnold tables", async () => {
     const { runtime, state } = await withProposal();
-    const dataset = await runtime.repository.read();
+    const dataset = await runtime.store.read();
     // The config says onboarding state is backend-only, and it is.
     expect(dataset.config.onboarding_storage).toBe("BACKEND_ONLY");
     const serialized = JSON.stringify(dataset);
@@ -1220,12 +1345,12 @@ describe("nothing reaches Google", () => {
 
   it("works on a fixture tracker that is not the master template", async () => {
     const { runtime } = await withProposal();
-    const dataset = await runtime.repository.read();
+    const dataset = await runtime.store.read();
     expect(dataset.config.file_role).toBe("USER_TRACKER");
     expect(dataset.config.tracker_id).not.toBe("TEMPLATE_UNASSIGNED");
   });
 
-  it("never stores a Google token anywhere in the session", async () => {
+  it("never stores a credential anywhere in the session", async () => {
     const { state } = await withProposal();
     const serialized = JSON.stringify(state.session);
     for (const marker of [
@@ -1238,12 +1363,12 @@ describe("nothing reaches Google", () => {
       expect(serialized.toLowerCase()).not.toContain(marker.toLowerCase());
   });
 
-  it("writes plan drafts only through the fixture repository", async () => {
+  it("writes plan drafts only through the fixture store", async () => {
     const runtime = createFixtureOnboarding({
       dataset: planFixtureDataset("empty"),
     });
     expect(runtime.plans.mode).toBe("fixture");
-    expect(runtime.repository.kind).toBe("fixture");
+    expect(runtime.store.kind).toBe("fixture");
   });
 });
 
@@ -1262,7 +1387,7 @@ describe("the audit trail", () => {
         confirmed: true,
       },
     });
-    const audit = runtime.audit as { events: Map<string, unknown> };
+    const audit = runtime.store.audit as { events: Map<string, unknown> };
     const events = [...audit.events.values()] as {
       event_type: string;
       entity_id: string;
@@ -1301,7 +1426,9 @@ describe("the audit trail", () => {
       ...context.claim,
       profile: { training: { days_per_week: 4 } },
     });
-    const audit = context.runtime.audit as { events: Map<string, unknown> };
+    const audit = context.runtime.store.audit as {
+      events: Map<string, unknown>;
+    };
     const types = [...audit.events.values()].map(
       (event) => (event as { event_type: string }).event_type,
     );
@@ -1426,7 +1553,7 @@ describe("one setup per account", () => {
       repository: new InMemoryOnboardingRepository(),
       access: new AuthenticatedOnboardingAccessControl("user-1"),
       plans: runtime.plans,
-      read: () => runtime.repository.read(),
+      read: () => runtime.store.read(),
       trackerId: "trk_test",
       setupComplete: async () => true,
     });

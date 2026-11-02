@@ -16,10 +16,9 @@ const confirm = () => ({
   summary: {
     stored_items: [
       "Dein Arnold-Konto",
-      "Google-Zugang und Einrichtungsdaten",
+      "Deine Trainingspläne, Trainings und Sätze",
       "Gespeicherte Vorgänge bei Arnold",
     ],
-    keeps: ["Deine Google-Tabelle mit deinen Trainings"],
   },
   confirmation_token: TOKEN,
   expires_at: new Date(Date.now() + 300000).toISOString(),
@@ -92,7 +91,9 @@ async function visualStates() {
     })
   ).state!;
   const plan = proposed.plan!;
-  const google = (
+  // The service-level confirmation stops at READY_TO_FINISH: the card that
+  // offers "Einrichtung abschließen" when finishing was interrupted.
+  const finishing = (
     await service.confirmPlan({
       ...claim,
       request_id: crypto.randomUUID(),
@@ -108,7 +109,7 @@ async function visualStates() {
   person.session.current_step = "profile";
   const question = structuredClone(person);
   question.session.profile.person.age_years = 30;
-  const done = structuredClone(google);
+  const done = structuredClone(finishing);
   done.session.status = "COMPLETED";
   done.session.current_step = "done";
   done.handoff.status = "completed";
@@ -121,7 +122,7 @@ async function visualStates() {
       question,
       review: ready,
       proposal: proposed,
-      google,
+      finishing,
       done,
     },
   };
@@ -147,12 +148,6 @@ async function mockOnboarding(
         },
       });
     if (name === "get_onboarding_state") return result(route, state);
-    if (name === "finish_arnold_setup")
-      return result(route, {
-        spreadsheet_url:
-          "https://docs.google.com/spreadsheets/d/synthetic-demo-only/edit",
-        spreadsheet_name: "Arnold – Mein Training",
-      });
     await route.continue();
   });
 }
@@ -188,7 +183,7 @@ for (const width of [375, 1024])
         expect(small, `${name}: touch targets`).toEqual([]);
         await page.screenshot({
           path: resolve(
-            `docs/beta/screens/${browserName}-${name}-${width}-${theme}.png`,
+            `test-results/screens/${browserName}-${name}-${width}-${theme}.png`,
           ),
           fullPage: true,
         });
@@ -219,7 +214,7 @@ for (const width of [375, 1024])
       ).toBe(true);
       await page.screenshot({
         path: resolve(
-          `docs/beta/screens/${browserName}-plan-editor-${width}-${theme}.png`,
+          `test-results/screens/${browserName}-plan-editor-${width}-${theme}.png`,
         ),
         fullPage: true,
       });
@@ -255,12 +250,7 @@ test("account deletion sends its private confirmation only after an explicit cli
     if (body?.params?.name !== "delete_arnold_account") return route.continue();
     const args = body.params.arguments;
     sent.push(args);
-    if (args.confirmation_token)
-      return result(route, {
-        stage: "deleted",
-        google_sheet_kept: true,
-        sheet_url: null,
-      });
+    if (args.confirmation_token) return result(route, { stage: "deleted" });
     const full = confirm();
     const { confirmation_token: _, ...publicValue } = full;
     return result(route, publicValue, { arnold: { delete_account: full } });
@@ -280,7 +270,7 @@ test("account deletion sends its private confirmation only after an explicit cli
       );
       await page.screenshot({
         path: resolve(
-          `docs/beta/screens/${browserName}-account-${width}-${theme}.png`,
+          `test-results/screens/${browserName}-account-${width}-${theme}.png`,
         ),
         fullPage: true,
       });
@@ -297,9 +287,7 @@ test("account deletion sends its private confirmation only after an explicit cli
   expect(sent.filter((args) => args.confirmation_token)).toEqual([
     { confirmation_token: TOKEN },
   ]);
-  await expect(
-    page.getByRole("button", { name: "Google-Tabelle öffnen" }),
-  ).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText("Google");
 });
 
 test("an expired delete confirmation restarts without reusing the private token", async ({
@@ -322,88 +310,6 @@ test("an expired delete confirmation restarts without reusing the private token"
     page.getByRole("heading", { name: "Arnold-Konto löschen?" }),
   ).toBeVisible();
   expect(calls).toBe(2);
-});
-
-test("Google reconnect works in a new chat without a setup claim and restores the previous card", async ({
-  page,
-  context,
-  browserName,
-}) => {
-  let refused = false;
-  let connected = false;
-  await context.route("**/__beta-google-consent", async (route) => {
-    connected = true;
-    await route.fulfill({
-      contentType: "text/html",
-      body: "<p>Freigabe abgeschlossen.</p>",
-    });
-  });
-  await page.route("**/mcp", async (route) => {
-    const body = route.request().postDataJSON();
-    const name = body?.params?.name;
-    if (name === "get_arnold_exercise_progress" && !refused) {
-      refused = true;
-      return result(
-        route,
-        undefined,
-        {
-          arnold: {
-            code: "GOOGLE_REAUTH_REQUIRED",
-            retryable: true,
-            recovery: "reconnect_google",
-          },
-        },
-        true,
-      );
-    }
-    if (name === "connect_google_account") {
-      expect(body.params.arguments).toEqual({});
-      return result(route, {
-        authorization_url: `${BASE}/__beta-google-consent`,
-      });
-    }
-    if (name === "get_google_connection")
-      return result(route, {
-        connection: { status: connected ? "CONNECTED" : "REAUTH_REQUIRED" },
-      });
-    await route.continue();
-  });
-  await page.goto(`${BASE}/preview?card=progress`);
-  await expect(
-    page.getByRole("heading", { name: "Google neu verbinden", exact: true }),
-  ).toBeVisible();
-  for (const width of [375, 1024])
-    for (const theme of ["light", "dark"] as const) {
-      await page.setViewportSize({ width, height: 900 });
-      await page.evaluate(
-        (theme) => (document.documentElement.dataset.theme = theme),
-        theme,
-      );
-      await page.screenshot({
-        path: resolve(
-          `docs/beta/screens/${browserName}-reconnect-${width}-${theme}.png`,
-        ),
-        fullPage: true,
-      });
-    }
-  const popupReady = context.waitForEvent("page");
-  await page
-    .getByRole("button", { name: "Google neu verbinden", exact: true })
-    .click();
-  const popup = await popupReady;
-  await popup.waitForLoadState();
-  await popup.close();
-  const check = page.getByRole("button", {
-    name: "Verbindung prüfen",
-    exact: true,
-  });
-  if (await check.isVisible()) await check.click();
-  await expect(
-    page.locator('main[data-card="progress"] .ac-big'),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Testbankdrücken", exact: true }),
-  ).toBeVisible();
 });
 
 test("numeric inputs reject invalid values and confirm unusual values before saving", async ({
@@ -438,7 +344,7 @@ test("numeric inputs reject invalid values and confirm unusual values before sav
         ).toBe(true);
         await page.screenshot({
           path: resolve(
-            `docs/beta/screens/${browserName}-${name}-${width}-${theme}.png`,
+            `test-results/screens/${browserName}-${name}-${width}-${theme}.png`,
           ),
           fullPage: true,
         });
@@ -519,11 +425,7 @@ test("the sandbox host never receives a deletion token in model context", async 
     if (body?.params?.name === "delete_arnold_account") {
       if (body.params.arguments.confirmation_token) {
         confirmations++;
-        return result(route, {
-          stage: "deleted",
-          google_sheet_kept: true,
-          sheet_url: null,
-        });
+        return result(route, { stage: "deleted" });
       }
       const full = confirm();
       const { confirmation_token: _, ...publicValue } = full;
@@ -587,7 +489,7 @@ test("chat-selected history opens the requested session and still lets another s
   ).toBeVisible();
 });
 
-test("a completed setup in a new chat restores its sheet link without the old secret", async ({
+test("a completed setup in a new chat opens as completed without the old secret", async ({
   page,
 }) => {
   const { states } = await visuals;
@@ -605,13 +507,6 @@ test("a completed setup in a new chat restores its sheet link without the old se
           schema_version: ONBOARDING_SCHEMA_VERSION,
         },
       });
-    if (name === "get_arnold_stored_data")
-      return result(route, {
-        items: [],
-        google_sheet_url:
-          "https://docs.google.com/spreadsheets/d/synthetic-demo-only/edit",
-        retention_days: 30,
-      });
     await route.continue();
   });
   await page.goto(`${BASE}/preview?onboarding=1`);
@@ -622,7 +517,8 @@ test("a completed setup in a new chat restores its sheet link without the old se
     }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Google-Tabelle öffnen", exact: true }),
+    page.getByRole("button", { name: "Erstes Training starten", exact: true }),
   ).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("Google");
   await expect(page.getByRole("alert")).toHaveCount(0);
 });

@@ -17,8 +17,8 @@ describe("actionable recovery cards", () => {
     });
   it("keeps the next step supplied by a failed read", () => {
     const failure = {
-      code: "GOOGLE_REAUTH_REQUIRED",
-      recovery: "reconnect_google" as const,
+      code: "SETUP_REQUIRED",
+      recovery: "finish_setup" as const,
     };
     expect(asFailure(new ArnoldToolError(failure))).toEqual(failure);
     expect(new ArnoldToolError(failure).message).not.toContain(failure.code);

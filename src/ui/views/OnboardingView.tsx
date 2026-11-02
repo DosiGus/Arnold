@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { OnboardingState } from "../../shared/onboarding-contract";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
 import { OWN_PLAN_MESSAGE, useOnboarding } from "../hooks/useOnboarding";
@@ -34,14 +34,7 @@ export function OnboardingView({
   }>();
   const [cancelling, setCancelling] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [googleStarted, setGoogleStarted] = useState(false);
   const [question, setQuestion] = useState("");
-  const [file, setFile] = useState<{
-    spreadsheet_url: string;
-    spreadsheet_name?: string;
-  }>();
-  const [fileError, setFileError] = useState(false);
-  const fileGuard = useRef(false);
   // B19: switching to the training card takes a round trip. Until it is done
   // the button stays disabled, so a second tap cannot land on this card,
   // open the dashboard again and be lost.
@@ -59,23 +52,8 @@ export function OnboardingView({
     }
   };
   useEffect(() => {
-    if (session?.status === "AWAITING_GOOGLE_CONNECTION") onFinishedHandoff?.();
+    if (session?.status === "READY_TO_FINISH") onFinishedHandoff?.();
   }, [session?.status, onFinishedHandoff]);
-  const loadFile = async () => {
-    if (fileGuard.current) return;
-    fileGuard.current = true;
-    setFileError(false);
-    try {
-      setFile(await client.setupFile());
-    } catch {
-      setFileError(true);
-    } finally {
-      fileGuard.current = false;
-    }
-  };
-  useEffect(() => {
-    if (session?.status === "COMPLETED") void loadFile();
-  }, [session?.status, client]);
   useEffect(
     () =>
       client.subscribeRefresh(() => {
@@ -172,19 +150,8 @@ export function OnboardingView({
       <ArnoldCard
         label="Einrichtung · Schritt 4 von 4"
         title="Bereit für dein erstes Training"
-        subtitle="Google ist verbunden. Dein bestätigter Plan liegt in deiner eigenen Google-Tabelle."
+        subtitle="Dein bestätigter Plan ist aktiv und in deinem Arnold-Konto gespeichert."
       >
-        {file?.spreadsheet_name && (
-          <p className="ac-section-title">{file.spreadsheet_name}</p>
-        )}
-        {fileError && (
-          <CardNote>
-            Der Link zu deiner Tabelle konnte noch nicht geladen werden.{" "}
-            <button className="ac-link" onClick={() => void loadFile()}>
-              Erneut laden
-            </button>
-          </CardNote>
-        )}
         {openError && (
           <CardNote>
             Dein Training konnte nicht geöffnet werden. Bitte erneut versuchen.
@@ -197,14 +164,6 @@ export function OnboardingView({
             disabled: opening,
             onClick: () => void openDashboard(),
           }}
-          secondary={
-            file
-              ? {
-                  label: "Google-Tabelle öffnen",
-                  onClick: () => void client.openLink(file.spreadsheet_url),
-                }
-              : undefined
-          }
         />
       </ArnoldCard>
     );
@@ -251,36 +210,27 @@ export function OnboardingView({
       </section>
     );
   else if (
-    session.status === "AWAITING_GOOGLE_CONNECTION" &&
-    state.handoff.status === "ready_for_google_connection" &&
+    session.status === "READY_TO_FINISH" &&
+    state.handoff.status === "ready_to_finish" &&
     state.plan
   )
     card = (
       <ArnoldCard
         label="Einrichtung · Schritt 3 von 4"
-        title="Dein Trainingsplan ist bereit"
-        subtitle="Jetzt verbinden wir dein Google-Konto. Arnold legt dort deine eigene Trainingsdatei an."
+        title="Dein Trainingsplan ist bestätigt"
+        subtitle="Noch ein Schritt: Arnold aktiviert genau diesen Plan."
       >
         <p className="ac-text">{state.plan.name}</p>
-        {!state.google_connection_available && (
+        {!state.setup_finish_available && (
           <CardNote>
-            Google ist in dieser Vorschau nicht verfügbar. Es wurde kein
-            Google-Konto verbunden und keine Datei erstellt.
+            In dieser Vorschau kann die Einrichtung nicht abgeschlossen werden.
           </CardNote>
         )}
         <CardActions
           primary={{
-            label: googleStarted
-              ? "Einrichtung prüfen und abschließen"
-              : "Google-Konto verbinden",
-            disabled: blocked || !state.google_connection_available,
-            onClick: () => {
-              if (googleStarted) void onb.finishSetup();
-              else
-                void onb.connectGoogle().then((opened) => {
-                  if (opened) setGoogleStarted(true);
-                });
-            },
+            label: "Einrichtung abschließen",
+            disabled: blocked || !state.setup_finish_available,
+            onClick: () => void onb.finishSetup(),
           }}
           secondary={{
             label: "Plan noch ändern",
@@ -295,7 +245,7 @@ export function OnboardingView({
       "WAITING_FOR_PLAN_PROPOSAL",
       "REVIEWING_PLAN",
       "PLAN_CONFIRMED",
-      "AWAITING_GOOGLE_CONNECTION",
+      "READY_TO_FINISH",
     ].includes(session.status)
   ) {
     const plan = state.plan;
@@ -349,8 +299,8 @@ export function OnboardingView({
         />
         {confirming && (
           <p className="ac-text">
-            Du gibst den angezeigten Plan für die Einrichtung frei. Google wird
-            erst im nächsten Schritt verbunden.
+            Arnold aktiviert genau diesen Plan. Ändern kannst du ihn später
+            jederzeit im Plan-Editor.
           </p>
         )}
         {state.plan_validation?.errors.map((issue) => (
@@ -449,7 +399,6 @@ export function OnboardingView({
     card = (
       <WelcomeStep
         canWritePlan={state.can_write_plan}
-        googleAvailable={state.google_connection_available}
         busy={blocked}
         onChoose={(path) => {
           if (path === session.profile.path)

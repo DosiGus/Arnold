@@ -5,13 +5,10 @@
 #   e.g. npm run deploy:cloud-run -- arnold-513219 example-123.authkit.app
 #
 # Profiles (ARNOLD_PROFILE):
-#   connected (default)  each user's own Google Sheet, created in their Drive
-#                        after Google consent (drive.file). State lives in the
-#                        bucket gs://<project>-state mounted at /app/data;
-#                        Google client and encryption key come from Secret
-#                        Manager. Needs `npm run setup:google-secrets` and
-#                        `npm run setup:cloud-infra` once.
-#   fixture              invented data, one in-memory sandbox per user.
+#   database (default)  signed-in users, data in Postgres (Supabase). The
+#                       connection comes from Secret Manager
+#                       (arnold-database-url). Needs `npm run db:setup` once.
+#   fixture             invented data, one in-memory sandbox per user.
 #
 # What it does, in order:
 #   1. refuses a checkout with uncommitted changes, a commit that is not on
@@ -34,7 +31,7 @@ set -euo pipefail
 
 PROJECT="${1:-}"
 AUTHKIT="${2:-${ARNOLD_AUTH_DOMAIN:-}}"
-PROFILE="${ARNOLD_PROFILE:-connected}"
+PROFILE="${ARNOLD_PROFILE:-database}"
 REGION="${ARNOLD_REGION:-europe-west1}"
 SERVICE="${ARNOLD_SERVICE:-arnold}"
 # 0 = sleeps when idle (nearly free), 1 = always awake.
@@ -45,8 +42,8 @@ if [[ -z "$PROJECT" || -z "$AUTHKIT" ]]; then
   echo "Aufruf: npm run deploy:cloud-run -- <projekt-id> <authkit-domain>" >&2
   exit 1
 fi
-if [[ "$PROFILE" != connected && "$PROFILE" != fixture ]]; then
-  echo "ARNOLD_PROFILE muss connected oder fixture sein." >&2
+if [[ "$PROFILE" != database && "$PROFILE" != fixture ]]; then
+  echo "ARNOLD_PROFILE muss database oder fixture sein." >&2
   exit 1
 fi
 AUTHKIT="${AUTHKIT%/}"
@@ -109,37 +106,27 @@ gcloud services enable run.googleapis.com cloudbuild.googleapis.com \
   artifactregistry.googleapis.com --quiet
 
 RUNTIME_SA="arnold-runtime@$PROJECT.iam.gserviceaccount.com"
-BUCKET="$PROJECT-state"
 EXTRA=()
-if [[ "$PROFILE" == connected ]]; then
-  gcloud services enable drive.googleapis.com sheets.googleapis.com \
-    secretmanager.googleapis.com storage.googleapis.com --quiet
+if [[ "$PROFILE" == database ]]; then
+  gcloud services enable secretmanager.googleapis.com --quiet
   gcloud iam service-accounts describe "$RUNTIME_SA" --project "$PROJECT" >/dev/null 2>&1 &&
-    gcloud storage buckets describe "gs://$BUCKET" >/dev/null 2>&1 || {
-    echo "Dienstkonto oder Speicher fehlt. Zuerst: npm run setup:cloud-infra" >&2
+    gcloud secrets describe arnold-database-url --project "$PROJECT" >/dev/null 2>&1 || {
+    echo "Dienstkonto oder Datenbankzugang fehlt. Zuerst: npm run db:setup -- $PROJECT" >&2
     exit 1
   }
-  for secret in arnold-google-client-id arnold-google-client-secret arnold-token-encryption-key; do
-    gcloud secrets describe "$secret" --project "$PROJECT" >/dev/null 2>&1 || {
-      echo "Geheimnis $secret fehlt. Zuerst: npm run setup:google-secrets" >&2
-      exit 1
-    }
-  done
-  EXTRA+=(
-    --service-account "$RUNTIME_SA"
-    --execution-environment gen2
-    --set-secrets "GOOGLE_CLIENT_ID=arnold-google-client-id:latest,GOOGLE_CLIENT_SECRET=arnold-google-client-secret:latest,TOKEN_ENCRYPTION_KEY=arnold-token-encryption-key:latest"
-  )
-  # The node user in the image is uid/gid 1000; the bucket is mounted as its
-  # data directory. Added only once, a second --add-volume would be refused.
-  VOLUMES="$(gcloud run services describe "$SERVICE" --region "$REGION" \
-    --format='value(spec.template.spec.volumes[].name)' 2>/dev/null || true)"
-  if [[ "$VOLUMES" != *state* ]]; then
-    EXTRA+=(
-      --add-volume "name=state,type=cloud-storage,bucket=$BUCKET,mount-options=uid=1000;gid=1000;file-mode=600;dir-mode=700"
-      --add-volume-mount "volume=state,mount-path=/app/data"
-    )
+  SECRETS="DATABASE_URL=arnold-database-url:latest"
+  if gcloud secrets describe arnold-database-ca --project "$PROJECT" >/dev/null 2>&1; then
+    SECRETS+=",DATABASE_CA_CERT=arnold-database-ca:latest"
   fi
+  # --set-secrets replaces every secret of the service, so secrets of
+  # earlier profiles disappear with this deploy.
+  EXTRA+=(--service-account "$RUNTIME_SA" --set-secrets "$SECRETS")
+fi
+# The storage bucket of the former Google profile is no longer mounted.
+VOLUMES="$(gcloud run services describe "$SERVICE" --region "$REGION" \
+  --format='value(spec.template.spec.volumes[].name)' 2>/dev/null || true)"
+if [[ "$VOLUMES" == *state* ]]; then
+  EXTRA+=(--remove-volume-mount /app/data --remove-volume state)
 fi
 
 # The deterministic run.app hostname is known before the first deploy, so the
@@ -170,14 +157,11 @@ env_vars() {
     "ARNOLD_RELEASE=$RELEASE"
     "ALLOWED_HOSTS=$1"
   )
-  if [[ "$PROFILE" == connected ]]; then
+  if [[ "$PROFILE" == database ]]; then
     vars+=(
-      STORAGE_MODE=arnold_connected
+      STORAGE_MODE=arnold_database
       ARNOLD_WRITE_MODE=disabled
-      IDENTITY_STORE=file
-      IDENTITY_STORE_FILE=data/connected/identities.json
-      ARNOLD_STATE_DIRECTORY=data/connected
-      "GOOGLE_REDIRECT_URI=$URL/auth/google/callback"
+      IDENTITY_STORE=postgres
     )
   else
     vars+=(STORAGE_MODE=arnold_fixture ARNOLD_WRITE_MODE=fixture IDENTITY_STORE=memory)

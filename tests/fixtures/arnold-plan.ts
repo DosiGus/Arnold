@@ -2,7 +2,7 @@
  * Deterministic harness for the plan management tests.
  *
  * Every identifier, exercise and plan here is synthetic. Nothing reads or
- * writes the Arnold master file, any real tracker or any Google endpoint.
+ * writes the Arnold master file, any real tracker or the database.
  *
  * IDs are sequential and the clock is fixed, so a test can assert on an exact
  * id or timestamp instead of matching a pattern.
@@ -41,7 +41,7 @@ export function harness(
     advance(ms = 60_000) {
       instant += ms;
     },
-    dataset: () => runtime.repository.read(),
+    dataset: () => runtime.store.read(),
     async write(
       operation: PlanWriteOperation,
       input: Record<string, unknown>,

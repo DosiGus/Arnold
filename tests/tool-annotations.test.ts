@@ -56,16 +56,8 @@ describe("tool safety hints (default profile)", () => {
   it("covers every classified tool somewhere", async () => {
     const { tools } = await client.listTools();
     const listed = new Set(tools.map((tool) => tool.name));
-    // The Google account tools exist only in the connected profile and are
-    // checked in connected-journey.test.ts.
-    const connectedOnly = [
-      "connect_google_account",
-      "finish_arnold_setup",
-      "get_google_connection",
-      "disconnect_google_account",
-      "delete_arnold_account",
-      "get_arnold_stored_data",
-    ];
+    // The account tools exist only in the database profile.
+    const connectedOnly = ["delete_arnold_account", "get_arnold_stored_data"];
     expect(
       Object.keys(TOOL_ACCESS).filter(
         (name) => !listed.has(name) && !connectedOnly.includes(name),

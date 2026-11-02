@@ -42,9 +42,8 @@ import { InMemoryIdentityRepository } from "../src/server/identity/repository.js
 import { ARNOLD_SCOPES } from "../src/server/auth/scopes.js";
 import { isAuthError } from "../src/server/auth/errors.js";
 import { TEST_AUDIENCE, TEST_ISSUER } from "./fixtures/arnold-auth.js";
-import { registerGoogleTools } from "../src/server/connected/mcp-google.js";
-import type { ConnectedArnoldRuntime } from "../src/server/connected/runtime.js";
-import type { GoogleBrowserFlow } from "../src/server/connected/google-browser.js";
+import { registerAccountTools } from "../src/server/account/mcp-account.js";
+import type { DatabaseArnoldRuntime } from "../src/server/db/runtime.js";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -141,19 +140,15 @@ describe("every published tool is classified", () => {
         ),
       ),
     );
-    const googleServer = new McpServer({
-      name: "google-registration-probe",
+    const accountServer = new McpServer({
+      name: "account-registration-probe",
       version: "1",
     });
     // Discovery only: none of the deferred handlers runs in this inventory test.
-    registerGoogleTools(
-      googleServer,
-      {} as ConnectedArnoldRuntime,
-      {} as GoogleBrowserFlow,
-    );
-    const google = new Set(await publishedTools(googleServer));
+    registerAccountTools(accountServer, {} as DatabaseArnoldRuntime);
+    const account = new Set(await publishedTools(accountServer));
     const orphans = Object.keys(TOOL_ACCESS).filter(
-      (tool) => !widest.has(tool) && !google.has(tool),
+      (tool) => !widest.has(tool) && !account.has(tool),
     );
     expect(orphans).toEqual([]);
   });
@@ -181,7 +176,11 @@ describe("the classification table", () => {
     const preview = toolsWithAccess("ONBOARDING_PREVIEW");
     expect(preview).toContain("start_arnold_onboarding");
     expect(preview).toContain("confirm_onboarding_plan");
-    expect(preview.every((tool) => tool.includes("onboarding"))).toBe(true);
+    // The one non-onboarding name finishes the setup; its credential is the
+    // same session secret.
+    expect(preview.filter((tool) => !tool.includes("onboarding"))).toEqual([
+      "finish_arnold_setup",
+    ]);
   });
 
   it("throws for an unclassified tool name", () => {
@@ -340,10 +339,10 @@ describe("guarded registration", () => {
 
   it("never reclassifies account management", async () => {
     const result = (await invoke(
-      serverWithTool("connect_google_account", enforcedGuard(), {
+      serverWithTool("delete_arnold_account", enforcedGuard(), {
         syntheticWrites: true,
       }),
-      "connect_google_account",
+      "delete_arnold_account",
     )) as { isError?: boolean };
     // Account management keeps its class, and enforced mode refuses a call
     // without credentials.

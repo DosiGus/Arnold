@@ -37,6 +37,8 @@ class FakeApp {
   connect = vi.fn(async () => {});
   close = vi.fn(async () => {});
   getHostContext = () => ({ theme: "light" as const });
+  getHostCapabilities = () => ({ updateModelContext: { text: {} } });
+  updateModelContext = vi.fn(async (_request: unknown) => ({}));
   async callServerTool(request: { name: string; arguments: unknown }) {
     this.calls.push(request);
     const handler = this.responses.get(request.name);
@@ -116,7 +118,7 @@ describe("replayed tool results on reopening a chat", () => {
   it("falls back to the replayed payload only while marking it stale", async () => {
     const stale = v2Payload("2026-10-01T08:00:00Z");
     fake.responses.set("get_arnold_dashboard", () => {
-      throw new Error("Google Sheets ist vorübergehend nicht verfügbar.");
+      throw new Error("Die Datenbank ist vorübergehend nicht verfügbar.");
     });
     const { client, payloads, errors, staleFlags } = await bootClient();
     await client.connect();
@@ -137,7 +139,7 @@ describe("replayed tool results on reopening a chat", () => {
     const fresh = v2Payload("2026-10-25T09:00:00Z");
     let reachable = false;
     fake.responses.set("get_arnold_dashboard", () => {
-      if (!reachable) throw new Error("Google Sheets nicht erreichbar.");
+      if (!reachable) throw new Error("Datenbank nicht erreichbar.");
       return okResult(fresh);
     });
     const { client, payloads, staleFlags } = await bootClient();
@@ -182,7 +184,7 @@ describe("replayed tool results on reopening a chat", () => {
     const { client, errors } = await bootClient();
     await client.connect();
     fake.ontoolresult!({
-      content: [{ type: "text", text: "Google-Anmeldung fehlt." }],
+      content: [{ type: "text", text: "Anmeldung fehlt." }],
       isError: true,
     });
     await vi.waitFor(() => expect(errors.length).toBe(1));
@@ -192,6 +194,22 @@ describe("replayed tool results on reopening a chat", () => {
 });
 
 describe("host lifecycle", () => {
+  it("keeps card context available to the model without a composer attachment", async () => {
+    const { client } = await bootClient();
+    await client.connect();
+    const text = "Arnold zeigt den Fortschritt für Bankdrücken: 42,5 kg.";
+
+    expect(await client.updateModelContext(text)).toBe(true);
+    expect(fake.updateModelContext).toHaveBeenCalledWith({
+      content: [
+        { type: "text", text, annotations: { audience: ["assistant"] } },
+      ],
+    });
+    expect(await client.updateModelContext(text)).toBe(false);
+    expect(fake.updateModelContext).toHaveBeenCalledTimes(1);
+    expect(fake.calls).toHaveLength(0);
+  });
+
   it("adopts the host theme on connect and on change", async () => {
     const { client } = await bootClient();
     const themes: string[] = [];

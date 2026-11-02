@@ -32,7 +32,7 @@ import { ArnoldAuthError } from "./errors.js";
  * The slice of `fetch` Arnold's outbound calls use.
  *
  * Narrower than `fetch` so tests can supply a plain function, but wide enough
- * for a form POST — the Google token and revoke endpoints need `method` and
+ * for a form POST — a token endpoint needs `method` and
  * `body`, and widening the type here beats casting at each of those call
  * sites.
  */

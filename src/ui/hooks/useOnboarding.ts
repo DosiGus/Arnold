@@ -105,7 +105,6 @@ export function useOnboarding(
         !client.getOnboardingClaim()
       ) {
         // A completed account no longer needs its expired setup credential.
-        // The completion card verifies and restores the sheet through the account read tool.
         setUi("READY");
         setError("");
         setFailure(undefined);
@@ -405,10 +404,20 @@ export function useOnboarding(
         }),
       {
         busyState: "CONFIRMING",
-        success: "Plan bestätigt und für die Einrichtung freigegeben.",
+        success: "Plan bestätigt. Arnold ist eingerichtet.",
       },
     );
   }, [client, send]);
+
+  /** Completes a confirmed setup whose finishing step was interrupted. */
+  const finishSetup = useCallback(
+    () =>
+      send(() => client.finishOnboarding({ request_id: newRequestId() }), {
+        busyState: "CONFIRMING",
+        success: "Arnold ist eingerichtet.",
+      }),
+    [client, send],
+  );
 
   const revisePlan = useCallback(
     (reason?: string) =>
@@ -498,31 +507,6 @@ export function useOnboarding(
             : ("retry_same_request" as const),
         }
       : undefined);
-  const connectGoogle = async () => {
-    setError("");
-    try {
-      await client.connectGoogle();
-      setMessage("Google-Freigabe im geöffneten Fenster abschließen.");
-      return true;
-    } catch (error) {
-      const failure = asFailure(error, "retry_same_request");
-      setFailure(failure);
-      setError(RECOVERY_COPY[failure.recovery].body);
-      return false;
-    }
-  };
-  const finishSetup = async () => {
-    setError("");
-    try {
-      await client.finishSetup();
-      await reload(true);
-    } catch (error) {
-      const failure = asFailure(error, "retry_same_request");
-      setFailure(failure);
-      setError(RECOVERY_COPY[failure.recovery].body);
-      return false;
-    }
-  };
   const expired = session?.status === "EXPIRED";
   const cancelled = session?.status === "CANCELLED";
 
@@ -587,7 +571,6 @@ export function useOnboarding(
     cancel,
     restart,
     reload,
-    connectGoogle,
     finishSetup,
     clearMessage: () => setMessage(""),
   };
