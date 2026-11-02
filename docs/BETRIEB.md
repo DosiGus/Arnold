@@ -2,16 +2,16 @@
 
 Kurze Schrittfolgen für Deploy, Rollback, Wiederherstellung und Alarme. Hintergrund zu Profilen und Einrichtung: `docs/GUIDE.md`, Teil 2.
 
-| Was         | Wert                                                                  |
-| ----------- | --------------------------------------------------------------------- |
-| Projekt     | `arnold-513219`                                                       |
-| Region      | `europe-west1`                                                        |
-| Dienst      | `arnold` (Cloud Run, Profil `arnold_database`, höchstens 1 Instanz)   |
-| Adresse     | `https://arnold-789221393068.europe-west1.run.app/mcp`                |
-| Daten       | Supabase Postgres (Frankfurt), Schema `arnold`                        |
-| Geheimnisse | Secret Manager: `arnold-database-url` (optional `arnold-database-ca`) |
-| Login       | WorkOS AuthKit                                                        |
-| CI          | GitHub Actions, `.github/workflows/check.yml`                         |
+| Was         | Wert                                                                                      |
+| ----------- | ----------------------------------------------------------------------------------------- |
+| Projekt     | `arnold-513219`                                                                           |
+| Region      | `europe-west1`                                                                            |
+| Dienst      | `arnold` (Cloud Run, Profil `arnold_database`, höchstens 1 Instanz)                       |
+| Adresse     | `https://arnold-789221393068.europe-west1.run.app/mcp`                                    |
+| Daten       | Supabase-Projekt `Arnold` (`yjamovwtistjbrnyzkhl`, Frankfurt, Free-Plan), Schema `arnold` |
+| Geheimnisse | Secret Manager: `arnold-database-url`, `arnold-database-ca`                               |
+| Login       | WorkOS AuthKit                                                                            |
+| CI          | GitHub Actions, `.github/workflows/check.yml`                                             |
 
 Alle Befehle setzen `gcloud config set project arnold-513219` voraus.
 
@@ -73,11 +73,18 @@ Geübt am 31.10.2026.
 
 ## Sicherung und Wiederherstellung
 
-Die Daten liegen in Supabase. Supabase sichert die Datenbank täglich (Umfang und Aufbewahrung je nach Tarif; Point-in-Time-Recovery ist ein Zusatz). Wiederherstellen: Supabase-Dashboard → Database → Backups. Eine Wiederherstellung setzt die **ganze** Datenbank auf den gewählten Zeitpunkt zurück, also für alle Nutzer.
+Die Daten liegen in Supabase. Das Projekt läuft im **Free-Plan**; laut Supabase gilt dort:
+
+- Ein Projekt mit wenig Datenbanknutzung über sieben Tage wird pausiert (Warnung per E-Mail eine Woche vorher). Dann antwortet Arnold mit Fehlern, bis das Projekt im Dashboard fortgesetzt wird.
+- Sicherungen lassen sich nicht herunterladen. Wer verlässliche tägliche Sicherungen will, braucht den Pro-Plan (dort auch keine Pause).
+
+Vor echten Beta-Nutzern auf Pro wechseln. Wiederherstellen: Supabase-Dashboard → Database → Backups. Eine Wiederherstellung setzt die **ganze** Datenbank auf den gewählten Zeitpunkt zurück, also für alle Nutzer.
+
+**Nach jeder Wiederherstellung oder nach dem Fortsetzen eines pausierten Projekts:** Supabase sichert die Passwörter eigener Rollen nicht mit. Das Passwort von `arnold_app` danach neu setzen (unten), sonst startet Arnold nicht.
 
 Einzelne Fehler lassen sich meist ohne Wiederherstellung beheben: Arnold löscht keine Trainingszeilen (verworfene Sätze bleiben als Tombstone), und `arnold.audit_events` zeigt, welche Änderung wann geschrieben wurde. Abfragen dafür nur mit der Owner-Verbindung im SQL-Editor von Supabase, nie mit `arnold_app`.
 
-Das Passwort von `arnold_app` lässt sich jederzeit erneuern: `npm run db:setup -- arnold-513219` erneut ausführen, danach deployen.
+Das Passwort von `arnold_app` lässt sich jederzeit erneuern: `npm run db:setup -- arnold-513219` mit `DATABASE_ADMIN_URL` (Supabase → Connect → Session pooler, Nutzer `postgres`) erneut ausführen, danach deployen. Der Server verbindet sich über den Session Pooler `aws-1-eu-central-1.pooler.supabase.com:5432` als `arnold_app.yjamovwtistjbrnyzkhl`, mit Supabases CA-Zertifikat (`arnold-database-ca`, „Supabase Root 2021 CA“, gültig bis April 2031).
 
 ## Alarme
 
