@@ -9,6 +9,7 @@ export default defineConfig({
       testMatch: [
         "**/beta-cards.spec.ts",
         "**/onboarding.spec.ts",
+        "**/onboarding-latency.spec.ts",
         "**/arnold-dashboard.spec.ts",
         "**/arnold-v2-qa.spec.ts",
       ],

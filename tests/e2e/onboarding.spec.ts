@@ -21,7 +21,6 @@ test("question cards reach a revision-bound plan confirmation and an honest Goog
     page.getByRole("heading", { name: "Jetzt entsteht dein Plan" }),
   ).toBeVisible();
   const claim = await submitProposal(page);
-  await page.getByRole("button", { name: "Nach dem Vorschlag suchen" }).click();
   await expect(
     page.getByRole("heading", { name: "Dein Planvorschlag" }),
   ).toBeVisible();
@@ -71,6 +70,7 @@ test("optional personal questions keep decimal input exact and can be skipped in
   await expect(
     page.getByRole("heading", { name: "Was ist dein Ziel?" }),
   ).toBeVisible();
+  await expect(wizard(page)).toHaveAttribute("data-profile-save", "saved");
   const state = await callTool(
     page,
     "get_onboarding_state",
@@ -114,6 +114,7 @@ test("resumes at the next unanswered question and adopts answers from chat", asy
   await expect(
     page.getByRole("heading", { name: "Wo trainierst du?" }),
   ).toBeVisible();
+  await expect(wizard(page)).toHaveAttribute("data-profile-save", "saved");
   await callTool(page, "update_onboarding_profile", {
     ...claim,
     request_id: crypto.randomUUID(),
@@ -142,6 +143,7 @@ test("any stored answer can be corrected without repeating the questionnaire", a
   await expect(
     page.getByRole("heading", { name: "Passt das so für deinen Plan?" }),
   ).toBeVisible();
+  await expect(wizard(page)).toHaveAttribute("data-profile-save", "saved");
   expect(
     (await callTool(page, "get_onboarding_state", await storedClaim(page)))
       .session.profile.training.days_per_week,
@@ -173,7 +175,6 @@ test("plan edits invalidate an earlier revision before confirmation", async ({
     .getByRole("button", { name: "Plan erstellen", exact: true })
     .click();
   const claim = await submitProposal(page);
-  await page.getByRole("button", { name: "Nach dem Vorschlag suchen" }).click();
   const before = (await callTool(page, "get_onboarding_state", claim)).plan;
   await page
     .getByRole("button", { name: "Plan ansehen und bearbeiten" })

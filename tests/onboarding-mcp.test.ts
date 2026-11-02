@@ -266,6 +266,7 @@ describe("tool discovery", () => {
 
   it("publishes both app resources", async () => {
     const uris = (await client.listResources()).resources.map((r) => r.uri);
+    expect(uris).toContain("ui://arnold/onboarding-v2.html");
     expect(uris).toContain("ui://arnold/onboarding-v1.html");
     expect(uris).toContain("ui://arnold/dashboard-v2.html");
   });

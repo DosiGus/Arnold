@@ -1,0 +1,56 @@
+[
+  {
+    "action": "Persönliche Angaben überspringen",
+    "startUtc": "2026-11-01T21:21:09.131Z",
+    "ms": 305,
+    "kind": "local"
+  },
+  {
+    "action": "Ziel speichern → Erfahrung",
+    "startUtc": "2026-11-01T21:21:34.605Z",
+    "minMs": 3000,
+    "maxMs": 14111,
+    "kind": "mcp",
+    "note": "Intervall: erste Warteprüfung abgelaufen, nächste Beobachtung später"
+  },
+  {
+    "action": "Erfahrung speichern → Häufigkeit",
+    "startUtc": "2026-11-01T21:22:06.139Z",
+    "ms": 4552,
+    "ready": true,
+    "waitTimeouts": 2,
+    "kind": "mcp"
+  },
+  {
+    "action": "3 Trainingstage speichern → Dauer",
+    "startUtc": "2026-11-01T21:22:23.863Z",
+    "ms": 4379,
+    "ready": true,
+    "waitTimeouts": 2,
+    "kind": "mcp"
+  },
+  {
+    "action": "60 Minuten speichern → Trainingsort",
+    "startUtc": "2026-11-01T21:22:30.696Z",
+    "ms": 4156,
+    "ready": true,
+    "waitTimeouts": 2,
+    "kind": "mcp"
+  },
+  {
+    "action": "Fitnessstudio speichern → Zusammenfassung",
+    "startUtc": "2026-11-01T21:22:38.076Z",
+    "ms": 5368,
+    "ready": true,
+    "waitTimeouts": 3,
+    "kind": "mcp"
+  },
+  {
+    "action": "Nach dem Vorschlag suchen → Plan",
+    "startUtc": "2026-11-01T21:24:30.341Z",
+    "ms": 4255,
+    "ready": true,
+    "waitTimeouts": 2,
+    "kind": "mcp"
+  }
+]

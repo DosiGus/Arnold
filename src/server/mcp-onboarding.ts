@@ -55,7 +55,7 @@ import {
   type OnboardingService,
 } from "./onboarding/service.js";
 
-export const ONBOARDING_RESOURCE_URI = "ui://arnold/onboarding-v1.html";
+export const ONBOARDING_RESOURCE_URI = "ui://arnold/onboarding-v2.html";
 
 const readOnly = {
   readOnlyHint: true,
@@ -206,38 +206,47 @@ export function registerOnboardingTools(
   // The onboarding app is its own resource, so opening a setup never depends on
   // the dashboard and the existing `show_arnold_dashboard` stays untouched. Both
   // are served by the same bundle; the payload's contract selects the interface.
+  // New calls get a new URI, so the host cannot reuse an older UI bundle.
+  // Keep the previous URI readable for cards already stored in chat history.
   if (uiFile)
-    registerAppResource(
-      server,
-      "Arnold Einrichtung",
+    for (const resourceUri of [
       ONBOARDING_RESOURCE_URI,
-      {
-        description:
-          "Geführte Einrichtung von Arnold: Begrüßung mit Wahl des Weges, Angaben zu Person und Training oder Übernahme eines eigenen Plans, Planvorschlag, Planbearbeitung, Bestätigung und Google-Verbindung.",
-        mimeType: RESOURCE_MIME_TYPE,
-        _meta: {
-          ui: {
-            prefersBorder: false,
-            csp: { connectDomains: [], resourceDomains: [] },
-          },
-        },
-      },
-      async () => ({
-        contents: [
-          {
-            uri: ONBOARDING_RESOURCE_URI,
-            mimeType: RESOURCE_MIME_TYPE,
-            text: await readFile(uiFile, "utf8"),
-            _meta: {
-              ui: {
-                prefersBorder: false,
-                csp: { connectDomains: [], resourceDomains: [] },
-              },
+      "ui://arnold/onboarding-v1.html",
+    ]) {
+      registerAppResource(
+        server,
+        resourceUri === ONBOARDING_RESOURCE_URI
+          ? "Arnold Einrichtung"
+          : "Arnold Einrichtung (bisherige Karten)",
+        resourceUri,
+        {
+          description:
+            "Geführte Einrichtung von Arnold: Begrüßung mit Wahl des Weges, Angaben zu Person und Training oder Übernahme eines eigenen Plans, Planvorschlag, Planbearbeitung, Bestätigung und Google-Verbindung.",
+          mimeType: RESOURCE_MIME_TYPE,
+          _meta: {
+            ui: {
+              prefersBorder: false,
+              csp: { connectDomains: [], resourceDomains: [] },
             },
           },
-        ],
-      }),
-    );
+        },
+        async () => ({
+          contents: [
+            {
+              uri: resourceUri,
+              mimeType: RESOURCE_MIME_TYPE,
+              text: await readFile(uiFile, "utf8"),
+              _meta: {
+                ui: {
+                  prefersBorder: false,
+                  csp: { connectDomains: [], resourceDomains: [] },
+                },
+              },
+            },
+          ],
+        }),
+      );
+    }
 
   /**
    * Opens the wizard.

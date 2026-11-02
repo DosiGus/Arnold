@@ -48,7 +48,6 @@ import {
   OnboardingResponseSchema,
   OnboardingStateSchema,
   OnboardingToolInputs,
-  WEEKDAYS,
   splitsForDays,
   stepForStatus,
   type HandoffStatus,
@@ -81,6 +80,7 @@ import {
   type OnboardingPrincipal,
 } from "./access.js";
 import {
+  mergeProfile,
   buildBrief,
   buildProgress,
   exerciseChoices,
@@ -166,66 +166,7 @@ const emptyProfile = (): OnboardingProfile => ({
   updated_at_utc: null,
 });
 
-/** Lists keep weekday order and hold each value once. */
-const ordered = <T extends string>(values: readonly T[], order: readonly T[]) =>
-  order.filter((value) => values.includes(value));
-const unique = <T>(values: readonly T[]) => [...new Set(values)];
-
-/**
- * Applies a patch to a profile.
- *
- * Absent keys stay, `null` removes an optional answer, an empty list removes
- * a list. Two rules keep the answers consistent instead of contradictory:
- * fixed weekdays decide the number of days, and an exercise is either
- * preferred or avoided, never both — the newer choice wins.
- */
-export function mergeProfile(
-  before: OnboardingProfile,
-  patch: OnboardingProfilePatch,
-): Omit<OnboardingProfile, "revision" | "updated_at_utc"> {
-  const person: Record<string, unknown> = { ...before.person };
-  for (const [key, value] of Object.entries(patch.person ?? {})) {
-    if (value === undefined) continue;
-    if (value === null || (Array.isArray(value) && value.length === 0))
-      delete person[key];
-    else person[key] = Array.isArray(value) ? unique(value) : value;
-  }
-
-  const training: Record<string, unknown> = { ...before.training };
-  for (const [key, value] of Object.entries(patch.training ?? {})) {
-    if (value === undefined) continue;
-    if (value === null || (Array.isArray(value) && value.length === 0))
-      delete training[key];
-    else training[key] = Array.isArray(value) ? unique(value) : value;
-  }
-
-  const days = patch.training?.training_days;
-  if (days?.length) {
-    training.training_days = ordered(days, WEEKDAYS);
-    training.days_per_week = (training.training_days as unknown[]).length;
-  } else if (
-    patch.training?.days_per_week !== undefined &&
-    Array.isArray(training.training_days) &&
-    training.training_days.length !== patch.training.days_per_week
-  )
-    // "Flexibel, vier Tage" replaces three fixed weekdays.
-    delete training.training_days;
-
-  const drop = (key: string, ids: readonly string[] | undefined) => {
-    if (!ids?.length || !Array.isArray(training[key])) return;
-    const rest = (training[key] as string[]).filter((id) => !ids.includes(id));
-    if (rest.length) training[key] = rest;
-    else delete training[key];
-  };
-  drop("avoided_exercise_ids", patch.training?.preferred_exercise_ids);
-  drop("preferred_exercise_ids", patch.training?.avoided_exercise_ids);
-
-  return {
-    path: patch.path ?? before.path,
-    person: person as OnboardingProfile["person"],
-    training: training as OnboardingProfile["training"],
-  };
-}
+export { mergeProfile } from "../../shared/onboarding-profile.js";
 
 export class OnboardingService {
   readonly mode: "fixture" | "production";
@@ -916,13 +857,15 @@ export class OnboardingService {
   ): Promise<OnboardingResponse> {
     return this.run("update_onboarding_profile", raw, async (input) => {
       const { record, principal } = await this.open(input, context);
-      this.assertRevision(record, input.expected_revision);
+      // A lost acknowledgement must replay the original operation even though
+      // that operation has already advanced the revision.
       if (this.replay(record, input.request_id))
         return {
           state: await this.project(record),
           token: null,
           replayed: true,
         };
+      this.assertRevision(record, input.expected_revision);
 
       const before = record.session.profile;
       const patch = input.profile;

@@ -67,8 +67,10 @@ export async function fillProfile(page: Page) {
   await expect(
     main.getByRole("heading", { name: "Passt das so für deinen Plan?" }),
   ).toBeVisible();
+  await expect(main).toHaveAttribute("data-profile-save", "saved");
 }
 export async function submitProposal(page: Page, origin = "ai_proposal") {
+  await expect(wizard(page)).toHaveAttribute("data-profile-save", "saved");
   const claim = await storedClaim(page);
   const brief = await callTool(page, "get_onboarding_brief", claim);
   const result = await callTool(page, "submit_onboarding_plan_proposal", {

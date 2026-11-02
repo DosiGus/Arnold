@@ -443,8 +443,7 @@ body:has(.arnold-cards) {
   letter-spacing: -0.01em;
   transition:
     transform 120ms,
-    background 160ms,
-    opacity 160ms;
+    background 160ms;
 }
 .arnold-cards .ac-btn:active {
   transform: scale(0.97);

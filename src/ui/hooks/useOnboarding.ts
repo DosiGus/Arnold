@@ -1,26 +1,9 @@
 /**
- * State behind the onboarding wizard.
- *
- * All onboarding logic lives on the server. This hook owns only what a UI must
- * own: which step is on screen, what the user has typed but not yet sent, and
- * whether the last write was confirmed.
- *
- * Four properties are deliberate.
- *
- *   1. The server state is the truth. Every write returns the stored state and
- *      the hook replaces its copy with it. Nothing is rendered optimistically,
- *      so a failed save can never look like a successful one.
- *   2. Navigation is instant, answers are persisted. Moving between steps is
- *      local so the wizard feels immediate, and the step is also sent to the
- *      server so reopening the setup lands where the user left it. Answers are
- *      already stored before any navigation, which is why going back never
- *      loses data.
- *   3. A write states the revision it was built on. A stale UI is refused by
- *      the server with `REVISION_CONFLICT` rather than overwriting a change
- *      that arrived from the chat in the meantime.
- *   4. The confirmation is built from the revision as it is *now*, not from the
- *      one the review screen was rendered with, so a draft that changed in
- *      between is refused instead of being confirmed from a stale view.
+ * The confirmed server state remains authoritative for revisions and writes.
+ * Question answers are a separate, explicitly unconfirmed local buffer, so
+ * navigation never waits for MCP. Every plan/control operation drains that
+ * buffer before using the latest server revision. Unknown writes retain their
+ * original request; a server conflict requires explicit user review.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
@@ -30,6 +13,14 @@ import type {
   OnboardingStep,
 } from "../../shared/onboarding-contract";
 import { PROFILE_STEPS } from "../../shared/onboarding-contract";
+import type { OnboardingProfileBuffer } from "../client/OnboardingProfileBuffer";
+import {
+  buildProgress,
+  exerciseChoices,
+  isProfileComplete,
+  validateProfile,
+} from "../../shared/onboarding-profile";
+import { splitsForDays } from "../../shared/onboarding-contract";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
 
 /** What the buttons say in the chat on the user's behalf. Short, first person. */
@@ -70,17 +61,10 @@ export function useOnboarding(
   const [pending, setPending] = useState(false);
   const [reloadEpoch, setReloadEpoch] = useState(0);
   const [message, setMessage] = useState("");
-  /**
-   * Which step to open a setup on.
-   *
-   * A brand-new session is created in `COLLECTING_PROFILE`, whose step is
-   * `goal`, because a chat turn must be able to save an answer straight away.
-   * The welcome screen is therefore a UI affordance rather than a server state:
-   * it is shown while nothing has been answered yet, and skipped the moment a
-   * setup actually has answers to come back to.
-   */
-  // The server knows the screen: the welcome until a path is chosen, then the
-  // path's own step. The client only follows it.
+  const [profileBuffer, setProfileBuffer] = useState<OnboardingProfileBuffer>();
+  const [, redrawProfile] = useState(0);
+  const bufferRef = useRef<OnboardingProfileBuffer | undefined>(undefined);
+  /** Reopening follows the stored screen; local answers can move ahead of it. */
   const openingStep = (next: OnboardingState): OnboardingStep =>
     next.session.current_step;
 
@@ -88,13 +72,7 @@ export function useOnboarding(
     initial ? openingStep(initial) : "welcome",
   );
   const busy = useRef(false);
-  /**
-   * Serialises writes instead of dropping them.
-   *
-   * Answering two questions in quick succession must not lose the second: each
-   * write waits for the previous one and then reads the revision as it stands,
-   * so they apply in order rather than racing and being refused.
-   */
+  /** Control writes and stored navigation follow all buffered answers. */
   const tail = useRef<Promise<unknown>>(Promise.resolve());
   const generation = useRef(0);
   const stateRef = useRef<OnboardingState | undefined>(initial);
@@ -102,13 +80,25 @@ export function useOnboarding(
 
   /** Replaces the local copy with what the server stored. */
   const adopt = useCallback((next: OnboardingState, follow = true) => {
+    if (
+      stateRef.current &&
+      stateRef.current.session.onboarding_session_id ===
+        next.session.onboarding_session_id &&
+      next.session.revision < stateRef.current.session.revision
+    )
+      return;
     setState(next);
     stateRef.current = next;
+    bufferRef.current?.adopt(next);
     if (follow) setStep(openingStep(next));
   }, []);
 
   const reload = useCallback(
-    async (follow = false) => {
+    async (
+      follow = false,
+      quiet = false,
+      stillCurrent: () => boolean = () => true,
+    ) => {
       const token = ++generation.current;
       if (
         stateRef.current?.session.status === "COMPLETED" &&
@@ -123,17 +113,26 @@ export function useOnboarding(
       }
       try {
         const next = await client.onboardingState();
-        if (token !== generation.current) return undefined;
-        adopt(next, follow);
-        if (follow) setReloadEpoch((epoch) => epoch + 1);
-        setUi("READY");
-        if (follow && !client.hasPendingOnboarding()) {
+        if (token !== generation.current || !stillCurrent()) return undefined;
+        if (
+          stateRef.current &&
+          next.session.onboarding_session_id ===
+            stateRef.current.session.onboarding_session_id &&
+          next.session.revision < stateRef.current.session.revision
+        )
+          return stateRef.current;
+        const mayFollow = follow && !bufferRef.current?.hasChanges;
+        adopt(next, mayFollow);
+        if (mayFollow) setReloadEpoch((epoch) => epoch + 1);
+        if (!quiet) setUi("READY");
+        if (!quiet && follow && !client.hasPendingOnboarding()) {
           setError("");
           setFailure(undefined);
         }
         return next;
       } catch (e) {
-        if (token !== generation.current) return undefined;
+        if (token !== generation.current || quiet || !stillCurrent())
+          return undefined;
         // A missing credential is a different situation from a failed call: it
         // needs a restart, not a retry, and the UI says so.
         const missing = /Sitzungsnachweis/.test((e as Error).message);
@@ -148,29 +147,60 @@ export function useOnboarding(
   );
 
   useEffect(() => {
+    const current = stateRef.current;
+    if (!current) return;
+    const buffer = client.profileBuffer(current);
+    bufferRef.current = buffer;
+    setProfileBuffer(buffer);
+    const changed = () => {
+      const next = buffer.state;
+      stateRef.current = next;
+      setState(next);
+      setPending(client.hasPendingOnboarding() && !buffer.saving);
+      redrawProfile((value) => value + 1);
+    };
+    const unsubscribe = buffer.subscribe(changed);
+    buffer.start();
+    changed();
+    // A restored local answer must also choose the next unanswered question.
+    if (buffer.hasChanges) {
+      const localPath = buffer.project().path;
+      if (
+        localPath &&
+        (current.session.current_step === "welcome" ||
+          localPath !== current.session.profile.path)
+      )
+        setStep(localPath === "own_plan" ? "own_plan" : "profile");
+      setReloadEpoch((value) => value + 1);
+    }
+    return unsubscribe;
+  }, [client, state?.session.onboarding_session_id]);
+
+  useEffect(() => {
+    if (initial) adopt(initial, false);
+  }, [initial, adopt]);
+
+  useEffect(() => {
     // A payload handed in by the host may be a replayed tool result, so the
     // state is revalidated against the server before anything is acted on.
     const unconfirmed = client.hasPendingOnboarding();
     setPending(unconfirmed);
-    if (unconfirmed) {
+    if (unconfirmed && !bufferRef.current?.saving) {
       setFailure({
         code: "COMMIT_STATUS_UNKNOWN",
         recovery: "retry_same_request",
       });
       setError("Eine Speicherung ist noch nicht bestätigt.");
     }
-    void reload(true);
+    void reload(true).then((next) => {
+      if (next) client.profileBuffer(next).start();
+    });
     return () => {
       generation.current++;
     };
-  }, [initial, reload]);
+  }, [client, initial?.session.onboarding_session_id, reload]);
 
-  /**
-   * Sends one onboarding write.
-   *
-   * Serialised through `busy`: two overlapping writes would race on the session
-   * revision, and the second would be refused anyway.
-   */
+  /** One control action at a time, using the revision after the profile flush. */
   const send = useCallback(
     async (
       action: (
@@ -182,14 +212,29 @@ export function useOnboarding(
         busyState: "SAVING",
       },
     ) => {
+      if (busy.current) return undefined;
+      busy.current = true;
+      ++generation.current;
+      setUi(options.busyState);
       // Queue behind whatever is already in flight, then read the revision
       // fresh: the state may well have moved on while we waited.
       const previous = tail.current;
       const run = (async () => {
-        await previous.catch(() => {});
-        const current = stateRef.current;
-        if (!current) return undefined;
-        return attempt(current.session.revision);
+        try {
+          await previous.catch(() => {});
+          if (bufferRef.current && !(await bufferRef.current.flush())) {
+            setUi("READY");
+            return undefined;
+          }
+          const current = stateRef.current;
+          if (!current) {
+            setUi("READY");
+            return undefined;
+          }
+          return await attempt(current.session.revision);
+        } finally {
+          busy.current = false;
+        }
       })();
       tail.current = run;
       return run;
@@ -242,21 +287,17 @@ export function useOnboarding(
     [adopt, reload],
   );
 
-  /** Saves answers and, when given, records the step they came from. */
-  const saveProfile = useCallback(
-    (profile: OnboardingProfilePatch, nextStep?: OnboardingStep) =>
-      send(
-        (revision) =>
-          client.saveOnboardingProfile({
-            request_id: newRequestId(),
-            expected_revision: revision,
-            profile,
-            ...(nextStep ? { step: nextStep } : {}),
-          }),
-        { busyState: "SAVING", success: "Angaben gespeichert." },
-      ),
-    [client, send],
-  );
+  /** Records an uncommitted local answer. The buffer saves it independently. */
+  const saveProfile = useCallback((profile: OnboardingProfilePatch) => {
+    try {
+      return bufferRef.current?.stage(profile) ?? false;
+    } catch (error) {
+      const next = asFailure(error, "retry_same_request");
+      setFailure(next);
+      setError(RECOVERY_COPY[next.recovery].body);
+      return false;
+    }
+  }, []);
 
   /**
    * Moves to another collection step.
@@ -278,6 +319,7 @@ export function useOnboarding(
       const previous = tail.current;
       const run = (async () => {
         await previous.catch(() => {});
+        if (bufferRef.current && !(await bufferRef.current.flush())) return;
         const current = stateRef.current;
         if (!current) return;
         try {
@@ -319,22 +361,25 @@ export function useOnboarding(
    */
   const choosePath = useCallback(
     async (path: OnboardingPath) => {
-      const response = await send(
-        (revision) =>
-          client.saveOnboardingProfile({
-            request_id: newRequestId(),
-            expected_revision: revision,
-            profile: { path },
-          }),
-        { busyState: "SAVING" },
-      );
-      if (response?.ok && response.state) {
-        setStep(response.state.session.current_step);
-        if (path === "own_plan") await client.askChat(OWN_PLAN_MESSAGE);
+      if (busy.current || !bufferRef.current?.stage({ path })) return;
+      setStep(path === "own_plan" ? "own_plan" : "profile");
+      setError("");
+      setMessage("");
+      // The welcome choice is local too. Only a handoff to the model waits for
+      // the persisted path, so the chat cannot start from an older profile.
+      if (path === "own_plan") {
+        busy.current = true;
+        setUi("SAVING");
+        try {
+          if (await bufferRef.current.flush())
+            await client.askChat(OWN_PLAN_MESSAGE);
+        } finally {
+          busy.current = false;
+          setUi("READY");
+        }
       }
-      return response;
     },
-    [client, send],
+    [client],
   );
 
   /**
@@ -418,7 +463,41 @@ export function useOnboarding(
     }
   }, [adopt, client]);
 
-  const session = state?.session;
+  const displayed =
+    state && profileBuffer?.hasChanges
+      ? (() => {
+          const profile = profileBuffer.project(state.session.profile);
+          return {
+            ...state,
+            session: { ...state.session, profile },
+            validation: validateProfile(profile),
+            exercise_choices: exerciseChoices(profile),
+            split_options: splitsForDays(profile.training.days_per_week),
+            progress: buildProgress(profile, {
+              step: state.session.current_step,
+              can_request_plan:
+                isProfileComplete(profile) &&
+                ["COLLECTING_PROFILE", "PROFILE_READY"].includes(
+                  state.session.status,
+                ),
+              can_confirm_plan: false,
+            }),
+          };
+        })()
+      : state;
+  const session = displayed?.session;
+  const profileFailure =
+    profileBuffer?.failure ??
+    (profileBuffer?.paused
+      ? {
+          code: profileBuffer.conflict
+            ? "REVISION_CONFLICT"
+            : "COMMIT_STATUS_UNKNOWN",
+          recovery: profileBuffer.conflict
+            ? ("reload_then_retry" as const)
+            : ("retry_same_request" as const),
+        }
+      : undefined);
   const connectGoogle = async () => {
     setError("");
     try {
@@ -448,15 +527,30 @@ export function useOnboarding(
   const cancelled = session?.status === "CANCELLED";
 
   return {
-    state,
+    state: displayed,
+    savedProfile: state?.session.profile,
+    profileDirty: profileBuffer?.hasChanges ?? false,
+    profilePaused: profileBuffer?.paused ?? false,
+    profileConflict: profileBuffer?.conflict ?? false,
+    profileVolatile: profileBuffer?.volatile ?? false,
+    profileSaving: profileBuffer?.saving ?? false,
     session,
     step,
     ui,
-    error,
-    failure,
+    error: profileFailure ? RECOVERY_COPY[profileFailure.recovery].body : error,
+    failure: profileFailure ?? failure,
     reloadEpoch,
-    pending,
+    pending: pending || (profileBuffer?.paused ?? false),
     retry: async () => {
+      if (bufferRef.current?.hasChanges) {
+        const ok = await bufferRef.current.retry();
+        if (ok) {
+          setError("");
+          setFailure(undefined);
+          setPending(false);
+        }
+        return;
+      }
       try {
         const response = await client.retryOnboarding();
         setPending(client.hasPendingOnboarding());
@@ -477,8 +571,8 @@ export function useOnboarding(
     cancelled,
     /** True while the setup is in a state the user can still work in. */
     active: Boolean(state) && !expired && !cancelled,
-    progress: state?.progress,
-    validation: state?.validation,
+    progress: displayed?.progress,
+    validation: displayed?.validation,
     plan: state?.plan ?? null,
     planValidation: state?.plan_validation ?? null,
     handoff: state?.handoff,

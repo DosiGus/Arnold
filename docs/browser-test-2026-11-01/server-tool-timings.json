@@ -1,0 +1,150 @@
+[
+  {
+    "jsonPayload": {
+      "ms": 702,
+      "onboarding": {
+        "status": "COLLECTING_PROFILE",
+        "step": "welcome"
+      },
+      "outcome": "ok",
+      "tool": "show_arnold_onboarding"
+    },
+    "timestamp": "2026-11-01T21:18:44.506136Z"
+  },
+  {
+    "jsonPayload": {
+      "ms": 298,
+      "onboarding": {
+        "status": "COLLECTING_PROFILE",
+        "step": "welcome"
+      },
+      "outcome": "ok",
+      "tool": "get_onboarding_state"
+    },
+    "timestamp": "2026-11-01T21:20:21.167966Z"
+  },
+  {
+    "jsonPayload": {
+      "ms": 611,
+      "onboarding": {
+        "status": "COLLECTING_PROFILE",
+        "step": "profile"
+      },
+      "outcome": "ok",
+      "tool": "update_onboarding_profile"
+    },
+    "timestamp": "2026-11-01T21:20:38.302231Z"
+  },
+  {
+    "jsonPayload": {
+      "ms": 694,
+      "onboarding": {
+        "status": "COLLECTING_PROFILE",
+        "step": "profile"
+      },
+      "outcome": "ok",
+      "tool": "update_onboarding_profile"
+    },
+    "timestamp": "2026-11-01T21:21:39.082041Z"
+  },
+  {
+    "jsonPayload": {
+      "ms": 605,
+      "onboarding": {
+        "status": "COLLECTING_PROFILE",
+        "step": "profile"
+      },
+      "outcome": "ok",
+      "tool": "update_onboarding_profile"
+    },
+    "timestamp": "2026-11-01T21:22:10.551281Z"
+  },
+  {
+    "jsonPayload": {
+      "ms": 577,
+      "onboarding": {
+        "status": "COLLECTING_PROFILE",
+        "step": "profile"
+      },
+      "outcome": "ok",
+      "tool": "update_onboarding_profile"
+    },
+    "timestamp": "2026-11-01T21:22:28.066879Z"
+  },
+  {
+    "jsonPayload": {
+      "ms": 565,
+      "onboarding": {
+        "status": "COLLECTING_PROFILE",
+        "step": "profile"
+      },
+      "outcome": "ok",
+      "tool": "update_onboarding_profile"
+    },
+    "timestamp": "2026-11-01T21:22:34.796167Z"
+  },
+  {
+    "jsonPayload": {
+      "ms": 1344,
+      "onboarding": {
+        "status": "PROFILE_READY",
+        "step": "profile"
+      },
+      "outcome": "ok",
+      "tool": "update_onboarding_profile"
+    },
+    "timestamp": "2026-11-01T21:22:43.334546Z"
+  },
+  {
+    "jsonPayload": {
+      "ms": 561,
+      "onboarding": {
+        "status": "WAITING_FOR_PLAN_PROPOSAL",
+        "step": "plan_proposal"
+      },
+      "outcome": "ok",
+      "tool": "request_onboarding_plan"
+    },
+    "timestamp": "2026-11-01T21:23:09.846730Z"
+  },
+  {
+    "jsonPayload": {
+      "ms": 271,
+      "outcome": "ok",
+      "tool": "get_onboarding_brief"
+    },
+    "timestamp": "2026-11-01T21:23:24.448601Z"
+  },
+  {
+    "jsonPayload": {
+      "ms": 2912,
+      "onboarding": {
+        "status": "REVIEWING_PLAN",
+        "step": "plan_review"
+      },
+      "outcome": "ok",
+      "tool": "submit_onboarding_plan_proposal"
+    },
+    "timestamp": "2026-11-01T21:23:38.283648Z"
+  },
+  {
+    "jsonPayload": {
+      "ms": 258,
+      "onboarding": {
+        "status": "REVIEWING_PLAN",
+        "step": "plan_review"
+      },
+      "outcome": "ok",
+      "tool": "get_onboarding_state"
+    },
+    "timestamp": "2026-11-01T21:24:34.417778Z"
+  },
+  {
+    "jsonPayload": {
+      "ms": 161,
+      "outcome": "ok",
+      "tool": "get_plan_editor_context"
+    },
+    "timestamp": "2026-11-01T21:24:56.949028Z"
+  }
+]

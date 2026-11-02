@@ -1,3 +1,4 @@
+import { OnboardingProfileBuffer } from "./OnboardingProfileBuffer";
 import { ArnoldToolError } from "../recovery";
 import {
   DeleteAccountResponseSchema,
@@ -99,6 +100,33 @@ export class ArnoldMcpClient {
   private pendingPlanWrites = new Map<string, string>();
   /** Held in memory so an opaque MCP App origin without storage still works. */
   private onboardingClaim?: OnboardingClaim;
+  private profileBuffers = new Map<string, OnboardingProfileBuffer>();
+  profileBuffer(
+    initial: import("../../shared/onboarding-contract").OnboardingState,
+  ) {
+    const sessionId = initial.session.onboarding_session_id;
+    let buffer = this.profileBuffers.get(sessionId);
+    if (!buffer) {
+      buffer = new OnboardingProfileBuffer({
+        sessionId,
+        initial,
+        save: (profile, request_id, expected_revision) => {
+          if (this.getOnboardingClaim()?.onboarding_session_id !== sessionId)
+            throw new ArnoldToolError({
+              code: "SESSION_NOT_FOUND",
+              recovery: "start_over",
+            });
+          return this.saveOnboardingProfile({
+            profile,
+            request_id,
+            expected_revision,
+          });
+        },
+      });
+      this.profileBuffers.set(sessionId, buffer);
+    } else buffer.adopt(initial);
+    return buffer;
+  }
   constructor(private readonly client: ArnoldClient) {}
   private refreshListeners = new Set<() => void>();
   subscribeRefresh(listener: () => void) {
@@ -287,6 +315,7 @@ export class ArnoldMcpClient {
   }
 
   forgetOnboarding() {
+    for (const buffer of this.profileBuffers.values()) buffer.suspend();
     this.clearPendingOnboarding();
     this.onboardingClaim = undefined;
     clearStoredClaim();
@@ -365,16 +394,22 @@ export class ArnoldMcpClient {
     const pending = this.readPendingOnboarding();
     if (pending) return this.writeOnboarding(pending.tool, pending.input);
   }
-  private clearPendingOnboarding() {
-    this.pendingOnboarding = undefined;
+  private clearPendingOnboarding(
+    key?: string,
+    operation = this.pendingOnboarding,
+  ) {
+    if (this.pendingOnboarding === operation)
+      this.pendingOnboarding = undefined;
     try {
-      sessionStorage.removeItem(this.onboardingPendingKey());
+      sessionStorage.removeItem(key ?? this.onboardingPendingKey());
     } catch {
       /* no storage */
     }
   }
   /** Writes remain immutable across a lost response and a browser reload. */
   private async writeOnboarding(tool: string, input: Record<string, unknown>) {
+    const claim = this.claim();
+    const storageKey = this.onboardingPendingKey();
     const existing = this.readPendingOnboarding();
     if (
       existing &&
@@ -384,20 +419,24 @@ export class ArnoldMcpClient {
         code: "COMMIT_STATUS_UNKNOWN",
         recovery: "retry_same_request",
       });
-    this.pendingOnboarding = { tool, input };
+    // Once dispatched, a retry uses the original arguments, including its
+    // revision. A later caller must not replace an uncertain operation.
+    if (existing) input = existing.input;
+    const pending = { tool, input };
+    this.pendingOnboarding = pending;
     try {
       sessionStorage.setItem(
-        this.onboardingPendingKey(),
+        storageKey,
         JSON.stringify(this.pendingOnboarding),
       );
     } catch {
       /* no storage */
     }
     const result = OnboardingResponseSchema.parse(
-      await this.client.call(tool, { ...this.claim(), ...input }),
+      await this.client.call(tool, { ...claim, ...input }),
     );
     if (result.ok || result.error?.recovery !== "retry_same_request")
-      this.clearPendingOnboarding();
+      this.clearPendingOnboarding(storageKey, pending);
     return result;
   }
 

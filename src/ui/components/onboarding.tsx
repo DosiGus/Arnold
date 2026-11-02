@@ -220,6 +220,7 @@ export function ProfileStep({
   onRequestPlan,
   onBack,
   sessionKey = "preview",
+  suppressIssues = false,
   onQuestion,
 }: {
   profile: OnboardingProfile;
@@ -229,10 +230,11 @@ export function ProfileStep({
   splitOptions: readonly (keyof typeof SPLIT_LABEL)[];
   busy: boolean;
   canWritePlan: boolean;
-  onSave: (patch: OnboardingProfilePatch) => Promise<boolean>;
+  onSave: (patch: OnboardingProfilePatch) => boolean | Promise<boolean>;
   onRequestPlan: () => void;
   onBack: () => void;
   sessionKey?: string;
+  suppressIssues?: boolean;
   onQuestion?: (title: string) => void;
 }) {
   const [question, setQuestion] = useState<Question>(() =>
@@ -655,13 +657,14 @@ export function ProfileStep({
   // B19: while a save is running or unconfirmed, the server's "missing"
   // finding describes the state before the answer and would be a second,
   // contradicting alert next to the pending notice. It returns once settled.
-  const issue = busy
-    ? undefined
-    : validation.errors.find(
-        (e) =>
-          e.field === `training.${question}` ||
-          e.field === `person.${question}`,
-      );
+  const issue =
+    busy || suppressIssues
+      ? undefined
+      : validation.errors.find(
+          (e) =>
+            e.field === `training.${question}` ||
+            e.field === `person.${question}`,
+        );
   return (
     <ArnoldCard
       label={`Einrichtung · ${optional ? "Freiwillige Angabe" : `Frage ${requiredIndex + 1} von ${REQUIRED.length}`}`}
