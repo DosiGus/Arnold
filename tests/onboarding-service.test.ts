@@ -821,6 +821,64 @@ describe("a change after the confirmation", () => {
     );
   });
 
+  it("reviews and confirms a replacement proposal instead of the historical confirmation", async () => {
+    const { service, claim, ids, plan: previous } = await confirmed();
+    await service.revisePlan({ request_id: rid(), ...claim });
+    const replacement = await service.submitPlanProposal({
+      request_id: rid(),
+      ...claim,
+      name: "Ganzkörper",
+      origin: "ai_proposal",
+      sessions: proposalSessions(ids).map((session, index) => ({
+        ...session,
+        session_name: `Ganzkörper ${index + 1}`,
+      })),
+    });
+    expect(replacement.ok, replacement.error?.message).toBe(true);
+    const reference = replacement.state!.session.plan_draft_reference!;
+    expect(reference.plan_version_id).not.toBe(previous.plan_version_id);
+    // The old release is retained for history, but cannot select the plan.
+    expect(
+      replacement.state!.session.confirmed_plan_reference?.plan_version_id,
+    ).toBe(previous.plan_version_id);
+    expect(replacement.state!.plan?.plan_version_id).toBe(
+      reference.plan_version_id,
+    );
+    expect(replacement.state!.handoff.status).toBe("superseded");
+    const reviewed = await service.getPlan(claim);
+    expect(reviewed.plan.plan_version_id).toBe(reference.plan_version_id);
+    // Both drafts start at revision 1: a revision number alone cannot bind a plan.
+    expect(reviewed.plan.row_revision).toBe(previous.row_revision);
+    const outdated = await service.confirmPlan({
+      request_id: rid(),
+      ...claim,
+      confirmation: {
+        plan_version_id: previous.plan_version_id,
+        row_revision: previous.row_revision,
+        confirmed: true,
+      },
+    });
+    expect(outdated.ok).toBe(false);
+    expect(outdated.error?.code).toBe("STALE_CONFIRMATION");
+    const accepted = await service.confirmPlan({
+      request_id: rid(),
+      ...claim,
+      confirmation: {
+        plan_version_id: reference.plan_version_id,
+        row_revision: reviewed.plan.row_revision,
+        confirmed: true,
+      },
+    });
+    expect(accepted.ok, accepted.error?.message).toBe(true);
+    expect(
+      accepted.state!.session.confirmed_plan_reference?.plan_version_id,
+    ).toBe(reference.plan_version_id);
+    expect(accepted.state!.handoff.confirmed_plan_version_id).toBe(
+      reference.plan_version_id,
+    );
+    expect(accepted.state!.handoff.status).toBe("ready_for_google_connection");
+  });
+
   it("produces a different OAuth binding for a different revision", async () => {
     const { runtime, service, claim, plan, confirmedState } = await confirmed();
     const first = confirmedState.handoff.oauth_state_binding;

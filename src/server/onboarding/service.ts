@@ -424,9 +424,14 @@ export class OnboardingService {
     plan: TrainingPlanVersion | null;
     validation: PlanValidationResult | null;
   }> {
+    // A superseded confirmation is retained as history. During setup it must
+    // never hide a newer proposal (which may have the same row revision).
     const reference =
-      record.session.confirmed_plan_reference ??
-      record.session.plan_draft_reference;
+      record.session.status === "COMPLETED"
+        ? (record.session.confirmed_plan_reference ??
+          record.session.plan_draft_reference)
+        : (record.session.plan_draft_reference ??
+          record.session.confirmed_plan_reference);
     if (!reference || !this.options.plans)
       return { plan: null, validation: null };
     try {
@@ -485,6 +490,14 @@ export class OnboardingService {
         oauth_state_binding: null,
         blocked_reason:
           "Der bestätigte Planentwurf ist nicht mehr abrufbar. Bitte einen neuen Plan erstellen und bestätigen.",
+      };
+    if (plan.plan_version_id !== confirmation.plan_version_id)
+      return {
+        ...base,
+        status: "superseded",
+        oauth_state_binding: null,
+        blocked_reason:
+          "Es liegt ein neuer Planvorschlag vor. Bitte prüfe und bestätige diese Planversion.",
       };
     if (plan.row_revision !== confirmation.row_revision)
       return {
