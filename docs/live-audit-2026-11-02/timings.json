@@ -1,0 +1,56 @@
+[
+  {
+    "action": "first-load-retry",
+    "startUtc": "2026-11-02T14:43:35.007Z",
+    "ms": 453,
+    "ready": true
+  },
+  {
+    "action": "welcome-to-profile",
+    "startUtc": "2026-11-02T14:43:41.676Z",
+    "ms": 304,
+    "ready": true
+  },
+  {
+    "action": "skip-optional-profile",
+    "startUtc": "2026-11-02T14:43:46.251Z",
+    "ms": 305,
+    "ready": true
+  },
+  {
+    "action": "goal-to-experience",
+    "startUtc": "2026-11-02T14:43:54.658Z",
+    "ms": 296,
+    "ready": true
+  },
+  {
+    "action": "experience-to-days",
+    "startUtc": "2026-11-02T14:44:04.183Z",
+    "ms": 297,
+    "ready": true
+  },
+  {
+    "action": "days-to-duration",
+    "startUtc": "2026-11-02T14:44:08.754Z",
+    "ms": 303,
+    "ready": true
+  },
+  {
+    "action": "duration-to-equipment",
+    "startUtc": "2026-11-02T14:44:12.907Z",
+    "ms": 293,
+    "ready": true
+  },
+  {
+    "action": "equipment-to-summary",
+    "startUtc": "2026-11-02T14:44:21.459Z",
+    "ms": 2213,
+    "ready": true
+  },
+  {
+    "action": "equipment-to-summary-repeat",
+    "startUtc": "2026-11-02T14:45:31.538Z",
+    "ms": 322,
+    "ready": true
+  }
+]

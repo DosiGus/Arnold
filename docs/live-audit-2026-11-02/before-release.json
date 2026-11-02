@@ -1,0 +1,12 @@
+{
+  "status": {
+    "latestReadyRevisionName": "arnold-00011-h6s",
+    "traffic": [
+      {
+        "latestRevision": true,
+        "percent": 100,
+        "revisionName": "arnold-00011-h6s"
+      }
+    ]
+  }
+}

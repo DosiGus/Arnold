@@ -1,6 +1,6 @@
-# Schnelle Onboarding-Karten: vorbereitete Umsetzung
+# Schnelle Onboarding-Karten: Umsetzung und Live-Abnahme
 
-Stand: lokal umgesetzt, noch nicht auf GitHub veröffentlicht oder auf Cloud Run bereitgestellt.
+Stand 2. November: als `1890d5e` auf GitHub veröffentlicht und auf Cloud Run abgenommen. Live läuft inzwischen `689c21b` mit einer zusätzlich im Browsertest gefundenen und korrigierten Planreferenz. Einzelheiten und verbleibende Fehler stehen im [Live-Testbericht](live-audit-2026-11-02/BERICHT.md).
 
 ## Was sich ändert
 
@@ -42,12 +42,13 @@ Abgeschlossen: `npm run check` erfolgreich. Build und Typecheck sind grün; 76 V
 
 Die automatisch neu geschriebenen bestehenden Beta-Screenshots wurden nach dem Test auf ihren vorherigen Stand zurückgesetzt; sie gehören nicht zur Änderung.
 
-## Noch vor einer Live-Abnahme
+## Live-Abnahme am 2. November
 
-1. Diesen Stand committen und pushen; die CI des konkreten Commits muss grün sein.
-2. Mit dem bestehenden Deploy-Skript veröffentlichen. Datenformat, Cloud-Ressourcen, Berechtigungen und Zielgruppe werden dafür nicht geändert.
-3. In ChatGPT die Tools aktualisieren und einen neuen Chat öffnen, damit die neue UI-Ressourcenadresse verwendet wird.
-4. Die Fragenwechsel erneut im echten Host messen, anschließend den Teststand wieder leeren.
-5. Den separaten Fehler beim allerersten Anzeigen in Inline-Ansicht und App-Bereich erneut untersuchen. Die neue Ressourcenadresse allein ist kein Nachweis, dass dieser Fehler behoben ist.
+1. Beide Code-Commits wurden gepusht, vollständig in GitHub geprüft und mit dem bestehenden Skript veröffentlicht. Abschließend live: `arnold-00013-7wj`, Commit `689c21b`, 100 % Traffic; Health und Auth-Smoketest erfolgreich.
+2. ChatGPT-Tools wurden aktualisiert und ein neuer Chat mit leerem Testkonto geöffnet. Die normalen Fragenwechsel liegen überwiegend bei 293–303 ms. Der letzte Wechsel zeigte zunächst einen Ausreißer von 2.213 ms, bei der Wiederholung 322 ms. Median der fünf ersten Pflichtfragenwechsel: 297 ms. Dies sind Browser-Automationsmessungen, keine instrumentierten Paint-Zeiten.
+3. Antworten bleiben nach Reload erhalten; ein im Chat erzeugter Plan erscheint automatisch in der bereits laufenden Karte. Zusätzliche Chat-Rückfragen und die kurz alte Ansicht beim Reload bleiben eigene Ablaufprobleme.
+4. Der erste App-Aufruf scheitert weiterhin; Retry öffnet die Karte in 453 ms. Die neue Ressourcenadresse ist keine Lösung dieses separaten Initialisierungsfehlers.
+5. Ein Übungsaustausch und ein neuer Ganzkörperentwurf wurden per Chat getestet. Dabei verdeckte eine historische Bestätigungsreferenz den neuen Plan. Der ergänzende Fix wurde zunächst mit einem fehlschlagenden Regressionstest nachgewiesen, danach mit 1.433 Unit-/Integrationstests und vollständiger Browser-CI geprüft. Die korrigierte Vorschau, der Editor und die Bestätigung des richtigen Plans sind live verifiziert.
+6. Die anschließende Google-Anmeldung ist mit 403 blockiert: Die OAuth-App hat keine freigeschalteten Testnutzer. Die gezielte Konto-/Dateifreigabe steht zur Entscheidung aus. Daher sind Dashboard, sechs Trainingstage und Gewichtskorrekturen noch nicht live abgenommen. Der synthetische Planstand bleibt zur Fortsetzung erhalten; null Workouts und null Sätze.
 
 Die übrigen möglichen Backend-Optimierungen aus der [ersten Performance-Analyse](performance-2026-11-01.md), etwa weniger Identitätsschreibvorgänge und effizientere Dashboard-Lesewege, gehören zu einem weiteren Schritt. Für diesen Patch ist keine Erhöhung von CPU, Instanzzahl oder Datenbankmigration nötig.

@@ -1,0 +1,12 @@
+{
+  "status": {
+    "latestReadyRevisionName": "arnold-00012-xn4",
+    "traffic": [
+      {
+        "latestRevision": true,
+        "percent": 100,
+        "revisionName": "arnold-00012-xn4"
+      }
+    ]
+  }
+}

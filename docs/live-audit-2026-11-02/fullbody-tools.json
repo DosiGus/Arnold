@@ -1,0 +1,82 @@
+[
+  {
+    "jsonPayload": {
+      "ms": 257,
+      "outcome": "error",
+      "tool": "connect_google_account"
+    },
+    "timestamp": "2026-11-02T14:53:00.076753Z"
+  },
+  {
+    "jsonPayload": {
+      "ms": 210,
+      "onboarding": {
+        "status": "REVIEWING_PLAN",
+        "step": "plan_review"
+      },
+      "outcome": "ok",
+      "tool": "show_arnold_onboarding"
+    },
+    "timestamp": "2026-11-02T14:53:34.995133Z"
+  },
+  {
+    "jsonPayload": {
+      "ms": 171,
+      "onboarding": {
+        "status": "REVIEWING_PLAN",
+        "step": "plan_review"
+      },
+      "outcome": "ok",
+      "tool": "get_onboarding_state"
+    },
+    "timestamp": "2026-11-02T14:53:39.533694Z"
+  },
+  {
+    "jsonPayload": {
+      "ms": 671,
+      "onboarding": {
+        "status": "REVIEWING_PLAN",
+        "step": "plan_review"
+      },
+      "outcome": "ok",
+      "tool": "update_onboarding_profile"
+    },
+    "timestamp": "2026-11-02T14:56:09.680190Z"
+  },
+  {
+    "jsonPayload": {
+      "ms": 309,
+      "outcome": "ok",
+      "tool": "get_onboarding_brief"
+    },
+    "timestamp": "2026-11-02T14:56:13.724443Z"
+  },
+  {
+    "jsonPayload": {
+      "ms": 1712,
+      "onboarding": {
+        "status": "REVIEWING_PLAN",
+        "step": "plan_review"
+      },
+      "outcome": "ok",
+      "tool": "submit_onboarding_plan_proposal"
+    },
+    "timestamp": "2026-11-02T14:56:30.334775Z"
+  },
+  {
+    "jsonPayload": {
+      "ms": 203,
+      "outcome": "ok",
+      "tool": "get_onboarding_plan"
+    },
+    "timestamp": "2026-11-02T14:56:40.889367Z"
+  },
+  {
+    "jsonPayload": {
+      "ms": 177,
+      "outcome": "ok",
+      "tool": "get_training_plan"
+    },
+    "timestamp": "2026-11-02T14:56:50.173531Z"
+  }
+]

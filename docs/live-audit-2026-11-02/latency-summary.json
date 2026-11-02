@@ -1,0 +1,7 @@
+{
+  "sampleSize": 5,
+  "medianMs": 297,
+  "meanMs": 680.4,
+  "maxMs": 2213,
+  "measurement": "browser action to visible heading; includes automation overhead"
+}

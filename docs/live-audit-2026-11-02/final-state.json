@@ -1,0 +1,20 @@
+{
+  "verifiedAtUtc": "2026-11-02T15:19:12.827852+00:00",
+  "phase": "draft",
+  "hasGoogleSheet": false,
+  "hasGoogleSubject": false,
+  "sessions": [
+    {
+      "status": "AWAITING_GOOGLE_CONNECTION",
+      "step": "google_connection",
+      "revision": 17,
+      "split": "full_body",
+      "draftPlanId": "e335b614-4cee-47d4-9cb2-3df4fd07033f",
+      "confirmedPlanId": "e335b614-4cee-47d4-9cb2-3df4fd07033f",
+      "handoff": "ready_for_google_connection"
+    }
+  ],
+  "plans": 2,
+  "workouts": 0,
+  "sets": 0
+}
