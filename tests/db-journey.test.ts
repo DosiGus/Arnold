@@ -172,7 +172,7 @@ async function call(
 }
 
 /** Runs the setup up to and including the confirmation. */
-async function setup(subject: string) {
+async function setup(subject: string, person: Record<string, unknown> = {}) {
   const opened = OnboardingViewSchema.parse(
     (await call(subject, "show_arnold_onboarding", {})).structuredContent,
   );
@@ -187,6 +187,7 @@ async function setup(subject: string) {
         request_id: randomUUID(),
         profile: {
           path: "arnold_plan",
+          person,
           training: {
             primary_goal: "strength",
             experience: "intermediate",
@@ -299,7 +300,7 @@ describe("signed-in users with the database", () => {
   });
 
   it("completes the setup with the confirmation, activating exactly that plan", async () => {
-    const { confirmed, plan } = await setup(alice);
+    const { confirmed, plan } = await setup(alice, { body_weight_kg: 82.5 });
     expect(confirmed.state?.session.status).toBe("COMPLETED");
     const active = (await call(alice, "get_training_plan", {}))
       .structuredContent as {
@@ -316,7 +317,9 @@ describe("signed-in users with the database", () => {
     expect(again.session_token).toBeNull();
     const dashboard = await call(alice, "get_arnold_dashboard", {});
     expect(dashboard.isError, JSON.stringify(dashboard.content)).toBeFalsy();
-    ArnoldDashboardViewSchema.parse(dashboard.structuredContent);
+    const view = ArnoldDashboardViewSchema.parse(dashboard.structuredContent);
+    // The weight from the setup is the first entry on the goals card.
+    expect(view.home.latest_body_weight?.weight_kg).toBe(82.5);
   });
 
   it("logs a training and keeps it strictly to its owner", async () => {

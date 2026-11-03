@@ -354,6 +354,8 @@ export const PERSON_BASICS = [
  */
 export const TrainingSchema = z.strictObject({
   primary_goal: TrainingGoalSchema.nullable(),
+  /** Further goals beside the primary one, in the order chosen. */
+  secondary_goals: z.array(TrainingGoalSchema).max(3).optional(),
   experience: ExperienceLevelSchema.nullable(),
   days_per_week: DaysPerWeekSchema.nullable(),
   training_days: z.array(WeekdaySchema).max(7).optional(),
@@ -433,6 +435,7 @@ export type PersonPatch = z.infer<typeof PersonPatchSchema>;
 export const TrainingPatchSchema = z
   .strictObject({
     primary_goal: TrainingGoalSchema.optional(),
+    secondary_goals: z.array(TrainingGoalSchema).max(3).optional(),
     experience: ExperienceLevelSchema.optional(),
     days_per_week: DaysPerWeekSchema.optional(),
     training_days: z.array(WeekdaySchema).max(7).optional(),
@@ -691,7 +694,13 @@ export const OnboardingBriefSchema = z.strictObject({
     protect_areas: z.array(BodyAreaSchema),
   }),
   goal: z
-    .strictObject({ primary: TrainingGoalSchema, primary_label: z.string() })
+    .strictObject({
+      primary: TrainingGoalSchema,
+      primary_label: z.string(),
+      /** Further goals the user also chose; weigh them below the primary. */
+      secondary: z.array(TrainingGoalSchema).default([]),
+      secondary_labels: z.array(z.string()).default([]),
+    })
     .nullable(),
   experience: ExperienceLevelSchema.nullable(),
   experience_label: z.string().nullable(),

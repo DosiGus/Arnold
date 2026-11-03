@@ -25,6 +25,7 @@ import {
   type AuthorizationGuard,
 } from "../workout/infrastructure.js";
 import { WorkoutLoggingService } from "../workout/service.js";
+import { logStartWeight } from "../workout/start-weight.js";
 import type { StoredDataItem } from "../../shared/account-contract.js";
 import type { Database } from "./database.js";
 import type { PostgresIdentityRepository } from "./identity.js";
@@ -274,6 +275,8 @@ export class DatabaseUserRuntime {
       audit: this.store.audit,
       sessionTtlMs: SETUP_TTL_MS,
       setupFinishAvailable: true,
+      recordStartWeight: (weightKg, requestId, context) =>
+        logStartWeight(this.service, weightKg, requestId, context),
     });
     this.service = new WorkoutLoggingService({
       mode: "database",

@@ -136,6 +136,16 @@ export interface OnboardingServiceOptions {
    * Without it, a completed onboarding session is the evidence.
    */
   setupComplete?: () => Promise<boolean>;
+  /**
+   * Stores the body weight from the Person card as the first measurement
+   * once the setup is finished, through the workout service's own write path.
+   * Absent where a deployment keeps no training data.
+   */
+  recordStartWeight?: (
+    weightKg: number,
+    requestId: string,
+    context: unknown,
+  ) => Promise<void>;
   clock?: () => Date;
   id?: () => string;
 }
@@ -1465,6 +1475,18 @@ export class OnboardingService {
           }),
         },
       );
+      const weight = done.session.profile.person.body_weight_kg;
+      if (weight !== undefined && this.options.recordStartWeight)
+        // A convenience on top of a finished setup: the setup is stored and
+        // stays finished even if this one extra write fails. The same
+        // request id makes a repeated finish write it at most once.
+        await this.options
+          .recordStartWeight(
+            weight,
+            `setup-weight-${done.session.onboarding_session_id}`,
+            context,
+          )
+          .catch(() => undefined);
       return { state: await this.project(done), token: null };
     });
   }

@@ -441,6 +441,9 @@ export function buildBrief(
   const split = training.split ?? "auto";
   const fitting = splitsForDays(days);
   const weekdays = training.training_days ?? [];
+  const secondaryGoals = (training.secondary_goals ?? []).filter(
+    (g) => g !== goal,
+  );
 
   const constraints = [
     `Genau ${days} Trainingseinheiten pro Woche planen${weekdays.length ? ` (an ${weekdays.map((day) => WEEKDAY_LABEL[day]).join(", ")})` : ""}.`,
@@ -471,6 +474,10 @@ export function buildBrief(
         : "Für Fortgeschrittene: Grundübungen plus ergänzende Isolationsübungen.",
     ...shared,
   ];
+  if (secondaryGoals.length)
+    constraints.push(
+      `Hauptziel ist ${GOAL_LABEL[goal]}. Zusätzlich gewünscht: ${secondaryGoals.map((g) => GOAL_LABEL[g]).join(", ")}. Diese Ziele mit berücksichtigen, aber dem Hauptziel unterordnen.`,
+    );
   if (training.focus_muscle_groups?.length)
     constraints.push(
       `Schwerpunkt auf ${training.focus_muscle_groups.map((group) => MUSCLE_GROUP_LABEL[group]).join(", ")}: diese Muskelgruppen etwas häufiger oder mit mehr Sätzen trainieren, ohne die übrigen zu vernachlässigen.`,
@@ -488,7 +495,12 @@ export function buildBrief(
     ...base,
     path: "arnold_plan",
     task: "Aus diesen Angaben einen Trainingsplan erstellen und mit submit_onboarding_plan_proposal (origin ai_proposal) als Entwurf übergeben.",
-    goal: { primary: goal, primary_label: GOAL_LABEL[goal] },
+    goal: {
+      primary: goal,
+      primary_label: GOAL_LABEL[goal],
+      secondary: secondaryGoals,
+      secondary_labels: secondaryGoals.map((g) => GOAL_LABEL[g]),
+    },
     experience,
     experience_label: EXPERIENCE_LABEL[experience],
     availability: {
@@ -613,6 +625,14 @@ export function mergeProfile(
     if (rest.length) training[key] = rest;
     else delete training[key];
   };
+  // The primary goal is never also a secondary one.
+  if (Array.isArray(training.secondary_goals)) {
+    const rest = (training.secondary_goals as string[]).filter(
+      (g) => g !== training.primary_goal,
+    );
+    if (rest.length) training.secondary_goals = rest;
+    else delete training.secondary_goals;
+  }
   drop("avoided_exercise_ids", patch.training?.preferred_exercise_ids);
   drop("preferred_exercise_ids", patch.training?.avoided_exercise_ids);
 

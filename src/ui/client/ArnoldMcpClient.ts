@@ -1,3 +1,4 @@
+import type { DashboardCard } from "../../shared/dashboard-cards";
 import { OnboardingProfileBuffer } from "./OnboardingProfileBuffer";
 import { ArnoldToolError } from "../recovery";
 import { DeleteAccountResponseSchema } from "../../shared/account-contract";
@@ -156,8 +157,9 @@ export class ArnoldMcpClient {
   async displayMode(mode: "inline" | "fullscreen") {
     return this.client.displayMode(mode);
   }
-  async openDashboard() {
-    await this.client.call("show_arnold_dashboard", { card: "today" });
+  /** Switches the app to a dashboard card; the training card by default. */
+  async openDashboard(card: DashboardCard = "today") {
+    await this.client.call("show_arnold_dashboard", { card });
   }
   /** Tells the model what the app shows, without starting a chat turn. */
   async tellModel(text: string) {

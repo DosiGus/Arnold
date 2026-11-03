@@ -1,5 +1,13 @@
 import { test, expect } from "@playwright/test";
-import { callTool, openWizard, storedClaim, wizard } from "./helpers";
+import {
+  callTool,
+  choose,
+  next,
+  openWizard,
+  setRhythm,
+  storedClaim,
+  wizard,
+} from "./helpers";
 
 test("questions remain responsive during an outstanding MCP write; plan creation waits for every answer", async ({
   page,
@@ -34,16 +42,14 @@ test("questions remain responsive during an outstanding MCP write; plan creation
     .click();
   await expect(
     page.getByRole("heading", {
-      name: "Möchtest du etwas über dich angeben?",
+      name: "Ein paar Angaben über dich?",
       exact: true,
     }),
   ).toBeVisible({ timeout: 500 });
   await page.getByRole("button", { name: "Überspringen", exact: true }).click();
 
-  await page
-    .getByRole("button", { name: "Muskeln aufbauen", exact: true })
-    .click();
-  await page.getByRole("button", { name: "Weiter", exact: true }).click();
+  await choose(page, "Muskeln aufbauen");
+  await next(page);
   await expect(
     page.getByRole("heading", {
       name: "Wie lange trainierst du schon?",
@@ -53,18 +59,21 @@ test("questions remain responsive during an outstanding MCP write; plan creation
   // Hold the real transport open, rather than just delaying the test runner.
   await arrived;
   const began = Date.now();
-  for (const [answer, next] of [
-    ["Fortgeschritten", "Wie oft möchtest du pro Woche trainieren?"],
-    ["3", "Wie viel Zeit hast du pro Training?"],
-    ["60 Min.", "Wo trainierst du?"],
-    ["Fitnessstudio", "Passt das so für deinen Plan?"],
-  ]) {
-    await page.getByRole("button", { name: answer, exact: true }).click();
-    await page.getByRole("button", { name: "Weiter", exact: true }).click();
-    await expect(
-      page.getByRole("heading", { name: next, exact: true }),
-    ).toBeVisible({ timeout: 500 });
-  }
+  const shows = (title: string) =>
+    expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible(
+      { timeout: 500 },
+    );
+  await choose(page, "Fortgeschritten");
+  await next(page);
+  await shows("Wie oft und wie lange?");
+  await setRhythm(page, 3, 60);
+  await next(page);
+  await shows("Wo trainierst du?");
+  await choose(page, "Fitnessstudio");
+  await next(page);
+  await shows("Deine Wünsche für den Plan");
+  await page.getByRole("button", { name: "Überspringen", exact: true }).click();
+  await shows("So wird dein Plan");
   expect(Date.now() - began).toBeLessThan(2000);
   expect(writes).toHaveLength(1);
   const before = await callTool(
@@ -73,9 +82,7 @@ test("questions remain responsive during an outstanding MCP write; plan creation
     await storedClaim(page),
   );
   expect(before.session.profile.training.primary_goal).toBeNull();
-  await expect(wizard(page)).toContainText(
-    "noch nicht auf dem Server bestätigt",
-  );
+  await expect(wizard(page)).toContainText("Angaben werden gespeichert");
 
   await page
     .getByRole("button", { name: "Plan erstellen", exact: true })
@@ -93,7 +100,7 @@ test("questions remain responsive during an outstanding MCP write; plan creation
   release();
   await expect(
     page.getByRole("heading", {
-      name: "Jetzt entsteht dein Plan",
+      name: "Arnold baut deinen Plan",
       exact: true,
     }),
   ).toBeVisible();
@@ -121,10 +128,8 @@ test("answers entered before the background batch starts survive a page reload",
     .getByRole("button", { name: "Plan mit Arnold erstellen", exact: true })
     .click();
   await page.getByRole("button", { name: "Überspringen", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Stärker werden", exact: true })
-    .click();
-  await page.getByRole("button", { name: "Weiter", exact: true }).click();
+  await choose(page, "Stärker werden");
+  await next(page);
   await expect(
     page.getByRole("heading", {
       name: "Wie lange trainierst du schon?",

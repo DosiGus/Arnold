@@ -3,7 +3,9 @@ import type { OnboardingState } from "../../shared/onboarding-contract";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
 import { OWN_PLAN_MESSAGE, useOnboarding } from "../hooks/useOnboarding";
 import { useModelContext } from "../hooks/useModelContext";
-import { ProfileStep, WelcomeStep } from "../components/onboarding";
+import { Check, ChevronDown } from "lucide-react";
+import { ProfileStep, SetupHead, WelcomeStep } from "../components/onboarding";
+import { formatNumber } from "../format";
 import {
   ArnoldCard,
   CardActions,
@@ -35,17 +37,20 @@ export function OnboardingView({
   const [cancelling, setCancelling] = useState(false);
   const [editing, setEditing] = useState(false);
   const [question, setQuestion] = useState("");
+  const [openSession, setOpenSession] = useState(0);
   // B19: switching to the training card takes a round trip. Until it is done
   // the button stays disabled, so a second tap cannot land on this card,
   // open the dashboard again and be lost.
   const [opening, setOpening] = useState(false);
   const [openError, setOpenError] = useState(false);
-  const openDashboard = async () => {
+  const openDashboard = async (
+    card: Parameters<ArnoldMcpClient["openDashboard"]>[0] = "today",
+  ) => {
     if (opening) return;
     setOpening(true);
     setOpenError(false);
     try {
-      await client.openDashboard();
+      await client.openDashboard(card);
     } catch {
       setOpenError(true);
       setOpening(false);
@@ -105,6 +110,19 @@ export function OnboardingView({
     setEditing(false);
     void onb.reload(false);
   };
+  const menu = [
+    {
+      label: "Stand neu laden",
+      onClick: () => void onb.reload(true),
+      disabled: onb.busy,
+    },
+    {
+      label: "Einrichtung abbrechen",
+      onClick: () => setCancelling(true),
+      danger: true,
+      disabled: blocked,
+    },
+  ];
   let card;
   if (onb.ui === "LOADING") card = <CardSkeleton />;
   else if (onb.ui === "NO_SESSION" || !state || !session)
@@ -145,29 +163,73 @@ export function OnboardingView({
         />
       </ArnoldCard>
     );
-  else if (session.status === "COMPLETED")
+  else if (session.status === "COMPLETED") {
+    const first = state.plan?.sessions
+      .slice()
+      .sort((a, b) => a.session_order - b.session_order)[0];
+    const weight = session.profile.person.body_weight_kg;
+    const minutes = session.profile.training.session_minutes;
     card = (
-      <ArnoldCard
-        label="Einrichtung · Schritt 4 von 4"
-        title="Bereit für dein erstes Training"
-        subtitle="Dein bestätigter Plan ist aktiv und in deinem Arnold-Konto gespeichert."
-      >
+      <section className="ac" aria-label="Einrichtung abgeschlossen">
+        <SetupHead label="Fertig" phase={4} within={1} />
+        <div className="ac-done">
+          <span className="ac-mark large" aria-hidden="true">
+            <Check size={28} strokeWidth={3} />
+          </span>
+          <h2 className="ac-title">Bereit für dein erstes Training</h2>
+          <p className="ac-sub">Dein Plan ist aktiv und gespeichert.</p>
+        </div>
+        {first && (
+          <div className="ac-next-box">
+            <small>Als Nächstes</small>
+            <strong>
+              {first.session_name}{" "}
+              <span className="ac-text">
+                · {first.exercises.length}{" "}
+                {first.exercises.length === 1 ? "Übung" : "Übungen"}
+                {minutes ? ` · ca. ${minutes} Min.` : ""}
+              </span>
+            </strong>
+          </div>
+        )}
+        {weight !== undefined && (
+          <button
+            type="button"
+            className="ac-option ac-weight-link"
+            disabled={opening}
+            onClick={() => void openDashboard("goals")}
+          >
+            <strong>Startgewicht {formatNumber(weight, 1)} kg</strong>
+            <span className="ac-text">
+              Steht bei deinen Zielen. Willst du dir ein Ziel setzen?
+            </span>
+          </button>
+        )}
         {openError && (
           <CardNote>
-            Dein Training konnte nicht geöffnet werden. Bitte erneut versuchen.
+            Die Ansicht konnte nicht geöffnet werden. Bitte erneut versuchen.
           </CardNote>
         )}
         <CardActions
           primary={{
-            label: opening ? "Wird geöffnet …" : "Erstes Training starten",
+            label: opening
+              ? "Wird geöffnet …"
+              : first
+                ? `${first.session_name} starten`
+                : "Erstes Training starten",
             ariaLabel: "Erstes Training starten",
             disabled: opening,
-            onClick: () => void openDashboard(),
+            onClick: () => void openDashboard("today"),
+          }}
+          secondary={{
+            label: "Zur Übersicht",
+            disabled: opening,
+            onClick: () => void openDashboard("home"),
           }}
         />
-      </ArnoldCard>
+      </section>
     );
-  else if (cancelling)
+  } else if (cancelling)
     card = (
       <ArnoldCard
         label="Deine Einrichtung"
@@ -216,7 +278,14 @@ export function OnboardingView({
   )
     card = (
       <ArnoldCard
-        label="Einrichtung · Schritt 3 von 4"
+        label={
+          <SetupHead
+            label="Plan · bestätigt"
+            phase={3}
+            within={0.95}
+            menu={menu}
+          />
+        }
         title="Dein Trainingsplan ist bestätigt"
         subtitle="Noch ein Schritt: Arnold aktiviert genau diesen Plan."
       >
@@ -255,18 +324,36 @@ export function OnboardingView({
         plan.row_revision !== confirming.revision);
     card = !plan ? (
       <ArnoldCard
-        label="Einrichtung · Schritt 2 von 4"
+        label={
+          <SetupHead
+            label="Plan · wird erstellt"
+            phase={3}
+            within={0.4}
+            menu={menu}
+          />
+        }
         title={
           session.profile.path === "own_plan"
             ? "Wir übernehmen deinen Plan"
-            : "Jetzt entsteht dein Plan"
+            : "Arnold baut deinen Plan"
         }
         subtitle={
           session.profile.path === "own_plan"
             ? "Schreib deinen Plan in den Chat oder lade ein Foto hoch. Arnold übernimmt ihn als Entwurf."
-            : "Arnold erstellt deinen Vorschlag im Chat. Du prüfst ihn, bevor etwas aktiviert wird."
+            : "Das dauert ein paar Sekunden. Der Vorschlag erscheint gleich hier, du prüfst ihn, bevor etwas aktiviert wird."
         }
       >
+        <div className="ac-skeleton-rows" aria-hidden="true">
+          {[45, 38, 52].map((w) => (
+            <span key={w}>
+              <i />
+              <span>
+                <b style={{ width: `${w}%` }} />
+                <b style={{ width: `${w + 20}%` }} />
+              </span>
+            </span>
+          ))}
+        </div>
         <CardActions
           primary={{
             label: "Nach dem Vorschlag suchen",
@@ -285,18 +372,62 @@ export function OnboardingView({
       </ArnoldCard>
     ) : (
       <ArnoldCard
-        label="Einrichtung · Schritt 2 von 4"
+        label={
+          <SetupHead
+            label="Plan · Vorschlag"
+            phase={3}
+            within={0.8}
+            menu={menu}
+          />
+        }
         title={confirming ? "Diesen Plan bestätigen?" : "Dein Planvorschlag"}
         subtitle={plan.name}
       >
-        <Rows
-          label="Trainingstage deines Plans"
-          items={plan.sessions.map((day) => ({
-            key: day.session_id,
-            label: day.session_name,
-            value: `${day.exercises.length} ${day.exercises.length === 1 ? "Übung" : "Übungen"}`,
-          }))}
-        />
+        <ul className="ac-sessions" aria-label="Trainingstage deines Plans">
+          {[...plan.sessions]
+            .sort((a, b) => a.session_order - b.session_order)
+            .map((day, i) => {
+              const open = openSession === i;
+              return (
+                <li key={day.session_id} className={open ? "open" : ""}>
+                  <button
+                    type="button"
+                    aria-expanded={open}
+                    onClick={() => setOpenSession(open ? -1 : i)}
+                  >
+                    <span className="ac-session-badge">{i + 1}</span>
+                    <span className="ac-session-text">
+                      <strong>{day.session_name}</strong>
+                      <small>
+                        {day.exercises.length}{" "}
+                        {day.exercises.length === 1 ? "Übung" : "Übungen"}
+                      </small>
+                    </span>
+                    <ChevronDown
+                      size={16}
+                      aria-hidden="true"
+                      className="ac-fold-chevron"
+                    />
+                  </button>
+                  {open && (
+                    <Rows
+                      label={`Übungen ${day.session_name}`}
+                      items={day.exercises.map((ex) => ({
+                        key: ex.plan_item_id,
+                        label: ex.exercise_name,
+                        value:
+                          ex.target_sets && (ex.rep_min || ex.rep_max)
+                            ? `${ex.target_sets} × ${ex.rep_min ?? ex.rep_max}${ex.rep_max && ex.rep_min && ex.rep_max !== ex.rep_min ? `–${ex.rep_max}` : ""}`
+                            : ex.target_sets
+                              ? `${ex.target_sets} Sätze`
+                              : "",
+                      }))}
+                    />
+                  )}
+                </li>
+              );
+            })}
+        </ul>
         {confirming && (
           <p className="ac-text">
             Arnold aktiviert genau diesen Plan. Ändern kannst du ihn später
@@ -372,16 +503,38 @@ export function OnboardingView({
         onSave={onb.saveProfile}
         onRequestPlan={() => void onb.requestPlan()}
         onBack={() => onb.goToStep("welcome")}
+        onCancel={() => setCancelling(true)}
+        onReload={() => void onb.reload(true)}
         onQuestion={setQuestion}
       />
     );
   else if (step === "own_plan")
     card = (
       <ArnoldCard
-        label="Einrichtung · Schritt 1 von 4"
+        label={
+          <SetupHead
+            label="Eigener Plan"
+            phase={0}
+            within={0.5}
+            onBack={() => onb.goToStep("welcome")}
+            menu={menu}
+          />
+        }
         title="Deinen Plan übernehmen"
-        subtitle="Schreib deinen Plan in den Chat oder lade ein Foto hoch. Arnold fragt nach, falls etwas unklar ist."
+        subtitle="Schick ihn einfach in den Chat. Arnold fragt nach, wenn etwas unklar ist."
       >
+        <ol className="ac-steps-list">
+          <li>
+            <strong>Als Text</strong>
+            <span className="ac-text">
+              Tage, Übungen, Sätze und Gewichte, so wie du sie kennst
+            </span>
+          </li>
+          <li>
+            <strong>Als Foto</strong>
+            <span className="ac-text">Zettel, Screenshot oder Notiz-App</span>
+          </li>
+        </ol>
         <CardActions
           primary={{
             label: "Im Chat weitermachen",
@@ -459,40 +612,6 @@ export function OnboardingView({
           bestätige die aktuelle Version.
         </CardNote>
       )}
-      {onb.active &&
-        session?.status !== "COMPLETED" &&
-        !editing &&
-        !cancelling && (
-          <button
-            type="button"
-            className="ac-link"
-            disabled={blocked}
-            onClick={() => setCancelling(true)}
-          >
-            Einrichtung abbrechen
-          </button>
-        )}
-      {session &&
-        !onb.expired &&
-        !onb.cancelled &&
-        session.status !== "COMPLETED" && (
-          <p className="ac-caption">
-            {onb.profileDirty
-              ? "Die neuen Antworten sind noch nicht auf dem Server bestätigt."
-              : state?.resume.cross_device
-                ? "Dein Einrichtungsstand ist mit deinem Konto gespeichert."
-                : state?.resume.durable
-                  ? "Dein Einrichtungsstand bleibt erhalten."
-                  : "Dein Einrichtungsstand bleibt für diese Serversitzung erhalten."}{" "}
-            <button
-              className="ac-link"
-              disabled={onb.busy}
-              onClick={() => void onb.reload(true)}
-            >
-              Aktualisieren
-            </button>
-          </p>
-        )}
     </main>
   );
 }

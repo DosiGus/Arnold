@@ -138,9 +138,9 @@ Ablauf: `start_workout` → `log_workout_sets` / `update_set` / `void_set` → `
 Der Ablauf aus Nutzersicht:
 
 1. **Begrüßung** mit zwei Buttons: „Plan mit Arnold erstellen“ oder „Eigenen Plan übernehmen“ (`profile.path`).
-2. **Plan mit Arnold:** Person (freiwillig) und Training (Ziel, Erfahrung, Tage, Minuten, Ort; Split, Schwerpunkt, Geräte und Lieblingsübungen optional). „Plan erstellen“ schickt eine Nachricht in den Chat, damit ChatGPT den Plan aus dem Briefing baut.
+2. **Plan mit Arnold:** Person (freiwillig, eine Karte) und vier Fragen (Ziele, Erfahrung, Tage und Minuten, Ort), danach freiwillige Wünsche (feste Tage, Aufteilung, Schwerpunkt, Geräte, Lieblings- und gemiedene Übungen, Freitext `notes`). Mehrere Ziele: das erste ist `primary_goal`, die übrigen `secondary_goals`; das Briefing ordnet sie dem Hauptziel unter. „Plan erstellen“ schickt eine Nachricht in den Chat, damit ChatGPT den Plan aus dem Briefing baut.
 3. **Eigener Plan:** keine Fragen. Der Nutzer schickt seinen Plan als Text oder Foto; ChatGPT überträgt ihn mit `origin: existing_routine`.
-4. Prüfen, im Editor oder per Chat ändern, **ausdrücklich genau eine Planrevision bestätigen**. Die Bestätigung schließt die Einrichtung direkt ab: `finishSetup` aktiviert genau diese Revision und setzt den Status `COMPLETED`. Scheitert nur der Abschluss, bleibt die Bestätigung gespeichert (`READY_TO_FINISH`) und `finish_arnold_setup` holt ihn nach; wiederholbar ohne doppelte Aktivierung.
+4. Prüfen, im Editor oder per Chat ändern, **ausdrücklich genau eine Planrevision bestätigen**. Wurde ein Körpergewicht angegeben, schreibt der Abschluss es als ersten Körpergewicht-Eintrag (`log_body_weight` mit fester `request_id`, also höchstens einmal); scheitert nur das, bleibt die Einrichtung trotzdem abgeschlossen. Die Bestätigung schließt die Einrichtung direkt ab: `finishSetup` aktiviert genau diese Revision und setzt den Status `COMPLETED`. Scheitert nur der Abschluss, bleibt die Bestätigung gespeichert (`READY_TO_FINISH`) und `finish_arnold_setup` holt ihn nach; wiederholbar ohne doppelte Aktivierung.
 
 Weitere Regeln:
 

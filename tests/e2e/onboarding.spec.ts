@@ -7,6 +7,10 @@ import {
   storedClaim,
   callTool,
   submitProposal,
+  choose,
+  next,
+  setRhythm,
+  setupMenu,
 } from "./helpers";
 
 test("question cards reach a revision-bound plan confirmation that finishes the setup", async ({
@@ -18,7 +22,7 @@ test("question cards reach a revision-bound plan confirmation that finishes the 
     .getByRole("button", { name: "Plan erstellen", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Jetzt entsteht dein Plan" }),
+    page.getByRole("heading", { name: "Arnold baut deinen Plan" }),
   ).toBeVisible();
   const claim = await submitProposal(page);
   await expect(
@@ -60,18 +64,18 @@ test("optional personal questions keep decimal input exact and can be skipped in
   await page
     .getByRole("button", { name: "Plan mit Arnold erstellen", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Persönliche Angaben ergänzen" })
-    .click();
+  await expect(
+    page.getByRole("heading", { name: "Ein paar Angaben über dich?" }),
+  ).toBeVisible();
   await page.getByLabel("Alter", { exact: true }).fill("34");
-  await page.getByRole("button", { name: "Weiter", exact: true }).click();
-  await page.getByRole("button", { name: "Überspringen", exact: true }).click();
-  await page.getByLabel("Größe", { exact: true }).fill("181");
-  await page.getByRole("button", { name: "Weiter", exact: true }).click();
+  // Height left empty: skipped on its own.
   await page.getByLabel("Gewicht", { exact: true }).fill("82,5");
-  await page.getByRole("button", { name: "Weiter", exact: true }).click();
-  await page.getByRole("checkbox", { name: "Knie", exact: true }).check();
-  await page.getByRole("button", { name: "Weiter", exact: true }).click();
+  await page.getByRole("button", { name: /^Bereiche schonen/ }).click();
+  await page.getByRole("button", { name: "Knie", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Knie", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await next(page);
   await expect(
     page.getByRole("heading", { name: "Was ist dein Ziel?" }),
   ).toBeVisible();
@@ -83,7 +87,6 @@ test("optional personal questions keep decimal input exact and can be skipped in
   );
   expect(state.session.profile.person).toEqual({
     age_years: 34,
-    height_cm: 181,
     body_weight_kg: 82.5,
     protect_areas: ["knee"],
   });
@@ -91,6 +94,60 @@ test("optional personal questions keep decimal input exact and can be skipped in
   await expect(
     page.getByRole("heading", { name: "Was ist dein Ziel?" }),
   ).toBeVisible();
+});
+
+test("several goals are stored with the first as the main goal", async ({
+  page,
+}) => {
+  await openWizard(page);
+  await page
+    .getByRole("button", { name: "Plan mit Arnold erstellen", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Überspringen", exact: true }).click();
+  await choose(page, "Stärker werden");
+  await choose(page, "Abnehmen und straffen");
+  await next(page);
+  await expect(
+    page.getByRole("heading", { name: "Wie lange trainierst du schon?" }),
+  ).toBeVisible();
+  await expect(wizard(page)).toHaveAttribute("data-profile-save", "saved");
+  const training = (
+    await callTool(page, "get_onboarding_state", await storedClaim(page))
+  ).session.profile.training;
+  expect(training.primary_goal).toBe("strength");
+  expect(training.secondary_goals).toEqual(["fat_loss"]);
+});
+
+test("fixed weekdays must match the number of training days", async ({
+  page,
+}) => {
+  await openWizard(page);
+  await fillProfile(page);
+  await page.getByRole("button", { name: "Wünsche ändern" }).click();
+  // The first wish, fixed weekdays, opens on its own.
+  await expect(
+    page.getByRole("button", { name: /^Feste Trainingstage/ }),
+  ).toHaveAttribute("aria-expanded", "true");
+  await page.getByRole("button", { name: "Mo", exact: true }).click();
+  await next(page);
+  await expect(page.getByRole("alert")).toContainText("genau 3 Tage");
+  await page.getByRole("button", { name: "Mi", exact: true }).click();
+  await page.getByRole("button", { name: "Fr", exact: true }).click();
+  await page.getByRole("button", { name: /^Sonst noch etwas/ }).click();
+  await page
+    .getByLabel("Sonst noch etwas für deinen Plan")
+    .fill("Ich will Klimmzüge lernen.");
+  await next(page);
+  await expect(
+    page.getByRole("heading", { name: "So wird dein Plan" }),
+  ).toBeVisible();
+  await expect(wizard(page)).toHaveAttribute("data-profile-save", "saved");
+  const training = (
+    await callTool(page, "get_onboarding_state", await storedClaim(page))
+  ).session.profile.training;
+  expect(training.training_days).toEqual(["mon", "wed", "fri"]);
+  expect(training.days_per_week).toBe(3);
+  expect(training.notes).toBe("Ich will Klimmzüge lernen.");
 });
 
 test("resumes at the next unanswered question and adopts answers from chat", async ({
@@ -112,10 +169,10 @@ test("resumes at the next unanswered question and adopts answers from chat", asy
   });
   await page.reload();
   await expect(
-    page.getByRole("heading", { name: "Wie viel Zeit hast du pro Training?" }),
+    page.getByRole("heading", { name: "Wie oft und wie lange?" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "45 Min.", exact: true }).click();
-  await page.getByRole("button", { name: "Weiter", exact: true }).click();
+  await page.getByRole("textbox", { name: /Minuten pro Training/ }).fill("45");
+  await next(page);
   await expect(
     page.getByRole("heading", { name: "Wo trainierst du?" }),
   ).toBeVisible();
@@ -125,11 +182,9 @@ test("resumes at the next unanswered question and adopts answers from chat", asy
     request_id: crypto.randomUUID(),
     profile: { training: { environment: "home" } },
   });
-  await page
-    .getByRole("button", { name: "Aktualisieren", exact: true })
-    .click();
+  await setupMenu(page, "Stand neu laden");
   await expect(
-    page.getByRole("heading", { name: "Passt das so für deinen Plan?" }),
+    page.getByRole("heading", { name: "So wird dein Plan" }),
   ).toBeVisible();
   await expect(wizard(page)).toContainText("Zuhause");
 });
@@ -139,14 +194,13 @@ test("any stored answer can be corrected without repeating the questionnaire", a
 }) => {
   await openWizard(page);
   await fillProfile(page);
-  await page.getByRole("button", { name: "Angaben ändern" }).click();
   await page
-    .getByRole("button", { name: "Trainingstage", exact: true })
+    .getByRole("button", { name: "Wie oft und wie lange ändern" })
     .click();
-  await page.getByRole("button", { name: "4", exact: true }).click();
-  await page.getByRole("button", { name: "Weiter", exact: true }).click();
+  await setRhythm(page, 4, 60);
+  await next(page);
   await expect(
-    page.getByRole("heading", { name: "Passt das so für deinen Plan?" }),
+    page.getByRole("heading", { name: "So wird dein Plan" }),
   ).toBeVisible();
   await expect(wizard(page)).toHaveAttribute("data-profile-save", "saved");
   expect(
@@ -247,10 +301,8 @@ test("an unconfirmed profile write survives reload and retries the same request"
     }
     await route.continue();
   });
-  await page
-    .getByRole("button", { name: "Muskeln aufbauen", exact: true })
-    .click();
-  await page.getByRole("button", { name: "Weiter", exact: true }).click();
+  await choose(page, "Muskeln aufbauen");
+  await next(page);
   await expect(page.getByRole("alert")).toContainText(
     "Deine Eingaben bleiben erhalten",
   );
@@ -269,8 +321,9 @@ test("cancellation is explicit and offers a controlled restart", async ({
 }) => {
   await openWizard(page);
   await page
-    .getByRole("button", { name: "Einrichtung abbrechen", exact: true })
+    .getByRole("button", { name: "Plan mit Arnold erstellen", exact: true })
     .click();
+  await setupMenu(page, "Einrichtung abbrechen");
   await expect(
     page.getByRole("heading", { name: "Einrichtung abbrechen?" }),
   ).toBeVisible();
@@ -324,13 +377,10 @@ test("question cards are operable by keyboard and pass accessibility checks", as
     .focus();
   await page.keyboard.press("Enter");
   await page.getByRole("button", { name: "Überspringen", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Stärker werden", exact: true })
-    .focus();
+  const goal = page.getByRole("checkbox", { name: /^Stärker werden/ });
+  await goal.focus();
   await page.keyboard.press("Space");
-  await expect(
-    page.getByRole("button", { name: "Stärker werden", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
+  await expect(goal).toBeChecked();
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa"])
     .analyze();

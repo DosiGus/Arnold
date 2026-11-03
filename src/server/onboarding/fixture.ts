@@ -11,6 +11,7 @@
  * same row the editor opens, an edit in the editor is immediately visible to
  * the onboarding handoff check, and one audit trail describes the whole setup.
  */
+import { logStartWeight } from "../workout/start-weight.js";
 import { randomUUID } from "node:crypto";
 import type { ArnoldDataset } from "../../shared/arnold-schema-v1.js";
 import type { ArnoldDataSource } from "../arnold-source.js";
@@ -64,6 +65,8 @@ export function createFixtureOnboarding(
     trackerId: dataset.config.tracker_id,
     audit: planning.store.audit,
     setupFinishAvailable: true,
+    recordStartWeight: (weightKg, requestId, context) =>
+      logStartWeight(planning.service, weightKg, requestId, context),
     sessionTtlMs: options.sessionTtlMs,
     clock: options.clock,
     id: options.id,

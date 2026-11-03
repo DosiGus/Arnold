@@ -81,18 +81,21 @@ describe("question-card onboarding with real server states", () => {
     const html = render(profile(fresh));
     expect(html).toContain("freiwillig");
     expect(html).toContain("Überspringen");
-    expect(html).not.toContain("<input");
+    // The number fields start empty: nothing is assumed about the person.
+    expect(html.match(/<input[^>]*value=""/g)).toHaveLength(3);
+    expect(html).toContain("Keine Angabe");
   });
   it("skips questions already answered in the chat", () => {
     expect(initialProfileQuestion(ready.session.profile)).toBe("review");
     const partial = structuredClone(ready.session.profile);
     partial.training.session_minutes = null;
-    expect(initialProfileQuestion(partial)).toBe("session_minutes");
+    expect(initialProfileQuestion(partial)).toBe("rhythm");
   });
   it("shows the stored facts at review, not sample values", () => {
     const html = render(profile(ready));
     expect(html).toContain("Stärker werden");
     expect(html).toContain("60 Min.");
+    expect(html).toContain("So wird dein Plan");
     expect(html).toContain("Plan erstellen");
     expect(html).not.toContain("onb-card");
   });

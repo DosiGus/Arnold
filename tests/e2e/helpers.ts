@@ -45,27 +45,58 @@ export const storedClaim = (page: Page) =>
   page.evaluate(() =>
     JSON.parse(sessionStorage.getItem("arnold.onboarding.claim") ?? "{}"),
   );
+/** Picks an answer tile (radio or checkbox) by its title. */
+export async function choose(page: Page, title: string) {
+  await wizard(page)
+    .locator("label.ac-option-tile")
+    .filter({
+      has: page.locator("strong", { hasText: new RegExp(`^${title}$`) }),
+    })
+    .first()
+    .click();
+}
+/** Sets "Wie oft und wie lange?". */
+export async function setRhythm(page: Page, days: number, minutes: number) {
+  await wizard(page)
+    .locator("label.ac-count")
+    .filter({ hasText: new RegExp(`^${days}$`) })
+    .click();
+  await wizard(page)
+    .getByRole("textbox", { name: /Minuten pro Training/ })
+    .fill(String(minutes));
+}
+/** Opens the three-dot menu of the setup card and picks an entry. */
+export async function setupMenu(page: Page, entry: string) {
+  await wizard(page)
+    .getByRole("button", { name: "Weitere Aktionen", exact: true })
+    .click();
+  await wizard(page).getByRole("button", { name: entry, exact: true }).click();
+}
+export const next = (page: Page) =>
+  wizard(page).getByRole("button", { name: "Weiter", exact: true }).click();
 export async function fillProfile(page: Page) {
   const main = wizard(page);
   await main
-    .getByRole("button", { name: "Plan mit Arnold erstellen", exact: true })
+    .getByRole("button", { name: /^Plan mit Arnold erstellen/ })
     .click();
   await main.getByRole("button", { name: "Überspringen", exact: true }).click();
-  for (const [title, answer] of [
-    ["Was ist dein Ziel?", "Muskeln aufbauen"],
-    ["Wie lange trainierst du schon?", "Fortgeschritten"],
-    ["Wie oft möchtest du pro Woche trainieren?", "3"],
-    ["Wie viel Zeit hast du pro Training?", "60 Min."],
-    ["Wo trainierst du?", "Fitnessstudio"],
-  ]) {
-    await expect(
-      main.getByRole("heading", { name: title, exact: true }),
-    ).toBeVisible();
-    await main.getByRole("button", { name: answer, exact: true }).click();
-    await main.getByRole("button", { name: "Weiter", exact: true }).click();
-  }
   await expect(
-    main.getByRole("heading", { name: "Passt das so für deinen Plan?" }),
+    main.getByRole("heading", { name: "Was ist dein Ziel?", exact: true }),
+  ).toBeVisible();
+  await choose(page, "Muskeln aufbauen");
+  await next(page);
+  await choose(page, "Fortgeschritten");
+  await next(page);
+  await setRhythm(page, 3, 60);
+  await next(page);
+  await choose(page, "Fitnessstudio");
+  await next(page);
+  await expect(
+    main.getByRole("heading", { name: "Deine Wünsche für den Plan" }),
+  ).toBeVisible();
+  await main.getByRole("button", { name: "Überspringen", exact: true }).click();
+  await expect(
+    main.getByRole("heading", { name: "So wird dein Plan" }),
   ).toBeVisible();
   await expect(main).toHaveAttribute("data-profile-save", "saved");
 }
