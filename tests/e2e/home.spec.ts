@@ -119,3 +119,21 @@ test("start screen and its views stay accessible and fit 375px", async ({
     }
   }
 });
+
+test("start screen and its views fit narrow phones without sideways scrolling", async ({
+  page,
+}) => {
+  for (const width of [300, 340, 360]) {
+    await page.setViewportSize({ width, height: 800 });
+    for (const card of ["home", "stats", "goals", "records"]) {
+      await page.goto(`${BASE}/preview?card=${card}`);
+      await expect(page.locator(`main[data-card="${card}"] .ac`)).toBeVisible();
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth + 1,
+        ),
+        `${card}@${width} overflows`,
+      ).toBe(true);
+    }
+  }
+});

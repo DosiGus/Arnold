@@ -1069,6 +1069,8 @@ body:has(.arnold-cards) {
 .ac-tile,
 .arnold-cards button.ac-tile {
   display: grid;
+  /* Content may shrink below its natural width on narrow phones. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.5rem;
   align-content: start;
   min-width: 0;
@@ -1158,6 +1160,7 @@ body:has(.arnold-cards) {
 }
 .ac-tile-number {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.375rem;
 }
@@ -1176,6 +1179,7 @@ body:has(.arnold-cards) {
 }
 .ac-tile-goal {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.3125rem;
 }
 .ac-tile-goal > span:first-child {
@@ -1189,6 +1193,7 @@ body:has(.arnold-cards) {
   white-space: nowrap;
 }
 .ac-tile-goal strong {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1279,6 +1284,7 @@ body:has(.arnold-cards) {
 }
 .ac-streak-top {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.875rem;
 }
@@ -1288,6 +1294,8 @@ body:has(.arnold-cards) {
 }
 .ac-streak-count {
   display: grid;
+  flex: 1 1 8rem;
+  min-width: 0;
   grid-template-columns: auto 1fr;
   align-items: baseline;
   column-gap: 0.5rem;
@@ -1318,6 +1326,7 @@ body:has(.arnold-cards) {
 }
 .arnold-cards .ac-streak-row > button {
   display: grid;
+  flex: 1 1 0;
   justify-items: center;
   gap: 0.375rem;
   min-width: 0;
@@ -1346,9 +1355,33 @@ body:has(.arnold-cards) {
   height: 2.25rem;
   border-radius: 50%;
 }
+.ac-streak-dot.large {
+  width: min(2.25rem, 100%);
+  height: auto;
+  aspect-ratio: 1;
+}
+.arnold-cards .ac-streak-row > button > span:last-child {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+}
+@media (max-width: 22rem) {
+  .ac-streak {
+    padding: 0.75rem;
+  }
+  .ac-streak-row {
+    gap: 0;
+  }
+  .arnold-cards .ac-streak-row > button {
+    font-size: 0.5625rem;
+  }
+}
 .ac-streak-dot.small {
+  flex: 0 1 0.875rem;
   width: 0.875rem;
-  height: 0.875rem;
+  min-width: 0.5rem;
+  height: auto;
+  aspect-ratio: 1;
 }
 .ac-streak-dot.met {
   background: var(--ac-accent);
