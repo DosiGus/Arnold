@@ -67,6 +67,17 @@ describe("describeResult", () => {
     expect(JSON.stringify(described)).not.toContain("muscle_gain");
   });
 
+  it("reads the code of a tool failure from _meta.arnold", () => {
+    const described = describeResult({
+      isError: true,
+      content: [{ type: "text", text: "Persönlicher Text" }],
+      _meta: {
+        arnold: { code: "STORAGE_UNAVAILABLE", retryable: true },
+      },
+    });
+    expect(described).toEqual({ isError: true, code: "STORAGE_UNAVAILABLE" });
+  });
+
   it("treats a plain result as ok", () => {
     expect(describeResult({ content: [] })).toEqual({ isError: false });
   });

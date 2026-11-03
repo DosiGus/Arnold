@@ -91,6 +91,7 @@ export function describeResult(result: unknown): {
 } {
   const value = result as {
     isError?: boolean;
+    _meta?: { arnold?: { code?: unknown } };
     structuredContent?: {
       ok?: boolean;
       error?: { code?: unknown };
@@ -100,7 +101,10 @@ export function describeResult(result: unknown): {
     };
   };
   const content = value?.structuredContent;
-  const rawCode = content?.error?.code ?? content?.code;
+  // Tool failures carry their code in `_meta.arnold.code` and have no
+  // structured content; onboarding results carry it in `error.code`.
+  const rawCode =
+    value?._meta?.arnold?.code ?? content?.error?.code ?? content?.code;
   const session = content?.state?.session ?? content?.session;
   const status =
     typeof session?.status === "string" ? session.status : undefined;
