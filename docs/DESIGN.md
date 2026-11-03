@@ -9,7 +9,7 @@ Die Grundlage ist der [Apple-Design-Skill von Emil Kowalski](https://github.com/
 - `src/ui/style.css` ist das einzige Stylesheet der App. Der lokale Test-Host hat ein eigenes, getrenntes Stylesheet.
 - `components/cards.tsx` enthält `ArnoldCard`, `CardActions`, `ChipGroup`, `Stepper`, `Rows`, `StatGrid`, `CardNote` und `CardSkeleton`. Die Karten verwenden diese Bausteine. Der Vollbildeditor nutzt dieselben Tokens und Bedienelement-Maße.
 - Hell und Dunkel kommen aus dem Host. Die eigenständige Vorschau verwendet beim Öffnen das System-Theme. Kein Theme-Schalter in der Karte, keine externen Schriften oder Assets.
-- Flächen und Schrift sind weitgehend achromatisch. Grün kennzeichnet bestätigten Erfolg, Rot eine Warnung oder destruktive Aktion. Eine Auswahl ist durch Füllung und Semantik erkennbar, auch ohne Farbe.
+- Flächen und Schrift sind weitgehend achromatisch. Ein helles Grün (`--ac-accent`) kennzeichnet Fortschritt und bestätigten Erfolg, Rot eine Warnung oder destruktive Aktion. Eine Auswahl ist durch Füllung und Semantik erkennbar, auch ohne Farbe.
 
 ## Tokens und Maße
 
@@ -23,7 +23,7 @@ Die Schrift ist die Systemschrift. Titel, Fließtext und Nebeninformationen unte
 
 Eine Karte beantwortet eine Frage. Unten stehen höchstens zwei Hauptaktionen; eine leise Textaktion ist möglich. Der Überblick zeigt höchstens vier Kennzahlen. Umfangreiche Trainingsdaten und Planbearbeitung gehören in eine vollständige Ansicht. Inline-Karten enthalten weder Navigation noch Reiter, sichtbare Tabellen oder eigene Scrollbereiche.
 
-- **Heute und Satz:** ein beständiges Objekt für Start, laufendes Training und Abschluss. Gewicht und Wiederholungen lassen sich antippen und direkt eingeben oder mit Plus/Minus ändern. Ohne bekanntes Gewicht muss der Nutzer zuerst eines angeben. Aufwärmsatz ist ein Schalter. Gespeicherte Sätze lassen sich zur Korrektur öffnen.
+- **Heute und Satz:** ein beständiges Objekt für Start, laufendes Training und Abschluss. Oben stehen Übung x von y und ein Balken je Übung, darunter Satz-Felder: gespeicherte grün und zur Korrektur antippbar, der aktuelle umrandet, offene gestrichelt. Gewicht und Wiederholungen stehen nebeneinander, lassen sich antippen und direkt eingeben oder mit Plus/Minus ändern; darunter der Vergleich zum letzten Mal. Ohne bekanntes Gewicht muss der Nutzer zuerst eines angeben. Nach einem Arbeitssatz läuft die Pause aus `rest_seconds` (sonst 90 s); dort wird freiwillig gefragt, wie viele Wiederholungen noch gegangen wären. Nach dem letzten geplanten Satz zeigt die Karte „Übung geschafft“ und die nächste Übung. Seltene Aktionen (Aufwärmsatz, Übung wechseln, tauschen, überspringen, Training beenden oder abbrechen) liegen hinter dem Drei-Punkte-Knopf. Eine getauschte Übung übernimmt den Planplatz nur für dieses Training und nur bis zum Neuladen.
 - **RIR:** freiwillig und erklärt als noch mögliche Wiederholungen. 0, 1 und 2 sind genau wählbar; 3+ öffnet eine sichtbare genaue Zahl. Die UI erfindet keine Genauigkeit aus einem Bereich. Vorhandenes RPE bleibt bei einer Korrektur erhalten.
 - **Woche:** Trainingstage kommen aus `training_days`, Haken aus `trained_dates`. Zwei Trainings am selben Tag ergeben einen Trainingstag. Arbeitssätze und letzter Rekord haben Vorrang vor einer unkommentierten Volumenzahl.
 - **Fortschritt:** eine Übung, eine Hauptzahl, ein fertiger Vergleich aus `selected_comparison`, eine kleine Kurve. Lastdefinition, Ausführung und Seite bleiben sichtbar. Die Kurve enthält nur gelieferte Messpunkte mit echten zeitlichen Abständen. Die UI berechnet keine Differenz.

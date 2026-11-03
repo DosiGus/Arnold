@@ -10,9 +10,20 @@ async function start(page: Page | FrameLocator) {
     page.getByRole("heading", { name: "Demo Bankdrücken" }),
   ).toBeVisible();
 }
-const saved = (page: Page | FrameLocator) => page.locator(".ac-chip.done");
+const saved = (page: Page | FrameLocator) => page.locator(".ac-set.done");
 const button = (page: Page | FrameLocator, name: string) =>
   page.getByRole("button", { name, exact: true });
+/** The save button names the set it saves: "Satz 2 speichern". */
+const saveSet = (page: Page | FrameLocator) =>
+  page.getByRole("button", { name: /^Satz \d+ speichern$/ });
+/** After a set the card shows what was saved and the rest timer. */
+const savedNotice = (page: Page | FrameLocator, n: number) =>
+  page.getByRole("status").filter({ hasText: `Satz ${n} gespeichert` });
+/** Rarer actions sit behind the "more" button. */
+async function menu(page: Page | FrameLocator, entry: string) {
+  await button(page, "Weitere Aktionen").click();
+  await button(page, entry).click();
+}
 
 test("starts today's session, logs with plus and minus, corrects and completes", async ({
   page,
@@ -25,44 +36,47 @@ test("starts today's session, logs with plus and minus, corrects and completes",
   // No target weight in the plan: the first value is typed once, then reused.
   await page.getByLabel("Gewicht", { exact: true }).fill("60");
   await page.getByLabel("Wiederholungen", { exact: true }).fill("12");
-  // A double tap saves one set, not two.
-  await button(page, "Satz speichern").dblclick();
+  // A double tap saves one set, not two; then the rest timer runs.
+  await saveSet(page).dblclick();
+  await expect(savedNotice(page, 1)).toContainText("60 kg × 12");
+  await expect(page.getByRole("timer")).toBeVisible();
+  await button(page, "Pause überspringen").click();
   await expect(saved(page)).toHaveCount(1);
-  await expect(saved(page).first()).toContainText("60 kg × 12");
+  await expect(saved(page).first()).toHaveAccessibleName(/60 kg × 12/);
 
   // The next set starts from the last one; plus and minus adjust it.
   await button(page, "Gewicht erhöhen").click();
   await button(page, "Wiederholungen verringern").click();
-  await button(page, "Satz speichern").click();
+  await button(page, "Satz 2 speichern").click();
+  await button(page, "Pause überspringen").click();
   await expect(saved(page)).toHaveCount(2);
-  await expect(saved(page).nth(1)).toContainText("62,5 kg × 11");
+  await expect(saved(page).nth(1)).toHaveAccessibleName(/62,5 kg × 11/);
 
   // Tapping a saved set corrects it in place.
   await page.getByRole("button", { name: /^Satz 1 korrigieren/ }).click();
   await page.getByLabel("Gewicht", { exact: true }).fill("65");
   await button(page, "Korrektur speichern").click();
-  await expect(saved(page).first()).toContainText("65 kg × 12");
-  await expect(saved(page).first()).not.toContainText("60 kg");
+  await expect(saved(page).first()).toHaveAccessibleName(/65 kg × 12/);
+  await expect(saved(page).first()).not.toHaveAccessibleName(/60 kg/);
 
   // The dumbbell exercise carries its own convention from the plan.
-  await page
-    .getByRole("group", { name: "Übung" })
-    .getByRole("button", { name: "Demo Schrägbankdrücken" })
-    .click();
+  await menu(page, "Übung wechseln");
+  await page.getByRole("button", { name: /^Demo Schrägbankdrücken/ }).click();
   await expect(
     page.getByLabel("Gewicht pro Hantel", { exact: true }),
   ).toBeVisible();
   await page.getByLabel("Gewicht pro Hantel", { exact: true }).fill("20");
-  await page
-    .getByRole("group", { name: "Wiederholungen im Tank" })
-    .getByRole("button", { name: "2", exact: true })
-    .click();
-  await button(page, "Satz speichern").click();
-  await expect(saved(page)).toHaveCount(1);
-  await expect(saved(page).first()).toContainText("20 kg pro Hantel");
+  await saveSet(page).click();
+  await expect(savedNotice(page, 1)).toContainText("20 kg pro Hantel");
+  // How the set felt is asked during the rest and stored on that set.
+  const feel = page
+    .getByRole("group", { name: "Wie viele wären noch gegangen?" })
+    .getByRole("button", { name: "2 mehr", exact: true });
+  await feel.click();
+  await expect(feel).toHaveAttribute("aria-pressed", "true");
 
   // Finishing shows the engine's own numbers for this workout.
-  await button(page, "Training beenden").click();
+  await menu(page, "Training beenden");
   const summary = page.locator(".ac").first();
   await expect(summary).toContainText("Training gespeichert");
   await expect(
@@ -99,12 +113,12 @@ test("recovers a lost response across reload with the same operation ID and no d
   });
   await page.getByLabel("Gewicht", { exact: true }).fill("55");
   await page.getByLabel("Wiederholungen", { exact: true }).fill("9");
-  await button(page, "Satz speichern").click();
+  await saveSet(page).click();
   await expect(page.getByRole("alert")).toContainText(
     "Deine Eingaben bleiben erhalten",
   );
   // Nothing new can be saved while the outcome is unknown.
-  await expect(button(page, "Satz speichern")).toHaveCount(0);
+  await expect(saveSet(page)).toHaveCount(0);
 
   // After a reload the open workout is resumed and the check is offered.
   await page.reload();
@@ -119,11 +133,11 @@ test("recovers a lost response across reload with the same operation ID and no d
     page.getByRole("status").filter({ hasText: "Satz gespeichert" }),
   ).toHaveText("Satz gespeichert.");
   await expect(saved(page)).toHaveCount(1);
-  await expect(saved(page).first()).toContainText("55 kg × 9");
+  await expect(saved(page).first()).toHaveAccessibleName(/55 kg × 9/);
   expect(new Set(ids).size).toBe(1);
 
   // Cancelling asks first, then says what happened.
-  await button(page, "Training abbrechen").click();
+  await menu(page, "Training abbrechen");
   await button(page, "Ja, abbrechen").click();
   await expect(page.locator(".ac").first()).toContainText(
     "Das Training wurde abgebrochen.",
@@ -149,8 +163,8 @@ test("MCP App bridge writes in a sandbox and tells the chat what happened", asyn
   // Writes go through the bridge, with no browser storage in the sandbox.
   await frame.getByLabel("Gewicht", { exact: true }).fill("40");
   await frame.getByLabel("Wiederholungen", { exact: true }).fill("10");
-  await button(frame, "Satz speichern").click();
-  await expect(saved(frame)).toHaveCount(1);
+  await saveSet(frame).click();
+  await expect(savedNotice(frame, 1)).toContainText("40 kg × 10");
 
   // A saved set reaches the model with its id, so the chat can correct it.
   await expect(context).toContainText("laufendes Training");
@@ -160,7 +174,7 @@ test("MCP App bridge writes in a sandbox and tells the chat what happened", asyn
   await expect(messages).toHaveCount(0);
 
   // Finishing posts exactly one message, with the engine's numbers.
-  await button(frame, "Training beenden").click();
+  await menu(frame, "Training beenden");
   await expect(messages).toHaveCount(1);
   await expect(messages.first()).toHaveText(
     // Volume is the engine's: a number, or "–" when it calls it unknown.

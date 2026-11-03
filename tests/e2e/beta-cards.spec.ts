@@ -326,7 +326,7 @@ test("numeric inputs reject invalid values and confirm unusual values before sav
     page.getByLabel("Wiederholungen", { exact: true }),
   ).toHaveAttribute("aria-invalid", "true");
   await expect(
-    page.getByRole("button", { name: "Satz speichern", exact: true }),
+    page.getByRole("button", { name: /^Satz \d+ speichern$/ }),
   ).toBeDisabled();
   await page.getByLabel("Wiederholungen", { exact: true }).fill("8");
   const capture = async (name: string) => {
@@ -376,9 +376,7 @@ test("numeric inputs reject invalid values and confirm unusual values before sav
     await route.continue();
   });
   await page.getByLabel("Gewicht", { exact: true }).fill("550");
-  await page
-    .getByRole("button", { name: "Satz speichern", exact: true })
-    .click();
+  await page.getByRole("button", { name: /^Satz \d+ speichern$/ }).click();
   await expect(
     page.getByRole("heading", { name: "Stimmt das?", exact: true }),
   ).toBeVisible();
@@ -387,9 +385,15 @@ test("numeric inputs reject invalid values and confirm unusual values before sav
   await page
     .getByRole("button", { name: "Ja, diese Werte speichern", exact: true })
     .click();
-  await expect(page.locator(".ac-chip.done")).toHaveCount(1);
+  await expect(
+    page.getByRole("status").filter({ hasText: "Satz 1 gespeichert" }),
+  ).toContainText("550 kg × 8");
+  await capture("rest");
   expect(inputs[1].confirm_unusual_values).toBe(true);
   expect(inputs[1].request_id).not.toBe(inputs[0].request_id);
+  await page
+    .getByRole("button", { name: "Weitere Aktionen", exact: true })
+    .click();
   await page
     .getByRole("button", { name: "Training beenden", exact: true })
     .click();

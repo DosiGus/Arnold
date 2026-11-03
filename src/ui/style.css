@@ -31,6 +31,10 @@
   --ac-good: #247347;
   --ac-bad: #ad332a;
   --ac-faint: #71727b;
+  /* One accent for progress and success: fill, text on the fill, and text. */
+  --ac-accent: #c8f560;
+  --ac-on-accent: #1a2106;
+  --ac-accent-text: #3d6b00;
   color: var(--text);
   background: transparent;
 }
@@ -53,6 +57,7 @@
   --ac-good: #82d6a4;
   --ac-bad: #f49c92;
   --ac-faint: #b0b0b7;
+  --ac-accent-text: #c8f560;
 }
 * {
   box-sizing: border-box;
@@ -555,7 +560,7 @@ body:has(.arnold-cards) {
   flex: 1;
   justify-content: center;
   min-width: 0;
-  font-size: 1.625rem;
+  font-size: 1.875rem;
   font-weight: 600;
   letter-spacing: -0.03em;
   line-height: 1.1;
@@ -682,6 +687,235 @@ body:has(.arnold-cards) {
 .ac-dots i.now {
   background: transparent;
   box-shadow: inset 0 0 0 1.5px var(--ink);
+}
+
+/* Training: progress, set chips, comparison, rest and menu. */
+.ac-label:has(> .ac-label-col) {
+  flex: 1;
+  min-width: 0;
+}
+.ac-label-col {
+  display: grid;
+  flex: 1;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.ac-steppers.pair {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+/* Side by side the number sits on top and plus and minus below it. */
+.ac-steppers.pair .ac-stepper-row {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  grid-template-areas:
+    "value value"
+    "minus plus";
+  justify-content: center;
+  gap: 0.375rem 0.75rem;
+}
+.ac-steppers.pair .ac-stepper-row > :first-child {
+  grid-area: minus;
+}
+.ac-steppers.pair .ac-stepper-value {
+  grid-area: value;
+}
+.ac-steppers.pair .ac-stepper-row > :last-child {
+  grid-area: plus;
+}
+.ac-feel .ac-chips {
+  flex-wrap: nowrap;
+}
+.arnold-cards .ac-feel .ac-chip {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 0.375rem;
+  white-space: nowrap;
+}
+.ac-progress {
+  display: flex;
+  gap: 0.25rem;
+}
+.ac-progress i {
+  flex: 1;
+  height: 0.25rem;
+  overflow: hidden;
+  border-radius: 0.125rem;
+  background: var(--border);
+}
+.ac-progress b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ac-accent);
+  transition: width 0.3s ease;
+}
+.ac-sets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+.arnold-cards .ac-set {
+  display: inline-flex;
+  flex: 1 1 4.75rem;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.5rem;
+  padding: 0 0.5rem;
+  border: 1px dashed var(--border);
+  border-radius: 0.75rem;
+  background: transparent;
+  color: var(--ac-faint);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.arnold-cards .ac-set.now {
+  border: 2px solid var(--ink);
+  color: var(--text);
+}
+.arnold-cards .ac-set.done {
+  min-height: var(--ac-tap);
+  border: 0;
+  background: var(--ac-accent);
+  color: var(--ac-on-accent);
+  cursor: pointer;
+}
+.arnold-cards .ac-set.done.warmup {
+  border: 1px solid var(--border);
+  background: var(--soft);
+  color: var(--text);
+}
+.arnold-cards .ac-set.done[aria-pressed="true"] {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.ac-compare {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.ac-compare strong {
+  color: var(--muted);
+  font-weight: 600;
+}
+.ac-compare strong.up {
+  color: var(--ac-accent-text);
+}
+.arnold-cards .ac-icon-btn {
+  display: grid;
+  place-items: center;
+  width: var(--ac-tap);
+  height: var(--ac-tap);
+  margin: -0.5rem -0.375rem -0.5rem 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--soft);
+  color: var(--text);
+}
+.arnold-cards .ac-icon-btn:hover,
+.arnold-cards .ac-icon-btn[aria-expanded="true"] {
+  background: var(--hover);
+}
+.ac-mark {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--ac-accent);
+  color: var(--ac-on-accent);
+}
+.ac-mark.large {
+  width: 3.5rem;
+  height: 3.5rem;
+}
+.ac-saved {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+.ac-rest {
+  display: grid;
+  justify-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0;
+}
+.ac-rest-clock {
+  font-size: 3.5rem;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+.ac-rest-bar {
+  width: 100%;
+  height: 0.375rem;
+  margin-top: 0.375rem;
+  overflow: hidden;
+  border-radius: 0.1875rem;
+  background: var(--border);
+}
+.ac-rest-bar b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ac-accent);
+  transition: width 0.25s linear;
+}
+.ac-done {
+  display: grid;
+  justify-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0;
+  text-align: center;
+}
+.ac-done .ac-mark {
+  margin-bottom: 0.25rem;
+}
+.ac-menu {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ac-menu li + li {
+  border-top: 1px solid var(--border);
+}
+.arnold-cards .ac-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: var(--ac-tap);
+  padding: 0.5rem 0.25rem;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.9375rem;
+  text-align: start;
+}
+.arnold-cards .ac-menu-item:hover {
+  background: var(--soft);
+}
+.arnold-cards .ac-menu-item[aria-current="true"] {
+  font-weight: 600;
+}
+.arnold-cards .ac-menu-item small {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.arnold-cards .ac-menu-item.danger {
+  color: var(--ac-bad);
+}
+.arnold-cards .ac-menu-item:disabled {
+  color: var(--ac-faint);
 }
 
 /* Week strip */
