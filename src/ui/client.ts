@@ -35,7 +35,11 @@ export type ArnoldPayload =
 export class ArnoldClient {
   private app?: App;
   private preview?: Client;
-  readonly embedded = window.parent !== window;
+  // `?standalone` keeps the browser preview working inside a plain iframe,
+  // e.g. a local overview page that shows several cards side by side.
+  readonly embedded =
+    window.parent !== window &&
+    !new URLSearchParams(window.location?.search).has("standalone");
   onPayload?: (payload: ArnoldPayload) => void;
   onTheme?: (theme: "light" | "dark") => void;
   onError?: (message: string) => void;
