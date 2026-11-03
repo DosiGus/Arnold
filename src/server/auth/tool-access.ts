@@ -53,6 +53,12 @@ export const TOOL_ACCESS: Readonly<Record<string, ToolAccessClass>> = {
   // A custom exercise is training content, not plan structure, so it rides
   // with the workout write scope rather than the plan one.
   create_exercise: "AUTHENTICATED_WRITE",
+  // Goals and body weight are the user's own training data, like sets.
+  create_training_goal: "AUTHENTICATED_WRITE",
+  update_training_goal: "AUTHENTICATED_WRITE",
+  archive_training_goal: "AUTHENTICATED_WRITE",
+  log_body_weight: "AUTHENTICATED_WRITE",
+  void_body_weight: "AUTHENTICATED_WRITE",
 
   // ── mcp-plan.ts — Task 005 ──
   get_training_plan: "AUTHENTICATED_READ",

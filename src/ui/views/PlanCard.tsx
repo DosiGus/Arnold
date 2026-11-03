@@ -80,7 +80,16 @@ export function PlanCard({
           label="Trainingstage"
           items={plan.sessions.map((s) => ({
             key: s.session_id,
-            label: s.session_name,
+            label:
+              dashboard.home.next_session?.plan_version_id ===
+                plan.plan_version_id &&
+              dashboard.home.next_session.session_id === s.session_id ? (
+                <>
+                  {s.session_name} <span className="ac-pill">Als Nächstes</span>
+                </>
+              ) : (
+                s.session_name
+              ),
             value: `${"exercises" in s ? s.exercises.length : s.exercise_count} ${("exercises" in s ? s.exercises.length : s.exercise_count) === 1 ? "Übung" : "Übungen"}`,
           }))}
         />

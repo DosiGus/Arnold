@@ -141,7 +141,7 @@ export class DatabaseArnoldRuntime {
         key: "training_data",
         label: "Trainingsdaten",
         contains:
-          "Deine Trainingspläne, Trainings und Sätze mit Gewicht, Wiederholungen und Notizen. Die Zahl nennt die Trainings.",
+          "Deine Trainingspläne, Trainings und Sätze mit Gewicht, Wiederholungen und Notizen, dazu deine Ziele und Körpergewichtseinträge. Die Zahl nennt die Trainings.",
         count: counts.workouts.count,
         oldest_at: iso(counts.workouts.oldest),
         newest_at: iso(counts.workouts.newest),

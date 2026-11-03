@@ -141,6 +141,8 @@ export type DatasetParts = {
   planItems?: Raw[];
   workouts?: Raw[];
   sets?: Raw[];
+  goals?: Raw[];
+  bodyWeights?: Raw[];
   /** Widened to plain strings so cases like MASTER_TEMPLATE are expressible. */
   config?: Partial<Record<keyof typeof CONFIG_VALUES, string>>;
 };
@@ -160,6 +162,34 @@ export function rawDataset(parts: DatasetParts = {}): unknown {
     planItems: parts.planItems ?? [],
     workouts: parts.workouts ?? [],
     sets: parts.sets ?? [],
+    goals: parts.goals ?? [],
+    bodyWeights: parts.bodyWeights ?? [],
+  };
+}
+
+export function goal(overrides: Raw = {}): Raw {
+  return {
+    ...technical,
+    goal_id: "goal-1",
+    kind: "exercise_load",
+    exercise_id: "ex-bar-press",
+    load_basis: "total",
+    target_value: 100,
+    start_value: null,
+    status: "active",
+    ...overrides,
+  };
+}
+
+export function bodyWeight(overrides: Raw = {}): Raw {
+  return {
+    ...technical,
+    body_weight_id: "bw-1",
+    measured_on: "2026-01-05",
+    weight_kg: 80,
+    status: "active",
+    source: "ui",
+    ...overrides,
   };
 }
 

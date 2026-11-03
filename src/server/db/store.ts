@@ -32,6 +32,11 @@ const TABLES = {
   planItems: { table: "plan_items", columns: ARNOLD_TABLE_HEADERS.PLAN_ITEMS },
   workouts: { table: "workouts", columns: ARNOLD_TABLE_HEADERS.WORKOUTS },
   sets: { table: "sets", columns: ARNOLD_TABLE_HEADERS.SETS },
+  goals: { table: "goals", columns: ARNOLD_TABLE_HEADERS.GOALS },
+  bodyWeights: {
+    table: "body_weights",
+    columns: ARNOLD_TABLE_HEADERS.BODY_WEIGHTS,
+  },
 } as const satisfies Record<
   EntityChange["table"],
   { table: string; columns: readonly string[] }
@@ -50,9 +55,11 @@ const ID_COLUMN = {
   planItems: "plan_item_id",
   workouts: "workout_id",
   sets: "set_id",
+  goals: "goal_id",
+  bodyWeights: "body_weight_id",
 } as const satisfies Record<EntityChange["table"], string>;
 
-/** All five tables in one statement, each as a JSON array in insertion order. */
+/** All training tables in one statement, each as a JSON array in insertion order. */
 const READ_DATASET = `select ${Object.entries(TABLES)
   .map(
     ([key, { table, columns }]) =>
@@ -86,6 +93,8 @@ async function readDataset(
     planItems: rows.planItems,
     workouts: rows.workouts,
     sets: rows.sets,
+    goals: rows.goals,
+    bodyWeights: rows.bodyWeights,
   });
   if (!parsed.success)
     throw new WriteError(

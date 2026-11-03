@@ -8,11 +8,15 @@ import { WeekCard } from "./views/WeekCard";
 import { WorkoutHistoryView } from "./views/WorkoutHistoryView";
 import { ExerciseProgressView } from "./views/ExerciseProgressView";
 import { PlanCard } from "./views/PlanCard";
+import { HomeCard } from "./views/HomeCard";
+import { StatsView } from "./views/StatsView";
+import { GoalsView } from "./views/GoalsView";
+import { RecordsView } from "./views/RecordsView";
 import { RecoveryNotice } from "./components/recovery";
 import { dateTimeLabel } from "./format";
 import { parseCard, type CardId } from "./cards";
 import { useModelContext } from "./hooks/useModelContext";
-import { weekContext } from "./model-context";
+import { homeContext, pageContext, weekContext } from "./model-context";
 
 function previewCard(): CardId | undefined {
   if (typeof window === "undefined") return undefined;
@@ -42,20 +46,26 @@ export function ArnoldDashboardApp({
   card?: CardId;
 }) {
   const [trail, setTrail] = useState<CardId[]>(() => [
-    initial.focus?.card ?? requested ?? previewCard() ?? "today",
+    initial.focus?.card ?? requested ?? previewCard() ?? "home",
   ]);
+  // A tile or button may open a card on one exercise or one workout.
+  const [target, setTarget] = useState<{
+    exercise_id?: string;
+    workout_id?: string;
+  }>({});
   // A new request from the chat replaces whatever the card showed before.
   useEffect(() => {
     const card = initial.focus?.card ?? requested;
     if (card) setTrail([card]);
+    setTarget({});
   }, [requested, initial.focus]);
   const card = trail[trail.length - 1];
 
-  // Only the week card needs to know whether writing is possible; the training
-  // card reads the same context through its own logger.
+  // Week, start screen and goals need to know whether writing is possible; the
+  // training card reads the same context through its own logger.
   const [canWrite, setCanWrite] = useState(false);
   useEffect(() => {
-    if (card !== "week") return;
+    if (card !== "week" && card !== "home" && card !== "goals") return;
     let active = true;
     void client
       .workout()
@@ -67,10 +77,17 @@ export function ArnoldDashboardApp({
       active = false;
     };
   }, [client, card]);
-  const open = useCallback((next: CardId) => {
-    setTrail((t) => [...t, next]);
-    window.scrollTo({ top: 0, behavior: "instant" });
-  }, []);
+  const open = useCallback(
+    (
+      next: CardId,
+      focus: { exercise_id?: string; workout_id?: string } = {},
+    ) => {
+      setTarget(focus);
+      setTrail((t) => [...t, next]);
+      window.scrollTo({ top: 0, behavior: "instant" });
+    },
+    [],
+  );
   const back = useCallback(() => setTrail((t) => t.slice(0, -1)), []);
 
   const dashboard = useDashboardData(client, {}, initial);
@@ -90,7 +107,11 @@ export function ArnoldDashboardApp({
       ? undefined
       : card === "week"
         ? weekContext(view)
-        : undefined,
+        : card === "home"
+          ? homeContext(view)
+          : card === "stats" || card === "goals" || card === "records"
+            ? pageContext(card)
+            : undefined,
   );
 
   const notes = (
@@ -129,8 +150,11 @@ export function ArnoldDashboardApp({
       </main>
     );
 
+  // The views behind the start screen tiles bring their own back button.
+  const ownBack = card === "stats" || card === "goals" || card === "records";
+  const goBack = trail.length > 1 ? back : undefined;
   const backLink =
-    trail.length > 1 ? (
+    trail.length > 1 && !ownBack ? (
       <button type="button" className="ac-link" onClick={back}>
         Zurück
       </button>
@@ -139,6 +163,30 @@ export function ArnoldDashboardApp({
   return (
     <main className="arnold-cards" id="main-content" data-card={card}>
       {notes}
+      {card === "home" && (
+        <HomeCard view={view} canWrite={canWrite} onOpen={open} />
+      )}
+      {card === "stats" && (
+        <StatsView view={view} onBack={goBack} onOpen={open} />
+      )}
+      {card === "goals" && (
+        <GoalsView
+          client={client}
+          view={view}
+          canWrite={canWrite}
+          onBack={goBack}
+          onChanged={dashboard.reload}
+          onOpenProgress={(exercise_id) => open("progress", { exercise_id })}
+        />
+      )}
+      {card === "records" && (
+        <RecordsView
+          view={view}
+          onBack={goBack}
+          onOpenWorkout={(workout_id) => open("history", { workout_id })}
+          onOpenGoals={() => open("goals")}
+        />
+      )}
       {card === "today" && (
         <TrainingCard
           client={client}
@@ -152,19 +200,23 @@ export function ArnoldDashboardApp({
       )}
       {card === "progress" && (
         <ExerciseProgressView
-          key={`${initial.focus ? initial.source.generated_at : "default"}-${initial.focus?.exercise_id ?? ""}-${initial.focus?.metric ?? ""}`}
+          key={`${initial.focus ? initial.source.generated_at : "default"}-${target.exercise_id ?? initial.focus?.exercise_id ?? ""}-${initial.focus?.metric ?? ""}`}
           client={client}
           dashboard={view}
-          initialExerciseId={initial.focus?.exercise_id ?? undefined}
+          initialExerciseId={
+            target.exercise_id ?? initial.focus?.exercise_id ?? undefined
+          }
           initialMetric={initial.focus?.metric ?? undefined}
         />
       )}
       {card === "history" && (
         <WorkoutHistoryView
-          key={`${initial.focus ? initial.source.generated_at : "default"}-${initial.focus?.workout_id ?? "history"}`}
+          key={`${initial.focus ? initial.source.generated_at : "default"}-${target.workout_id ?? initial.focus?.workout_id ?? "history"}`}
           client={client}
           dashboard={view}
-          initialWorkoutId={initial.focus?.workout_id ?? undefined}
+          initialWorkoutId={
+            target.workout_id ?? initial.focus?.workout_id ?? undefined
+          }
         />
       )}
       {card === "plan" && (

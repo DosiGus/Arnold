@@ -32,6 +32,7 @@ import {
   type Permission,
   type WriteMode,
 } from "./infrastructure.js";
+import { buildGoalChange, isGoalOperation } from "./goals.js";
 
 /**
  * Refuses values that are almost certainly a slip (1000 kg, 300 reps) until
@@ -74,7 +75,12 @@ const events = {
   complete_workout: "WORKOUT_COMPLETED",
   cancel_workout: "WORKOUT_CANCELLED",
   create_exercise: "EXERCISE_CREATED",
-} as const;
+  create_training_goal: "GOAL_CREATED",
+  update_training_goal: "GOAL_UPDATED",
+  archive_training_goal: "GOAL_ARCHIVED",
+  log_body_weight: "BODY_WEIGHT_LOGGED",
+  void_body_weight: "BODY_WEIGHT_VOIDED",
+} as const satisfies Record<WriteOperation, string>;
 const normalize = (s: string) =>
   s
     .normalize("NFKD")
@@ -96,6 +102,10 @@ const AUDITED_FIELDS = [
   "default_load_basis",
   "default_execution_mode",
   "default_implement_count",
+  "kind",
+  "target_value",
+  "measured_on",
+  "weight_kg",
 ] as const;
 
 /** One audit event per changed row, with the business-relevant fields only. */
@@ -326,6 +336,8 @@ export class WorkoutLoggingService {
     context: unknown,
     now: string,
   ): Promise<{ changes: EntityChange[]; result: WriteResult }> {
+    if (isGoalOperation(operation))
+      return buildGoalChange(operation, raw, data, now, () => this.id());
     const changes: EntityChange[] = [];
     const result: WriteResult = {
       workout: null,
@@ -682,5 +694,20 @@ export class WorkoutLoggingService {
   }
   createExercise(input: unknown, context?: unknown) {
     return this.execute("create_exercise", input, context);
+  }
+  createTrainingGoal(input: unknown, context?: unknown) {
+    return this.execute("create_training_goal", input, context);
+  }
+  updateTrainingGoal(input: unknown, context?: unknown) {
+    return this.execute("update_training_goal", input, context);
+  }
+  archiveTrainingGoal(input: unknown, context?: unknown) {
+    return this.execute("archive_training_goal", input, context);
+  }
+  logBodyWeight(input: unknown, context?: unknown) {
+    return this.execute("log_body_weight", input, context);
+  }
+  voidBodyWeight(input: unknown, context?: unknown) {
+    return this.execute("void_body_weight", input, context);
   }
 }

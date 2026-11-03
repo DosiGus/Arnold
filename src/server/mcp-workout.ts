@@ -25,6 +25,16 @@ const descriptions: Record<WriteOperation, string> = {
     "Bricht ein geplantes oder laufendes Training ab. Sätze und historische Referenzen bleiben erhalten.",
   create_exercise:
     "Erstellt eine genaue Übungsvariante nach Dublettenprüfung. Verändert keinen Trainingsplan. Bei möglichen Katalogtreffern erfolgt keine automatische Neuanlage.",
+  create_training_goal:
+    "Legt ein Ziel an: body_weight (Zielgewicht in kg), exercise_load (Zielgewicht einer Übung in kg, in der Lastdefinition der Übung, z. B. pro Hantel) oder exercise_reps (Wiederholungen in einem Satz, z. B. Klimmzüge). Nur nach ausdrücklichem Wunsch des Nutzers; den Zielwert nie erfinden. Den Startwert ermittelt Arnold selbst aus den gespeicherten Daten. Pro Art und Übung gibt es ein aktives Ziel; existiert es schon, antwortet Arnold mit GOAL_EXISTS und goal_id, dann update_training_goal verwenden.",
+  update_training_goal:
+    "Ändert den Zielwert eines aktiven Ziels anhand goal_id und expected_row_revision (aus show_arnold_dashboard, card goals).",
+  archive_training_goal:
+    "Beendet ein Ziel (z. B. erreicht oder nicht mehr gewünscht). Es bleibt im Verlauf erhalten, wird aber nicht mehr angezeigt. Vorher beim Nutzer nachfragen.",
+  log_body_weight:
+    "Speichert das Körpergewicht eines Tages in kg. measured_on ist das lokale Kalenderdatum; ein Datum in der Zukunft wird abgelehnt. Ein zweiter Eintrag am selben Tag ersetzt den ersten. Nur speichern, wenn der Nutzer sein Gewicht nennt; nie schätzen.",
+  void_body_weight:
+    "Verwirft einen falsch eingetragenen Körpergewichtseintrag anhand body_weight_id und expected_row_revision. Keine physische Löschung.",
 };
 export function registerWorkoutTools(
   server: McpServer,
@@ -143,6 +153,8 @@ export function registerWorkoutTools(
             "void_set",
             "cancel_workout",
             "update_set",
+            "archive_training_goal",
+            "void_body_weight",
           ].includes(operation),
           idempotentHint: true,
           openWorldHint: false,

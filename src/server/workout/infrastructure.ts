@@ -1,14 +1,18 @@
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import {
+  ArnoldBodyWeightSchema,
   ArnoldDatasetSchema,
   ArnoldExerciseSchema,
+  ArnoldGoalSchema,
   ArnoldPlanItemSchema,
   ArnoldPlanVersionSchema,
   ArnoldSetSchema,
   ArnoldWorkoutSchema,
+  type ArnoldBodyWeight,
   type ArnoldDataset,
   type ArnoldExercise,
+  type ArnoldGoal,
   type ArnoldPlanItem,
   type ArnoldPlanVersion,
   type ArnoldSet,
@@ -119,6 +123,16 @@ const ChangeSchema = z.discriminatedUnion("table", [
     before: ArnoldPlanItemSchema.nullable(),
     after: ArnoldPlanItemSchema,
   }),
+  z.object({
+    table: z.literal("goals"),
+    before: ArnoldGoalSchema.nullable(),
+    after: ArnoldGoalSchema,
+  }),
+  z.object({
+    table: z.literal("bodyWeights"),
+    before: ArnoldBodyWeightSchema.nullable(),
+    after: ArnoldBodyWeightSchema,
+  }),
 ]);
 export type EntityChange = z.infer<typeof ChangeSchema>;
 export type Entity =
@@ -126,18 +140,27 @@ export type Entity =
   | ArnoldSet
   | ArnoldExercise
   | ArnoldPlanVersion
-  | ArnoldPlanItem;
-/** Order matters: a set also carries workout_id and plan_item_id, a plan item a plan_version_id. */
+  | ArnoldPlanItem
+  | ArnoldGoal
+  | ArnoldBodyWeight;
+/**
+ * Order matters: a set also carries workout_id and plan_item_id, a plan item a
+ * plan_version_id, a goal an exercise_id.
+ */
 export const entityId = (row: Entity): string =>
-  "set_id" in row
-    ? row.set_id
-    : "workout_id" in row
-      ? row.workout_id
-      : "plan_item_id" in row
-        ? row.plan_item_id
-        : "plan_version_id" in row
-          ? row.plan_version_id
-          : row.exercise_id;
+  "goal_id" in row
+    ? row.goal_id
+    : "body_weight_id" in row
+      ? row.body_weight_id
+      : "set_id" in row
+        ? row.set_id
+        : "workout_id" in row
+          ? row.workout_id
+          : "plan_item_id" in row
+            ? row.plan_item_id
+            : "plan_version_id" in row
+              ? row.plan_version_id
+              : row.exercise_id;
 /** Stable canonical encoding; property order cannot change an operation fingerprint. */
 export function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
@@ -173,6 +196,12 @@ export const AuditEventSchema = z.object({
     "SET_UPDATED",
     "SET_VOIDED",
     "EXERCISE_CREATED",
+    // Goals and body weight. Values only, never free text.
+    "GOAL_CREATED",
+    "GOAL_UPDATED",
+    "GOAL_ARCHIVED",
+    "BODY_WEIGHT_LOGGED",
+    "BODY_WEIGHT_VOIDED",
     // Task 005 plan lifecycle. Business-readable, with no personal data beyond the acting subject.
     "PLAN_CREATED",
     "PLAN_DRAFT_CREATED",
@@ -353,6 +382,10 @@ const STABLE_COLUMNS = {
   // between sessions is a new row plus a tombstone, never an in-place edit.
   planItems: ["plan_item_id", "plan_version_id", "session_id"],
   exercises: [],
+  // A goal keeps what it is about; only the target and the status move.
+  goals: ["goal_id", "kind", "exercise_id", "load_basis", "start_value"],
+  // A measurement keeps its day and value; it can only be voided.
+  bodyWeights: ["body_weight_id", "measured_on", "weight_kg", "source"],
 } as const satisfies Record<EntityChange["table"], readonly string[]>;
 /** Fields of PLANS that describe the training content rather than the lifecycle. */
 const PLAN_CONTENT_COLUMNS = [

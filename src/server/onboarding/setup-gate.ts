@@ -30,6 +30,11 @@ export const SETUP_GATED_TOOLS: ReadonlySet<string> = new Set([
   "complete_workout",
   "cancel_workout",
   "create_exercise",
+  "create_training_goal",
+  "update_training_goal",
+  "archive_training_goal",
+  "log_body_weight",
+  "void_body_weight",
 ]);
 
 export const SETUP_REQUIRED_TEXT =

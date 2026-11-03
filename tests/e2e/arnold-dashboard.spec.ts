@@ -110,7 +110,17 @@ test("cards inherit light and dark and remain accessible at 375px", async ({
   await page.setViewportSize({ width: 375, height: 812 });
   for (const theme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
-    for (const card of ["today", "week", "history", "progress", "plan"]) {
+    for (const card of [
+      "home",
+      "today",
+      "week",
+      "history",
+      "progress",
+      "plan",
+      "stats",
+      "goals",
+      "records",
+    ]) {
       await openCard(page, card);
       await expect(page.locator(".ac").first()).toBeVisible();
       expect(

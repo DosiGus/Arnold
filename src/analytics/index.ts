@@ -9,6 +9,7 @@
  */
 export {
   buildArnoldDashboardAnalytics,
+  buildHomeAnalytics,
   prepareAnalytics,
   type AnalyticsOptions,
 } from "./dashboard.js";
@@ -49,4 +50,13 @@ export {
   weekStart,
   weekStartsBetween,
 } from "./period.js";
+export {
+  currentGoalValue,
+  goalPoints,
+  goalProgress,
+  type GoalPoint,
+  type GoalProgress,
+  type GoalTarget,
+} from "./goals.js";
+export { computeHome, type HomeAnalytics } from "./home.js";
 export * from "./types.js";

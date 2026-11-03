@@ -9,6 +9,8 @@ export const ARNOLD_TABLES = [
   "PLAN_ITEMS",
   "WORKOUTS",
   "SETS",
+  "GOALS",
+  "BODY_WEIGHTS",
 ] as const;
 export type ArnoldTable = (typeof ARNOLD_TABLES)[number];
 export const ARNOLD_TABLE_HEADERS = {
@@ -99,6 +101,28 @@ export const ARNOLD_TABLE_HEADERS = {
     "rpe",
     "rir",
     "notes",
+    "status",
+    "source",
+    "created_at_utc",
+    "updated_at_utc",
+    "row_revision",
+  ],
+  GOALS: [
+    "goal_id",
+    "kind",
+    "exercise_id",
+    "load_basis",
+    "target_value",
+    "start_value",
+    "status",
+    "created_at_utc",
+    "updated_at_utc",
+    "row_revision",
+  ],
+  BODY_WEIGHTS: [
+    "body_weight_id",
+    "measured_on",
+    "weight_kg",
     "status",
     "source",
     "created_at_utc",
@@ -425,6 +449,83 @@ export const ArnoldSetSchema = z
   })
   .readonly();
 
+/**
+ * A goal the user set: a body weight, or a load or repetition count for one
+ * exercise. Only the target is stored; how far the user has come is computed
+ * by the analytics engine from sets and body weight entries, never stored.
+ */
+export const ArnoldGoalKindSchema = z.enum([
+  "body_weight",
+  "exercise_load",
+  "exercise_reps",
+]);
+export const ArnoldGoalSchema = z
+  .strictObject({
+    goal_id: ArnoldIdSchema,
+    kind: ArnoldGoalKindSchema,
+    /** Required for exercise goals, null for a body weight goal. */
+    exercise_id: ArnoldIdSchema.nullable(),
+    /** The load convention of an exercise_load target ("24 kg pro Hantel"). */
+    load_basis: ArnoldLoadBasisSchema.nullable(),
+    /** kg for body_weight and exercise_load, repetitions for exercise_reps. */
+    target_value: z.number().positive().max(1000),
+    /** The value when the goal was set; null when nothing was known yet. */
+    start_value: z.number().nonnegative().max(1000).nullable(),
+    status: z.enum(["active", "archived"]),
+    ...technical,
+  })
+  .refine(chronological, {
+    path: ["updated_at_utc"],
+    message: "updated_at_utc liegt vor created_at_utc.",
+  })
+  .superRefine((row, ctx) => {
+    const exercise = row.kind !== "body_weight";
+    if (exercise !== (row.exercise_id !== null))
+      ctx.addIssue({
+        code: "custom",
+        path: ["exercise_id"],
+        message:
+          "Übungsziele brauchen eine Übung, ein Körpergewichtsziel keine.",
+      });
+    if ((row.kind === "exercise_load") !== (row.load_basis !== null))
+      ctx.addIssue({
+        code: "custom",
+        path: ["load_basis"],
+        message:
+          "Nur ein Gewichtsziel für eine Übung trägt eine Lastdefinition.",
+      });
+    if (row.load_basis === "bodyweight_only" || row.load_basis === "assistance")
+      ctx.addIssue({
+        code: "custom",
+        path: ["load_basis"],
+        message:
+          "Für Eigengewicht und Unterstützung gibt es kein Gewichtsziel.",
+      });
+    if (row.kind === "exercise_reps" && !Number.isInteger(row.target_value))
+      ctx.addIssue({
+        code: "custom",
+        path: ["target_value"],
+        message: "Wiederholungsziele sind ganze Zahlen.",
+      });
+  })
+  .readonly();
+
+/** One body weight measurement on a local calendar day. Never deleted, only voided. */
+export const ArnoldBodyWeightSchema = z
+  .strictObject({
+    body_weight_id: ArnoldIdSchema,
+    measured_on: z.iso.date(),
+    weight_kg: z.number().min(20).max(400),
+    status: z.enum(["active", "voided"]),
+    source: ArnoldSourceSchema,
+    ...technical,
+  })
+  .refine(chronological, {
+    path: ["updated_at_utc"],
+    message: "updated_at_utc liegt vor created_at_utc.",
+  })
+  .readonly();
+
 const datasetBase = z.strictObject({
   config: ArnoldConfigSchema,
   configEntries: z.array(ArnoldConfigEntrySchema).readonly(),
@@ -433,6 +534,10 @@ const datasetBase = z.strictObject({
   planItems: z.array(ArnoldPlanItemSchema).readonly(),
   workouts: z.array(ArnoldWorkoutSchema).readonly(),
   sets: z.array(ArnoldSetSchema).readonly(),
+  // Added after 1.0.0 without changing its meaning: a dataset written before
+  // goals existed simply has none.
+  goals: z.array(ArnoldGoalSchema).readonly().default([]),
+  bodyWeights: z.array(ArnoldBodyWeightSchema).readonly().default([]),
 });
 export const ArnoldDatasetSchema = datasetBase
   .superRefine((data, ctx) => {
@@ -556,6 +661,39 @@ export const ArnoldDatasetSchema = datasetBase
         activeSets.add(key);
       }
     });
+    index(data.goals, "goal_id", "goals");
+    index(data.bodyWeights, "body_weight_id", "bodyWeights");
+    const activeGoals = new Set<string>();
+    data.goals.forEach((row, i) => {
+      if (row.exercise_id !== null && !exercises.has(row.exercise_id))
+        issue(["goals", i, "exercise_id"], "Referenz auf EXERCISES fehlt.");
+      if (row.status !== "active") return;
+      const key = JSON.stringify([row.kind, row.exercise_id]);
+      if (activeGoals.has(key))
+        issue(
+          ["goals", i, "kind"],
+          "Für diese Art und Übung gibt es schon ein aktives Ziel.",
+        );
+      activeGoals.add(key);
+    });
+    const weighedDays = new Set<string>();
+    data.bodyWeights.forEach((row, i) => {
+      if (row.status !== "active") return;
+      if (weighedDays.has(row.measured_on))
+        issue(
+          ["bodyWeights", i, "measured_on"],
+          "Pro Tag gibt es höchstens einen gültigen Körpergewichtseintrag.",
+        );
+      weighedDays.add(row.measured_on);
+    });
+    if (
+      data.config.file_role === "MASTER_TEMPLATE" &&
+      (data.goals.length || data.bodyWeights.length)
+    )
+      issue(
+        ["config", "file_role"],
+        "MASTER_TEMPLATE darf keine Ziele oder Körpergewichte enthalten.",
+      );
     if (
       data.config.file_role === "MASTER_TEMPLATE" &&
       (data.plans.length ||
@@ -578,6 +716,9 @@ export type ArnoldPlanItem = z.infer<typeof ArnoldPlanItemSchema>;
 export type ArnoldWorkout = z.infer<typeof ArnoldWorkoutSchema>;
 export type ArnoldSet = z.infer<typeof ArnoldSetSchema>;
 export type ArnoldDataset = z.infer<typeof ArnoldDatasetSchema>;
+export type ArnoldGoal = z.infer<typeof ArnoldGoalSchema>;
+export type ArnoldGoalKind = z.infer<typeof ArnoldGoalKindSchema>;
+export type ArnoldBodyWeight = z.infer<typeof ArnoldBodyWeightSchema>;
 
 /** ID-based indexes, scoped to one validated dataset; labels and physical row order are never keys. */
 export function indexArnoldDataset(data: ArnoldDataset) {

@@ -4,6 +4,7 @@ import {
   planFixtureDataset,
 } from "../../src/server/plan/fixture";
 import { createFixtureOnboarding } from "../../src/server/onboarding/fixture";
+import { demoHistoryDataset } from "../../src/server/plan/demo-history";
 /**
  * Fixture servers for the Arnold v2 browser tests.
  *
@@ -102,6 +103,17 @@ createHttpApp({
   ...common,
   workoutRuntime: createFixtureOnboarding(),
 }).listen(8803, "127.0.0.1");
+
+/**
+ * The start screen with nine weeks of invented history, goals and body
+ * weight; writable, for the goal flows.
+ */
+createHttpApp({
+  ...common,
+  workoutRuntime: createFixturePlanning(
+    demoHistoryDataset(new Date().toISOString().slice(0, 10)),
+  ),
+}).listen(8804, "127.0.0.1");
 
 /** A short-lived setup, for the expiry and restart states. */
 createHttpApp({

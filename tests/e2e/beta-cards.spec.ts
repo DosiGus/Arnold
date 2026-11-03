@@ -316,7 +316,7 @@ test("numeric inputs reject invalid values and confirm unusual values before sav
   page,
   browserName,
 }) => {
-  await page.goto("http://127.0.0.1:8795/preview");
+  await page.goto("http://127.0.0.1:8795/preview?card=today");
   await page
     .getByRole("button", { name: "Training starten", exact: true })
     .click();

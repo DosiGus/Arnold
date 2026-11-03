@@ -5,16 +5,20 @@ import { z } from "zod";
  * and the UI, so the model can only ask for a card the app knows.
  */
 export const DASHBOARD_CARDS = [
+  "home",
   "today",
   "week",
   "progress",
   "history",
   "plan",
+  "stats",
+  "goals",
+  "records",
 ] as const;
 export type DashboardCard = (typeof DASHBOARD_CARDS)[number];
 
 export const DashboardCardSchema = z
   .enum(DASHBOARD_CARDS)
   .describe(
-    "Welche Karte gezeigt wird: today = heutiges Training starten und Sätze eintragen (Standard), week = Wochenüberblick, progress = Fortschritt einer Übung, history = vergangene Trainings, plan = Trainingsplan ansehen und bearbeiten.",
+    "Welche Karte gezeigt wird: home = Startansicht mit Training, Fortschritt, Zielen und Rekorden (Standard, wenn der Nutzer Arnold einfach öffnet), today = heutiges Training starten und Sätze eintragen, week = Wochenüberblick, stats = Fortschritt mit Serie, Jahreszahlen und Muskelgruppen, goals = Ziele mit Körpergewicht und Übungszielen, records = alle Rekorde, progress = Verlauf einer einzelnen Übung, history = vergangene Trainings, plan = Trainingsplan ansehen und bearbeiten.",
   );

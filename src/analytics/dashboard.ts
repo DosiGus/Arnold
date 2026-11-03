@@ -8,6 +8,7 @@ import { computeActivity } from "./activity.js";
 import { prepareAnalyticsInput, type PreparedInput } from "./eligibility.js";
 import { isCalendarDate } from "./period.js";
 import { computePlanAdherence } from "./plans.js";
+import { computeHome, type HomeAnalytics } from "./home.js";
 import { computeExerciseProgress } from "./progress.js";
 import { computeDataQuality } from "./quality.js";
 import { computeRecords } from "./records.js";
@@ -133,4 +134,21 @@ export function buildArnoldDashboardAnalytics(
   return parsed.data.validate === false
     ? (result as ArnoldDashboardAnalytics)
     : ArnoldDashboardAnalyticsSchema.parse(result);
+}
+
+/**
+ * The start screen's figures. All history is used, no filter: a streak or a
+ * record is a claim about everything the user did.
+ */
+export function buildHomeAnalytics(
+  dataset: ArnoldDataset,
+  options: {
+    reference_date?: string | null;
+    weekly_goal_training_days?: number | null;
+  } = {},
+): HomeAnalytics {
+  const input = prepareAnalytics(dataset, {
+    reference_date: options.reference_date ?? null,
+  });
+  return computeHome(input, options.weekly_goal_training_days ?? null);
 }

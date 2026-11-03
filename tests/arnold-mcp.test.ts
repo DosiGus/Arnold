@@ -118,11 +118,15 @@ describe("Arnold v2 MCP surface", () => {
     const schema = tools.find((t) => t.name === "show_arnold_dashboard")
       ?.inputSchema as { properties?: { card?: { enum?: string[] } } };
     expect(schema.properties?.card?.enum).toEqual([
+      "home",
       "today",
       "week",
       "progress",
       "history",
       "plan",
+      "stats",
+      "goals",
+      "records",
     ]);
     const week = await call("show_arnold_dashboard", { card: "week" });
     expect(week.isError).not.toBe(true);

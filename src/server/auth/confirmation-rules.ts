@@ -57,6 +57,23 @@ export const CONFIRMATION_RULES: Readonly<Record<string, ConfirmationEntry>> = {
   update_set: log,
   complete_workout: log,
   create_exercise: log,
+  create_training_goal: {
+    rule: "direct",
+    reason: "Legt ein Ziel an, das der Nutzer selbst genannt hat.",
+  },
+  update_training_goal: {
+    rule: "direct",
+    reason: "Ändert den Zielwert auf den Wunsch des Nutzers.",
+  },
+  log_body_weight: log,
+  archive_training_goal: {
+    rule: "ask_in_chat",
+    reason: "Beendet ein Ziel; es wird danach nicht mehr angezeigt.",
+  },
+  void_body_weight: {
+    rule: "ask_in_chat",
+    reason: "Verwirft einen gespeicherten Körpergewichtseintrag.",
+  },
   void_set: {
     rule: "ask_in_chat",
     reason: "Verwirft einen gespeicherten Satz.",

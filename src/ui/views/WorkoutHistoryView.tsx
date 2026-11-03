@@ -34,6 +34,10 @@ export function WorkoutHistoryView({
   const [sessionName, setSessionName] = useState<string>();
   const [includeAll, setIncludeAll] = useState(Boolean(initialWorkoutId));
   const [offset, setOffset] = useState(0);
+  // Workouts in which the user set a record, for a quiet badge in the list.
+  const recordWorkouts = new Set(
+    dashboard.home.records.map((r) => r.workout_id),
+  );
   const history = useWorkoutHistory(client, {
     ...period,
     plan_version_ids: planId ? [planId] : undefined,
@@ -257,11 +261,19 @@ export function WorkoutHistoryView({
               <button
                 type="button"
                 className="ac-training-row"
-                aria-label={`${workout.title} am ${dateLabel(workout.date, true)}`}
+                aria-label={`${workout.title} am ${dateLabel(workout.date, true)}${recordWorkouts.has(workout.workout_id) ? ", mit Rekord" : ""}`}
                 onClick={() => open(workout.workout_id)}
               >
                 <span>
-                  <strong>{workout.title}</strong>
+                  <strong>
+                    {workout.title}
+                    {recordWorkouts.has(workout.workout_id) && (
+                      <>
+                        {" "}
+                        <span className="ac-pill">Rekord</span>
+                      </>
+                    )}
+                  </strong>
                   <small>
                     {dateLabel(workout.date)} · {workout.exercise_count}{" "}
                     {workout.exercise_count === 1 ? "Übung" : "Übungen"} ·{" "}

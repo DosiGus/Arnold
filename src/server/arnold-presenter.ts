@@ -17,6 +17,8 @@ import {
 } from "../shared/arnold-schema-v1.js";
 import {
   buildArnoldDashboardAnalytics,
+  buildHomeAnalytics,
+  type HomeAnalytics,
   DEFAULT_WORKOUT_STATUSES,
   METRICS_VERSION,
   type AnalyticsFilter,
@@ -36,6 +38,8 @@ import {
   PROGRESS_METRICS,
   type ArnoldDashboardView,
   type ArnoldExerciseProgressView,
+  type ArnoldHome,
+  type HomeRecord,
   type ArnoldWorkoutHistoryView,
   type ProgressMetricKey,
   type ViewExerciseOption,
@@ -553,6 +557,90 @@ function workingSetKpi(analytics: ArnoldDashboardAnalytics): ViewMetric {
 }
 
 /**
+ * The start screen. Copies the engine's figures and adds what only the data
+ * knows: exercise names and muscle groups. Nothing is recomputed here.
+ */
+function homeView(
+  dataset: ArnoldDataset,
+  names: ReadonlyMap<string, string>,
+  home: HomeAnalytics,
+): ArnoldHome {
+  const muscle = new Map(
+    dataset.exercises.map((e) => [e.exercise_id, e.primary_muscle.trim()]),
+  );
+  const record = (r: HomeAnalytics["records"][number]): HomeRecord => ({
+    key: r.key,
+    exercise_id: r.exercise_id,
+    exercise_name: names.get(r.exercise_id) ?? "Unbekannte Übung",
+    muscle_group: muscle.get(r.exercise_id) || "Sonstiges",
+    metric: r.metric,
+    value: r.value,
+    previous_value: r.previous_value,
+    load_kg: r.load_kg,
+    reps: r.reps,
+    load_basis: r.load_basis,
+    achieved_on: r.achieved_on,
+    workout_id: r.workout_id,
+  });
+  const revisions = new Map(
+    dataset.goals.map((g) => [g.goal_id, g.row_revision]),
+  );
+  const year = Number(
+    (
+      home.reference_date ??
+      home.streak.weeks.at(-1)?.week_start ??
+      "1970"
+    ).slice(0, 4),
+  );
+  return {
+    next_session: home.next_session,
+    streak: {
+      ...home.streak,
+      weeks: home.streak.weeks.map((w) => ({ ...w })),
+    },
+    year,
+    workouts_this_year: home.workouts_this_year,
+    strength_change: { ...home.strength_change },
+    best_month: home.best_month ? { ...home.best_month } : null,
+    muscle_groups: home.muscle_groups.map((g) => ({ ...g })),
+    records: home.records.map(record),
+    records_by_exercise: home.records_by_exercise.map((entry) => ({
+      exercise_id: entry.exercise_id,
+      exercise_name: names.get(entry.exercise_id) ?? "Unbekannte Übung",
+      muscle_group: muscle.get(entry.exercise_id) || "Sonstiges",
+      count: entry.count,
+      latest: record(entry.latest),
+      history: entry.history.map(record),
+    })),
+    goals: home.goals.map((goal) => ({
+      goal_id: goal.goal_id,
+      row_revision: revisions.get(goal.goal_id) ?? 1,
+      kind: goal.kind,
+      exercise_id: goal.exercise_id,
+      name:
+        goal.exercise_id === null
+          ? "Körpergewicht"
+          : (names.get(goal.exercise_id) ?? "Unbekannte Übung"),
+      unit: goal.unit,
+      load_basis: goal.load_basis,
+      target_value: goal.target_value,
+      start_value: goal.start_value,
+      current_value: goal.current_value,
+      current_date: goal.current_date,
+      progress: goal.progress,
+      achieved: goal.achieved,
+      rate_per_week: goal.rate_per_week,
+      eta_weeks: goal.eta_weeks,
+      points: goal.points.map((p) => ({ ...p })),
+    })),
+    exercise_bests: home.exercise_bests.map((b) => ({ ...b })),
+    latest_body_weight: home.latest_body_weight
+      ? { ...home.latest_body_weight }
+      : null,
+  };
+}
+
+/**
  * Builds the overview payload.
  *
  * `recentLimit` keeps the aggregate small: full workout detail is a separate
@@ -771,6 +859,15 @@ export function buildDashboardView(
       ).reduce((total, n) => total + (n ?? 0), 0),
       notes: qualityNotes(analytics),
     },
+    home: homeView(
+      dataset,
+      names,
+      buildHomeAnalytics(dataset, {
+        reference_date: options.reference_date ?? null,
+        // The weekly goal is the plan's training days (server instructions).
+        weekly_goal_training_days: activePlan?.days_per_week ?? null,
+      }),
+    ),
     totals: {
       workouts_in_history: dataset.workouts.length,
       workouts_in_period: analytics.data_quality.eligible_workouts,

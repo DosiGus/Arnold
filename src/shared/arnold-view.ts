@@ -18,9 +18,11 @@
 import { z } from "zod";
 import {
   ArnoldExecutionModeSchema,
+  ArnoldGoalKindSchema,
   ArnoldIdSchema,
   ArnoldLoadBasisSchema,
 } from "./arnold-schema-v1.js";
+import { DASHBOARD_CARDS } from "./dashboard-cards.js";
 import {
   AnalyticsReasonSchema,
   ComparabilitySchema,
@@ -323,6 +325,126 @@ export const ProgressMetricKeySchema = z.enum([
 export type ProgressMetricKey = z.infer<typeof ProgressMetricKeySchema>;
 
 /**
+ * The start screen: four tiles (training, progress, goals, records) and the
+ * three views behind them. Every number comes from `src/analytics/home.ts`;
+ * the UI formats, it does not compute.
+ */
+const finiteNumber = z.number().finite();
+
+export const HomeRecordSchema = z.object({
+  key: z.string().min(1),
+  exercise_id: ArnoldIdSchema,
+  exercise_name: z.string().min(1),
+  muscle_group: z.string().min(1),
+  metric: z.enum(["max_load", "max_reps_at_load", "max_reps_bodyweight"]),
+  /** kg for max_load, repetitions otherwise. */
+  value: finiteNumber,
+  previous_value: finiteNumber,
+  load_kg: finiteNumber.nullable(),
+  reps: count.nullable(),
+  load_basis: ArnoldLoadBasisSchema,
+  achieved_on: isoDate,
+  workout_id: ArnoldIdSchema,
+});
+export type HomeRecord = z.infer<typeof HomeRecordSchema>;
+
+export const HomeGoalSchema = z.object({
+  goal_id: ArnoldIdSchema,
+  /** Needed to change or end the goal. */
+  row_revision: z.number().int().positive(),
+  kind: ArnoldGoalKindSchema,
+  exercise_id: ArnoldIdSchema.nullable(),
+  /** "Körpergewicht" or the exercise name. */
+  name: z.string().min(1),
+  unit: z.enum(["kg", "reps"]),
+  load_basis: ArnoldLoadBasisSchema.nullable(),
+  target_value: finiteNumber,
+  start_value: finiteNumber.nullable(),
+  current_value: finiteNumber.nullable(),
+  current_date: isoDate.nullable(),
+  /** 0 to 1; null while nothing is measured. */
+  progress: z.number().min(0).max(1).nullable(),
+  achieved: z.boolean(),
+  rate_per_week: finiteNumber.nullable(),
+  eta_weeks: z.number().int().positive().nullable(),
+  points: z.array(z.object({ date: isoDate, value: finiteNumber })),
+});
+export type HomeGoal = z.infer<typeof HomeGoalSchema>;
+
+export const ArnoldHomeSchema = z.object({
+  next_session: z
+    .object({
+      plan_version_id: ArnoldIdSchema,
+      session_id: ArnoldIdSchema,
+      session_name: z.string().min(1),
+      exercise_count: count,
+    })
+    .nullable(),
+  streak: z.object({
+    weekly_goal: z.number().int().positive().nullable(),
+    current: count.nullable(),
+    longest: count.nullable(),
+    is_best: z.boolean(),
+    current_week_training_days: count,
+    weeks: z.array(
+      z.object({
+        week_start: isoDate,
+        training_days: count,
+        goal_met: z.boolean(),
+        is_current_week: z.boolean(),
+      }),
+    ),
+  }),
+  year: z.number().int(),
+  workouts_this_year: count,
+  strength_change: z.object({
+    percent: finiteNumber.nullable(),
+    since: isoDate.nullable(),
+    exercises: count,
+  }),
+  best_month: z
+    .object({
+      month: z.string().regex(/^\d{4}-\d{2}$/),
+      workouts: count,
+    })
+    .nullable(),
+  muscle_groups: z.array(
+    z.object({
+      name: z.string().min(1),
+      strength_change_pct: finiteNumber.nullable(),
+      records: count,
+      sets_per_week: finiteNumber,
+    }),
+  ),
+  records: z.array(HomeRecordSchema),
+  records_by_exercise: z.array(
+    z.object({
+      exercise_id: ArnoldIdSchema,
+      exercise_name: z.string().min(1),
+      muscle_group: z.string().min(1),
+      count: count,
+      latest: HomeRecordSchema,
+      history: z.array(HomeRecordSchema),
+    }),
+  ),
+  goals: z.array(HomeGoalSchema),
+  /** Best sets per exercise, for choosing a new goal. */
+  exercise_bests: z.array(
+    z.object({
+      exercise_id: ArnoldIdSchema,
+      best_load_kg: finiteNumber.nullable(),
+      best_load_reps: count.nullable(),
+      load_basis: ArnoldLoadBasisSchema,
+      best_reps: count.nullable(),
+    }),
+  ),
+  latest_body_weight: z
+    .object({ date: isoDate, weight_kg: finiteNumber })
+    .nullable(),
+});
+export type ArnoldHome = z.infer<typeof ArnoldHomeSchema>;
+
+/**
  * Payload of `get_arnold_dashboard` and of `show_arnold_dashboard` in Arnold
  * mode. Aggregated on purpose: workout details and exercise series are fetched
  * separately so this stays small as history grows.
@@ -351,6 +473,8 @@ export const ArnoldDashboardViewSchema = z.object({
   /** Distinct session names present in history; drives the history filter. */
   session_names: z.array(z.string().min(1)),
   data_quality: ViewDataQualitySchema,
+  /** Start screen and its three detail views. */
+  home: ArnoldHomeSchema,
   totals: z.object({
     workouts_in_history: count,
     workouts_in_period: count,
@@ -362,7 +486,7 @@ export const ArnoldDashboardViewSchema = z.object({
    */
   focus: z
     .object({
-      card: z.enum(["today", "week", "progress", "history", "plan"]),
+      card: z.enum(DASHBOARD_CARDS),
       exercise_id: ArnoldIdSchema.nullable(),
       metric: ProgressMetricKeySchema.nullable(),
       workout_id: ArnoldIdSchema.nullable(),

@@ -47,7 +47,7 @@ Vite bündelt `dashboard.html` (App) und `host.html` (Test-Host) zu je einer Dat
 
 ## Karten im Chat
 
-Arnold zeigt im Chat Karten, keine App: kein Logo, kein Menü, kein Hell-Dunkel-Schalter (das liefert der Host). Das Modell wählt die Karte über das Argument `card` von `show_arnold_dashboard` (`today`, `week`, `progress`, `history`, `plan`; Liste in `src/shared/dashboard-cards.ts`), die UI liest es über `ontoolinput`. Gestaltungsregeln: `docs/DESIGN.md`.
+Arnold zeigt im Chat Karten, keine App: kein Logo, kein Menü, kein Hell-Dunkel-Schalter (das liefert der Host). Ohne `card` öffnet `show_arnold_dashboard` die Startansicht `home` mit vier Kacheln (Training, Fortschritt, Ziele, Rekorde); jede Kachel öffnet ihre Ansicht (`week`, `stats`, `goals`, `records`) mit Zurück-Knopf. Das Modell kann jede Karte direkt wählen (`home`, `today`, `week`, `stats`, `goals`, `records`, `progress`, `history`, `plan`; Liste in `src/shared/dashboard-cards.ts`), die UI liest es über `ontoolinput`. Gestaltungsregeln: `docs/DESIGN.md`.
 
 **Chat-Brücke** (`src/ui/model-context.ts`): Jede Karte meldet dem Modell still über `ui/update-model-context`, was sie zeigt, bei laufendem Training mit allen gespeicherten Sätzen samt `set_id`. So kann der Nutzer im Chat nachfragen oder korrigieren. Nur „Training beenden“ schickt eine sichtbare Nachricht, einmal und nur nach einem Tipp in der Karte.
 
@@ -55,20 +55,22 @@ Es gibt keine Abhängigkeit von `window.openai`. `/preview` nutzt denselben Serv
 
 ## Datenmodell
 
-Die Trainingsdaten folgen dem Schema `arnold.training_raw` 1.0.0 (`src/shared/arnold-schema-v1.ts`) und liegen in Postgres im Schema `arnold` (`db/migrations/001_arnold.sql`):
+Die Trainingsdaten folgen dem Schema `arnold.training_raw` 1.0.0 (`src/shared/arnold-schema-v1.ts`) und liegen in Postgres im Schema `arnold` (`db/migrations/001_arnold.sql`, Ziele und Körpergewicht in `002_goals_body_weight.sql`):
 
-| Tabelle                | Inhalt                                                        |
-| ---------------------- | ------------------------------------------------------------- |
-| `users`                | Arnold-Konto: interne Kennung, Status, Tracker-ID             |
-| `identity_connections` | Login (Issuer + Subject) → Konto; nie die E-Mail-Adresse      |
-| `exercises`            | Übungskatalog des Nutzers (Startkatalog plus eigene Übungen)  |
-| `plan_versions`        | Planversionen (`draft` / `active` / `archived`)               |
-| `plan_items`           | Einheiten und Positionen einer Planversion                    |
-| `workouts`             | Durchgeführte Einheiten (lokales Datum, Status)               |
-| `sets`                 | Einzelne Sätze mit Last, Wiederholungen, Ausführungsart       |
-| `operations`           | Quittung je Schreibvorgang (`request_id`), für Wiederholungen |
-| `audit_events`         | Änderungsprotokoll                                            |
-| `onboarding_sessions`  | Einrichtungsstand als JSON-Dokument mit Revision              |
+| Tabelle                | Inhalt                                                         |
+| ---------------------- | -------------------------------------------------------------- |
+| `users`                | Arnold-Konto: interne Kennung, Status, Tracker-ID              |
+| `identity_connections` | Login (Issuer + Subject) → Konto; nie die E-Mail-Adresse       |
+| `exercises`            | Übungskatalog des Nutzers (Startkatalog plus eigene Übungen)   |
+| `plan_versions`        | Planversionen (`draft` / `active` / `archived`)                |
+| `plan_items`           | Einheiten und Positionen einer Planversion                     |
+| `workouts`             | Durchgeführte Einheiten (lokales Datum, Status)                |
+| `sets`                 | Einzelne Sätze mit Last, Wiederholungen, Ausführungsart        |
+| `operations`           | Quittung je Schreibvorgang (`request_id`), für Wiederholungen  |
+| `audit_events`         | Änderungsprotokoll                                             |
+| `onboarding_sessions`  | Einrichtungsstand als JSON-Dokument mit Revision               |
+| `goals`                | Ziele: Körpergewicht, Gewicht oder Wiederholungen einer Übung  |
+| `body_weights`         | Körpergewicht pro Kalendertag (höchstens ein gültiger Eintrag) |
 
 Spaltennamen entsprechen exakt den Feldern des Zod-Schemas. Zeitstempel und Kalenderdaten werden als die geschriebenen Zeichenketten gespeichert, damit ein Kalendertag nie aus UTC umgerechnet wird und ein Datensatz unverändert zurückkommt. Werteregeln (Enums, Bereiche, Querbezüge) prüft das Zod-Schema bei jedem Schreiben; die Datenbank sichert Schlüssel, Bezüge innerhalb eines Nutzers und „höchstens ein aktiver Plan“.
 
@@ -109,6 +111,15 @@ Jeder Satz trägt `load_basis`; die Engine mischt Bedeutungen nie unbeschriftet.
 - Nicht berechenbare Werte tragen einen maschinenlesbaren Grund (`status`/`reason`), statt zu fehlen oder 0 zu sein.
 
 Die Engine ist rein und deterministisch; Ergebnisse tragen die Version der Konventionen (`src/analytics/types.ts`). Der Presenter übernimmt Kennzahlen unverändert; die UI rechnet nichts nach.
+
+### Startansicht, Ziele und Körpergewicht (`src/analytics/home.ts`, `goals.ts`)
+
+- Alle Zahlen der Startansicht rechnet die Engine (`buildHomeAnalytics`), ohne Filter über die ganze Historie; der Presenter ergänzt nur Namen (`home` im Dashboard-Vertrag).
+- **Serie:** Wochen am Stück mit erreichtem Wochenziel (Trainingstage aus `days_per_week` des aktiven Plans, egal an welchen Tagen). Die laufende Woche bricht eine Serie nie. Ohne Plan keine Serie.
+- **Rekorde:** mehr Gewicht oder mehr Wiederholungen bei gleichem Gewicht (Engine-Rekorde `max_load`/`max_reps_at_load`, nur Verbesserungen), bei Eigengewicht mehr Wiederholungen. Eine Übung in einem Training ist höchstens ein Rekord (auch bei links und rechts). Nur abgeschlossene Trainings zählen.
+- **Stärker seit:** mittlere Veränderung des geschätzten 1RM je Übung (erste gegen letzte Messung, häufigste Vergleichsklasse). Muskelgruppen nutzen dasselbe für die letzten 8 Wochen, Arbeitssätze pro Woche für die letzten 4 Wochen; die Gruppe ist `primary_muscle` der Übung.
+- **Ziele** speichern nur Art, Übung, Lastdefinition, Ziel- und Startwert. Der Stand wird berechnet: Körpergewicht = letzte Messung, Übungsziel = bester Arbeitssatz eines abgeschlossenen Trainings in der Lastdefinition des Ziels. Prognose aus der Veränderung der letzten 8 Wochen. Pro Art und Übung ein aktives Ziel (Schema und Datenbank).
+- Schreiben über `create_training_goal`, `update_training_goal`, `archive_training_goal`, `log_body_weight`, `void_body_weight` im Workout-Dienst, also über `commitWrite` wie jeder Satz. Ein zweiter Gewichtseintrag am selben Tag verwirft den ersten.
 
 ### Trainingspläne (`src/server/plan`, `src/shared/plan-contract.ts`)
 
@@ -170,6 +181,7 @@ Rund 40 Tools in fünf Bereichen; die vollständige, verbindliche Liste ist die 
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Dashboard     | `show_arnold_dashboard`, `get_arnold_dashboard`, `get_arnold_workouts`, `get_arnold_exercise_progress`                                                                                                                                                                                 |
 | Workout       | `get_workout`, `start_workout`, `log_workout_sets`, `update_set`, `void_set`, `complete_workout`, `cancel_workout`, `create_exercise`                                                                                                                                                  |
+| Ziele         | `create_training_goal`, `update_training_goal`, `archive_training_goal`, `log_body_weight`, `void_body_weight`                                                                                                                                                                         |
 | Trainingsplan | `get_training_plan`, `list_training_plans`, `get_plan_history`, `validate_training_plan`, `compare_plan_versions`, `get_plan_editor_context`, `create_training_plan`, `create_plan_version`, `clone_plan_version`, `update_plan_draft`, `activate_training_plan`, `archive_plan_draft` |
 | Einrichtung   | `show_arnold_onboarding`, `start_arnold_onboarding`, `update_onboarding_profile`, `request_onboarding_plan`, `submit_onboarding_plan_proposal`, `confirm_onboarding_plan`, `finish_arnold_setup`, …                                                                                    |
 | Konto         | `get_arnold_stored_data`, `delete_arnold_account`                                                                                                                                                                                                                                      |

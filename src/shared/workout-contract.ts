@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { toolErrorSchema } from "./write-recovery.js";
 import {
+  ArnoldBodyWeightSchema,
+  ArnoldGoalKindSchema,
+  ArnoldGoalSchema,
   ArnoldExerciseSchema,
   ArnoldWorkoutSchema,
   ArnoldSetSchema,
@@ -110,6 +113,52 @@ export const WriteInputs = {
       ArnoldExerciseSchema.unwrap().shape.default_execution_mode,
     default_implement_count: z.number().int().positive(),
   }),
+  create_training_goal: z.strictObject({
+    ...request,
+    kind: ArnoldGoalKindSchema,
+    exercise_id: id
+      .optional()
+      .describe("Übungs-ID; nur für exercise_load und exercise_reps."),
+    target_value: z
+      .number()
+      .positive()
+      .max(1000)
+      .describe(
+        "Zielwert: kg für body_weight und exercise_load, Wiederholungen für exercise_reps.",
+      ),
+    load_basis: ArnoldGoalSchema.unwrap()
+      .shape.load_basis.unwrap()
+      .optional()
+      .describe(
+        "Nur für exercise_load: Lastdefinition des Ziels; ohne Angabe die der Übung.",
+      ),
+    source,
+  }),
+  update_training_goal: z.strictObject({
+    ...request,
+    goal_id: id,
+    expected_row_revision: z.number().int().positive(),
+    target_value: z.number().positive().max(1000),
+  }),
+  archive_training_goal: z.strictObject({
+    ...request,
+    goal_id: id,
+    expected_row_revision: z.number().int().positive(),
+  }),
+  log_body_weight: z.strictObject({
+    ...request,
+    measured_on: z.iso
+      .date()
+      .describe("Lokales Kalenderdatum der Messung, YYYY-MM-DD."),
+    timezone: ArnoldWorkoutSchema.unwrap().shape.timezone,
+    weight_kg: ArnoldBodyWeightSchema.unwrap().shape.weight_kg,
+    source,
+  }),
+  void_body_weight: z.strictObject({
+    ...request,
+    body_weight_id: id,
+    expected_row_revision: z.number().int().positive(),
+  }),
 } as const;
 export type WriteOperation = keyof typeof WriteInputs;
 export type WriteInput<K extends WriteOperation> = z.infer<
@@ -120,6 +169,10 @@ export const WriteErrorCodeSchema = z.enum([
   "EXERCISE_NOT_FOUND",
   "WORKOUT_NOT_FOUND",
   "SET_NOT_FOUND",
+  "GOAL_NOT_FOUND",
+  "BODY_WEIGHT_NOT_FOUND",
+  /** An active goal of that kind for that exercise exists already. */
+  "GOAL_EXISTS",
   "INVALID_STATUS_TRANSITION",
   "REVISION_CONFLICT",
   "DUPLICATE_OPERATION",
@@ -139,6 +192,9 @@ export const WriteResultSchema = z.strictObject({
   workout: ArnoldWorkoutSchema.nullable(),
   sets: z.array(ArnoldSetSchema),
   exercise: ArnoldExerciseSchema.nullable(),
+  // Added with goals; older stored receipts have neither field.
+  goal: ArnoldGoalSchema.nullable().optional(),
+  body_weight: ArnoldBodyWeightSchema.nullable().optional(),
   warnings: z.array(z.string()),
 });
 export type WriteResult = z.infer<typeof WriteResultSchema>;

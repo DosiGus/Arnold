@@ -30,7 +30,7 @@ test("starts today's session, logs with plus and minus, corrects and completes",
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto(`${URL}/preview`);
+  await page.goto(`${URL}/preview?card=today`);
   await start(page);
 
   // No target weight in the plan: the first value is typed once, then reused.
@@ -91,7 +91,7 @@ test("starts today's session, logs with plus and minus, corrects and completes",
 test("recovers a lost response across reload with the same operation ID and no duplicate", async ({
   page,
 }) => {
-  await page.goto(`${URL}/preview`);
+  await page.goto(`${URL}/preview?card=today`);
   await start(page);
   let lose = true;
   const ids: string[] = [];
@@ -147,7 +147,7 @@ test("recovers a lost response across reload with the same operation ID and no d
 test("MCP App bridge writes in a sandbox and tells the chat what happened", async ({
   page,
 }) => {
-  await page.goto(`${URL}/host`);
+  await page.goto(`${URL}/host?card=today`);
   await expect(page.locator("#host-status")).toHaveAttribute(
     "data-initialized",
     "true",

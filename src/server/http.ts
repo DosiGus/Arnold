@@ -1,7 +1,7 @@
 import { logServerError } from "./tool-log.js";
 import { writeModeFromEnv } from "./workout/fixture.js";
 import { createFixtureOnboarding } from "./onboarding/fixture.js";
-import { planFixtureDataset } from "./plan/fixture.js";
+import { demoHistoryDataset } from "./plan/demo-history.js";
 import type { WorkoutLoggingService } from "./workout/service.js";
 import type { TrainingPlanService } from "./plan/service.js";
 import type { OnboardingService } from "./onboarding/service.js";
@@ -123,7 +123,10 @@ export function createHttpApp(options: ServerOptions = {}) {
         // from the environment must expose the plan editor and the onboarding
         // too, or two thirds of the product are simply absent from the tool
         // list and a connected client cannot reach them.
-        createFixtureOnboarding({ dataset: planFixtureDataset() })
+        // With invented history, so the start screen has something to show.
+        createFixtureOnboarding({
+          dataset: demoHistoryDataset(new Date().toISOString().slice(0, 10)),
+        })
       : undefined);
   if (runtime && options.arnoldSource)
     throw new Error(

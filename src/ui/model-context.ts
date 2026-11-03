@@ -162,7 +162,33 @@ export function weekContext(view: ArnoldDashboardView) {
     .join("\n");
 }
 
+export function homeContext(view: ArnoldDashboardView) {
+  const home = view.home;
+  const parts = [
+    "Arnold zeigt gerade die Startansicht mit den Kacheln Training, Fortschritt, Ziele und Rekorde.",
+    home.next_session
+      ? `Als Nächstes im Plan: „${home.next_session.session_name}“.`
+      : "",
+    home.streak.current !== null
+      ? `Serie: ${home.streak.current} ${home.streak.current === 1 ? "Woche" : "Wochen"} am Stück mit erreichtem Wochenziel.`
+      : "",
+    home.goals.length
+      ? `Ziele: ${home.goals
+          .map(
+            (g) =>
+              `${g.name} ${g.progress === null ? "ohne Messwert" : `${Math.round(g.progress * 100)} %`}`,
+          )
+          .join(", ")}.`
+      : "Noch keine Ziele gesetzt.",
+    SEEN,
+  ];
+  return parts.filter(Boolean).join("\n");
+}
+
 const PAGE: Record<string, string> = {
+  stats: "die Fortschritt-Ansicht mit Serie und Muskelgruppen",
+  goals: "die Ziele mit Körpergewicht und Übungszielen",
+  records: "alle Rekorde",
   progress: "die Fortschritt-Ansicht",
   history: "den Trainingsverlauf",
   plan: "den Trainingsplan",

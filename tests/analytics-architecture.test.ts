@@ -17,6 +17,8 @@ describe("analytics engine boundaries", () => {
       "activity.ts",
       "dashboard.ts",
       "eligibility.ts",
+      "goals.ts",
+      "home.ts",
       "index.ts",
       "load.ts",
       "period.ts",
