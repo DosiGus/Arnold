@@ -307,7 +307,6 @@ body:has(.arnold-cards) {
   overflow-wrap: anywhere;
 }
 
-
 /* Shared: label columns, progress bars, round icon buttons, marks and menus. */
 .ac-label:has(> .ac-label-col) {
   flex: 1;
