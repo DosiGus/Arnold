@@ -307,11 +307,9 @@ test("reviews an invalid draft, fixes it, then confirms and activates", async ({
   await expect(page.getByText("Aktiv", { exact: true }).first()).toBeVisible();
   await expect(button(page, "Entwurf verwerfen")).toHaveCount(0);
 
-  // Today's card picks up the newly activated plan.
+  // Today's card picks up the newly activated plan: its added exercise.
   await openCard(page, ACTIVATE_URL, "today");
-  await expect(page.locator(".ac").first()).toContainText(
-    "Push Pull Legs angepasst",
-  );
+  await expect(page.locator(".ac").first()).toContainText("Demo Seitheben");
 });
 
 test("navigation alone never activates a plan", async ({ page }) => {

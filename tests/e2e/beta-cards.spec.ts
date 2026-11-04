@@ -317,18 +317,40 @@ test("numeric inputs reject invalid values and confirm unusual values before sav
   browserName,
 }) => {
   await page.goto("http://127.0.0.1:8795/preview?card=today");
-  await page
-    .getByRole("button", { name: "Training starten", exact: true })
-    .click();
-  await page.getByLabel("Gewicht", { exact: true }).fill("60");
-  await page.getByLabel("Wiederholungen", { exact: true }).fill("8,5");
+  // Other tests write to the same tracker: start from the editor either way.
   await expect(
-    page.getByLabel("Wiederholungen", { exact: true }),
-  ).toHaveAttribute("aria-invalid", "true");
-  await expect(
-    page.getByRole("button", { name: /^Satz \d+ speichern$/ }),
-  ).toBeDisabled();
-  await page.getByLabel("Wiederholungen", { exact: true }).fill("8");
+    page
+      .getByRole("button", {
+        name: /^(Noch ein Training eintragen|Werte eintragen|Anpassen)$/,
+      })
+      .first(),
+  ).toBeVisible();
+  const another = page.getByRole("button", {
+    name: "Noch ein Training eintragen",
+  });
+  if (await another.isVisible()) await another.click();
+  const fill = page.getByRole("button", { name: "Werte eintragen" });
+  if (await fill.isVisible()) await fill.click();
+  else
+    await page.getByRole("button", { name: "Anpassen", exact: true }).click();
+  const bench = page
+    .locator(".ac-edit-ex")
+    .filter({ hasText: "Demo Bankdrücken" });
+  const incline = page
+    .locator(".ac-edit-ex")
+    .filter({ hasText: "Demo Schrägbankdrücken" });
+  await bench.getByLabel("Gewicht").fill("60");
+  await incline.getByLabel("Gewicht").fill("20");
+  await bench.getByLabel("Wdh.").fill("8,5");
+  await expect(bench.getByLabel("Wdh.")).toHaveAttribute(
+    "aria-invalid",
+    "true",
+  );
+  await bench.getByLabel("Wdh.").fill("8");
+  await expect(bench.getByLabel("Wdh.")).not.toHaveAttribute(
+    "aria-invalid",
+    "true",
+  );
   const capture = async (name: string) => {
     for (const width of [375, 1024])
       for (const theme of ["light", "dark"] as const) {
@@ -350,33 +372,17 @@ test("numeric inputs reject invalid values and confirm unusual values before sav
         });
       }
   };
-  await capture("set");
-  let first = true;
+  await capture("edit");
   const inputs: Record<string, unknown>[] = [];
   await page.route("**/mcp", async (route) => {
     const body = route.request().postDataJSON();
-    if (body?.params?.name === "log_workout_sets") {
+    if (body?.params?.name === "log_workout")
       inputs.push(body.params.arguments);
-      if (first) {
-        first = false;
-        return result(
-          route,
-          undefined,
-          {
-            arnold: {
-              code: "CONFIRMATION_REQUIRED",
-              retryable: false,
-              recovery: "none",
-            },
-          },
-          true,
-        );
-      }
-    }
     await route.continue();
   });
-  await page.getByLabel("Gewicht", { exact: true }).fill("550");
-  await page.getByRole("button", { name: /^Satz \d+ speichern$/ }).click();
+  // Over 500 kg is almost certainly a slip: the server asks, nothing is saved.
+  await bench.getByLabel("Gewicht").fill("550");
+  await page.getByRole("button", { name: "Speichern", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Stimmt das?", exact: true }),
   ).toBeVisible();
@@ -385,22 +391,19 @@ test("numeric inputs reject invalid values and confirm unusual values before sav
   await page
     .getByRole("button", { name: "Ja, diese Werte speichern", exact: true })
     .click();
+  await expect(page.locator(".ac-training-saved")).toBeVisible();
   await expect(
-    page.getByRole("status").filter({ hasText: "Satz 1 gespeichert" }),
-  ).toContainText("550 kg × 8");
-  await capture("rest");
+    page.locator(".ac-rows > li").filter({ hasText: "Demo Bankdrücken" }),
+  ).toContainText("550 kg");
   expect(inputs[1].confirm_unusual_values).toBe(true);
   expect(inputs[1].request_id).not.toBe(inputs[0].request_id);
+  await capture("training-saved");
+  // Leave the shared tracker without the slip for the next test.
+  await page.getByRole("button", { name: "Rückgängig", exact: true }).click();
   await page
-    .getByRole("button", { name: "Weitere Aktionen", exact: true })
+    .getByRole("button", { name: "Wirklich zurücknehmen?", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Training beenden", exact: true })
-    .click();
-  await expect(
-    page.locator(".ac-label").filter({ hasText: "Training gespeichert" }),
-  ).toBeVisible();
-  await capture("training-summary");
+  await expect(page.locator(".ac").first()).toContainText("zurückgenommen");
 });
 
 test("the sandbox host never receives a deletion token in model context", async ({

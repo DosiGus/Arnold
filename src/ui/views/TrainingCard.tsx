@@ -5,6 +5,7 @@ import type { ArnoldDashboardView } from "../../shared/arnold-view";
 import type {
   SessionProposal,
   WorkoutContext,
+  WriteResponse,
 } from "../../shared/workout-contract";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
 import { useWorkoutLogger } from "../hooks/useWorkoutLogger";
@@ -151,11 +152,16 @@ const unusual = (logger: Logger) =>
  * Saving a workout, with the "Stimmt das?" step for values that are almost
  * certainly a slip. The confirmed resend is a new request with the same values.
  */
-function useLogWorkout(logger: Logger) {
+function useLogWorkout(
+  logger: Logger,
+  onDone: (response: WriteResponse) => void,
+) {
   const last = useRef<Record<string, unknown> | undefined>(undefined);
-  const send = (input: Record<string, unknown>) => {
+  const send = async (input: Record<string, unknown>) => {
     last.current = input;
-    return logger.write("log_workout", input);
+    const response = await logger.write("log_workout", input);
+    if (response?.ok) onDone(response);
+    return response;
   };
   const confirm =
     unusual(logger) && last.current
@@ -269,10 +275,14 @@ function TodayCard({
     }),
   );
 
-  const { send, confirm } = useLogWorkout(logger);
+  const { send, confirm } = useLogWorkout(logger, (response) => {
+    if (!response.result?.workout) return;
+    setDraft(undefined);
+    onSaved(response.result.workout.workout_id);
+  });
   const save = async (exercises?: ReturnType<typeof requestExercises>) => {
     if (!proposal) return;
-    const response = await send({
+    await send({
       workout_date_local: localDate(),
       timezone: timezone(),
       plan_version_id: proposal.plan_version_id,
@@ -280,10 +290,6 @@ function TodayCard({
       ...(exercises ? { exercises } : {}),
       source: "ui",
     });
-    if (response?.ok && response.result?.workout) {
-      setDraft(undefined);
-      onSaved(response.result.workout.workout_id);
-    }
   };
 
   const label = `Heute · ${WEEKDAY.format(new Date())}`;
@@ -559,7 +565,7 @@ function SavedCard({
     return () => clearTimeout(timer);
   }, [announce, summary, record]);
 
-  const { send, confirm } = useLogWorkout(logger);
+  const { send, confirm } = useLogWorkout(logger, () => setDraft(undefined));
   const notes = <Notes logger={logger} data={data} />;
   if (draft)
     return (
@@ -599,8 +605,6 @@ function SavedCard({
                   replaces_workout_id: workout.workout_id,
                   expected_row_revision: workout.row_revision,
                   source: "ui",
-                }).then((r) => {
-                  if (r?.ok) setDraft(undefined);
                 }),
               disabled:
                 disabled ||
