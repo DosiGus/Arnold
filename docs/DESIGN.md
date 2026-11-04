@@ -6,7 +6,7 @@ Die Grundlage ist der [Apple-Design-Skill von Emil Kowalski](https://github.com/
 
 ## Gemeinsames System
 
-- `src/ui/style.css` ist das einzige Stylesheet der App. Der lokale Test-Host hat ein eigenes, getrenntes Stylesheet.
+- `src/ui/style.css` ist der einzige Einstieg für Styles; er bindet die Bereiche aus `src/ui/styles/` ein (Basis, Karten, Start, Einrichtung, Plan-Editor, Training), und Vite fügt alles in das eine Bundle ein. Der lokale Test-Host hat ein eigenes, getrenntes Stylesheet.
 - `components/cards.tsx` enthält `ArnoldCard`, `CardActions`, `ChipGroup`, `Stepper`, `Rows`, `StatGrid`, `CardNote` und `CardSkeleton`. Die Karten verwenden diese Bausteine. Der Vollbildeditor nutzt dieselben Tokens und Bedienelement-Maße.
 - Hell und Dunkel kommen aus dem Host. Die eigenständige Vorschau verwendet beim Öffnen das System-Theme. Kein Theme-Schalter in der Karte, keine externen Schriften oder Assets.
 - Flächen und Schrift sind weitgehend achromatisch. Ein helles Grün (`--ac-accent`) kennzeichnet Fortschritt und bestätigten Erfolg; Balken, Punkte und Ringe nutzen `--ac-accent-fill`, das im hellen Modus dunkler ist (mindestens 3:1 zur Kachel), Rot eine Warnung oder destruktive Aktion. Eine Auswahl ist durch Füllung und Semantik erkennbar, auch ohne Farbe.

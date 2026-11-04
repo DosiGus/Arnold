@@ -1,0 +1,377 @@
+/* Arnold: shared tokens, card primitives and full-screen editor. No external assets. */
+:root {
+  font:
+    100%/1.5 system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  font-optical-sizing: auto;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  color-scheme: light;
+  --bg: #f6f6f7;
+  --text: #202124;
+  --muted: #65666d;
+  --card: #fff;
+  --surface-strong: #fff;
+  --soft: rgb(30 31 35 / 0.045);
+  --hover: rgb(30 31 35 / 0.075);
+  --border: rgb(30 31 35 / 0.13);
+  --ink: #202124;
+  --on-ink: #fff;
+  --focus: #4a4b53;
+  --chart: #303137;
+  --bar-muted: #8b8d94;
+  --shadow: 0 2px 12px rgb(20 21 25 / 0.025);
+  --ac-radius: 1.25rem;
+  --ac-radius-inner: 0.875rem;
+  --ac-pad: 1rem;
+  --ac-tap: 2.75rem;
+  --ac-good: #247347;
+  --ac-bad: #ad332a;
+  --ac-faint: #71727b;
+  /* One accent for progress and success: fill, text on the fill, and text. */
+  --ac-accent: #c8f560;
+  --ac-on-accent: #1a2106;
+  --ac-accent-text: #3d6b00;
+  /* Bars, dots and rings: the same green, deep enough to stand out on light
+     tiles (4.1:1 against --soft, 3.2:1 against a bar track). */
+  --ac-accent-fill: #4a8500;
+  --ac-on-accent-fill: #fff;
+  color: var(--text);
+  background: transparent;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #171719;
+  --text: #f4f4f6;
+  --muted: #b0b0b7;
+  --card: #232325;
+  --surface-strong: #303034;
+  --soft: rgb(255 255 255 / 0.055);
+  --hover: rgb(255 255 255 / 0.09);
+  --border: rgb(255 255 255 / 0.15);
+  --ink: #f1f1f3;
+  --on-ink: #202124;
+  --focus: #d0d0d6;
+  --chart: #eeeef2;
+  --bar-muted: #777982;
+  --shadow: 0 2px 14px rgb(0 0 0 / 0.08);
+  --ac-good: #82d6a4;
+  --ac-bad: #f49c92;
+  --ac-faint: #b0b0b7;
+  --ac-accent-text: #c8f560;
+  --ac-accent-fill: #c8f560;
+  --ac-on-accent-fill: #1a2106;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-width: 0;
+  color: var(--text);
+  background: transparent;
+}
+:root[data-embedded="false"],
+:root[data-embedded="false"] body {
+  background: var(--bg);
+}
+[hidden] {
+  display: none !important;
+}
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+button {
+  cursor: pointer;
+  border: 0;
+  background: none;
+  touch-action: manipulation;
+}
+button:disabled,
+input:disabled,
+select:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+button svg {
+  flex: none;
+}
+a {
+  color: inherit;
+  text-underline-offset: 0.2em;
+}
+input,
+select,
+textarea {
+  min-width: 0;
+  max-width: 100%;
+  min-height: var(--ac-tap);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--surface-strong);
+  font-size: 1rem;
+}
+label {
+  font-size: 0.875rem;
+}
+label > input,
+label > select,
+label > textarea {
+  display: block;
+  width: 100%;
+  margin-top: 0.4rem;
+}
+fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.visually-hidden {
+  position: fixed !important;
+  left: 0 !important;
+  top: 0 !important;
+  clip-path: inset(50%);
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+.arnold-cards {
+  width: 100%;
+  max-width: 44rem;
+  margin-inline: auto;
+}
+.ac-field {
+  display: grid;
+  gap: 0.65rem;
+  min-width: 0;
+}
+.ac-caption {
+  font-size: 0.8125rem;
+  color: var(--muted);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.ac-section-title {
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  font-weight: 600;
+}
+.ac-optional {
+  display: inline-block;
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-inline-start: 0.3rem;
+}
+.ac-plain-list {
+  padding-inline-start: 1.1rem;
+  margin-block: 0.5rem 0;
+  font-size: 0.875rem;
+}
+.ac-choice {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+.ac-choice input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  margin: 0;
+}
+.ac-choice span {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--ac-tap);
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.ac-choice input:checked + span {
+  background: var(--ink);
+  color: var(--on-ink);
+  border-color: var(--ink);
+}
+.ac-choice input:focus-visible + span {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+.ac-choice input:disabled + span {
+  opacity: 0.5;
+  cursor: default;
+}
+.ac-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: var(--ac-tap);
+  width: 100%;
+  padding: 0.4rem 0;
+  text-align: start;
+  font-size: 0.875rem;
+}
+.ac-switch-track {
+  display: flex;
+  align-items: center;
+  flex: 0 0 2.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  padding: 0.1875rem;
+  background: var(--border);
+}
+.ac-switch-track i {
+  width: 1.125rem;
+  height: 1.125rem;
+  border-radius: 50%;
+  background: var(--surface-strong);
+  transition: transform 120ms ease-out;
+}
+.ac-switch[aria-checked="true"] .ac-switch-track {
+  background: var(--ink);
+}
+.ac-switch[aria-checked="true"] .ac-switch-track i {
+  background: var(--on-ink);
+  transform: translateX(1rem);
+}
+.ac-progress-value {
+  display: grid;
+  gap: 0.4rem;
+}
+.chart {
+  width: 100%;
+  height: 13rem;
+  min-width: 0;
+}
+.ac-chart {
+  height: 9rem;
+}
+.ac-training-list,
+.ac-set-rows {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.ac-training-list li + li,
+.ac-set-rows li + li {
+  border-top: 1px solid var(--border);
+}
+.ac-training-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 4rem;
+  padding: 0.75rem 0;
+  text-align: start;
+}
+.ac-training-row > span:first-child {
+  min-width: 0;
+}
+.ac-training-row strong {
+  font-weight: 550;
+  font-size: 0.9375rem;
+  overflow-wrap: anywhere;
+}
+.ac-training-row small,
+.ac-set-rows small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  margin-top: 0.2rem;
+}
+.ac-training-row > span:last-child {
+  font-size: 1.5rem;
+  color: var(--muted);
+}
+.ac-training-row:active {
+  background: var(--soft);
+}
+/* An older record in the history list: a quiet trophy, not a green pill. */
+.ac-record-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 1.375rem;
+  height: 1.375rem;
+  border-radius: 50%;
+  background: var(--hover);
+  color: var(--muted);
+  vertical-align: -0.25rem;
+}
+.ac-fullscreen {
+  min-width: 0;
+  width: 100%;
+  max-width: 64rem;
+  margin-inline: auto;
+}
+.ac-fullscreen-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.ac-fullscreen-head h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.ac-exercise-detail {
+  display: grid;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+}
+.ac-set-rows li {
+  display: flex;
+  padding: 0.75rem 0;
+  font-size: 0.9375rem;
+}
+.ac-set-rows strong {
+  font-weight: 500;
+}
+.is-voided strong {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+.ac-date-range {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}

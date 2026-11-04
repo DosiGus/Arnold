@@ -1,0 +1,689 @@
+/* ------------------------------------------------------------------ start */
+/* The start screen and the three views behind its tiles. */
+.ac-home {
+  gap: 0.75rem;
+}
+.ac-home > div:has(> .ac-title) {
+  margin-bottom: 0.25rem;
+}
+.ac-tile,
+.arnold-cards button.ac-tile {
+  display: grid;
+  /* Content may shrink below its natural width on narrow phones. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.5rem;
+  align-content: start;
+  min-width: 0;
+  padding: 0.875rem 1rem;
+  border: 0;
+  border-radius: var(--ac-radius);
+  background: var(--soft);
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  transition:
+    background 160ms,
+    transform 120ms;
+}
+.ac-tile.wide:not(button) {
+  padding: 0;
+  gap: 0;
+}
+.arnold-cards button.ac-tile:hover,
+.arnold-cards .ac-tile-hit:hover {
+  background: var(--hover);
+}
+.arnold-cards button.ac-tile:active,
+.arnold-cards .ac-tile-hit:active {
+  transform: scale(0.985);
+}
+.arnold-cards .ac-tile-hit {
+  display: grid;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.875rem 1rem 0.75rem;
+  border: 0;
+  border-radius: var(--ac-radius) var(--ac-radius) 0 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+}
+.ac-tile-action {
+  display: grid;
+  justify-items: center;
+  padding: 0 1rem 0.375rem;
+}
+.ac-tile-action .ac-btn {
+  width: 100%;
+}
+/* The quiet text action under the main button. */
+.arnold-cards .ac-tile-link {
+  padding-inline: 0.75rem;
+  text-align: center;
+}
+.ac-tile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.ac-tile-count {
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.ac-tile-next {
+  display: grid;
+  gap: 1px;
+}
+.ac-tile-next small {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.ac-tile-next strong {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+.ac-tile-next .ac-text {
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.ac-tile-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.625rem;
+}
+@media (max-width: 20rem) {
+  .ac-tile-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.ac-tile-number {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+}
+.ac-tile-number strong {
+  font-size: 2.5rem;
+  font-weight: 750;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+.ac-tile-number > span:last-child {
+  align-self: flex-end;
+  font-weight: 600;
+}
+.ac-tile .ac-text {
+  font-size: 0.8125rem;
+}
+.ac-tile-goal {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.3125rem;
+}
+.ac-tile-goal > span:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+}
+.ac-tile-goal > span:first-child > span {
+  flex: none;
+  white-space: nowrap;
+}
+.ac-tile-goal strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ac-tile-records {
+  display: grid;
+}
+.ac-tile-record {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+}
+.ac-tile-record + .ac-tile-record {
+  border-top: 1px solid var(--border);
+}
+/* Name gets the full width (two lines at most), the value sits below it. */
+.ac-tile-record-main {
+  display: grid;
+  flex: 1;
+  gap: 1px;
+  min-width: 0;
+}
+.ac-tile-record-main > strong,
+.ac-record-main > strong {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  hyphens: auto;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+.ac-record-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 0.375rem;
+  font-size: 0.8125rem;
+}
+.ac-record-value b {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ac-tile-record small {
+  font-size: 0.75rem;
+}
+.ac-week.compact {
+  gap: 0;
+}
+
+.ac-bar {
+  display: block;
+  height: 0.5rem;
+  overflow: hidden;
+  border-radius: 0.25rem;
+  background: var(--border);
+}
+.ac-bar b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ac-accent-fill);
+  transition: width 0.3s ease;
+}
+.ac-bar b.muted {
+  background: var(--bar-muted);
+}
+.ac-pill {
+  display: inline-block;
+  padding: 0.1875rem 0.5rem;
+  border-radius: 0.5rem;
+  background: var(--ac-accent);
+  color: var(--ac-on-accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+/* Green is for what is new and earned; every other pill stays neutral. */
+.ac-pill.muted {
+  background: var(--hover);
+  color: var(--text);
+}
+.ac-flame {
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--ac-accent-text);
+}
+.ac-flame.large {
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 50%;
+  background: var(--ac-accent);
+  color: var(--ac-on-accent);
+}
+
+/* Streak: weeks as circles, like a running app shows them. */
+.ac-streak {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: var(--ac-radius);
+  background: var(--soft);
+}
+.ac-streak-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.875rem;
+}
+.ac-streak-top .ac-pill {
+  align-self: flex-start;
+  margin-left: auto;
+}
+.ac-streak-count {
+  display: grid;
+  flex: 1 1 8rem;
+  min-width: 0;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  column-gap: 0.5rem;
+}
+.ac-streak-count strong {
+  font-size: 2.75rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+.ac-streak-count > span {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+.ac-streak-count small {
+  grid-column: 1 / -1;
+  font-size: 0.875rem;
+}
+.ac-streak-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.125rem;
+}
+.ac-streak-row.small {
+  justify-content: flex-start;
+  gap: 0.25rem;
+  margin-top: auto;
+}
+.arnold-cards .ac-streak-row > button {
+  display: grid;
+  flex: 1 1 0;
+  justify-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+  padding: 0.125rem 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.6875rem;
+}
+.arnold-cards .ac-streak-row > button[aria-pressed="true"] {
+  color: var(--text);
+  font-weight: 700;
+}
+.arnold-cards .ac-streak-row > button[aria-pressed="true"] .ac-streak-dot {
+  box-shadow:
+    0 0 0 2px var(--card),
+    0 0 0 4px var(--focus);
+}
+.ac-streak-dot {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+}
+.ac-streak-dot.large {
+  width: min(2.25rem, 100%);
+  height: auto;
+  aspect-ratio: 1;
+}
+.arnold-cards .ac-streak-row > button > span:last-child {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+}
+@media (max-width: 22rem) {
+  .ac-streak {
+    padding: 0.75rem;
+  }
+  .ac-streak-row {
+    gap: 0;
+  }
+  .arnold-cards .ac-streak-row > button {
+    font-size: 0.5625rem;
+  }
+}
+.ac-streak-dot.small {
+  flex: 0 1 0.875rem;
+  width: 0.875rem;
+  min-width: 0.5rem;
+  height: auto;
+  aspect-ratio: 1;
+}
+.ac-streak-dot.met {
+  background: var(--ac-accent-fill);
+  color: var(--ac-on-accent-fill);
+}
+.ac-streak-dot.missed {
+  background: var(--border);
+}
+.ac-streak-dot.ring svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.ac-streak-dot.ring .track,
+.ac-streak-dot.ring .fill {
+  fill: none;
+  stroke-width: 4;
+}
+.ac-streak-dot.ring .track {
+  stroke: var(--border);
+}
+.ac-streak-dot.ring .fill {
+  stroke: var(--ac-accent-fill);
+  stroke-linecap: round;
+}
+.ac-streak-dot.ring.small .track,
+.ac-streak-dot.ring.small .fill {
+  stroke-width: 8;
+}
+.ac-streak-dot small {
+  position: relative;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.ac-streak-detail {
+  display: grid;
+  gap: 2px;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.875rem;
+}
+.ac-stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+.ac-stat-tiles > div {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  padding: 0.75rem;
+  border-radius: var(--ac-radius-inner);
+  background: var(--soft);
+}
+.ac-stat-tiles strong {
+  font-size: 1.375rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+.ac-stat-tiles strong.up {
+  color: var(--ac-accent-text);
+}
+.ac-stat-tiles span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+@media (max-width: 22rem) {
+  .ac-stat-tiles {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.ac-muscles {
+  display: grid;
+  gap: 0.75rem;
+}
+.ac-muscles-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.ac-muscles-head h3 {
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+.ac-muscle-bars {
+  display: grid;
+  gap: 0.625rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ac-muscle-bars li {
+  display: grid;
+  grid-template-columns: minmax(4.5rem, auto) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 0.875rem;
+}
+.ac-muscle-bars .ac-bar {
+  height: 0.625rem;
+}
+
+/* Views behind a tile: back button and where you are. */
+.ac-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-height: var(--ac-tap);
+}
+.ac-detail-head .ac-label {
+  flex: 1;
+  min-width: 0;
+}
+.arnold-cards .ac-icon-btn.ac-back {
+  margin: 0;
+}
+.ac-options {
+  display: grid;
+  gap: 0.5rem;
+}
+.ac-option-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: 0.5rem;
+}
+.arnold-cards .ac-option {
+  display: grid;
+  gap: 2px;
+  min-height: 4.25rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--ac-radius-inner);
+  background: var(--soft);
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+}
+.arnold-cards .ac-option.small {
+  min-height: 3.75rem;
+  padding: 0.625rem 0.75rem;
+  background: transparent;
+}
+.arnold-cards .ac-option:hover:not(:disabled) {
+  background: var(--hover);
+}
+.arnold-cards .ac-option:disabled {
+  border-style: dashed;
+  opacity: 0.55;
+}
+.ac-flash {
+  padding: 0.625rem 0.875rem;
+  border-radius: var(--ac-radius-inner);
+  background: var(--ac-accent);
+  color: var(--ac-on-accent);
+  font-size: 0.875rem;
+  font-weight: 650;
+}
+.ac-goal-list {
+  display: grid;
+  gap: 0.5rem;
+}
+.arnold-cards .ac-goal-row {
+  display: grid;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: 0;
+  border-radius: var(--ac-radius);
+  background: var(--soft);
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+}
+.arnold-cards .ac-goal-row:hover {
+  background: var(--hover);
+}
+.ac-goal-row-head,
+.ac-goal-row-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.ac-goal-row-head strong {
+  font-size: 1.0625rem;
+}
+.ac-goal-row-head > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-weight: 650;
+}
+.ac-goal-row-foot {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.ac-goal-row-foot b {
+  color: var(--text);
+  font-weight: 650;
+}
+.ac-goal-row .ac-bar {
+  height: 0.625rem;
+}
+.ac-goal-hero {
+  display: grid;
+  gap: 0.375rem;
+}
+.ac-goal-number {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.625rem;
+}
+.ac-goal-number strong {
+  font-size: 3.25rem;
+  font-weight: 750;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+.ac-goal-number small {
+  color: var(--muted);
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.ac-goal-chart {
+  position: relative;
+  margin: 0;
+}
+.ac-goal-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.ac-goal-chart .line {
+  fill: none;
+  stroke: var(--ac-accent-fill);
+  stroke-width: 3;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.ac-goal-chart .target {
+  stroke: var(--text);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 5;
+  opacity: 0.6;
+}
+.ac-goal-chart .dot {
+  fill: var(--ac-accent-fill);
+  stroke: var(--card);
+  stroke-width: 3;
+}
+.ac-goal-target {
+  position: absolute;
+  left: 0;
+  padding-right: 0.25rem;
+  background: var(--card);
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+.ac-edit-box {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.875rem;
+  border-radius: var(--ac-radius);
+  background: var(--soft);
+  text-align: center;
+}
+.ac-records-hero {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+}
+.ac-record-group {
+  display: grid;
+}
+.ac-record-group h3 {
+  padding: 0.25rem 0 0.375rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.ac-record-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ac-record-list > li.ruled {
+  border-top: 1px solid var(--border);
+}
+.arnold-cards .ac-record-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: var(--ac-tap);
+  padding: 0.5rem 0.125rem;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+}
+.ac-record-row .ac-medal {
+  width: 1.875rem;
+  height: 1.875rem;
+}
+.ac-record-main {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.ac-record-main {
+  gap: 1px;
+}
+.ac-record-main small {
+  font-size: 0.75rem;
+}
+.ac-record-detail {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem 2.75rem;
+}
+.ac-record-detail .ac-btn {
+  min-height: var(--ac-tap);
+  font-size: 0.875rem;
+}
+.ac-rows .strong {
+  color: var(--text);
+  font-weight: 700;
+}

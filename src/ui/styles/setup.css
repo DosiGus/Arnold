@@ -1,0 +1,611 @@
+/* ------------------------------------------------------------------ setup */
+/* The setup card: header with progress, choice tiles, folds, review. */
+.ac-head:has(.ac-setup-head) {
+  display: block;
+}
+.ac-head:has(.ac-setup-head) > .ac-label {
+  display: block;
+  color: inherit;
+  font-size: inherit;
+}
+.ac-setup-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: var(--ac-tap);
+}
+.ac-setup-head .ac-label-col {
+  flex: 1;
+  padding: 0;
+}
+.arnold-cards .ac-setup-head .ac-icon-btn {
+  margin: 0;
+  flex: none;
+}
+.ac-setup-menu {
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--ac-radius-inner);
+  background: var(--soft);
+}
+.arnold-cards .ac-menu-item.danger {
+  color: var(--ac-bad);
+}
+.ac-tiles {
+  display: grid;
+  gap: 0.5rem;
+}
+.ac-option-tile {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: var(--ac-tap);
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--ac-radius);
+  cursor: pointer;
+  transition: background 160ms;
+}
+.ac-option-tile:hover {
+  background: var(--soft);
+}
+.ac-option-tile.on {
+  border: 2px solid var(--ink);
+  padding: calc(0.875rem - 1px) calc(1rem - 1px);
+  background: var(--soft);
+}
+.ac-option-tile:has(input:focus-visible),
+.ac-count:has(input:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.ac-option-tile:has(input:disabled) {
+  opacity: 0.6;
+  cursor: default;
+}
+.ac-option-text {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+}
+.ac-option-text strong {
+  font-size: 1rem;
+  font-weight: 650;
+}
+.ac-option-text span {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.ac-option-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+}
+.ac-option-mark.square {
+  border-radius: 0.4375rem;
+}
+.ac-option-tile.on .ac-option-mark {
+  border: 0;
+  background: var(--ac-accent);
+  color: var(--ac-on-accent);
+}
+.ac-folds {
+  display: grid;
+  gap: 0.5rem;
+}
+.ac-fold {
+  border: 1px solid var(--border);
+  border-radius: var(--ac-radius);
+}
+.ac-fold.open {
+  background: var(--soft);
+}
+.arnold-cards .ac-fold-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: var(--ac-tap);
+  padding: 0.75rem 0.875rem;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+}
+.ac-fold-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.75rem;
+  background: var(--soft);
+}
+.ac-fold-icon.set {
+  background: var(--ac-accent);
+  color: var(--ac-on-accent);
+}
+.ac-fold-text {
+  display: grid;
+  flex: 1;
+  gap: 1px;
+  min-width: 0;
+}
+.ac-fold-text strong {
+  font-size: 1rem;
+  font-weight: 650;
+}
+.ac-fold-text span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ac-fold-text span.set {
+  color: var(--ac-accent-text);
+  font-weight: 600;
+}
+.ac-fold-chevron {
+  flex: none;
+  color: var(--muted);
+  transition: transform 0.2s;
+}
+[aria-expanded="true"] > .ac-fold-chevron {
+  transform: rotate(180deg);
+}
+.ac-fold-body {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0 0.875rem 0.875rem;
+}
+.ac-chips.grid7 {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.375rem;
+}
+.ac-chips.grid7 .ac-chip {
+  min-width: 0;
+  padding-inline: 0;
+}
+.ac-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6.25rem, 1fr));
+  gap: 0.5rem;
+}
+/* A labelled number typed in directly, the unit inside the field. */
+.ac-mini {
+  display: grid;
+  align-content: start;
+  gap: 0.375rem;
+  min-width: 0;
+}
+.ac-mini label {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.ac-mini-value {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  min-height: 3.25rem;
+  padding-inline: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--ac-radius-inner);
+  background: var(--surface-strong);
+}
+.ac-mini-value:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.arnold-cards .ac-mini-value input {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 3rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.arnold-cards .ac-mini-value input:focus-visible {
+  outline: none;
+}
+.ac-mini.invalid .ac-mini-value {
+  border-color: var(--ac-bad);
+}
+.ac-mini.invalid .ac-mini-value input {
+  color: var(--ac-bad);
+}
+.ac-mini-value small {
+  flex: none;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.ac-mini-hint {
+  color: var(--ac-bad);
+  font-size: 0.75rem;
+}
+.ac-hint-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.ac-hint-line.on {
+  color: var(--ac-accent-text);
+}
+.ac-field-label {
+  margin-bottom: 0.5rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.ac-day-count {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.375rem;
+}
+.ac-count {
+  display: grid;
+  place-items: center;
+  min-height: 3.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.875rem;
+  font-size: 1.125rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ac-count.on {
+  border-color: transparent;
+  background: var(--ac-accent);
+  color: var(--ac-on-accent);
+}
+.ac-minutes {
+  display: grid;
+  justify-items: center;
+  gap: 0.5rem;
+  padding: 1rem 0.75rem;
+  border-radius: var(--ac-radius);
+  background: var(--soft);
+}
+.ac-minutes label {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.ac-minutes > span {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.arnold-cards .ac-minutes input {
+  width: 7rem;
+  min-height: 4rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: 2.5rem;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  text-align: center;
+}
+.ac-minutes input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.ac-minutes small {
+  color: var(--muted);
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+.ac-minutes p {
+  color: var(--muted);
+  font-size: 0.8125rem;
+  text-align: center;
+}
+.ac-minutes p.bad {
+  color: var(--ac-bad);
+}
+.arnold-cards .ac-textarea {
+  width: 100%;
+  min-height: 5.25rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--ac-radius-inner);
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  resize: vertical;
+}
+.ac-paths {
+  display: grid;
+  gap: 0.625rem;
+}
+.arnold-cards .ac-btn.ac-path {
+  justify-content: flex-start;
+  gap: 0.875rem;
+  min-height: 4.5rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--ac-radius);
+  background: transparent;
+  color: var(--text);
+  text-align: start;
+}
+.arnold-cards .ac-btn.ac-path.primary-path {
+  background: var(--soft);
+}
+.arnold-cards .ac-btn.ac-path:hover:not(:disabled) {
+  background: var(--hover);
+}
+.ac-path-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.75rem;
+  background: var(--ac-accent);
+  color: var(--ac-on-accent);
+}
+.ac-path-icon.muted {
+  background: var(--hover);
+  color: var(--text);
+}
+.ac-path-text {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+}
+.ac-path-text span {
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+.ac-plan-hero {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: var(--ac-radius);
+  background: var(--soft);
+}
+.ac-plan-hero p {
+  font-size: 1rem;
+  line-height: 1.45;
+}
+.ac-plan-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+.ac-plan-pills .ac-pill {
+  padding: 0.375rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.875rem;
+}
+.ac-review-rows {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ac-review-rows li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0;
+}
+.ac-review-rows li + li {
+  border-top: 1px solid var(--border);
+}
+.ac-review-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.75rem;
+  background: var(--soft);
+}
+.ac-review-text {
+  display: grid;
+  flex: 1;
+  gap: 1px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ac-review-text small {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.ac-review-text strong {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+.arnold-cards .ac-review-rows .ac-icon-btn {
+  margin: 0;
+  flex: none;
+}
+.ac-next-box {
+  display: grid;
+  gap: 2px;
+  padding: 0.875rem 1rem;
+  border-radius: var(--ac-radius);
+  background: var(--soft);
+}
+.ac-next-box small {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.ac-next-box strong {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+.ac-next-box .ac-text {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+.arnold-cards .ac-weight-link {
+  border-style: dashed;
+  background: transparent;
+}
+.ac-skeleton-rows {
+  display: grid;
+  gap: 0.5rem;
+}
+.ac-skeleton-rows > span {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--ac-radius);
+}
+.ac-skeleton-rows i {
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.75rem;
+  background: var(--soft);
+}
+.ac-skeleton-rows > span > span {
+  display: grid;
+  flex: 1;
+  gap: 0.375rem;
+}
+.ac-skeleton-rows b {
+  display: block;
+  height: 0.625rem;
+  border-radius: 0.3125rem;
+  background: var(--soft);
+}
+.ac-sessions {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ac-sessions > li {
+  border: 1px solid var(--border);
+  border-radius: var(--ac-radius);
+}
+.ac-sessions > li.open {
+  background: var(--soft);
+}
+.arnold-cards .ac-sessions > li > button {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: var(--ac-tap);
+  padding: 0.75rem 0.875rem;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+}
+.ac-sessions .ac-rows {
+  padding: 0 0.875rem 0.5rem;
+}
+.ac-session-badge {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.75rem;
+  background: var(--ac-accent);
+  color: var(--ac-on-accent);
+  font-weight: 700;
+}
+.ac-session-text {
+  display: grid;
+  flex: 1;
+  gap: 1px;
+}
+.ac-session-text strong {
+  font-size: 1.0625rem;
+}
+.ac-session-text small {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.ac-steps-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+.ac-steps-list li {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  padding: 0.75rem 0.875rem 0.75rem 3.25rem;
+  border-radius: var(--ac-radius-inner);
+  background: var(--soft);
+  counter-increment: step;
+}
+.ac-steps-list li::before {
+  content: counter(step);
+  position: absolute;
+  top: 50%;
+  left: 0.875rem;
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin-top: -0.875rem;
+  border-radius: 50%;
+  background: var(--ac-accent);
+  color: var(--ac-on-accent);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+  button:active {
+    transform: none !important;
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .ac {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: var(--card);
+  }
+}
+@media (prefers-contrast: more) {
+  :root {
+    --muted: var(--text);
+    --border: var(--text);
+  }
+  .ac {
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
