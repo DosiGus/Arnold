@@ -56,6 +56,7 @@ export const CONFIRMATION_RULES: Readonly<Record<string, ConfirmationEntry>> = {
   log_workout_sets: log,
   update_set: log,
   complete_workout: log,
+  log_workout: log,
   create_exercise: log,
   create_training_goal: {
     rule: "direct",
@@ -81,6 +82,11 @@ export const CONFIRMATION_RULES: Readonly<Record<string, ConfirmationEntry>> = {
   cancel_workout: {
     rule: "ask_in_chat",
     reason: "Bricht ein Training ab; es zählt danach nicht mehr.",
+  },
+  void_workout: {
+    rule: "ask_in_chat",
+    reason:
+      "Nimmt ein gespeichertes Training zurück; es zählt danach nicht mehr.",
   },
 
   // Plan

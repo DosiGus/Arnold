@@ -192,6 +192,9 @@ export const AuditEventSchema = z.object({
     "WORKOUT_CREATED",
     "WORKOUT_COMPLETED",
     "WORKOUT_CANCELLED",
+    // A whole workout saved in one step, and a saved one taken back.
+    "WORKOUT_LOGGED",
+    "WORKOUT_VOIDED",
     "SET_CREATED",
     "SET_UPDATED",
     "SET_VOIDED",

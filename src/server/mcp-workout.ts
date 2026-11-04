@@ -9,10 +9,11 @@ import {
 } from "../shared/workout-contract.js";
 import type { ArnoldDataSource } from "./arnold-source.js";
 import type { WorkoutLoggingService } from "./workout/service.js";
+import { proposeActivePlan } from "./workout/proposal.js";
 
 const descriptions: Record<WriteOperation, string> = {
   start_workout:
-    "Startet eine Trainingseinheit, optional mit einer unveränderten Planversion. workout_date_local ist das lokale Kalenderdatum des Nutzers (für „gestern“ der gestrige Tag); ein Datum in der Zukunft wird mit DATE_IN_FUTURE abgelehnt. Gleiche request_id für Retries verwenden.",
+    "Nur für das Eintragen Satz für Satz während des Trainings; nach dem Training log_workout verwenden. Startet eine Trainingseinheit, optional mit einer unveränderten Planversion. workout_date_local ist das lokale Kalenderdatum des Nutzers (für „gestern“ der gestrige Tag); ein Datum in der Zukunft wird mit DATE_IN_FUTURE abgelehnt. Gleiche request_id für Retries verwenden.",
   log_workout_sets:
     "Speichert einen oder mehrere tatsächliche Sätze als geprüften Batch. Nur aufrufen, wenn Übung, Wiederholungen und Gewicht (oder Körpergewicht) genannt sind; fehlt etwas oder widersprechen sich die Angaben, zuerst nachfragen. Lastbasis, Wiederholungsbasis, Geräteanzahl, Ausführung und Seite sind ausdrücklich erforderlich; nichts wird verdoppelt oder geraten (Kurzhanteln: load_basis per_implement, implement_count 2). Anstrengung als rir, nicht als rpe. Über 500 kg oder über 100 Wiederholungen antwortet Arnold mit CONFIRMATION_REQUIRED: dann beim Nutzer nachfragen und nur nach ausdrücklichem Ja mit confirm_unusual_values: true erneut senden.",
   update_set:
@@ -23,6 +24,10 @@ const descriptions: Record<WriteOperation, string> = {
     "Schließt ein laufendes Training mit mindestens einem aktiven Satz ab. expected_row_revision ist erforderlich; Endzeit nur angeben, wenn bekannt.",
   cancel_workout:
     "Bricht ein geplantes oder laufendes Training ab. Sätze und historische Referenzen bleiben erhalten.",
+  log_workout:
+    "Trägt ein ganzes Training in einem Schritt ein und schließt es ab. Der Standardweg, wenn der Nutzer nach dem Training berichtet (z. B. „Push A gemacht, alles wie letztes Mal“): session_id des Trainingstags aus get_workout (proposals) angeben; ohne exercises werden genau die Sätze des Vorschlags gespeichert (letztes Mal, sonst Planziel). In exercises nur Abweichungen nennen: Tausch (plan_item_id und neue exercise_id), Weglassen (plan_item_id und skip), andere Werte (set_count, reps, load_kg oder sets einzeln) oder eine zusätzliche Übung (nur exercise_id). Sagt der Nutzer klar, was er gemacht hat, sofort speichern und nicht vorher um Bestätigung bitten; nur nachfragen, wenn Werte fehlen (VALIDATION_ERROR nennt sie) oder die Übung unklar ist. Danach show_arnold_dashboard mit card today aufrufen: Die Karte zeigt das gespeicherte Training, dort kann der Nutzer es bearbeiten oder zurücknehmen. Einzelne Werte eines gespeicherten Trainings korrigiert update_set.",
+  void_workout:
+    "Nimmt ein gespeichertes oder laufendes Training vollständig zurück: Status verworfen, alle Sätze storniert, nichts wird physisch gelöscht. Nur auf ausdrücklichen Wunsch, z. B. wenn ein Training doppelt oder versehentlich eingetragen wurde. correction_reason kurz angeben.",
   create_exercise:
     "Erstellt eine genaue Übungsvariante nach Dublettenprüfung. Verändert keinen Trainingsplan. Bei möglichen Katalogtreffern erfolgt keine automatische Neuanlage.",
   create_training_goal:
@@ -98,6 +103,7 @@ export function registerWorkoutTools(
           workout,
           sets: dataset.sets.filter((s) => s.workout_id === workout_id),
           workouts: dataset.workouts.filter((w) => w.status === "in_progress"),
+          proposals: proposeActivePlan(dataset),
           exercises: dataset.exercises.filter((e) => e.status === "active"),
           plans: dataset.plans,
           plan_items: dataset.planItems,
@@ -152,6 +158,7 @@ export function registerWorkoutTools(
           destructiveHint: [
             "void_set",
             "cancel_workout",
+            "void_workout",
             "update_set",
             "archive_training_goal",
             "void_body_weight",

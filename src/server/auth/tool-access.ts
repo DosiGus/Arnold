@@ -50,6 +50,8 @@ export const TOOL_ACCESS: Readonly<Record<string, ToolAccessClass>> = {
   void_set: "AUTHENTICATED_WRITE",
   complete_workout: "AUTHENTICATED_WRITE",
   cancel_workout: "AUTHENTICATED_WRITE",
+  log_workout: "AUTHENTICATED_WRITE",
+  void_workout: "AUTHENTICATED_WRITE",
   // A custom exercise is training content, not plan structure, so it rides
   // with the workout write scope rather than the plan one.
   create_exercise: "AUTHENTICATED_WRITE",

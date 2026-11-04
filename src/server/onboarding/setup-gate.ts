@@ -29,6 +29,8 @@ export const SETUP_GATED_TOOLS: ReadonlySet<string> = new Set([
   "void_set",
   "complete_workout",
   "cancel_workout",
+  "log_workout",
+  "void_workout",
   "create_exercise",
   "create_training_goal",
   "update_training_goal",

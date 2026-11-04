@@ -13,6 +13,9 @@ import {
   UNUSUAL_SET_LIMITS,
   WriteInputs,
   WriteResponseSchema,
+  type LogWorkoutExercise,
+  type ProposedExercise,
+  type ProposedSet,
   type WriteOperation,
   type WriteResponse,
   type WriteResult,
@@ -33,6 +36,12 @@ import {
   type WriteMode,
 } from "./infrastructure.js";
 import { buildGoalChange, isGoalOperation } from "./goals.js";
+import {
+  conventionsFor,
+  proposeExercise,
+  proposeSession,
+  sidesFor,
+} from "./proposal.js";
 
 /**
  * Refuses values that are almost certainly a slip (1000 kg, 300 reps) until
@@ -59,6 +68,170 @@ function assertUsualValues(
     );
 }
 
+const MISSING_LABEL = {
+  sets: "Sätze",
+  reps: "Wiederholungen",
+  load: "Gewicht",
+} as const;
+
+/** Which of sets, reps and load are still unknown for these sets. */
+function missingOf(
+  slot: ProposedExercise,
+  sets: ProposedSet[],
+  repsGiven: boolean,
+): ProposedExercise["missing"] {
+  const missing: ProposedExercise["missing"] = [];
+  if (!sets.length) missing.push("sets");
+  if (!repsGiven && slot.missing.includes("reps")) missing.push("reps");
+  if (
+    slot.conventions.load_basis !== "bodyweight_only" &&
+    (!sets.length || sets.some((s) => s.load_kg === null))
+  )
+    missing.push("load");
+  return missing;
+}
+
+/** Sets after the shorthand or explicit values of one change. */
+function withValues(
+  slot: ProposedExercise,
+  change: LogWorkoutExercise,
+): ProposedExercise {
+  const bodyweight = slot.conventions.load_basis === "bodyweight_only";
+  if (
+    bodyweight &&
+    [change.load_kg, ...(change.sets ?? []).map((s) => s.load_kg)].some(
+      (l) => l !== undefined && l !== null && l > 0,
+    )
+  )
+    throw new WriteError(
+      "VALIDATION_ERROR",
+      `${slot.exercise_name} wird mit Körpergewicht erfasst; dafür kein Gewicht angeben.`,
+    );
+  const sides = sidesFor(slot.conventions.execution_mode);
+  if (change.sets) {
+    const sets = change.sets.map((q) => ({
+      reps: q.reps,
+      load_kg: bodyweight ? null : (q.load_kg ?? null),
+      side: q.side ?? sides[0],
+    }));
+    return { ...slot, sets, missing: missingOf(slot, sets, true) };
+  }
+  let sets = slot.sets;
+  if (change.set_count !== undefined) {
+    const per = sides.length;
+    const groups: ProposedSet[][] = [];
+    for (let i = 0; i < sets.length; i += per)
+      groups.push(sets.slice(i, i + per));
+    const template =
+      groups.at(-1) ??
+      sides.map((side) => ({
+        reps: change.reps ?? 0,
+        load_kg: bodyweight ? null : (change.load_kg ?? null),
+        side,
+      }));
+    const resized: ProposedSet[][] = [];
+    for (let n = 0; n < change.set_count; n++)
+      resized.push(groups[n] ?? template);
+    sets = resized.flat();
+  }
+  if (change.reps !== undefined)
+    sets = sets.map((s) => ({ ...s, reps: change.reps! }));
+  if (change.load_kg !== undefined)
+    sets = sets.map((s) => ({
+      ...s,
+      load_kg: bodyweight ? null : change.load_kg!,
+    }));
+  return {
+    ...slot,
+    sets,
+    missing: missingOf(slot, sets, change.reps !== undefined),
+  };
+}
+
+/**
+ * Applies the deviations of `log_workout` to the proposal: swap, skip, other
+ * values, or an extra exercise at the end.
+ */
+function applyChanges(
+  data: ArnoldDataset,
+  proposal: readonly ProposedExercise[],
+  changes: readonly LogWorkoutExercise[],
+  options: { before?: string; excludeWorkoutId?: string },
+): ProposedExercise[] {
+  const slots = [...proposal];
+  const exercise = (id: string) => {
+    const found = data.exercises.find(
+      (e) => e.exercise_id === id && e.status === "active",
+    );
+    if (!found)
+      throw new WriteError(
+        "EXERCISE_NOT_FOUND",
+        "Aktive Übung nicht gefunden.",
+      );
+    return found;
+  };
+  for (const change of changes) {
+    if (!change.plan_item_id) {
+      if (change.skip)
+        throw new WriteError(
+          "VALIDATION_ERROR",
+          "Weglassen braucht die Planposition (plan_item_id).",
+        );
+      const extra = proposeExercise(
+        data,
+        exercise(change.exercise_id!),
+        undefined,
+        options,
+      );
+      slots.push(withValues(extra, change));
+      continue;
+    }
+    const index = slots.findIndex(
+      (s) => s.plan_item_id === change.plan_item_id,
+    );
+    if (index < 0)
+      throw new WriteError(
+        "VALIDATION_ERROR",
+        "Planposition gehört nicht zu diesem Trainingstag oder wurde schon geändert.",
+      );
+    if (change.skip) {
+      slots.splice(index, 1);
+      continue;
+    }
+    let slot = slots[index];
+    if (change.exercise_id && change.exercise_id !== slot.exercise_id) {
+      const next = exercise(change.exercise_id);
+      const swapped = proposeExercise(data, next, undefined, options);
+      if (swapped.source === "last_time") slot = swapped;
+      else {
+        // No history for the new exercise: keep the planned volume, but the
+        // weight of another exercise says nothing about this one.
+        const conventions = conventionsFor(next);
+        const sides = sidesFor(conventions.execution_mode);
+        const oldSides = sidesFor(slot.conventions.execution_mode).length;
+        const count =
+          slot.target_sets ??
+          Math.max(1, Math.round(slot.sets.length / oldSides));
+        const reps = slot.sets[0]?.reps ?? slot.rep_max ?? slot.rep_min ?? 0;
+        const sets: ProposedSet[] = [];
+        for (let n = 0; n < count; n++)
+          for (const side of sides) sets.push({ reps, load_kg: null, side });
+        slot = {
+          ...swapped,
+          target_sets: slot.target_sets,
+          rep_min: slot.rep_min,
+          rep_max: slot.rep_max,
+          sets,
+          missing: [],
+        };
+        slot = { ...slot, missing: missingOf(slot, sets, reps > 0) };
+      }
+    }
+    slots[index] = withValues(slot, change);
+  }
+  return slots;
+}
+
 export interface LoggingOptions {
   mode: WriteMode;
   trackerId: string;
@@ -74,6 +247,8 @@ const events = {
   void_set: "SET_VOIDED",
   complete_workout: "WORKOUT_COMPLETED",
   cancel_workout: "WORKOUT_CANCELLED",
+  log_workout: "WORKOUT_LOGGED",
+  void_workout: "WORKOUT_VOIDED",
   create_exercise: "EXERCISE_CREATED",
   create_training_goal: "GOAL_CREATED",
   update_training_goal: "GOAL_UPDATED",
@@ -87,6 +262,28 @@ const normalize = (s: string) =>
     .replace(/\p{M}/gu, "")
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]/gu, "");
+/**
+ * The event of one changed row. `log_workout` and `void_workout` change a
+ * workout and its sets together, so each row gets the event that fits it.
+ */
+function eventType(
+  operation: WriteOperation,
+  change: EntityChange,
+): AuditEvent["event_type"] {
+  const table = (change as { table: string }).table;
+  if (operation === "log_workout")
+    return table === "sets"
+      ? change.before
+        ? "SET_VOIDED"
+        : "SET_CREATED"
+      : change.before
+        ? "WORKOUT_VOIDED"
+        : "WORKOUT_LOGGED";
+  if (operation === "void_workout")
+    return table === "sets" ? "SET_VOIDED" : "WORKOUT_VOIDED";
+  return events[operation];
+}
+
 /** Fields whose before/after values an audit event records. */
 const AUDITED_FIELDS = [
   "status",
@@ -120,7 +317,7 @@ function auditEvents(
     row ? (row as Record<string, unknown>)[key] : undefined;
   return changes.map((c) => ({
     operation_id: String(input.request_id),
-    event_type: events[operation],
+    event_type: eventType(operation, c),
     entity_id: entityId(c.after),
     at: now,
     actor: actor.subject,
@@ -327,6 +524,96 @@ export class WorkoutLoggingService {
         "Wiederholungsbasis oder Anzahl der Geräte ist für diese Ausführung nicht eindeutig.",
       );
     return parsed;
+  }
+  /** Marks a workout and its active sets voided; returns the voided workout. */
+  private voidWorkout(
+    data: ArnoldDataset,
+    before: ArnoldWorkout,
+    now: string,
+    changes: EntityChange[],
+  ) {
+    const after = ArnoldWorkoutSchema.parse({
+      ...before,
+      status: "voided",
+      updated_at_utc: now,
+      row_revision: before.row_revision + 1,
+    });
+    changes.push({ table: "workouts", before, after });
+    for (const set of data.sets)
+      if (set.workout_id === before.workout_id && set.status === "active")
+        changes.push({
+          table: "sets",
+          before: set,
+          after: ArnoldSetSchema.parse({
+            ...set,
+            status: "voided",
+            updated_at_utc: now,
+            row_revision: set.row_revision + 1,
+          }),
+        });
+    return after;
+  }
+  /**
+   * Resolves the plan version and session of a workout. A session alone
+   * belongs to its plan version; a name alone matches one session of the plan
+   * that was active on that day.
+   */
+  private planSession(
+    data: ArnoldDataset,
+    planVersionId: string | null,
+    sessionId: string | null,
+    sessionName: string | undefined,
+    date: string,
+  ) {
+    let plan = planVersionId,
+      session = sessionId;
+    if (!plan && session)
+      plan =
+        data.planItems.find((i) => i.session_id === session)?.plan_version_id ??
+        null;
+    if (!plan && !session && sessionName) {
+      const active = data.plans.find(
+        (p) =>
+          p.status === "active" &&
+          p.activated_at_utc !== null &&
+          p.activated_at_utc.slice(0, 10) <= date,
+      );
+      const matches = new Set(
+        data.planItems
+          .filter(
+            (i) =>
+              i.plan_version_id === active?.plan_version_id &&
+              i.status === "active" &&
+              normalize(i.session_name) === normalize(sessionName),
+          )
+          .map((i) => i.session_id),
+      );
+      if (active && matches.size === 1) {
+        plan = active.plan_version_id;
+        session = [...matches][0];
+      }
+    }
+    if (
+      plan &&
+      !data.plans.some(
+        (p) => p.plan_version_id === plan && p.status !== "draft",
+      )
+    )
+      throw new WriteError(
+        "VALIDATION_ERROR",
+        "Planversion unbekannt oder noch im Entwurf.",
+      );
+    if (
+      session &&
+      !data.planItems.some(
+        (i) => i.plan_version_id === plan && i.session_id === session,
+      )
+    )
+      throw new WriteError(
+        "VALIDATION_ERROR",
+        "Session gehört nicht zur Planversion.",
+      );
+    return { plan, session };
   }
   private async build(
     operation: WriteOperation,
@@ -623,6 +910,180 @@ export class WorkoutLoggingService {
           row_revision: before.row_revision + 1,
         });
         changes.push({ table: "workouts", before, after: result.workout });
+        break;
+      }
+      case "log_workout": {
+        const input = WriteInputs.log_workout.parse(raw);
+        const today = new Intl.DateTimeFormat("en-CA", {
+          timeZone: input.timezone,
+        }).format(new Date(now));
+        if (input.workout_date_local > today)
+          throw new WriteError(
+            "DATE_IN_FUTURE",
+            `Das Trainingsdatum ${input.workout_date_local} liegt in der Zukunft (heute ist ${today}). Es wurde nichts gespeichert. Den Nutzer nach dem richtigen Datum fragen.`,
+          );
+        // Editing a saved workout replaces it: the old one is voided in the
+        // same transaction, so there is never a moment with both or neither.
+        let replaced: ArnoldWorkout | undefined;
+        if (input.replaces_workout_id) {
+          replaced = this.workout(data, input.replaces_workout_id);
+          if (input.expected_row_revision === undefined)
+            throw new WriteError(
+              "VALIDATION_ERROR",
+              "Zum Ersetzen ist expected_row_revision erforderlich.",
+            );
+          this.revision(replaced, input.expected_row_revision);
+          if (replaced.status !== "completed")
+            throw new WriteError(
+              "INVALID_STATUS_TRANSITION",
+              "Nur ein abgeschlossenes Training kann ersetzt werden.",
+            );
+          await this.actor(context, "correct_completed");
+        }
+        const { plan, session } = this.planSession(
+          data,
+          input.plan_version_id ?? null,
+          input.session_id ?? null,
+          input.session_name,
+          input.workout_date_local,
+        );
+        const options = {
+          before: input.workout_date_local,
+          excludeWorkoutId: replaced?.workout_id,
+        };
+        const proposal =
+          plan && session
+            ? proposeSession(data, plan, session, options)
+            : undefined;
+        if (!proposal && !input.exercises?.length)
+          throw new WriteError(
+            "VALIDATION_ERROR",
+            "Ohne Trainingstag des Plans die Übungen mit Sätzen angeben.",
+          );
+        const name = input.session_name ?? proposal?.session_name;
+        if (!name)
+          throw new WriteError("VALIDATION_ERROR", "Name des Trainings fehlt.");
+        const slots = applyChanges(
+          data,
+          proposal?.exercises ?? [],
+          input.exercises ?? [],
+          options,
+        );
+        if (!slots.length)
+          throw new WriteError(
+            "VALIDATION_ERROR",
+            "Es bleibt keine Übung übrig; nichts gespeichert.",
+          );
+        const incomplete = slots.filter((slot) => slot.missing.length);
+        if (incomplete.length)
+          throw new WriteError(
+            "VALIDATION_ERROR",
+            `Es fehlen Angaben: ${incomplete
+              .map(
+                (slot) =>
+                  `${slot.exercise_name} (${slot.missing.map((m) => MISSING_LABEL[m]).join(", ")})`,
+              )
+              .join(
+                "; ",
+              )}. Es wurde nichts gespeichert. Den Nutzer nach den fehlenden Werten fragen.`,
+            false,
+            incomplete.map(
+              (slot) =>
+                `${slot.plan_item_id ?? slot.exercise_id}: ${slot.missing.join(",")}`,
+            ),
+          );
+        assertUsualValues(
+          slots.flatMap((slot) => slot.sets),
+          input.confirm_unusual_values,
+        );
+        if (!slots.some((slot) => slot.sets.some((set) => set.reps > 0)))
+          throw new WriteError(
+            "VALIDATION_ERROR",
+            "Ein Training braucht mindestens einen Satz mit Wiederholungen.",
+          );
+        const workout = ArnoldWorkoutSchema.parse({
+          ...technical,
+          workout_id: this.id(),
+          workout_date_local: input.workout_date_local,
+          timezone: input.timezone,
+          started_at_utc: null,
+          ended_at_utc: null,
+          plan_version_id: plan,
+          session_id: session,
+          session_name_snapshot: name,
+          status: "completed",
+          source: input.source ?? "chat",
+          notes: input.notes ?? null,
+        });
+        if (replaced) this.voidWorkout(data, replaced, now, changes);
+        changes.push({ table: "workouts", before: null, after: workout });
+        slots.forEach((slot, index) => {
+          const numbers = new Map<string, number>();
+          for (const planned of slot.sets) {
+            const number = (numbers.get(planned.side) ?? 0) + 1;
+            numbers.set(planned.side, number);
+            const row = this.validateSet(
+              {
+                ...technical,
+                set_id: this.id(),
+                workout_id: workout.workout_id,
+                exercise_id: slot.exercise_id,
+                plan_item_id: slot.plan_item_id,
+                exercise_name_snapshot: slot.exercise_name,
+                exercise_order: index + 1,
+                set_number: number,
+                set_type: "working",
+                reps: planned.reps,
+                reps_basis: slot.conventions.reps_basis,
+                load_kg:
+                  slot.conventions.load_basis === "bodyweight_only"
+                    ? null
+                    : planned.load_kg,
+                load_basis: slot.conventions.load_basis,
+                implement_count: slot.conventions.implement_count,
+                execution_mode: slot.conventions.execution_mode,
+                side: planned.side,
+                rpe: null,
+                rir: null,
+                notes: null,
+                source: input.source ?? "chat",
+                status: "active",
+              },
+              workout.workout_date_local,
+            );
+            result.sets.push(row);
+            changes.push({ table: "sets", before: null, after: row });
+          }
+        });
+        const twin = data.workouts.find(
+          (w) =>
+            w.status === "completed" &&
+            w.workout_id !== replaced?.workout_id &&
+            w.workout_date_local === workout.workout_date_local &&
+            normalize(w.session_name_snapshot ?? "") === normalize(name),
+        );
+        if (twin)
+          result.warnings.push(
+            `Für diesen Tag war „${name}“ schon gespeichert; jetzt sind es zwei Trainings. Falls doppelt, eines verwerfen.`,
+          );
+        result.workout = workout;
+        break;
+      }
+      case "void_workout": {
+        const input = WriteInputs.void_workout.parse(raw);
+        const before = this.workout(data, input.workout_id);
+        this.revision(before, input.expected_row_revision);
+        if (before.status === "completed")
+          await this.actor(context, "correct_completed");
+        else if (before.status !== "in_progress")
+          throw new WriteError(
+            "INVALID_STATUS_TRANSITION",
+            "Nur ein laufendes oder abgeschlossenes Training kann verworfen werden.",
+          );
+        result.workout = this.voidWorkout(data, before, now, changes);
+        result.sets = changes
+          .filter((c) => c.table === "sets")
+          .map((c) => c.after as ArnoldSet);
         break;
       }
       case "create_exercise": {
