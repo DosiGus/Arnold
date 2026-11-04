@@ -79,10 +79,16 @@ describe("question-card onboarding with real server states", () => {
   });
   it("makes personal data genuinely optional", () => {
     const html = render(profile(fresh));
-    expect(html).toContain("freiwillig");
+    // Said once, in the subtitle.
+    expect(html.match(/freiwillig/gi)).toHaveLength(1);
+    expect(html).toContain("Alles freiwillig.");
     expect(html).toContain("Überspringen");
     // The number fields start empty: nothing is assumed about the person.
     expect(html.match(/<input[^>]*value=""/g)).toHaveLength(3);
+    // Typed in directly, no plus and minus.
+    expect(html).not.toMatch(/erhöhen|verringern/);
+    expect(html.match(/inputMode="numeric"/g)).toHaveLength(2);
+    expect(html.match(/inputMode="decimal"/g)).toHaveLength(1);
     expect(html).toContain("Keine Angabe");
   });
   it("skips questions already answered in the chat", () => {

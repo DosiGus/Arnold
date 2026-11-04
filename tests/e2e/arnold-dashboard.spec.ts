@@ -2,21 +2,30 @@ import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { openCard } from "./helpers";
 
-test("the weekly card leads to compact history and progress without an app frame", async ({
+test("the start screen leads to the plan and progress without an app frame", async ({
   page,
 }) => {
-  await openCard(page, "week");
+  await openCard(page, "home");
   const card = page.locator(".ac").first();
   await expect(card).toContainText("Trainingstag");
-  await expect(card.locator(".ac-actions button")).toHaveCount(2);
   await expect(page.getByRole("navigation")).toHaveCount(0);
   await expect(page.locator("h1")).toHaveCount(0);
-  await card.getByRole("button", { name: "Verlauf", exact: true }).click();
-  await expect(page.getByText(/Trainings gefunden/)).toBeVisible();
+  await card
+    .getByRole("button", { name: /^Plan (ansehen|bearbeiten)$/ })
+    .click();
+  await expect(page.locator('main[data-card="plan"]')).toBeVisible();
   await expect(page.locator("table:not(.visually-hidden)")).toHaveCount(0);
   await page.getByRole("button", { name: "Zurück", exact: true }).click();
-  await page.getByRole("button", { name: "Fortschritt", exact: true }).click();
-  await expect(page.locator(".ac-big")).toBeVisible();
+  await page.getByRole("button", { name: /^Fortschritt:/ }).click();
+  await expect(page.locator('main[data-card="stats"]')).toBeVisible();
+});
+
+test("an older chat asking for the week card gets the start screen", async ({
+  page,
+}) => {
+  await page.goto("http://127.0.0.1:8792/preview?card=week");
+  await expect(page.locator('main[data-card="home"]')).toBeVisible();
+  await expect(page.locator(".ac-tile")).not.toHaveCount(0);
 });
 
 test("a read-only today card never offers an unavailable write", async ({
@@ -92,9 +101,11 @@ test("exercise switching keeps the selected comparison class beside the headline
 test("empty and failed reads never turn into example numbers", async ({
   page,
 }) => {
-  await openCard(page, "week", "http://127.0.0.1:8793");
-  await expect(page.locator(".ac")).toContainText("Willkommen bei Arnold");
-  await expect(page.locator(".ac-week")).toHaveCount(0);
+  await openCard(page, "home", "http://127.0.0.1:8793");
+  await expect(page.locator(".ac")).toContainText(
+    "Dein erstes Training ist der Anfang.",
+  );
+  await expect(page.locator(".ac-week i.done")).toHaveCount(0);
   await page.goto("http://127.0.0.1:8794/preview");
   await expect(page.getByRole("alert")).toBeVisible();
   await expect(
@@ -113,7 +124,6 @@ test("cards inherit light and dark and remain accessible at 375px", async ({
     for (const card of [
       "home",
       "today",
-      "week",
       "history",
       "progress",
       "plan",
@@ -141,14 +151,14 @@ test("cards inherit light and dark and remain accessible at 375px", async ({
 test("keyboard focus is visible and operates card navigation", async ({
   page,
 }) => {
-  await openCard(page, "week");
-  const button = page.getByRole("button", { name: "Verlauf", exact: true });
+  await openCard(page, "home");
+  const button = page.getByRole("button", { name: /^Fortschritt:/ });
   await button.focus();
   expect(
     await button.evaluate((el) => getComputedStyle(el).outlineStyle),
   ).not.toBe("none");
   await page.keyboard.press("Enter");
-  await expect(page.locator('main[data-card="history"]')).toBeVisible();
+  await expect(page.locator('main[data-card="stats"]')).toBeVisible();
 });
 
 test("the sandboxed host keeps model context current without chat spam", async ({
@@ -157,8 +167,9 @@ test("the sandboxed host keeps model context current without chat spam", async (
   await page.goto("http://127.0.0.1:8792/host?card=week");
   const app = page.frameLocator("iframe");
   await expect(app.locator(".ac").first()).toBeVisible();
-  await expect(page.locator("#host-context")).toContainText("Wochenkarte");
-  await app.getByRole("button", { name: "Fortschritt", exact: true }).click();
+  await expect(page.locator("#host-context")).toContainText("Startansicht");
+  await page.goto("http://127.0.0.1:8792/host?card=progress");
+  await expect(app.locator(".ac").first()).toBeVisible();
   await expect(page.locator("#host-context")).toContainText("Fortschritt für");
   await app
     .getByRole("button", { name: "Übung wechseln", exact: true })

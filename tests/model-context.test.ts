@@ -7,11 +7,11 @@ import { describe, expect, it } from "vitest";
 import { buildDashboardView } from "../src/server/arnold-presenter";
 import {
   finishMessage,
+  homeContext,
   pageContext,
   runningContext,
   savedContext,
   todayContext,
-  weekContext,
 } from "../src/ui/model-context";
 import { EXERCISES, fullDataset } from "./fixtures/arnold-dashboard";
 
@@ -53,12 +53,9 @@ describe("model context", () => {
     expect(text).toContain("log_workout_sets");
   });
 
-  it("reports the week with the engine's numbers", () => {
-    const text = weekContext(view);
-    expect(text).toContain("Wochenkarte");
-    expect(text).toMatch(
-      /\d+ (von \d+ Trainingstagen|Trainingstage?), \d+ Arbeitss[äa]tze?/,
-    );
+  it("reports the start screen with the engine's numbers", () => {
+    const text = homeContext(view);
+    expect(text).toContain("Startansicht");
     expect(text).toContain("nicht wiederholen");
   });
 

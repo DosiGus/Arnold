@@ -188,7 +188,7 @@ for (const width of [375, 1024])
           fullPage: true,
         });
       };
-      for (const card of ["today", "week", "progress", "history", "plan"]) {
+      for (const card of ["home", "today", "progress", "history", "plan"]) {
         await openCard(
           page,
           card,

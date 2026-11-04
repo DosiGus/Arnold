@@ -12,7 +12,7 @@ import {
   buildExerciseProgressView,
   buildWorkoutHistoryView,
 } from "../src/server/arnold-presenter";
-import { WeekCard } from "../src/ui/views/WeekCard";
+import { HomeCard } from "../src/ui/views/HomeCard";
 import { MetricCard, RecordRow, SetList } from "../src/ui/components";
 import {
   WeeklyTrendChart,
@@ -42,22 +42,19 @@ const text = (node: Parameters<typeof renderToStaticMarkup>[0]) =>
 
 const noop = () => {};
 
-describe("week card renders an engine payload", () => {
+describe("start screen renders an engine payload", () => {
   const view = buildDashboardView(fullDataset(), CONTEXT);
 
-  it("shows the engine's week numbers and no more than two actions", () => {
-    const markup = render(
-      <WeekCard view={view} canWrite={false} onOpen={noop} />,
-    );
-    const output = text(
-      <WeekCard view={view} canWrite={false} onOpen={noop} />,
-    );
-    expect(output).toMatch(/\d+ (von \d+ )?Trainings?/);
-    expect(output).toMatch(/Arbeitss[äa]tze?/);
-    expect(markup.match(/class="ac-btn /g)).toHaveLength(2);
+  it("shows the week status and one main action in the training tile", () => {
+    const markup = render(<HomeCard view={view} canWrite onOpen={noop} />);
+    const output = text(<HomeCard view={view} canWrite onOpen={noop} />);
+    expect(output).toMatch(/Diese Woche \d+ (von \d+ )?Trainingstag/);
+    expect(markup.match(/class="ac-btn /g)).toHaveLength(1);
+    expect(output).toContain("Training starten");
+    expect(output).toContain("Plan bearbeiten");
   });
 
-  it("counts distinct days and uses every server-provided date, beyond recent workouts", () => {
+  it("marks every server-provided training date, beyond recent workouts", () => {
     const payload = structuredClone(view);
     const week =
       payload.weeks.find((w) => w.is_current_week) ?? payload.weeks.at(-1)!;
@@ -65,25 +62,32 @@ describe("week card renders an engine payload", () => {
     week.training_days = 2;
     week.trained_dates = [week.week_start];
     payload.recent_workouts = [];
-    payload.active_plan!.days_per_week = 3;
+    payload.home.streak.current_week_training_days = 2;
+    payload.home.streak.weekly_goal = 3;
     const markup = render(
-      <WeekCard view={payload} canWrite={false} onOpen={noop} />,
+      <HomeCard view={payload} canWrite={false} onOpen={noop} />,
     );
     expect(markup).toContain("2 von 3 Trainingstagen");
     expect(markup.match(/class="done"/g)).toHaveLength(1);
   });
 
-  it("shows the most recent training and the latest record", () => {
+  it("titles the day with the next session instead of a greeting", () => {
+    const payload = structuredClone(view);
+    for (const week of payload.weeks) week.trained_dates = [];
     const output = text(
-      <WeekCard view={view} canWrite={false} onOpen={noop} />,
+      <HomeCard view={payload} canWrite={false} onOpen={noop} />,
     );
-    expect(output).toContain("Zuletzt:");
-    expect(output).toContain("Letzter Rekord");
+    if (payload.active_plan && payload.home.next_session)
+      expect(output).toContain(
+        `Heute: ${payload.home.next_session.session_name}`,
+      );
+    else expect(output).toContain("Dein Training");
+    expect(output).not.toMatch(/Guten (Morgen|Abend)|Hallo/);
   });
 
   it("never renders an internal identifier as user-facing text", () => {
     const output = text(
-      <WeekCard view={view} canWrite={false} onOpen={noop} />,
+      <HomeCard view={view} canWrite={false} onOpen={noop} />,
     );
     for (const token of [
       "per_implement",
@@ -102,23 +106,19 @@ describe("week card renders an engine payload", () => {
 describe("empty and template states in the UI", () => {
   it("welcomes a new tracker without example workouts or a dead button", () => {
     const view = buildDashboardView(emptyTrackerDataset(), CONTEXT);
-    const markup = render(
-      <WeekCard view={view} canWrite={false} onOpen={noop} />,
-    );
     const output = text(
-      <WeekCard view={view} canWrite={false} onOpen={noop} />,
+      <HomeCard view={view} canWrite={false} onOpen={noop} />,
     );
-    expect(output).toContain("Willkommen bei Arnold");
     expect(output).toContain("Dein erstes Training ist der Anfang.");
     // A read-only empty view offers no unavailable training action.
-    expect(markup).not.toMatch(/<button/);
+    expect(output).not.toContain("starten");
     expect(output).not.toMatch(/Jetzt starten|Einrichten|Onboarding/i);
   });
 
   it("labels the master template instead of showing a personal account", () => {
     const view = buildDashboardView(masterTemplateDataset(), CONTEXT);
     const output = text(
-      <WeekCard view={view} canWrite={false} onOpen={noop} />,
+      <HomeCard view={view} canWrite={false} onOpen={noop} />,
     );
     expect(output).toContain("Master-Vorlage");
     expect(output).toContain("keine persönlichen Trainingsdaten");

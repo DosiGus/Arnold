@@ -95,7 +95,7 @@ export function StatsView({
                 : "Mit einem Plan zählt Arnold deine Serie."}
             </small>
           </span>
-          {streak.is_best && <span className="ac-pill">Bestwert</span>}
+          {streak.is_best && <span className="ac-pill muted">Bestwert</span>}
         </div>
         <div
           className="ac-streak-row"
@@ -162,7 +162,7 @@ export function StatsView({
         <section className="ac-muscles" aria-label="Muskelgruppen">
           <div className="ac-muscles-head">
             <h3>Muskelgruppen</h3>
-            {leaderText && <span className="ac-pill">{leaderText}</span>}
+            {leaderText && <span className="ac-pill muted">{leaderText}</span>}
           </div>
           <ChipGroup
             label="Kennzahl"

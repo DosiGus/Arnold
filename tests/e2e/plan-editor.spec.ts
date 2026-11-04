@@ -328,7 +328,7 @@ test("navigation alone never activates a plan", async ({ page }) => {
   await expect(
     page.getByRole("dialog", { name: "Trainingsplan aktivieren" }),
   ).toHaveCount(0);
-  await openCard(page, PLAN_URL, "week");
+  await openCard(page, PLAN_URL, "home");
   await openCard(page, PLAN_URL, "plan");
 
   // Nothing was activated: the editor is back on the unchanged active plan and

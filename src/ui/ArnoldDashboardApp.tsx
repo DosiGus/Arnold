@@ -4,7 +4,6 @@ import type { ArnoldMcpClient } from "./client/ArnoldMcpClient";
 import { useDashboardData } from "./hooks";
 import { CardNote, CardSkeleton } from "./components/cards";
 import { TrainingCard } from "./views/TrainingCard";
-import { WeekCard } from "./views/WeekCard";
 import { WorkoutHistoryView } from "./views/WorkoutHistoryView";
 import { ExerciseProgressView } from "./views/ExerciseProgressView";
 import { PlanCard } from "./views/PlanCard";
@@ -14,9 +13,9 @@ import { GoalsView } from "./views/GoalsView";
 import { RecordsView } from "./views/RecordsView";
 import { RecoveryNotice } from "./components/recovery";
 import { dateTimeLabel } from "./format";
-import { parseCard, type CardId } from "./cards";
+import { parseCard, shownCard, type CardId } from "./cards";
 import { useModelContext } from "./hooks/useModelContext";
-import { homeContext, pageContext, weekContext } from "./model-context";
+import { homeContext, pageContext } from "./model-context";
 
 function previewCard(): CardId | undefined {
   if (typeof window === "undefined") return undefined;
@@ -59,13 +58,14 @@ export function ArnoldDashboardApp({
     if (card) setTrail([card]);
     setTarget({});
   }, [requested, initial.focus]);
-  const card = trail[trail.length - 1];
+  // "week" is an older name of the start screen.
+  const card = shownCard(trail[trail.length - 1]);
 
-  // Week, start screen and goals need to know whether writing is possible; the
+  // Start screen and goals need to know whether writing is possible; the
   // training card reads the same context through its own logger.
   const [canWrite, setCanWrite] = useState(false);
   useEffect(() => {
-    if (card !== "week" && card !== "home" && card !== "goals") return;
+    if (card !== "home" && card !== "goals") return;
     let active = true;
     void client
       .workout()
@@ -105,13 +105,11 @@ export function ArnoldDashboardApp({
     client,
     card === "today"
       ? undefined
-      : card === "week"
-        ? weekContext(view)
-        : card === "home"
-          ? homeContext(view)
-          : card === "stats" || card === "goals" || card === "records"
-            ? pageContext(card)
-            : undefined,
+      : card === "home"
+        ? homeContext(view)
+        : card === "stats" || card === "goals" || card === "records"
+          ? pageContext(card)
+          : undefined,
   );
 
   const notes = (
@@ -194,9 +192,6 @@ export function ArnoldDashboardApp({
           onChanged={dashboard.reload}
           onOpen={open}
         />
-      )}
-      {card === "week" && (
-        <WeekCard view={view} canWrite={canWrite} onOpen={open} />
       )}
       {card === "progress" && (
         <ExerciseProgressView

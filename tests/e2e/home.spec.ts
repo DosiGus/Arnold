@@ -14,16 +14,23 @@ test("Arnold opens on the start screen with four tiles", async ({ page }) => {
   await page.goto(`${BASE}/preview`);
   await expect(page.locator('main[data-card="home"]')).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: /Guten Morgen|Hallo|Guten Abend/ }),
+    page.getByRole("heading", {
+      name: /^(Heute: .+|Heute geschafft|Dein Training)$/,
+    }),
   ).toBeVisible();
   for (const name of [
-    /^Training: Woche ansehen/,
+    /^Training: heute ansehen/,
     /^Fortschritt: \d+ Wochen? am Stück/,
     /^Ziele ansehen/,
     /^Alle Rekorde ansehen/,
   ])
     await expect(page.getByRole("button", { name })).toBeVisible();
-  await expect(page.getByRole("button", { name: /starten$/ })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Training starten", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Plan bearbeiten", exact: true }),
+  ).toBeVisible();
 });
 
 test("every tile opens its view and the back button returns", async ({
@@ -46,8 +53,14 @@ test("every tile opens its view and the back button returns", async ({
   await page.getByRole("button", { name: "Nach Übung" }).click();
   await page.getByRole("button", { name: "Zurück zur Übersicht" }).click();
 
-  await page.getByRole("button", { name: /^Training: Woche ansehen/ }).click();
-  await expect(main(page)).toHaveAttribute("data-card", "week");
+  await page.getByRole("button", { name: /^Training: heute ansehen/ }).click();
+  await expect(main(page)).toHaveAttribute("data-card", "today");
+  await page.getByRole("button", { name: "Zurück", exact: true }).click();
+
+  await page
+    .getByRole("button", { name: "Plan bearbeiten", exact: true })
+    .click();
+  await expect(main(page)).toHaveAttribute("data-card", "plan");
 });
 
 test("a goal set in the card is stored and shown everywhere", async ({

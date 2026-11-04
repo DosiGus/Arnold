@@ -32,7 +32,9 @@ describe("start screen with history", () => {
     const output = text(<HomeCard view={view} canWrite onOpen={noop} />);
     expect(output).toContain("Training");
     expect(output).toContain("Als Nächstes");
-    expect(output).toContain(`${view.home.next_session!.session_name} starten`);
+    expect(output).toContain("Training starten");
+    expect(output).toContain("Plan bearbeiten");
+    expect(output).not.toMatch(/Guten (Morgen|Abend)|Hallo/);
     expect(output).toContain(`${view.home.streak.current} Wochen`);
     expect(output).toContain(
       `${view.home.workouts_this_year} Einheiten in 2026`,

@@ -7,6 +7,7 @@ import { z } from "zod";
 export const DASHBOARD_CARDS = [
   "home",
   "today",
+  // Kept for older chats; shows the start screen like home.
   "week",
   "progress",
   "history",
@@ -20,5 +21,5 @@ export type DashboardCard = (typeof DASHBOARD_CARDS)[number];
 export const DashboardCardSchema = z
   .enum(DASHBOARD_CARDS)
   .describe(
-    "Welche Karte gezeigt wird: home = Startansicht mit Training, Fortschritt, Zielen und Rekorden (Standard, wenn der Nutzer Arnold einfach öffnet), today = heutiges Training starten und Sätze eintragen, week = Wochenüberblick, stats = Fortschritt mit Serie, Jahreszahlen und Muskelgruppen, goals = Ziele mit Körpergewicht und Übungszielen, records = alle Rekorde, progress = Verlauf einer einzelnen Übung, history = vergangene Trainings, plan = Trainingsplan ansehen und bearbeiten.",
+    "Welche Karte gezeigt wird: home = Startansicht mit Training, Fortschritt, Zielen und Rekorden (Standard, wenn der Nutzer Arnold einfach öffnet), today = heutiges Training starten und Sätze eintragen, week = wie home (ältere Bezeichnung), stats = Fortschritt mit Serie, Jahreszahlen und Muskelgruppen, goals = Ziele mit Körpergewicht und Übungszielen, records = alle Rekorde, progress = Verlauf einer einzelnen Übung, history = vergangene Trainings, plan = Trainingsplan ansehen und bearbeiten.",
   );
