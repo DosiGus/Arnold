@@ -8,10 +8,10 @@ import { buildDashboardView } from "../src/server/arnold-presenter";
 import {
   finishMessage,
   pageContext,
-  summaryContext,
+  runningContext,
+  savedContext,
   todayContext,
   weekContext,
-  workoutContext,
 } from "../src/ui/model-context";
 import { EXERCISES, fullDataset } from "./fixtures/arnold-dashboard";
 
@@ -32,33 +32,25 @@ describe("model context", () => {
   const sets = dataset.sets.filter((s) => s.workout_id === workout.workout_id);
 
   it("lists every saved set with its own convention and its set_id", () => {
-    const text = workoutContext({
-      workout: { ...workout, status: "in_progress" },
-      sets,
-      exercises,
-      items: [],
-      current: EXERCISES.row,
-      pending: false,
-    });
-    expect(text).toContain("laufendes Training");
+    const text = savedContext({ workout, sets, editing: false });
+    expect(text).toContain("gespeichertes Training");
     expect(text).toContain(`workout_id ${workout.workout_id}`);
     expect(text).toContain("20 kg pro Hantel");
     for (const set of sets.filter((s) => s.status === "active"))
       expect(text).toContain(`set_id ${set.set_id}`);
     expect(text).toContain("update_set");
+    expect(text).toContain("void_workout");
     for (const token of INTERNAL) expect(text, token).not.toContain(token);
   });
 
-  it("warns the model while a save is unconfirmed", () => {
-    const text = workoutContext({
-      workout,
+  it("tells the model how a running workout continues", () => {
+    const text = runningContext({
+      workout: { ...workout, status: "in_progress" },
       sets: [],
-      exercises,
-      items: [],
-      pending: true,
     });
+    expect(text).toContain("laufendes Training");
     expect(text).toContain("Noch kein Satz gespeichert");
-    expect(text).toContain("unbestätigt");
+    expect(text).toContain("log_workout_sets");
   });
 
   it("reports the week with the engine's numbers", () => {
@@ -76,27 +68,75 @@ describe("model context", () => {
     );
     const record = view.records.find((r) => r.kind === "improvement");
     const message = finishMessage({ workout, summary, record });
-    expect(message).toMatch(/^Training beendet: /);
+    expect(message).toMatch(/^Training gespeichert: /);
     expect(message).toMatch(/\d+ Arbeitss(atz|ätze)/);
     expect(message).toContain("neuer Rekord");
     expect(message.split("\n")).toHaveLength(1);
     // Without the engine's numbers the message names only the workout.
     expect(finishMessage({ workout })).toBe(
-      `Training beendet: ${workout.session_name_snapshot}.`,
+      `Training gespeichert: ${workout.session_name_snapshot}.`,
     );
-    expect(summaryContext({ workout })).toContain("noch aktualisiert");
   });
 
-  it("describes today's card and the other views", () => {
+  it("describes today's card with the IDs log_workout needs", () => {
     const text = todayContext({
-      sessionName: "Push",
+      proposal: {
+        plan_version_id: "plan-1",
+        session_id: "push",
+        session_name: "Push",
+        session_order: 1,
+        exercises: [
+          {
+            plan_item_id: "item-1",
+            exercise_id: "bench",
+            exercise_name: "Bankdrücken",
+            conventions: {
+              load_basis: "total",
+              execution_mode: "bilateral_simultaneous",
+              implement_count: 1,
+              reps_basis: "total",
+            },
+            sets: [{ reps: 8, load_kg: 75, side: "both" }],
+            source: "last_time",
+            last_date: "2026-10-20",
+            target_sets: 1,
+            rep_min: 6,
+            rep_max: 8,
+            missing: [],
+          },
+          {
+            plan_item_id: "item-2",
+            exercise_id: "incline",
+            exercise_name: "Schrägbankdrücken",
+            conventions: {
+              load_basis: "per_implement",
+              execution_mode: "bilateral_simultaneous",
+              implement_count: 2,
+              reps_basis: "total",
+            },
+            sets: [{ reps: 10, load_kg: null, side: "both" }],
+            source: "plan",
+            last_date: null,
+            target_sets: 1,
+            rep_min: 8,
+            rep_max: 10,
+            missing: ["load"],
+          },
+        ],
+      },
       planName: "Testplan",
-      day: { order: 1, of: 3 },
-      exercises: [{ name: "Bankdrücken", target: "4 × 6–8 · 75 kg" }],
+      of: 3,
+      editing: false,
       canWrite: true,
     });
     expect(text).toContain("„Push“ aus dem Plan „Testplan“, Tag 1 von 3");
-    expect(text).toContain("- Bankdrücken: 4 × 6–8 · 75 kg");
+    expect(text).toContain("session_id push");
+    expect(text).toContain(
+      "- Bankdrücken [plan_item_id item-1, exercise_id bench]: 75 kg × 8 (wie am",
+    );
+    expect(text).toContain("fehlt: Gewicht");
+    expect(text).toContain("log_workout");
+    for (const token of INTERNAL) expect(text, token).not.toContain(token);
     expect(pageContext("progress")).toContain("Fortschritt");
   });
 });

@@ -104,10 +104,12 @@ export function useWorkoutLogger(client: ArnoldMcpClient, changed: () => void) {
         response.result?.workout?.workout_id ??
         dataRef.current?.workout?.workout_id;
       setMessage(
-        request.operation === "log_workout_sets" ||
-          request.operation === "update_set"
-          ? "Satz gespeichert."
-          : "",
+        request.operation === "log_workout"
+          ? "Training gespeichert."
+          : request.operation === "log_workout_sets" ||
+              request.operation === "update_set"
+            ? "Satz gespeichert."
+            : "",
       );
       try {
         await load(id);

@@ -9,12 +9,8 @@
  * Pure text assembly: every number is either stored data or the engine's own
  * result from the dashboard view. Nothing is computed here.
  */
-import type {
-  ArnoldExercise,
-  ArnoldPlanItem,
-  ArnoldSet,
-  ArnoldWorkout,
-} from "../shared/arnold-schema-v1";
+import type { ArnoldSet, ArnoldWorkout } from "../shared/arnold-schema-v1";
+import type { SessionProposal } from "../shared/workout-contract";
 import type {
   ArnoldDashboardView,
   ViewRecord,
@@ -46,100 +42,124 @@ function recordLine(record: ViewRecord) {
   return `${record.exercise_name} ${formatNumber(record.value, 1)} ${unit}${gain}`;
 }
 
+/** One proposed or saved exercise as a line for the model, with its IDs. */
+function proposalLines(proposal: SessionProposal) {
+  return proposal.exercises.map((e) => {
+    const sets = e.sets.length
+      ? e.sets
+          .map((s) =>
+            formatSetLine({
+              ...s,
+              load_basis: e.conventions.load_basis,
+              reps_basis: e.conventions.reps_basis,
+            }),
+          )
+          .join("; ")
+      : UNKNOWN;
+    const gaps = e.missing.length
+      ? ` – fehlt: ${e.missing.map((m) => MISSING[m]).join(", ")}`
+      : "";
+    const from =
+      e.source === "last_time" && e.last_date
+        ? ` (wie am ${dateLabel(e.last_date, true)})`
+        : " (Planziel)";
+    return `- ${e.exercise_name} [plan_item_id ${e.plan_item_id}, exercise_id ${e.exercise_id}]: ${sets}${from}${gaps}`;
+  });
+}
+
+const MISSING = { sets: "Sätze", reps: "Wiederholungen", load: "Gewicht" };
+
 export function todayContext(input: {
-  sessionName: string;
+  proposal?: SessionProposal;
   planName?: string;
-  day?: { order: number; of: number };
-  exercises: readonly { name: string; target: string }[];
+  of: number;
+  editing: boolean;
   canWrite: boolean;
 }) {
-  const where = input.planName
-    ? ` aus dem Plan „${input.planName}“${input.day ? `, Tag ${input.day.order} von ${input.day.of}` : ""}`
-    : " ohne aktiven Plan";
+  const { proposal } = input;
+  if (!proposal)
+    return [
+      "Arnold zeigt gerade die Trainingskarte ohne aktiven Plan.",
+      input.canWrite
+        ? "Berichtet der Nutzer, was er gemacht hat, mit log_workout (session_name und vollständige exercises) eintragen."
+        : "Diese Verbindung kann keine Trainings speichern.",
+      SEEN,
+    ].join("\n");
   return [
-    `Arnold zeigt gerade die Heute-Karte: vorgeschlagen ist „${input.sessionName}“${where}.`,
-    ...input.exercises.map((e) => `- ${e.name}: ${e.target}`),
+    `Arnold zeigt gerade den Trainingstag „${proposal.session_name}“${input.planName ? ` aus dem Plan „${input.planName}“` : ""}${input.of > 1 ? `, Tag ${proposal.session_order} von ${input.of}` : ""} (plan_version_id ${proposal.plan_version_id}, session_id ${proposal.session_id}). So würde „So gemacht, speichern“ eintragen:`,
+    ...proposalLines(proposal),
+    input.editing ? "Der Nutzer passt die Werte gerade in der Karte an." : "",
     input.canWrite
-      ? "Der Nutzer startet das Training mit „Training starten“ in der Karte."
+      ? "Sagt der Nutzer im Chat, dass er das Training gemacht hat, sofort mit log_workout speichern (diese session_id, nur Abweichungen in exercises) und danach show_arnold_dashboard mit card today zeigen."
       : "Diese Verbindung kann keine Trainings speichern.",
-    SEEN,
-  ].join("\n");
-}
-
-export function workoutContext(input: {
-  workout: ArnoldWorkout;
-  sets: readonly ArnoldSet[];
-  exercises: ReadonlyMap<string, ArnoldExercise>;
-  items: readonly ArnoldPlanItem[];
-  current?: string;
-  pending: boolean;
-}) {
-  const { workout } = input;
-  const active = input.sets.filter((s) => s.status === "active");
-  const byExercise = new Map<string, ArnoldSet[]>();
-  for (const set of active) {
-    const list = byExercise.get(set.exercise_id) ?? [];
-    list.push(set);
-    byExercise.set(set.exercise_id, list);
-  }
-  const name = (id: string) => input.exercises.get(id)?.name_de ?? "Übung";
-  const lines = [
-    `Arnold zeigt gerade ein laufendes Training: „${workout.session_name_snapshot}“ am ${dateLabel(workout.workout_date_local, true)} (workout_id ${workout.workout_id}).`,
-  ];
-  if (input.current) lines.push(`Aktuelle Übung: ${name(input.current)}.`);
-  if (!active.length) lines.push("Noch kein Satz gespeichert.");
-  else {
-    lines.push("Gespeicherte Sätze:");
-    for (const [id, sets] of byExercise)
-      lines.push(
-        `- ${name(id)}: ${sets
-          .map(
-            (s) =>
-              `Satz ${s.set_number} ${formatSetLine(s)}${s.set_type === "warmup" ? " (Aufwärmen)" : ""} [set_id ${s.set_id}]`,
-          )
-          .join("; ")}`,
-      );
-  }
-  const open = input.items.filter((i) => !byExercise.has(i.exercise_id));
-  if (open.length)
-    lines.push(
-      `Noch offen laut Plan: ${open.map((i) => name(i.exercise_id)).join(", ")}.`,
-    );
-  if (input.pending)
-    lines.push(
-      "Achtung: Eine Speicherung ist unbestätigt. Nichts Neues speichern, bis der Nutzer in der Karte „Erneut prüfen“ getippt hat.",
-    );
-  lines.push(
-    "Korrekturen aus dem Chat mit update_set oder void_set und der set_id; die aktuelle row_revision vorher mit get_workout laden. Die Karte aktualisiert sich beim nächsten Öffnen.",
-    SEEN,
-  );
-  return lines.join("\n");
-}
-
-export function summaryContext(input: {
-  workout: ArnoldWorkout;
-  summary?: ViewWorkoutSummary;
-  record?: ViewRecord;
-}) {
-  const { workout, summary, record } = input;
-  return [
-    `Arnold zeigt gerade ein abgeschlossenes Training: „${workout.session_name_snapshot}“ am ${dateLabel(workout.workout_date_local, true)} (workout_id ${workout.workout_id}).`,
-    summary ? `${counts(summary)}.` : "Die Auswertung wird noch aktualisiert.",
-    record ? `Neuer Rekord: ${recordLine(record)}.` : "",
     SEEN,
   ]
     .filter(Boolean)
     .join("\n");
 }
 
-/** The visible chat message when the user taps "Training beenden". */
+function setLines(sets: readonly ArnoldSet[]) {
+  const byExercise = new Map<number, ArnoldSet[]>();
+  for (const set of sets)
+    if (set.status === "active")
+      byExercise.set(set.exercise_order, [
+        ...(byExercise.get(set.exercise_order) ?? []),
+        set,
+      ]);
+  return [...byExercise.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(
+      ([, list]) =>
+        `- ${list[0].exercise_name_snapshot}: ${list
+          .map(
+            (s) =>
+              `Satz ${s.set_number} ${formatSetLine(s)}${s.set_type === "warmup" ? " (Aufwärmen)" : ""} [set_id ${s.set_id}, row_revision ${s.row_revision}]`,
+          )
+          .join("; ")}`,
+    );
+}
+
+export function savedContext(input: {
+  workout: ArnoldWorkout;
+  sets: readonly ArnoldSet[];
+  editing: boolean;
+}) {
+  const { workout } = input;
+  return [
+    `Arnold zeigt gerade ein gespeichertes Training: „${workout.session_name_snapshot}“ am ${dateLabel(workout.workout_date_local, true)} (workout_id ${workout.workout_id}, row_revision ${workout.row_revision}).`,
+    ...setLines(input.sets),
+    input.editing ? "Der Nutzer bearbeitet es gerade in der Karte." : "",
+    "Einzelne Werte im Chat mit update_set (correct_completed: true, correction_reason) korrigieren; „alles zurück“ mit void_workout nur auf ausdrücklichen Wunsch.",
+    SEEN,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export function runningContext(input: {
+  workout: ArnoldWorkout;
+  sets: readonly ArnoldSet[];
+}) {
+  const { workout } = input;
+  const lines = setLines(input.sets);
+  return [
+    `Arnold zeigt gerade ein laufendes Training: „${workout.session_name_snapshot}“ am ${dateLabel(workout.workout_date_local, true)} (workout_id ${workout.workout_id}).`,
+    ...(lines.length
+      ? ["Gespeicherte Sätze:", ...lines]
+      : ["Noch kein Satz gespeichert."]),
+    "Weitere Sätze mit log_workout_sets, Korrekturen mit update_set oder void_set; die Karte schließt das Training mit „Training abschließen“ ab.",
+    SEEN,
+  ].join("\n");
+}
+
+/** The visible chat message when the user saves a workout in the card. */
 export function finishMessage(input: {
   workout: ArnoldWorkout;
   summary?: ViewWorkoutSummary;
   record?: ViewRecord;
 }) {
   const { workout, summary, record } = input;
-  const parts = [`Training beendet: ${workout.session_name_snapshot}`];
+  const parts = [`Training gespeichert: ${workout.session_name_snapshot}`];
   if (summary) parts.push(counts(summary));
   if (record) parts.push(`neuer Rekord: ${recordLine(record)}`);
   return `${parts.join(" · ")}.`;

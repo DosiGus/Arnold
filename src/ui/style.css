@@ -668,28 +668,8 @@ body:has(.arnold-cards) {
   overflow-wrap: anywhere;
 }
 
-/* Progress dots for sets. */
-.ac-dots {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-}
-.ac-dots i {
-  display: block;
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  background: var(--border);
-}
-.ac-dots i.done {
-  background: var(--ink);
-}
-.ac-dots i.now {
-  background: transparent;
-  box-shadow: inset 0 0 0 1.5px var(--ink);
-}
 
-/* Training: progress, set chips, comparison, rest and menu. */
+/* Shared: label columns, progress bars, round icon buttons, marks and menus. */
 .ac-label:has(> .ac-label-col) {
   flex: 1;
   min-width: 0;
@@ -699,37 +679,6 @@ body:has(.arnold-cards) {
   flex: 1;
   gap: 0.5rem;
   min-width: 0;
-}
-.ac-steppers.pair {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-/* Side by side the number sits on top and plus and minus below it. */
-.ac-steppers.pair .ac-stepper-row {
-  display: grid;
-  grid-template-columns: repeat(2, auto);
-  grid-template-areas:
-    "value value"
-    "minus plus";
-  justify-content: center;
-  gap: 0.375rem 0.75rem;
-}
-.ac-steppers.pair .ac-stepper-row > :first-child {
-  grid-area: minus;
-}
-.ac-steppers.pair .ac-stepper-value {
-  grid-area: value;
-}
-.ac-steppers.pair .ac-stepper-row > :last-child {
-  grid-area: plus;
-}
-.ac-feel .ac-chips {
-  flex-wrap: nowrap;
-}
-.arnold-cards .ac-feel .ac-chip {
-  flex: 1 1 0;
-  min-width: 0;
-  padding: 0 0.375rem;
-  white-space: nowrap;
 }
 .ac-progress {
   display: flex;
@@ -748,11 +697,6 @@ body:has(.arnold-cards) {
   border-radius: inherit;
   background: var(--ac-accent);
   transition: width 0.3s ease;
-}
-.ac-sets {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
 }
 .arnold-cards .ac-set {
   display: inline-flex;
@@ -789,22 +733,6 @@ body:has(.arnold-cards) {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
-.ac-compare {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.25rem 0.75rem;
-  color: var(--muted);
-  font-size: 0.8125rem;
-}
-.ac-compare strong {
-  color: var(--muted);
-  font-weight: 600;
-}
-.ac-compare strong.up {
-  color: var(--ac-accent-text);
-}
 .arnold-cards .ac-icon-btn {
   display: grid;
   place-items: center;
@@ -833,40 +761,6 @@ body:has(.arnold-cards) {
 .ac-mark.large {
   width: 3.5rem;
   height: 3.5rem;
-}
-.ac-saved {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.875rem;
-}
-.ac-rest {
-  display: grid;
-  justify-items: center;
-  gap: 0.25rem;
-  padding: 0.25rem 0;
-}
-.ac-rest-clock {
-  font-size: 3.5rem;
-  font-weight: 650;
-  letter-spacing: -0.03em;
-  line-height: 1.05;
-  font-variant-numeric: tabular-nums;
-}
-.ac-rest-bar {
-  width: 100%;
-  height: 0.375rem;
-  margin-top: 0.375rem;
-  overflow: hidden;
-  border-radius: 0.1875rem;
-  background: var(--border);
-}
-.ac-rest-bar b {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--ac-accent);
-  transition: width 0.25s linear;
 }
 .ac-done {
   display: grid;
@@ -2771,4 +2665,229 @@ button.secondary:active {
   color: var(--ac-bad);
   font-size: 0.8125rem;
   text-align: center;
+}
+
+/* --------------------------------------------------------------- training */
+/* "Training starten": the day's plan, the editor and the saved workout. */
+.ac-training .ac-rows [data-missing],
+.ac-edit-foot [data-warn] {
+  color: var(--ac-bad);
+  font-weight: 600;
+}
+.ac-chat-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+.ac-chat-hint svg {
+  flex: none;
+  margin-top: 0.1rem;
+}
+.arnold-cards .ac-link.ac-quiet {
+  justify-self: center;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.ac-quiet-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.25rem 1.25rem;
+}
+.arnold-cards .ac-link.danger {
+  color: var(--ac-bad);
+  font-weight: 600;
+}
+.ac-confirm {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.875rem;
+  border-radius: var(--ac-radius-inner);
+  background: var(--soft);
+  box-shadow: inset 0 0 0 1.5px var(--ac-bad);
+}
+.ac-confirm h3 {
+  margin: 0;
+}
+.ac-editor {
+  display: grid;
+  gap: 0.75rem;
+}
+.ac-edit-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ac-edit-ex {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.875rem;
+  border-radius: var(--ac-radius-inner);
+  background: var(--soft);
+}
+.ac-edit-ex[data-missing] {
+  box-shadow: inset 0 0 0 1.5px var(--ac-bad);
+}
+.ac-edit-head,
+.ac-edit-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+}
+.ac-edit-head strong {
+  font-size: 0.9375rem;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+.ac-edit-tools {
+  display: flex;
+  gap: 1rem;
+}
+.ac-edit-grid {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: 0.5rem;
+}
+.ac-edit-sets {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ac-edit-sets li {
+  display: grid;
+  grid-template-columns: 3.75rem minmax(0, 1fr) minmax(0, 1.25fr);
+  align-items: end;
+  gap: 0.5rem;
+}
+.ac-edit-sets li > .ac-num-label {
+  padding-bottom: 0.9rem;
+}
+.ac-num {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+.ac-num-label {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.ac-num-box {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  min-height: var(--ac-tap);
+  padding: 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--card);
+}
+.ac-num-box:focus-within {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 2px var(--focus);
+}
+.ac-num-box[data-empty] {
+  border-style: dashed;
+}
+.ac-num-box input {
+  flex: 1;
+  width: 100%;
+  min-width: 2ch;
+  padding: 0.6rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+.ac-num-box input[aria-invalid] {
+  color: var(--ac-bad);
+}
+.ac-num-box small {
+  flex: none;
+  color: var(--muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+.ac-num-static {
+  display: flex;
+  align-items: center;
+  min-height: var(--ac-tap);
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+.ac-count {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: var(--ac-tap);
+}
+.ac-count output {
+  min-width: 1.5ch;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.arnold-cards .ac-round.small {
+  width: 2.25rem;
+  height: 2.25rem;
+}
+.ac-picker {
+  display: grid;
+  gap: 0.4rem;
+}
+.ac-select {
+  width: 100%;
+  min-height: var(--ac-tap);
+  padding: 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+}
+.ac-picker .ac-link {
+  justify-self: start;
+}
+.ac-skipped {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.ac-skipped li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.arnold-cards .ac-link.ac-add {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+@media (max-width: 22rem) {
+  .ac-edit-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ac-edit-grid > :last-child {
+    grid-column: 1 / -1;
+  }
 }
