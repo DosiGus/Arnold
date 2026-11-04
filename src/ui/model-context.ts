@@ -145,23 +145,6 @@ export function finishMessage(input: {
   return `${parts.join(" · ")}.`;
 }
 
-export function weekContext(view: ArnoldDashboardView) {
-  const week =
-    view.weeks.find((w) => w.is_current_week) ??
-    view.weeks[view.weeks.length - 1];
-  const last = view.recent_workouts.find((w) => w.status === "completed");
-  if (!week)
-    return `Arnold zeigt gerade die Wochenkarte; es gibt noch keine Trainings. ${SEEN}`;
-  const goal = view.active_plan?.days_per_week;
-  return [
-    `Arnold zeigt gerade die Wochenkarte (${week.is_current_week ? "diese Woche" : `Woche ${week.label}`}): ${week.training_days}${goal ? ` von ${goal} Trainingstagen` : ` ${week.training_days === 1 ? "Trainingstag" : "Trainingstage"}`}, ${count(week.working_sets, "Arbeitssatz", "Arbeitssätze")}, ${volume(week.nominal_volume)} Volumen.`,
-    last ? `Zuletzt: „${last.title}“ am ${dateLabel(last.date, true)}.` : "",
-    SEEN,
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
 export function homeContext(view: ArnoldDashboardView) {
   const home = view.home;
   const parts = [

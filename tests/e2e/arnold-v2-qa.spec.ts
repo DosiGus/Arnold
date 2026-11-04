@@ -11,12 +11,16 @@ test("T3-02: navigating and refreshing settle instead of looping", async ({
       if (body?.method === "tools/call") calls.push(body.params.name);
     }
   });
-  await openCard(page, "week");
+  await openCard(page, "home");
   await page.waitForTimeout(400);
   expect(calls.length).toBeLessThanOrEqual(4);
   const before = calls.length;
-  await page.getByRole("button", { name: "Verlauf", exact: true }).click();
-  await expect(page.locator(".ac-training-row").first()).toBeVisible();
+  await page
+    .getByRole("button", { name: /^Plan (ansehen|bearbeiten)$/ })
+    .click();
+  await expect(
+    page.locator('main[data-card="plan"] .ac').first(),
+  ).toBeVisible();
   await page.waitForTimeout(500);
   expect(calls.length - before).toBeLessThanOrEqual(2);
   const settled = calls.length;
@@ -43,17 +47,22 @@ test("T3-05: a cancelled session opens exactly that session", async ({
   );
 });
 
-test("T3-06: history filters do not change the weekly card", async ({
+test("T3-06: history filters do not change the start screen", async ({
   page,
 }) => {
-  await openCard(page, "week");
+  await openCard(page, "home");
   const headline = await page.locator(".ac-title").innerText();
-  await page.getByRole("button", { name: "Verlauf", exact: true }).click();
-  await page.getByRole("button", { name: "Alle Trainings ansehen" }).click();
+  const status = await page.locator(".ac-sub").first().innerText();
+  // Start screen → Rekorde → the record's training → its list, filtered.
+  await page.getByRole("button", { name: /^Alle Rekorde ansehen/ }).click();
+  await page.getByRole("button", { name: "Training ansehen" }).click();
+  await page.getByRole("button", { name: "Zur Trainingsliste" }).click();
   await page.getByLabel("Trainings von", { exact: true }).fill("2030-01-01");
   await expect(page.locator(".ac-training-row")).toHaveCount(0);
   await page.getByRole("button", { name: "Zurück", exact: true }).click();
+  await page.getByRole("button", { name: "Zurück zur Übersicht" }).click();
   await expect(page.locator(".ac-title")).toHaveText(headline);
+  await expect(page.locator(".ac-sub").first()).toHaveText(status);
 });
 
 test("T3-04/T3-09: one comparison class stays legible with enlarged text", async ({

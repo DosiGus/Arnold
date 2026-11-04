@@ -6,9 +6,13 @@ import { DASHBOARD_CARDS, type DashboardCard } from "../shared/dashboard-cards";
  */
 export type CardId = DashboardCard;
 
-/** Old preview links (`?view=overview`) keep working. */
+/**
+ * Old links and chats keep working: `week` and `overview` were the weekly card,
+ * which the start screen replaced.
+ */
 const ALIASES: Record<string, CardId> = {
-  overview: "week",
+  overview: "home",
+  week: "home",
   training: "today",
 };
 
@@ -18,4 +22,9 @@ export function parseCard(value: unknown): CardId | undefined {
   return (DASHBOARD_CARDS as readonly string[]).includes(value)
     ? (value as CardId)
     : undefined;
+}
+
+/** The card that is actually shown for a requested one. */
+export function shownCard(card: CardId): CardId {
+  return ALIASES[card] ?? card;
 }

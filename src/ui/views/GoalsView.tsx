@@ -476,7 +476,7 @@ function GoalDetail({
             <small> {unit}</small>
           </strong>
           {goal.progress !== null && (
-            <span className="ac-pill">
+            <span className={`ac-pill ${goal.achieved ? "" : "muted"}`}>
               {goal.achieved
                 ? "Erreicht"
                 : `${Math.round(goal.progress * 100)} % geschafft`}
@@ -497,7 +497,7 @@ function GoalDetail({
       <GoalChart goal={goal} />
 
       <div className="ac-highlight">
-        <span className="ac-medal fresh">
+        <span className="ac-medal quiet">
           <TrendingUp size={16} aria-hidden="true" />
         </span>
         <span>

@@ -327,12 +327,15 @@ function Fold({
   );
 }
 
-/** A small number field with minus and plus; empty means "keine Angabe". */
+/**
+ * A number typed in directly; empty means "keine Angabe". Accepts the German
+ * decimal comma. Out-of-range text stays visible and is reported as invalid,
+ * so nothing is saved that the user did not mean.
+ */
 function MiniNumber({
   label,
   unit,
   value,
-  step,
   min,
   max,
   decimals,
@@ -342,73 +345,60 @@ function MiniNumber({
   label: string;
   unit: string;
   value: number | undefined;
-  step: number;
   min: number;
   max: number;
   decimals?: boolean;
-  onChange: (value: number | undefined) => void;
+  onChange: (value: number | undefined, valid: boolean) => void;
   disabled?: boolean;
 }) {
   const id = useId();
-  const [text, setText] = useState(
-    value === undefined ? "" : formatNumber(value, 1),
-  );
-  useEffect(() => {
-    setText(value === undefined ? "" : formatNumber(value, 1));
-  }, [value]);
+  const hintId = `${id}-hint`;
+  const show = (v: number | undefined) =>
+    v === undefined ? "" : formatNumber(v, decimals ? 1 : 0);
+  const [text, setText] = useState(show(value));
   const parse = (raw: string) => {
-    if (raw.trim() === "") return undefined;
-    const n = Number(raw.replace(",", "."));
+    const trimmed = raw.trim();
+    if (trimmed === "") return undefined;
+    if (!/^\d+([.,]\d+)?$/.test(trimmed)) return null;
+    const n = Number(trimmed.replace(",", "."));
     if (!Number.isFinite(n) || n < min || n > max) return null;
     if (!decimals && !Number.isInteger(n)) return null;
     return n;
   };
+  // Follow a value set from outside, but never rewrite what is being typed.
+  useEffect(() => {
+    const parsed = parse(text);
+    if (parsed !== null && parsed !== value) setText(show(value));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
   const invalid = parse(text) === null;
-  const nudge = (delta: number) => {
-    const base = value ?? (delta > 0 ? min : max);
-    const next = Math.min(
-      max,
-      Math.max(min, Math.round((base + delta) * 10) / 10),
-    );
-    onChange(next);
-  };
   return (
     <div className={`ac-mini ${invalid ? "invalid" : ""}`}>
       <label htmlFor={id}>{label}</label>
       <span className="ac-mini-value">
         <input
           id={id}
+          type="text"
           inputMode={decimals ? "decimal" : "numeric"}
-          placeholder="–"
+          autoComplete="off"
           value={text}
           disabled={disabled}
           aria-invalid={invalid || undefined}
+          aria-describedby={invalid ? hintId : undefined}
           onChange={(event) => {
             setText(event.target.value);
             const parsed = parse(event.target.value);
-            if (parsed !== null) onChange(parsed);
+            if (parsed === null) onChange(value, false);
+            else onChange(parsed, true);
           }}
         />
-        <small>{unit}</small>
+        <small aria-hidden="true">{unit}</small>
       </span>
-      <span className="ac-mini-buttons">
-        <button
-          type="button"
-          aria-label={`${label} verringern`}
-          disabled={disabled}
-          onClick={() => nudge(-step)}
-        >
-          −
-        </button>
-        <button
-          type="button"
-          aria-label={`${label} erhöhen`}
-          disabled={disabled}
-          onClick={() => nudge(step)}
-        >
-          +
-        </button>
-      </span>
+      {invalid && (
+        <small className="ac-mini-hint" id={hintId}>
+          {min} bis {max} {unit}
+        </small>
+      )}
     </div>
   );
 }
@@ -562,6 +552,8 @@ export function ProfileStep({
     notes: "",
   });
   const [fold, setFold] = useState(-1);
+  // Number fields whose text is outside the allowed range.
+  const [invalidNumbers, setInvalidNumbers] = useState<string[]>([]);
 
   const TITLE: Record<Page, string> = {
     person: "Ein paar Angaben über dich?",
@@ -578,6 +570,7 @@ export function ProfileStep({
     setError("");
     setFold(page === "wishes" ? 0 : -1);
     setPersonDraft(person);
+    setInvalidNumbers([]);
     setGoals(
       training.primary_goal
         ? [training.primary_goal, ...(training.secondary_goals ?? [])]
@@ -693,6 +686,10 @@ export function ProfileStep({
       setError("Wähle eine Antwort aus.");
       return;
     }
+    if (!skip && page === "person" && invalidNumbers.length) {
+      setError("Prüf die markierten Zahlen oder lass das Feld leer.");
+      return;
+    }
     // Fixed weekdays set the number of training days; a partial pick would
     // silently change it.
     if (
@@ -747,7 +744,7 @@ export function ProfileStep({
     <SetupHead
       label={
         page === "person"
-          ? "Angaben · freiwillig"
+          ? "Angaben"
           : questionIndex >= 0
             ? `Angaben · Frage ${questionIndex + 1} von ${QUESTIONS.length}`
             : page === "wishes"
@@ -815,6 +812,16 @@ export function ProfileStep({
         if (value === undefined) delete nextDraft[key];
         return nextDraft as Person;
       });
+    const number =
+      (key: "age_years" | "height_cm" | "body_weight_kg") =>
+      (value: number | undefined, valid: boolean) => {
+        setInvalidNumbers((current) =>
+          valid
+            ? current.filter((k) => k !== key)
+            : [...new Set([...current, key])],
+        );
+        if (valid) set(key, value);
+      };
     const areas = personDraft.protect_areas ?? [];
     return (
       <section
@@ -825,38 +832,37 @@ export function ProfileStep({
         {head}
         <div>
           <h2 className="ac-title">{TITLE.person}</h2>
-          <p className="ac-sub">Freiwillig. Hilft bei Startgewichten.</p>
+          <p className="ac-sub">
+            Alles freiwillig. Hilft bei den Startgewichten.
+          </p>
         </div>
         <div className="ac-mini-grid">
           <MiniNumber
             label="Alter"
-            unit="J."
+            unit="Jahre"
             value={personDraft.age_years}
-            step={1}
             min={14}
             max={100}
-            onChange={(v) => set("age_years", v)}
+            onChange={number("age_years")}
             disabled={busy}
           />
           <MiniNumber
             label="Größe"
             unit="cm"
             value={personDraft.height_cm}
-            step={1}
             min={120}
             max={230}
-            onChange={(v) => set("height_cm", v)}
+            onChange={number("height_cm")}
             disabled={busy}
           />
           <MiniNumber
             label="Gewicht"
             unit="kg"
             value={personDraft.body_weight_kg}
-            step={0.5}
             min={30}
             max={300}
             decimals
-            onChange={(v) => set("body_weight_kg", v)}
+            onChange={number("body_weight_kg")}
             disabled={busy}
           />
         </div>

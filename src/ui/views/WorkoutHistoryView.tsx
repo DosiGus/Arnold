@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Trophy } from "lucide-react";
 import type { ArnoldDashboardView } from "../../shared/arnold-view";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
 import { useAsync, useWorkoutHistory } from "../hooks";
@@ -34,10 +35,12 @@ export function WorkoutHistoryView({
   const [sessionName, setSessionName] = useState<string>();
   const [includeAll, setIncludeAll] = useState(Boolean(initialWorkoutId));
   const [offset, setOffset] = useState(0);
-  // Workouts in which the user set a record, for a quiet badge in the list.
+  // Workouts in which the user set a record. Only the newest record is green;
+  // older ones get a quiet trophy, so the list does not turn green throughout.
   const recordWorkouts = new Set(
     dashboard.home.records.map((r) => r.workout_id),
   );
+  const newestRecordWorkout = dashboard.home.records[0]?.workout_id;
   const history = useWorkoutHistory(client, {
     ...period,
     plan_version_ids: planId ? [planId] : undefined,
@@ -267,11 +270,20 @@ export function WorkoutHistoryView({
                 <span>
                   <strong>
                     {workout.title}
-                    {recordWorkouts.has(workout.workout_id) && (
+                    {workout.workout_id === newestRecordWorkout ? (
                       <>
                         {" "}
-                        <span className="ac-pill">Rekord</span>
+                        <span className="ac-pill">Neuer Rekord</span>
                       </>
+                    ) : (
+                      recordWorkouts.has(workout.workout_id) && (
+                        <>
+                          {" "}
+                          <span className="ac-record-mark" aria-hidden="true">
+                            <Trophy size={13} />
+                          </span>
+                        </>
+                      )
                     )}
                   </strong>
                   <small>

@@ -81,15 +81,15 @@ export function RecordsView({
             <Trophy size={15} aria-hidden="true" />
           </span>
           <span className="ac-record-main">
-            <strong>
-              {record.exercise_name}
+            <strong>{record.exercise_name}</strong>
+            <span className="ac-record-value">
+              <b>{recordValue(record)}</b>
               {record.key === newest?.key && (
-                <span className="ac-pill">Neu</span>
+                <span className="ac-pill muted">Neu</span>
               )}
-            </strong>
+            </span>
             <small className="ac-text">{sub}</small>
           </span>
-          <strong>{recordValue(record)}</strong>
         </button>
         {expanded && (
           <div className="ac-record-detail">
@@ -150,7 +150,7 @@ export function RecordsView({
     <ArnoldCard aria-label="Rekorde">
       <DetailHead crumb="Übersicht · Rekorde" onBack={onBack} />
       <div className="ac-records-hero">
-        <span className="ac-medal fresh large">
+        <span className="ac-medal large">
           <Trophy size={24} aria-hidden="true" />
         </span>
         <span>

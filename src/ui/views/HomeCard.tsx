@@ -19,13 +19,6 @@ function addDays(isoDate: string, days: number) {
   return date.toISOString().slice(0, 10);
 }
 
-function greeting(now = new Date()) {
-  const hour = now.getHours();
-  if (hour < 11) return "Guten Morgen";
-  if (hour < 18) return "Hallo";
-  return "Guten Abend";
-}
-
 /** "3. Nov." relative to today: "heute", "gestern" or the date. */
 function when(date: string, today: string) {
   if (date === today) return "heute";
@@ -60,6 +53,12 @@ export function HomeCard({
   const goals = home.goals.slice(0, 2);
   const empty =
     view.state === "empty_history" || view.state === "empty_catalog";
+  // The title says what today is about, not a greeting.
+  const title = trained.has(today)
+    ? "Heute geschafft"
+    : view.active_plan && next
+      ? `Heute: ${next.session_name}`
+      : "Dein Training";
 
   if (view.state === "master_template")
     return (
@@ -74,7 +73,7 @@ export function HomeCard({
     <ArnoldCard
       className="ac-home"
       label={`Arnold · ${new Intl.DateTimeFormat("de-DE", { weekday: "long", day: "numeric", month: "short" }).format(new Date())}`}
-      title={greeting()}
+      title={title}
       subtitle={
         empty
           ? "Dein erstes Training ist der Anfang."
@@ -87,8 +86,8 @@ export function HomeCard({
         <button
           type="button"
           className="ac-tile-hit"
-          onClick={() => onOpen("week")}
-          aria-label={`Training: Woche ansehen. Trainiert an ${trained.size} ${trained.size === 1 ? "Tag" : "Tagen"}.${next ? ` Als Nächstes ${next.session_name}.` : ""}`}
+          onClick={() => onOpen("today")}
+          aria-label={`Training: heute ansehen. Trainiert an ${trained.size} ${trained.size === 1 ? "Tag" : "Tagen"}.${next ? ` Als Nächstes ${next.session_name}.` : ""}`}
         >
           <TileHead>Training</TileHead>
           {weekStart && (
@@ -127,18 +126,29 @@ export function HomeCard({
             </span>
           )}
         </button>
-        {canWrite && (
-          <div className="ac-tile-action">
+        <div className="ac-tile-action">
+          {canWrite && (
             <button
               type="button"
               className="ac-btn primary"
               onClick={() => onOpen("today")}
             >
               <Play size={14} fill="currentColor" aria-hidden="true" />
-              {next ? `${next.session_name} starten` : "Training starten"}
+              Training starten
             </button>
-          </div>
-        )}
+          )}
+          <button
+            type="button"
+            className="ac-link ac-tile-link"
+            onClick={() => onOpen("plan")}
+          >
+            {!canWrite
+              ? "Plan ansehen"
+              : view.active_plan
+                ? "Plan bearbeiten"
+                : "Plan anlegen"}
+          </button>
+        </div>
       </div>
 
       <div className="ac-tile-pair">
@@ -227,13 +237,15 @@ export function HomeCard({
                 <span className={`ac-medal ${i === 0 ? "fresh" : ""}`}>
                   <Trophy size={15} aria-hidden="true" />
                 </span>
-                <span>
+                <span className="ac-tile-record-main">
                   <strong>{r.exercise_name}</strong>
-                  <small className="ac-text">
-                    {when(r.achieved_on, today)}
-                  </small>
+                  <span className="ac-record-value">
+                    <b>{recordValue(r)}</b>
+                    <small className="ac-text">
+                      {when(r.achieved_on, today)}
+                    </small>
+                  </span>
                 </span>
-                <strong>{recordValue(r)}</strong>
               </span>
             ))}
           </span>
