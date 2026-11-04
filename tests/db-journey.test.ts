@@ -391,6 +391,77 @@ describe("signed-in users with the database", () => {
     expect(JSON.stringify(bobsAfter)).not.toContain(workoutId);
   });
 
+  it("logs a planned workout in one step, edits it and takes it back", async () => {
+    await setup(alice);
+    await setup(bob);
+    const write = async (
+      subject: string,
+      name: string,
+      args: Record<string, unknown>,
+    ) =>
+      WriteResponseSchema.parse(
+        (await call(subject, name, { request_id: randomUUID(), ...args }))
+          .structuredContent,
+      );
+    const context = WorkoutContextSchema.parse(
+      (await call(alice, "get_workout", {})).structuredContent,
+    );
+    const day = context.proposals[0];
+    expect(day.session_name).toBe("Einheit 1");
+    expect(day.exercises[0].missing).toContain("load");
+    const session = {
+      timezone: "Europe/Berlin",
+      plan_version_id: day.plan_version_id,
+      session_id: day.session_id,
+    };
+    const first = await write(alice, "log_workout", {
+      ...session,
+      workout_date_local: "2026-10-28",
+      exercises: [{ plan_item_id: day.exercises[0].plan_item_id, load_kg: 60 }],
+    });
+    expect(first.ok, first.error?.message).toBe(true);
+    expect(first.result!.workout!.status).toBe("completed");
+    expect(first.result!.sets).toHaveLength(3);
+
+    // "Alles wie letztes Mal": no changes at all.
+    const again = await write(alice, "log_workout", {
+      ...session,
+      workout_date_local: "2026-10-30",
+    });
+    expect(again.ok, again.error?.message).toBe(true);
+    expect(again.result!.sets.map((s) => s.load_kg)).toEqual([60, 60, 60]);
+
+    // Bob knows the id and still cannot replace or take it back.
+    const foreign = await write(bob, "void_workout", {
+      workout_id: again.result!.workout!.workout_id,
+      expected_row_revision: 1,
+      correction_reason: "Fremd",
+    });
+    expect(foreign.ok).toBe(false);
+
+    const edited = await write(alice, "log_workout", {
+      ...session,
+      workout_date_local: "2026-10-30",
+      replaces_workout_id: again.result!.workout!.workout_id,
+      expected_row_revision: 1,
+      exercises: [
+        { plan_item_id: day.exercises[0].plan_item_id, load_kg: 62.5 },
+      ],
+    });
+    expect(edited.ok, edited.error?.message).toBe(true);
+    const undone = await write(alice, "void_workout", {
+      workout_id: edited.result!.workout!.workout_id,
+      expected_row_revision: 1,
+      correction_reason: "Versehentlich",
+    });
+    expect(undone.ok, undone.error?.message).toBe(true);
+    expect(undone.result!.workout!.status).toBe("voided");
+    const history = JSON.stringify(
+      (await call(alice, "get_arnold_workouts", {})).structuredContent,
+    );
+    expect(history).toContain(first.result!.workout!.workout_id);
+  });
+
   it("refuses training writes without the write scope", async () => {
     await setup(alice);
     await expect(
