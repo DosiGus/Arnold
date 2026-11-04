@@ -830,6 +830,23 @@ export class WorkoutLoggingService {
             "VALIDATION_ERROR",
             "Ein Training braucht mindestens einen Satz mit Wiederholungen.",
           );
+        // The same session twice on one day is almost always a slip (a second
+        // "so gemacht", or the chat logging what was already saved). Arnold
+        // asks first, like it does for unusual values.
+        const twins = data.workouts.filter(
+          (w) =>
+            w.status === "completed" &&
+            w.workout_id !== replaced?.workout_id &&
+            w.workout_date_local === input.workout_date_local &&
+            normalize(w.session_name_snapshot ?? "") === normalize(name),
+        );
+        if (twins.length && !input.confirm_duplicate)
+          throw new WriteError(
+            "DUPLICATE_WORKOUT",
+            `„${name}“ ist für ${input.workout_date_local} schon gespeichert (workout_id ${twins.map((w) => w.workout_id).join(", ")}). Es wurde nichts gespeichert. Den Nutzer fragen: das gespeicherte Training ersetzen (replaces_workout_id mit expected_row_revision), zusätzlich speichern (confirm_duplicate: true) oder nichts tun.`,
+            false,
+            twins.map((w) => `workout_id=${w.workout_id}`),
+          );
         const workout = ArnoldWorkoutSchema.parse({
           ...technical,
           workout_id: this.id(),
@@ -884,16 +901,9 @@ export class WorkoutLoggingService {
             changes.push({ table: "sets", before: null, after: row });
           }
         });
-        const twin = data.workouts.find(
-          (w) =>
-            w.status === "completed" &&
-            w.workout_id !== replaced?.workout_id &&
-            w.workout_date_local === workout.workout_date_local &&
-            normalize(w.session_name_snapshot ?? "") === normalize(name),
-        );
-        if (twin)
+        if (twins.length)
           result.warnings.push(
-            `Für diesen Tag war „${name}“ schon gespeichert; jetzt sind es zwei Trainings. Falls doppelt, eines verwerfen.`,
+            `Für diesen Tag sind jetzt ${twins.length + 1} Trainings „${name}“ gespeichert.`,
           );
         result.workout = workout;
         break;

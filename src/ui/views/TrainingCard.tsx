@@ -147,10 +147,13 @@ export function TrainingCard({
 
 const unusual = (logger: Logger) =>
   logger.failure?.code === "CONFIRMATION_REQUIRED";
+const duplicate = (logger: Logger) =>
+  logger.failure?.code === "DUPLICATE_WORKOUT";
 
 /**
- * Saving a workout, with the "Stimmt das?" step for values that are almost
- * certainly a slip. The confirmed resend is a new request with the same values.
+ * Saving a workout, with a question first for what is almost certainly a
+ * slip: an unusual value ("Stimmt das?") or the same training twice on one
+ * day. The confirmed resend is a new request with the same values.
  */
 function useLogWorkout(
   logger: Logger,
@@ -163,15 +166,23 @@ function useLogWorkout(
     if (response?.ok) onDone(response);
     return response;
   };
-  const confirm =
-    unusual(logger) && last.current
+  const resend = (flag: string) => () =>
+    void send({ ...last.current!, [flag]: true });
+  const confirm = !last.current
+    ? undefined
+    : unusual(logger)
       ? {
           label: "Ja, diese Werte speichern",
-          onClick: () =>
-            void send({ ...last.current!, confirm_unusual_values: true }),
+          onClick: resend("confirm_unusual_values"),
           disabled: logger.busy,
         }
-      : undefined;
+      : duplicate(logger)
+        ? {
+            label: "Trotzdem speichern",
+            onClick: resend("confirm_duplicate"),
+            disabled: logger.busy,
+          }
+        : undefined;
   return { send, confirm };
 }
 
@@ -187,7 +198,16 @@ function Notes({ logger, data }: { logger: Logger; data: WorkoutContext }) {
           </p>
         </div>
       )}
-      {logger.error && !unusual(logger) && (
+      {duplicate(logger) && (
+        <div className="ac-confirm" role="alert">
+          <h3 className="ac-section-title">Schon eingetragen</h3>
+          <p className="ac-text">
+            Dieses Training ist für heute schon gespeichert. Noch einmal
+            speichern ergibt zwei Trainings. Es wurde nichts gespeichert.
+          </p>
+        </div>
+      )}
+      {logger.error && !unusual(logger) && !duplicate(logger) && (
         <RecoveryNotice
           message={logger.failure?.message}
           code={logger.failure?.code}
@@ -431,38 +451,42 @@ function TodayCard({
         primary={
           !data.can_write
             ? { label: "Zur Übersicht", onClick: () => onOpen("home") }
-            : logger.pending
-              ? {
-                  label: "Erneut prüfen",
-                  onClick: () => void logger.retry(),
-                  disabled: logger.busy,
-                }
-              : gaps.length
+            : confirm
+              ? confirm
+              : logger.pending
                 ? {
-                    label: "Werte eintragen",
-                    onClick: () => setDraft(draftFromProposal(proposal)),
-                    disabled,
+                    label: "Erneut prüfen",
+                    onClick: () => void logger.retry(),
+                    disabled: logger.busy,
                   }
-                : {
-                    label: (
-                      <>
-                        <Check size={16} aria-hidden="true" />
-                        {logger.busy ? "Speichert …" : "So gemacht"}
-                      </>
-                    ),
-                    ariaLabel: "So gemacht, speichern",
-                    onClick: () => void save(),
-                    disabled,
-                  }
+                : gaps.length
+                  ? {
+                      label: "Werte eintragen",
+                      onClick: () => setDraft(draftFromProposal(proposal)),
+                      disabled,
+                    }
+                  : {
+                      label: (
+                        <>
+                          <Check size={16} aria-hidden="true" />
+                          {logger.busy ? "Speichert …" : "So gemacht"}
+                        </>
+                      ),
+                      ariaLabel: "So gemacht, speichern",
+                      onClick: () => void save(),
+                      disabled,
+                    }
         }
         secondary={
-          gaps.length || !data.can_write
-            ? undefined
-            : {
-                label: "Anpassen",
-                onClick: () => setDraft(draftFromProposal(proposal)),
-                disabled,
-              }
+          confirm
+            ? { label: "Abbrechen", onClick: () => logger.clearError() }
+            : gaps.length || !data.can_write
+              ? undefined
+              : {
+                  label: "Anpassen",
+                  onClick: () => setDraft(draftFromProposal(proposal)),
+                  disabled,
+                }
         }
       />
       {proposals.length > 1 && !choosing && (

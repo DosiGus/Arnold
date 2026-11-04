@@ -228,6 +228,12 @@ export const WriteInputs = {
       .optional()
       .describe("Revision des ersetzten Trainings."),
     notes: text.optional(),
+    confirm_duplicate: z
+      .literal(true)
+      .optional()
+      .describe(
+        "Nur nach ausdrücklichem Ja: dasselbe Training am selben Tag ein weiteres Mal speichern.",
+      ),
     source,
     ...unusual,
   }),
@@ -323,6 +329,8 @@ export const WriteErrorCodeSchema = z.enum([
   "CONFIRMATION_REQUIRED",
   /** The workout date is after today in the workout's time zone (B13). */
   "DATE_IN_FUTURE",
+  /** The same session is already saved for that day; ask before a second. */
+  "DUPLICATE_WORKOUT",
 ]);
 export type WriteErrorCode = z.infer<typeof WriteErrorCodeSchema>;
 export const WriteResultSchema = z.strictObject({

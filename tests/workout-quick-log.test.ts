@@ -250,11 +250,86 @@ describe("log_workout: a whole workout in one step", () => {
     expect(await completed(r)).toBe(1);
   });
 
-  it("warns when the same session is saved twice on one day", async () => {
+  it("asks before saving the same session twice on one day", async () => {
     const r = createFixtureLogging();
-    ok(await r.service.execute("log_workout", firstTime()));
-    const second = ok(await r.service.execute("log_workout", firstTime()));
-    expect(second.warnings[0]).toContain("schon gespeichert");
+    const first = ok(await r.service.execute("log_workout", firstTime()));
+    const error = code(
+      await r.service.execute("log_workout", firstTime()),
+      "DUPLICATE_WORKOUT",
+    );
+    expect(error.message).toContain(first.workout!.workout_id);
+    expect(error.message).toContain("replaces_workout_id");
+    expect((await r.store.read()).workouts).toHaveLength(1);
+    // Another day, or an explicit yes, is fine.
+    ok(
+      await r.service.execute(
+        "log_workout",
+        firstTime({ workout_date_local: "2026-10-21" }),
+      ),
+    );
+    const second = ok(
+      await r.service.execute(
+        "log_workout",
+        firstTime({ confirm_duplicate: true }),
+      ),
+    );
+    expect(second.warnings[0]).toContain("2 Trainings „Demo Push“");
+  });
+
+  it("never carries a weight over to a swapped or added exercise", async () => {
+    const r = createFixtureLogging();
+    // History: rows with 22 kg per dumbbell.
+    ok(
+      await r.service.execute(
+        "log_workout",
+        firstTime({
+          workout_date_local: "2026-10-18",
+          exercises: [
+            { plan_item_id: "fixture-item-1", load_kg: 60 },
+            { plan_item_id: "fixture-item-2", load_kg: 20 },
+            { exercise_id: "fixture-row", set_count: 2, reps: 10, load_kg: 22 },
+          ],
+        }),
+      ),
+    );
+    const swapped = code(
+      await r.service.execute(
+        "log_workout",
+        base({
+          exercises: [
+            { plan_item_id: "fixture-item-1", exercise_id: "fixture-row" },
+          ],
+        }),
+      ),
+      "VALIDATION_ERROR",
+    );
+    expect(swapped.message).toContain("Demo Rudern einarmig (Gewicht)");
+    const added = code(
+      await r.service.execute(
+        "log_workout",
+        base({
+          exercises: [{ exercise_id: "fixture-row", set_count: 3, reps: 12 }],
+        }),
+      ),
+      "VALIDATION_ERROR",
+    );
+    expect(added.message).toContain("Demo Rudern einarmig (Gewicht)");
+    // Named, it is saved as said.
+    const saved = ok(
+      await r.service.execute(
+        "log_workout",
+        base({
+          exercises: [
+            { exercise_id: "fixture-row", set_count: 3, reps: 12, load_kg: 24 },
+          ],
+        }),
+      ),
+    );
+    expect(
+      saved.sets
+        .filter((s) => s.exercise_id === "fixture-row")
+        .every((s) => s.load_kg === 24 && s.reps === 12),
+    ).toBe(true);
   });
 });
 

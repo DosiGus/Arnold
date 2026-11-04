@@ -66,6 +66,16 @@ test("saves the day's plan with typed weights, edits it and takes it back", asyn
     rows(page).filter({ hasText: "Demo Schrägbankdrücken" }),
   ).toContainText("3 × 12 · 20 kg pro Hantel");
 
+  // The same training again on the same day asks first and saves nothing.
+  await button(page, "Noch ein Training eintragen").click();
+  await button(page, "So gemacht, speichern").click();
+  await expect(
+    page.getByRole("heading", { name: "Schon eingetragen" }),
+  ).toBeVisible();
+  await button(page, "Abbrechen").click();
+  await page.reload();
+  await expect(card).toContainText("Gespeichert");
+
   // Editing replaces the saved workout in one step.
   await button(page, "Bearbeiten").click();
   await exercise(page, "Demo Bankdrücken").getByLabel("Gewicht").fill("62,5");
@@ -180,4 +190,8 @@ test("MCP App bridge saves in a sandbox and tells the chat once", async ({
   await expect(context).toContainText("set_id");
   await page.waitForTimeout(500);
   await expect(messages).toHaveCount(1);
+  // Leave the shared tracker without this workout for the next tests.
+  await button(frame, "Rückgängig").click();
+  await button(frame, "Wirklich zurücknehmen?").click();
+  await expect(frame.locator(".ac").first()).toContainText("zurückgenommen");
 });

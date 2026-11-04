@@ -96,6 +96,12 @@ function withValues(
  * Applies the deviations of `log_workout` to the proposal: swap, skip, other
  * values, or an extra exercise at the end.
  */
+/** The same sets with the weight unknown (bodyweight stays as it is). */
+function withoutLoad(slot: ProposedExercise): ProposedExercise {
+  const sets = slot.sets.map((s) => ({ ...s, load_kg: null }));
+  return { ...slot, sets, missing: missingOf(slot, sets, true) };
+}
+
 export function applyChanges(
   data: ArnoldDataset,
   proposal: readonly ProposedExercise[],
@@ -127,7 +133,9 @@ export function applyChanges(
         undefined,
         options,
       );
-      slots.push(withValues(extra, change));
+      // An exercise named in the chat brings its own weight. Last time's
+      // weight is not assumed: a missing one is asked for, never guessed.
+      slots.push(withValues(withoutLoad(extra), change));
       continue;
     }
     const index = slots.findIndex(
@@ -146,30 +154,34 @@ export function applyChanges(
     if (change.exercise_id && change.exercise_id !== slot.exercise_id) {
       const next = exercise(change.exercise_id);
       const swapped = proposeExercise(data, next, undefined, options);
-      if (swapped.source === "last_time") slot = swapped;
-      else {
-        // No history for the new exercise: keep the planned volume, but the
-        // weight of another exercise says nothing about this one.
-        const conventions = conventionsFor(next);
-        const sides = sidesFor(conventions.execution_mode);
-        const oldSides = sidesFor(slot.conventions.execution_mode).length;
-        const count =
-          slot.target_sets ??
-          Math.max(1, Math.round(slot.sets.length / oldSides));
-        const reps = slot.sets[0]?.reps ?? slot.rep_max ?? slot.rep_min ?? 0;
-        const sets: ProposedSet[] = [];
-        for (let n = 0; n < count; n++)
-          for (const side of sides) sets.push({ reps, load_kg: null, side });
-        slot = {
-          ...swapped,
-          target_sets: slot.target_sets,
-          rep_min: slot.rep_min,
-          rep_max: slot.rep_max,
-          sets,
-          missing: [],
-        };
-        slot = { ...slot, missing: missingOf(slot, sets, reps > 0) };
-      }
+      // A swap keeps the planned volume. The weight is never carried over,
+      // neither from the old exercise nor from the new one's history: the
+      // user names it, or Arnold asks.
+      const conventions =
+        swapped.source === "last_time"
+          ? swapped.conventions
+          : conventionsFor(next);
+      const sides = sidesFor(conventions.execution_mode);
+      const oldSides = sidesFor(slot.conventions.execution_mode).length;
+      const count =
+        slot.target_sets ??
+        Math.max(1, Math.round(slot.sets.length / oldSides));
+      const reps = slot.sets[0]?.reps ?? slot.rep_max ?? slot.rep_min ?? 0;
+      const sets: ProposedSet[] = [];
+      for (let n = 0; n < count; n++)
+        for (const side of sides) sets.push({ reps, load_kg: null, side });
+      slot = {
+        ...swapped,
+        conventions,
+        source: "plan",
+        last_date: null,
+        target_sets: slot.target_sets,
+        rep_min: slot.rep_min,
+        rep_max: slot.rep_max,
+        sets,
+        missing: [],
+      };
+      slot = { ...slot, missing: missingOf(slot, sets, reps > 0) };
     }
     slots[index] = withValues(slot, change);
   }
