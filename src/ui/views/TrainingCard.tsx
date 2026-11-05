@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, MessageCircle, Trophy } from "lucide-react";
-import type { ArnoldSet, ArnoldWorkout } from "../../shared/arnold-schema-v1";
+import type {
+  ArnoldExercise,
+  ArnoldSet,
+  ArnoldWorkout,
+} from "../../shared/arnold-schema-v1";
 import type { ArnoldDashboardView } from "../../shared/arnold-view";
 import type {
   SessionProposal,
@@ -28,13 +32,17 @@ import { WorkoutEditor } from "../components/workout-editor";
 import { dateLabel, formatNumber } from "../format";
 import { RecoveryCard, RecoveryNotice } from "../components/recovery";
 import type { CardId } from "../cards";
+import { PlanDay } from "../components/plan-day";
+import { usePlanReplace } from "../hooks/usePlanReplace";
 import {
+  carryOver,
   draftFromProposal,
   draftFromSaved,
   exerciseLine,
   missing,
   plannedExercise,
   requestExercises,
+  unchanged,
   type Draft,
 } from "../workout-draft";
 
@@ -134,6 +142,7 @@ export function TrainingCard({
       data={data}
       view={view}
       onOpen={onOpen}
+      onChanged={onChanged}
       undone={workout?.status === "voided"}
       onSaved={(id) => {
         announced.current = id;
@@ -263,6 +272,7 @@ function TodayCard({
   data,
   view,
   onOpen,
+  onChanged,
   undone,
   onSaved,
 }: {
@@ -271,6 +281,7 @@ function TodayCard({
   data: WorkoutContext;
   view: ArnoldDashboardView;
   onOpen: (card: CardId) => void;
+  onChanged: () => void;
   undone: boolean;
   onSaved: (workoutId: string) => void;
 }) {
@@ -280,9 +291,34 @@ function TodayCard({
   const [choosing, setChoosing] = useState(false);
   const proposal =
     proposals.find((p) => p.session_id === chosen) ?? proposals[nextIndex];
-  const [draft, setDraft] = useState<Draft>();
   const disabled = logger.busy || !!logger.pending || !data.can_write;
   const plan = view.active_plan;
+  const planReplace = usePlanReplace(client);
+  const [replacedInPlan, setReplacedInPlan] = useState<Record<string, string>>(
+    {},
+  );
+
+  // The draft is what "So gemacht" saves. It follows the chosen day; when the
+  // plan itself changes ("Dauerhaft im Plan"), the user's other changes stay.
+  const [held, setHeld] = useState<{ base: SessionProposal; draft: Draft }>();
+  let current = held;
+  if (
+    proposal &&
+    (!held ||
+      held.base.session_id !== proposal.session_id ||
+      held.base.plan_version_id !== proposal.plan_version_id)
+  ) {
+    current = {
+      base: proposal,
+      draft:
+        held && held.base.session_id === proposal.session_id
+          ? carryOver(held.draft, held.base, proposal)
+          : draftFromProposal(proposal),
+    };
+    setHeld(current);
+  }
+  const draft = current?.draft;
+  const changed = !!proposal && !!draft && !unchanged(draft, proposal);
 
   useModelContext(
     client,
@@ -290,30 +326,29 @@ function TodayCard({
       proposal,
       planName: plan?.name,
       of: proposals.length,
-      editing: !!draft,
+      editing: changed,
       canWrite: data.can_write,
     }),
   );
 
   const { send, confirm } = useLogWorkout(logger, (response) => {
     if (!response.result?.workout) return;
-    setDraft(undefined);
     onSaved(response.result.workout.workout_id);
   });
-  const save = async (exercises?: ReturnType<typeof requestExercises>) => {
-    if (!proposal) return;
+  const save = async () => {
+    if (!proposal || !draft) return;
     await send({
       workout_date_local: localDate(),
       timezone: timezone(),
       plan_version_id: proposal.plan_version_id,
       session_id: proposal.session_id,
-      ...(exercises ? { exercises } : {}),
+      ...(changed ? { exercises: requestExercises(draft) } : {}),
       source: "ui",
     });
   };
 
   const label = `Heute · ${WEEKDAY.format(new Date())}`;
-  if (!proposal)
+  if (!proposal || !draft)
     return (
       <ArnoldCard
         label={label}
@@ -332,68 +367,38 @@ function TodayCard({
       </ArnoldCard>
     );
 
-  if (draft)
-    return (
-      <ArnoldCard
-        className="ac-training ac-editing"
-        label={`Anpassen · ${proposal.session_name}`}
-        title="Was hast du gemacht?"
-        subtitle="Ändere nur, was anders war. Leere Felder sind unbekannt."
-        busy={logger.busy}
-      >
-        <WorkoutEditor
-          draft={draft}
-          catalog={data.exercises}
-          onChange={setDraft}
-          restore={(id) => plannedExercise(proposal, id)}
-          disabled={disabled}
-        />
-        <Notes logger={logger} data={data} />
-        <CardActions
-          primary={
-            confirm ??
-            (logger.pending
-              ? {
-                  label: "Erneut prüfen",
-                  onClick: () => void logger.retry(),
-                  disabled: logger.busy,
-                }
-              : {
-                  label: logger.busy ? "Wird gespeichert …" : "Speichern",
-                  onClick: () => void save(requestExercises(draft)),
-                  disabled:
-                    disabled ||
-                    !draft.exercises.length ||
-                    draft.exercises.some((e) => missing(e).length > 0),
-                })
-          }
-          secondary={
-            confirm
-              ? {
-                  label: "Werte ändern",
-                  onClick: () => logger.clearError(),
-                }
-              : {
-                  label: "Abbrechen",
-                  onClick: () => {
-                    setDraft(undefined);
-                    logger.clearError();
-                  },
-                  disabled: logger.busy,
-                }
-          }
-        />
-      </ArnoldCard>
-    );
-
-  const gaps = proposal.exercises.filter((e) => e.missing.length > 0);
+  const incomplete =
+    !draft.exercises.length ||
+    draft.exercises.some((e) => missing(e).length > 0);
   const fromLast = proposal.exercises.filter((e) => e.source === "last_time");
-  const subtitle =
-    fromLast.length === proposal.exercises.length
-      ? "Deine Werte vom letzten Mal"
+  const count = proposal.exercises.length;
+  const subtitle = `${count} ${count === 1 ? "Übung" : "Übungen"} · ${
+    fromLast.length === count
+      ? "Werte vom letzten Mal"
       : fromLast.length
-        ? "Vom letzten Mal, sonst aus deinem Plan"
-        : "Werte aus deinem Plan";
+        ? "vom letzten Mal, sonst aus dem Plan"
+        : "Werte aus deinem Plan"
+  }`;
+
+  const replaceInPlan = async (planItemId: string, next: ArnoldExercise) => {
+    const before = proposal.exercises.find(
+      (e) => e.plan_item_id === planItemId,
+    )?.exercise_name;
+    const error = await planReplace.replace({
+      planVersionId: proposal.plan_version_id,
+      planItemId,
+      exerciseId: next.exercise_id,
+    });
+    if (error) return error;
+    // The new plan version may move "next session"; stay on this day.
+    setChosen(proposal.session_id);
+    if (before)
+      setReplacedInPlan((all) => ({ ...all, [next.exercise_id]: before }));
+    await logger.reload();
+    onChanged();
+    return undefined;
+  };
+
   return (
     <ArnoldCard
       className="ac-training"
@@ -407,7 +412,7 @@ function TodayCard({
       }
       title={proposal.session_name}
       subtitle={subtitle}
-      busy={logger.busy}
+      busy={logger.busy || planReplace.busy}
     >
       {undone && <CardNote>Das Training wurde zurückgenommen.</CardNote>}
       {choosing && (
@@ -424,28 +429,18 @@ function TodayCard({
           }}
         />
       )}
-      <Rows
-        label="Übungen"
-        items={proposal.exercises.map((e) => ({
-          key: e.plan_item_id ?? e.exercise_id,
-          label: e.exercise_name,
-          value: (
-            <span data-missing={e.missing.length > 0 || undefined}>
-              {e.missing.includes("sets") || e.missing.includes("reps")
-                ? "Werte fehlen"
-                : exerciseLine(e)}
-            </span>
-          ),
-        }))}
+      <PlanDay
+        key={proposal.session_id}
+        proposal={proposal}
+        draft={draft}
+        catalog={data.exercises}
+        onChange={(next) => setHeld({ base: proposal, draft: next })}
+        onReplaceInPlan={replaceInPlan}
+        replacing={planReplace.busy}
+        replacedInPlan={replacedInPlan}
+        disabled={disabled || planReplace.busy}
+        readOnly={!data.can_write}
       />
-      <p className="ac-chat-hint">
-        <MessageCircle size={15} aria-hidden="true" />
-        <span>
-          {gaps.length
-            ? `Trag bei ${gaps.map((e) => e.exercise_name).join(" und ")} einmal das Gewicht ein, oder sag es Arnold im Chat.`
-            : "Etwas anders gemacht? Tippe auf Anpassen oder sag es Arnold im Chat, z. B. „Bankdrücken statt Brustpresse, 60 kg, 3 × 10“."}
-        </span>
-      </p>
       <Notes logger={logger} data={data} />
       <CardActions
         primary={
@@ -459,44 +454,43 @@ function TodayCard({
                     onClick: () => void logger.retry(),
                     disabled: logger.busy,
                   }
-                : gaps.length
-                  ? {
-                      label: "Werte eintragen",
-                      onClick: () => setDraft(draftFromProposal(proposal)),
-                      disabled,
-                    }
-                  : {
-                      label: (
-                        <>
-                          <Check size={16} aria-hidden="true" />
-                          {logger.busy ? "Speichert …" : "So gemacht"}
-                        </>
-                      ),
-                      ariaLabel: "So gemacht, speichern",
-                      onClick: () => void save(),
-                      disabled,
-                    }
+                : {
+                    label: (
+                      <>
+                        <Check size={16} aria-hidden="true" />
+                        {logger.busy ? "Speichert …" : "So gemacht"}
+                      </>
+                    ),
+                    ariaLabel: "So gemacht, speichern",
+                    onClick: () => void save(),
+                    disabled: disabled || incomplete || planReplace.busy,
+                  }
         }
         secondary={
           confirm
-            ? { label: "Abbrechen", onClick: () => logger.clearError() }
-            : gaps.length || !data.can_write
-              ? undefined
-              : {
-                  label: "Anpassen",
-                  onClick: () => setDraft(draftFromProposal(proposal)),
-                  disabled,
-                }
+            ? { label: "Werte ändern", onClick: () => logger.clearError() }
+            : undefined
         }
       />
-      {proposals.length > 1 && !choosing && (
-        <button
-          type="button"
-          className="ac-link ac-quiet"
-          onClick={() => setChoosing(true)}
-        >
-          Anderen Trainingstag wählen
-        </button>
+      {!confirm && data.can_write && (
+        <div className="ac-quiet-row">
+          {proposals.length > 1 && (
+            <button
+              type="button"
+              className="ac-link ac-quiet"
+              onClick={() => setChoosing((c) => !c)}
+            >
+              Anderer Tag
+            </button>
+          )}
+          <button
+            type="button"
+            className="ac-link ac-quiet"
+            onClick={() => onOpen("home")}
+          >
+            Zur Übersicht
+          </button>
+        </div>
       )}
     </ArnoldCard>
   );

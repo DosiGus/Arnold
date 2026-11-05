@@ -34,7 +34,7 @@ function parse(raw: string): number | null | undefined {
  * A small typed number field. Typing is the fast path in the gym; there are no
  * plus/minus buttons for weight or reps.
  */
-function NumberField({
+export function NumberField({
   label,
   unit,
   value,

@@ -115,6 +115,12 @@ createHttpApp({
   ),
 }).listen(8804, "127.0.0.1");
 
+/** The training card's "Dauerhaft im Plan", on a plan of its own. */
+createHttpApp({ ...common, workoutRuntime: createFixturePlanning() }).listen(
+  8805,
+  "127.0.0.1",
+);
+
 /** A short-lived setup, for the expiry and restart states. */
 createHttpApp({
   ...common,

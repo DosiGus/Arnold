@@ -4,7 +4,10 @@
     {
       "name": "arnold-fixture",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 8787
     },
     {
@@ -15,6 +18,16 @@
         "const h=require('http'),f=require('fs');h.createServer((q,r)=>{r.setHeader('Content-Type','text/html; charset=utf-8');r.end(f.readFileSync('scripts/design/karten.html'))}).listen(8790,'127.0.0.1')"
       ],
       "port": 8790,
+      "autoPort": false
+    },
+    {
+      "name": "arnold-test-fixtures",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "tsx",
+        "tests/fixtures/arnold-server.ts"
+      ],
+      "port": 8796,
       "autoPort": false
     }
   ]

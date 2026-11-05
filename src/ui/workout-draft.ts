@@ -318,3 +318,132 @@ export function requestExercises(draft: Draft) {
     })),
   ];
 }
+
+/** A weight as short as it stays unambiguous: two dumbbells read "2 × 22 kg". */
+export function compactLoad(load_kg: number, c: SetConventions): string {
+  if (c.load_basis === "per_implement" && c.implement_count === 2)
+    return `2 × ${formatNumber(load_kg, 2)} kg`;
+  return formatLoad({ load_kg, load_basis: c.load_basis });
+}
+
+/**
+ * One exercise as the two halves of a card row: the weight on top, the
+ * volume below ("3 × 10"). Unknown values are named, never zeroed.
+ */
+export function exerciseSummary(
+  exercise: Pick<DraftExercise, "sets" | "conventions">,
+): { load: string; volume: string; missing: boolean } {
+  const c = exercise.conventions;
+  const all = rounds(exercise);
+  if (!all.length) return { load: "", volume: "Sätze fehlen", missing: true };
+  const unit = repsUnit(c);
+  const reps = all.map((r) => r[0].reps);
+  const loads = all.map((r) => r[0].load_kg);
+  const noLoad = !isBodyweight(c) && loads.some((l) => l === null);
+  const noReps = reps.some((r) => r <= 0);
+  let load = "Körpergewicht";
+  if (!isBodyweight(c)) {
+    const known = loads.filter((l): l is number => l !== null);
+    const low = Math.min(...known);
+    const high = Math.max(...known);
+    load = noLoad
+      ? "Gewicht fehlt"
+      : low === high
+        ? compactLoad(low, c)
+        : `${formatNumber(low, 2)}–${compactLoad(high, c)}`;
+  }
+  const volume = noReps
+    ? `${all.length} × ?`
+    : new Set(reps).size === 1
+      ? `${all.length} × ${formatNumber(reps[0], 0)}${unit}`
+      : `${all.length} Sätze · ${reps.map((r) => formatNumber(r, 0)).join(", ")}${unit}`;
+  return { load, volume, missing: noLoad || noReps };
+}
+
+const muscleOf = (e: ArnoldExercise) => e.primary_muscle.trim().toLowerCase();
+
+/**
+ * Exercises for the same muscle group, the closest variants first: the same
+ * movement family, then the rest by name.
+ */
+export function similarExercises(
+  catalog: readonly ArnoldExercise[],
+  exerciseId: string,
+): ArnoldExercise[] {
+  const current = catalog.find((e) => e.exercise_id === exerciseId);
+  if (!current) return [];
+  return catalog
+    .filter(
+      (e) =>
+        e.exercise_id !== exerciseId &&
+        e.status === "active" &&
+        (muscleOf(e) === muscleOf(current) ||
+          e.family_key === current.family_key),
+    )
+    .sort(
+      (a, b) =>
+        Number(b.family_key === current.family_key) -
+          Number(a.family_key === current.family_key) ||
+        a.name_de.localeCompare(b.name_de, "de"),
+    );
+}
+
+/** True when the draft would save exactly the proposal. */
+export function unchanged(draft: Draft, proposal: SessionProposal): boolean {
+  if (draft.skipped.length) return false;
+  if (draft.exercises.length !== proposal.exercises.length) return false;
+  return proposal.exercises.every((p, i) => {
+    const e = draft.exercises[i];
+    return (
+      e.plan_item_id === p.plan_item_id &&
+      e.exercise_id === p.exercise_id &&
+      e.sets.length === p.sets.length &&
+      e.sets.every(
+        (s, j) =>
+          s.reps === p.sets[j].reps &&
+          s.load_kg === p.sets[j].load_kg &&
+          s.side === p.sets[j].side,
+      )
+    );
+  });
+}
+
+/**
+ * The draft for a new proposal of the same day, keeping what the user already
+ * changed. A plan position keeps its changes when the new plan still has the
+ * same exercise in that place; the position that was just replaced in the
+ * plan starts fresh from the new proposal.
+ */
+export function carryOver(
+  draft: Draft,
+  before: SessionProposal,
+  after: SessionProposal,
+): Draft {
+  const fresh = draftFromProposal(after);
+  const place = (planItemId: string) =>
+    before.exercises.findIndex((e) => e.plan_item_id === planItemId);
+  const same = (index: number) =>
+    index >= 0 &&
+    before.exercises[index]?.exercise_id ===
+      after.exercises[index]?.exercise_id;
+  const exercises = fresh.exercises.map((e, index) => {
+    const old = draft.exercises.find(
+      (d) => d.plan_item_id && place(d.plan_item_id) === index,
+    );
+    if (!old || !same(index)) return e;
+    return { ...old, key: e.key, plan_item_id: e.plan_item_id };
+  });
+  const skipped = draft.skipped.flatMap((s) => {
+    const index = place(s.plan_item_id);
+    const next = after.exercises[index];
+    return same(index) && next?.plan_item_id
+      ? [{ plan_item_id: next.plan_item_id, exercise_name: s.exercise_name }]
+      : [];
+  });
+  return {
+    exercises: exercises.filter(
+      (e) => !skipped.some((s) => s.plan_item_id === e.plan_item_id),
+    ),
+    skipped,
+  };
+}

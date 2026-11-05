@@ -1,4 +1,10 @@
-import { test, expect, type Page, type Route } from "@playwright/test";
+import {
+  test,
+  expect,
+  type Locator,
+  type Page,
+  type Route,
+} from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { resolve } from "node:path";
 import { createFixtureOnboarding } from "../../src/server/onboarding/fixture";
@@ -317,11 +323,11 @@ test("numeric inputs reject invalid values and confirm unusual values before sav
   browserName,
 }) => {
   await page.goto("http://127.0.0.1:8795/preview?card=today");
-  // Other tests write to the same tracker: start from the editor either way.
+  // Other tests write to the same tracker: start from today's plan either way.
   await expect(
     page
       .getByRole("button", {
-        name: /^(Noch ein Training eintragen|Werte eintragen|Anpassen)$/,
+        name: /^(Noch ein Training eintragen|So gemacht, speichern)$/,
       })
       .first(),
   ).toBeVisible();
@@ -329,25 +335,33 @@ test("numeric inputs reject invalid values and confirm unusual values before sav
     name: "Noch ein Training eintragen",
   });
   if (await another.isVisible()) await another.click();
-  const fill = page.getByRole("button", { name: "Werte eintragen" });
-  if (await fill.isVisible()) await fill.click();
-  else
-    await page.getByRole("button", { name: "Anpassen", exact: true }).click();
-  const bench = page
-    .locator(".ac-edit-ex")
-    .filter({ hasText: "Demo Bankdrücken" });
-  const incline = page
-    .locator(".ac-edit-ex")
-    .filter({ hasText: "Demo Schrägbankdrücken" });
-  await bench.getByLabel("Gewicht").fill("60");
-  await incline.getByLabel("Gewicht").fill("20");
-  await bench.getByLabel("Wdh.").fill("8,5");
-  await expect(bench.getByLabel("Wdh.")).toHaveAttribute(
+  /** Opens one exercise with one value for all its sets. */
+  const open = async (name: string) => {
+    const row = page.locator(".ac-day-row").filter({ hasText: name });
+    if (!(await row.getAttribute("data-open")))
+      await row.locator(".ac-day-head").click();
+    const adjust = row.getByRole("button", { name: "Anpassen", exact: true });
+    if (await adjust.isVisible()) await adjust.click();
+    const same = row.getByRole("button", {
+      name: "Alle Sätze gleich",
+      exact: true,
+    });
+    if (await same.isVisible()) await same.click();
+    return row;
+  };
+  const value = (row: Locator, name: string) =>
+    row.getByRole("textbox", { name: new RegExp(`^${name}( |$)`) });
+  const incline = await open("Demo Schrägbankdrücken");
+  await value(incline, "Gewicht je Hantel").fill("20");
+  const bench = await open("Demo Bankdrücken");
+  await value(bench, "Gewicht").fill("60");
+  await value(bench, "Wiederholungen").fill("8,5");
+  await expect(value(bench, "Wiederholungen")).toHaveAttribute(
     "aria-invalid",
     "true",
   );
-  await bench.getByLabel("Wdh.").fill("8");
-  await expect(bench.getByLabel("Wdh.")).not.toHaveAttribute(
+  await value(bench, "Wiederholungen").fill("8");
+  await expect(value(bench, "Wiederholungen")).not.toHaveAttribute(
     "aria-invalid",
     "true",
   );
@@ -381,8 +395,10 @@ test("numeric inputs reject invalid values and confirm unusual values before sav
     await route.continue();
   });
   // Over 500 kg is almost certainly a slip: the server asks, nothing is saved.
-  await bench.getByLabel("Gewicht").fill("550");
-  await page.getByRole("button", { name: "Speichern", exact: true }).click();
+  await value(bench, "Gewicht").fill("550");
+  await page
+    .getByRole("button", { name: "So gemacht, speichern", exact: true })
+    .click();
   await expect(
     page.getByRole("heading", { name: "Stimmt das?", exact: true }),
   ).toBeVisible();
