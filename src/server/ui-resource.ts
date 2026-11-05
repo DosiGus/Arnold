@@ -6,11 +6,19 @@
  * the server is. So the URI carries a short hash of the bundle's content:
  * a new bundle is a new URI, the same bundle keeps its URI across restarts.
  *
- * The earlier fixed URIs stay registered and serve the current bundle, so a
- * card stored in an older chat still opens.
+ * Every earlier URI keeps working and serves the current bundle: the fixed
+ * ones and any earlier hash. ChatGPT reloads the tool list (and with it the
+ * new URI) only now and then, so after a deploy it still asks for the
+ * previous hash. Answering that with "not found" left the card blank.
  */
 import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import {
+  RESOURCE_MIME_TYPE,
+  registerAppResource,
+} from "@modelcontextprotocol/ext-apps/server";
+import { McpServer, ResourceTemplate } from "@modelcontextprotocol/server";
 
 const cache = new Map<string, { stamp: string; tag: string }>();
 
@@ -45,3 +53,59 @@ export const dashboardResourceUri = (file: string | undefined) =>
   `ui://arnold/dashboard-v2-${bundleTag(file)}.html`;
 export const onboardingResourceUri = (file: string | undefined) =>
   `ui://arnold/onboarding-v2-${bundleTag(file)}.html`;
+
+const UI_META = {
+  ui: {
+    prefersBorder: false,
+    csp: { connectDomains: [] as string[], resourceDomains: [] as string[] },
+  },
+};
+
+/**
+ * Registers one UI bundle under its current URI, the fixed URIs of earlier
+ * releases and every other hash of the same kind (`ui://arnold/<kind>-v2-…`).
+ * All of them return the bundle on disk now.
+ */
+export function registerUiBundle(
+  server: McpServer,
+  options: {
+    kind: "dashboard" | "onboarding";
+    file: string;
+    name: string;
+    legacyName: string;
+    description: string;
+    legacyUris: readonly string[];
+  },
+): string {
+  const { kind, file, name, legacyName, description, legacyUris } = options;
+  const currentUri = `ui://arnold/${kind}-v2-${bundleTag(file)}.html`;
+  const read = async (uri: string) => ({
+    contents: [
+      {
+        uri,
+        mimeType: RESOURCE_MIME_TYPE,
+        text: await readFile(file, "utf8"),
+        _meta: UI_META,
+      },
+    ],
+  });
+  const config = { description, mimeType: RESOURCE_MIME_TYPE, _meta: UI_META };
+  for (const uri of [currentUri, ...legacyUris])
+    registerAppResource(
+      server,
+      uri === currentUri ? name : legacyName,
+      uri,
+      config,
+      () => read(uri),
+    );
+  // Earlier hashes are not listed; exact URIs above take precedence.
+  server.registerResource(
+    `${legacyName} (frühere Fassungen)`,
+    new ResourceTemplate(`ui://arnold/${kind}-v2-{tag}.html`, {
+      list: undefined,
+    }),
+    config,
+    (uri) => read(uri.href),
+  );
+  return currentUri;
+}

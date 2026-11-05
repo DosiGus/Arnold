@@ -102,7 +102,11 @@ describe("Arnold v2 MCP surface", () => {
     expect(listed).toContain(uri);
     // Cards stored in older chats keep opening.
     expect(listed).toContain(ARNOLD_RESOURCE_URI);
-    for (const address of [uri, ARNOLD_RESOURCE_URI]) {
+    // ChatGPT keeps the URI of the previous deploy until it reloads the tool
+    // list; that older hash must still open the current UI, not fail.
+    const previous = "ui://arnold/dashboard-v2-a9c0db0b4b9e.html";
+    expect(listed).not.toContain(previous);
+    for (const address of [uri, ARNOLD_RESOURCE_URI, previous]) {
       const resource = (await client.readResource({ uri: address }))
         .contents[0];
       expect(resource.mimeType).toBe(RESOURCE_MIME_TYPE);

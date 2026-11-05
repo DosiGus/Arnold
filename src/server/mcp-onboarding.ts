@@ -24,16 +24,12 @@
 import {
   LEGACY_ONBOARDING_URIS,
   onboardingResourceUri,
+  registerUiBundle,
 } from "./ui-resource.js";
 import { failureText, recoveryFor } from "../shared/write-recovery.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/server";
-import {
-  registerAppResource,
-  registerAppTool,
-  RESOURCE_MIME_TYPE,
-} from "@modelcontextprotocol/ext-apps/server";
-import { readFile } from "node:fs/promises";
+import { registerAppTool } from "@modelcontextprotocol/ext-apps/server";
 import {
   GOAL_LABEL,
   ONBOARDING_CONTRACT,
@@ -213,43 +209,17 @@ export function registerOnboardingTools(
   // are served by the same bundle; the payload's contract selects the interface.
   // New calls get a new URI, so the host cannot reuse an older UI bundle.
   // Keep the previous URI readable for cards already stored in chat history.
-  const currentUri = onboardingResourceUri(uiFile);
-  if (uiFile)
-    for (const resourceUri of [currentUri, ...LEGACY_ONBOARDING_URIS]) {
-      registerAppResource(
-        server,
-        resourceUri === currentUri
-          ? "Arnold Einrichtung"
-          : "Arnold Einrichtung (bisherige Karten)",
-        resourceUri,
-        {
-          description:
-            "Geführte Einrichtung von Arnold: Begrüßung mit Wahl des Weges, Angaben zu Person und Training oder Übernahme eines eigenen Plans, Planvorschlag, Planbearbeitung und Bestätigung.",
-          mimeType: RESOURCE_MIME_TYPE,
-          _meta: {
-            ui: {
-              prefersBorder: false,
-              csp: { connectDomains: [], resourceDomains: [] },
-            },
-          },
-        },
-        async () => ({
-          contents: [
-            {
-              uri: resourceUri,
-              mimeType: RESOURCE_MIME_TYPE,
-              text: await readFile(uiFile, "utf8"),
-              _meta: {
-                ui: {
-                  prefersBorder: false,
-                  csp: { connectDomains: [], resourceDomains: [] },
-                },
-              },
-            },
-          ],
-        }),
-      );
-    }
+  const currentUri = uiFile
+    ? registerUiBundle(server, {
+        kind: "onboarding",
+        file: uiFile,
+        name: "Arnold Einrichtung",
+        legacyName: "Arnold Einrichtung (bisherige Karten)",
+        description:
+          "Geführte Einrichtung von Arnold: Begrüßung mit Wahl des Weges, Angaben zu Person und Training oder Übernahme eines eigenen Plans, Planvorschlag, Planbearbeitung und Bestätigung.",
+        legacyUris: LEGACY_ONBOARDING_URIS,
+      })
+    : onboardingResourceUri(uiFile);
 
   /**
    * Opens the wizard.

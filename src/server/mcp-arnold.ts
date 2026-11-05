@@ -1,4 +1,4 @@
-import { dashboardResourceUri, LEGACY_DASHBOARD_URIS } from "./ui-resource.js";
+import { LEGACY_DASHBOARD_URIS, registerUiBundle } from "./ui-resource.js";
 import {
   failureText,
   recoveryFor,
@@ -22,13 +22,8 @@ import type { WorkoutLoggingService } from "./workout/service.js";
  * `machine_display`, …) — so these tools have their own documented contract,
  * identified by the `ui_contract` field in the payload.
  */
-import { readFile } from "node:fs/promises";
 import { McpServer } from "@modelcontextprotocol/server";
-import {
-  registerAppResource,
-  registerAppTool,
-  RESOURCE_MIME_TYPE,
-} from "@modelcontextprotocol/ext-apps/server";
+import { registerAppTool } from "@modelcontextprotocol/ext-apps/server";
 import { z } from "zod";
 import {
   ArnoldDashboardViewSchema,
@@ -333,39 +328,15 @@ export function createArnoldMcpServer(
   });
 
   // The tools point at the URI of this very bundle; earlier URIs stay
-  // readable for cards in older chats (see ui-resource.ts).
-  const resourceUri = dashboardResourceUri(uiFile);
-  for (const uri of [resourceUri, ...LEGACY_DASHBOARD_URIS])
-    registerAppResource(
-      server,
-      uri === resourceUri ? "Arnold" : "Arnold (bisherige Karten)",
-      uri,
-      {
-        description: `Interaktiver Trainingsbegleiter Arnold auf Basis des Arnold-Schemas v1. Quelle: ${sourceLabel}.`,
-        mimeType: RESOURCE_MIME_TYPE,
-        _meta: {
-          ui: {
-            prefersBorder: false,
-            csp: { connectDomains: [], resourceDomains: [] },
-          },
-        },
-      },
-      async () => ({
-        contents: [
-          {
-            uri,
-            mimeType: RESOURCE_MIME_TYPE,
-            text: await readFile(uiFile, "utf8"),
-            _meta: {
-              ui: {
-                prefersBorder: false,
-                csp: { connectDomains: [], resourceDomains: [] },
-              },
-            },
-          },
-        ],
-      }),
-    );
+  // readable and serve it too (see ui-resource.ts).
+  const resourceUri = registerUiBundle(server, {
+    kind: "dashboard",
+    file: uiFile,
+    name: "Arnold",
+    legacyName: "Arnold (bisherige Karten)",
+    description: `Interaktiver Trainingsbegleiter Arnold auf Basis des Arnold-Schemas v1. Quelle: ${sourceLabel}.`,
+    legacyUris: LEGACY_DASHBOARD_URIS,
+  });
 
   /**
    * Opens the app with a valid initial state. It never simulates onboarding: an

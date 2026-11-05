@@ -287,16 +287,21 @@ describe("tool discovery", () => {
     expect(uris).toContain(opener);
   });
 
-  it("serves the onboarding resource", async () => {
-    const resource = await client.readResource({
-      uri: "ui://arnold/onboarding-v1.html",
-    });
-    const content = resource.contents[0];
-    expect(content.mimeType).toBeTruthy();
-    expect("text" in content).toBe(true);
-    expect(String((content as { text: string }).text).length).toBeGreaterThan(
-      100,
-    );
+  it("serves the onboarding resource, also under an earlier hash", async () => {
+    for (const uri of [
+      "ui://arnold/onboarding-v1.html",
+      // The address of a previous deploy, which ChatGPT may still hold.
+      "ui://arnold/onboarding-v2-a9c0db0b4b9e.html",
+    ]) {
+      const resource = await client.readResource({ uri });
+      const content = resource.contents[0];
+      expect(content.uri).toBe(uri);
+      expect(content.mimeType).toBeTruthy();
+      expect("text" in content).toBe(true);
+      expect(String((content as { text: string }).text).length).toBeGreaterThan(
+        100,
+      );
+    }
   });
 });
 
