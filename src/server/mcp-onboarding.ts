@@ -21,6 +21,10 @@
  *     `isError` with a machine-readable code and the unchanged state, never a
  *     cheerful message about something that did not happen.
  */
+import {
+  LEGACY_ONBOARDING_URIS,
+  onboardingResourceUri,
+} from "./ui-resource.js";
 import { failureText, recoveryFor } from "../shared/write-recovery.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/server";
@@ -55,7 +59,8 @@ import {
   type OnboardingService,
 } from "./onboarding/service.js";
 
-export const ONBOARDING_RESOURCE_URI = "ui://arnold/onboarding-v2.html";
+/** The last fixed onboarding URI; the live one comes from `onboardingResourceUri`. */
+export const ONBOARDING_RESOURCE_URI = LEGACY_ONBOARDING_URIS[0];
 
 const readOnly = {
   readOnlyHint: true,
@@ -208,14 +213,12 @@ export function registerOnboardingTools(
   // are served by the same bundle; the payload's contract selects the interface.
   // New calls get a new URI, so the host cannot reuse an older UI bundle.
   // Keep the previous URI readable for cards already stored in chat history.
+  const currentUri = onboardingResourceUri(uiFile);
   if (uiFile)
-    for (const resourceUri of [
-      ONBOARDING_RESOURCE_URI,
-      "ui://arnold/onboarding-v1.html",
-    ]) {
+    for (const resourceUri of [currentUri, ...LEGACY_ONBOARDING_URIS]) {
       registerAppResource(
         server,
-        resourceUri === ONBOARDING_RESOURCE_URI
+        resourceUri === currentUri
           ? "Arnold Einrichtung"
           : "Arnold Einrichtung (bisherige Karten)",
         resourceUri,
@@ -265,7 +268,7 @@ export function registerOnboardingTools(
       inputSchema: OnboardingToolInputs.show_arnold_onboarding,
       outputSchema: OnboardingViewSchema,
       annotations: { ...writing, readOnlyHint: false },
-      _meta: { ui: { resourceUri: ONBOARDING_RESOURCE_URI } },
+      _meta: { ui: { resourceUri: currentUri } },
     },
     async (input) => {
       try {

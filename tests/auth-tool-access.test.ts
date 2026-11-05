@@ -145,7 +145,11 @@ describe("every published tool is classified", () => {
       version: "1",
     });
     // Discovery only: none of the deferred handlers runs in this inventory test.
-    registerAccountTools(accountServer, {} as DatabaseArnoldRuntime);
+    registerAccountTools(
+      accountServer,
+      {} as DatabaseArnoldRuntime,
+      "ui://arnold/dashboard-v2-test.html",
+    );
     const account = new Set(await publishedTools(accountServer));
     const orphans = Object.keys(TOOL_ACCESS).filter(
       (tool) => !widest.has(tool) && !account.has(tool),

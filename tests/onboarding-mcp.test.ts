@@ -274,6 +274,17 @@ describe("tool discovery", () => {
     expect(uris).toContain("ui://arnold/onboarding-v2.html");
     expect(uris).toContain("ui://arnold/onboarding-v1.html");
     expect(uris).toContain("ui://arnold/dashboard-v2.html");
+    // The tools point at URIs that name the current bundle.
+    const { tools } = await client.listTools();
+    const opener = (
+      tools.find((t) => t.name === "show_arnold_onboarding")!._meta?.ui as {
+        resourceUri: string;
+      }
+    ).resourceUri;
+    expect(opener).toMatch(
+      /^ui:\/\/arnold\/onboarding-v2-([0-9a-f]{12}|dev)\.html$/,
+    );
+    expect(uris).toContain(opener);
   });
 
   it("serves the onboarding resource", async () => {

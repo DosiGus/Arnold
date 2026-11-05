@@ -89,18 +89,29 @@ describe("Arnold v2 MCP surface", () => {
 
   it("keeps show_arnold_dashboard as the app opener with a resource link", async () => {
     const { tools } = await client.listTools();
-    expect(
-      tools.find((t) => t.name === "show_arnold_dashboard")?._meta?.ui,
-    ).toMatchObject({ resourceUri: ARNOLD_RESOURCE_URI });
-    expect(
-      (await client.listResources()).resources.map((r) => r.uri),
-    ).toContain(ARNOLD_RESOURCE_URI);
-    const resource = (await client.readResource({ uri: ARNOLD_RESOURCE_URI }))
-      .contents[0];
-    expect(resource.mimeType).toBe(RESOURCE_MIME_TYPE);
-    expect("text" in resource && resource.text).toContain('<div id="root">');
-    // The app must be self-contained: no external script may be loaded.
-    expect("text" in resource && resource.text).not.toMatch(/<script[^>]*src=/);
+    const uri = (
+      tools.find((t) => t.name === "show_arnold_dashboard")?._meta?.ui as {
+        resourceUri: string;
+      }
+    ).resourceUri;
+    // The URI names this bundle, so a new UI is never served from a cache.
+    expect(uri).toMatch(
+      /^ui:\/\/arnold\/dashboard-v2-([0-9a-f]{12}|dev)\.html$/,
+    );
+    const listed = (await client.listResources()).resources.map((r) => r.uri);
+    expect(listed).toContain(uri);
+    // Cards stored in older chats keep opening.
+    expect(listed).toContain(ARNOLD_RESOURCE_URI);
+    for (const address of [uri, ARNOLD_RESOURCE_URI]) {
+      const resource = (await client.readResource({ uri: address }))
+        .contents[0];
+      expect(resource.mimeType).toBe(RESOURCE_MIME_TYPE);
+      expect("text" in resource && resource.text).toContain('<div id="root">');
+      // The app must be self-contained: no external script may be loaded.
+      expect("text" in resource && resource.text).not.toMatch(
+        /<script[^>]*src=/,
+      );
+    }
   });
 
   it("opens the dashboard on a valid initial state", async () => {

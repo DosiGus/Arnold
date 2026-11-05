@@ -17,6 +17,7 @@ import { loadAuthConfig } from "./auth/config.js";
 import { buildAuthSurface, type AuthSurface } from "./auth/router.js";
 import type { DatabaseArnoldRuntime } from "./db/runtime.js";
 import { registerAccountTools } from "./account/mcp-account.js";
+import { dashboardResourceUri } from "./ui-resource.js";
 import { withArnoldContext } from "./auth/guarded-server.js";
 import { FixtureSandboxes } from "./fixture-sandboxes.js";
 
@@ -313,7 +314,12 @@ export function createHttpApp(options: ServerOptions = {}) {
         userRuntime?.onboarding,
         auth.guard,
       );
-      if (options.database) registerAccountTools(server, options.database);
+      if (options.database)
+        registerAccountTools(
+          server,
+          options.database,
+          dashboardResourceUri(resolve(root, "dist/ui/dashboard.html")),
+        );
       const transport = new NodeStreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
         enableJsonResponse: true,

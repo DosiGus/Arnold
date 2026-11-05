@@ -12,13 +12,14 @@ import {
   DeleteAccountPublicResponseSchema,
   StoredDataSchema,
 } from "../../shared/account-contract.js";
-import { ARNOLD_RESOURCE_URI } from "../mcp-arnold.js";
 import { DeletionConfirmationError } from "./deletion.js";
 import type { DatabaseArnoldRuntime } from "../db/runtime.js";
 
 export function registerAccountTools(
   server: McpServer,
   runtime: DatabaseArnoldRuntime,
+  /** The dashboard's current resource URI, which renders the confirmation. */
+  resourceUri: string,
 ) {
   const context = () => {
     const caller = currentArnoldContext();
@@ -74,7 +75,7 @@ export function registerAccountTools(
         openWorldHint: false,
       },
       // The card renders the confirmation and sends the token on click.
-      _meta: { ui: { resourceUri: ARNOLD_RESOURCE_URI } },
+      _meta: { ui: { resourceUri } },
     },
     async ({ confirmation_token }) => {
       try {

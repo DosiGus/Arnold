@@ -1,3 +1,4 @@
+import { dashboardResourceUri, LEGACY_DASHBOARD_URIS } from "./ui-resource.js";
 import {
   failureText,
   recoveryFor,
@@ -52,7 +53,8 @@ import {
 } from "../analytics/index.js";
 import { formatNumber } from "../shared/arnold-format.js";
 
-export const ARNOLD_RESOURCE_URI = "ui://arnold/dashboard-v2.html";
+/** The first fixed dashboard URI; the live one comes from `dashboardResourceUri`. */
+export const ARNOLD_RESOURCE_URI = LEGACY_DASHBOARD_URIS[0];
 
 const readOnly = {
   readOnlyHint: true,
@@ -330,36 +332,40 @@ export function createArnoldMcpServer(
     },
   });
 
-  registerAppResource(
-    server,
-    "Arnold",
-    ARNOLD_RESOURCE_URI,
-    {
-      description: `Interaktiver Trainingsbegleiter Arnold auf Basis des Arnold-Schemas v1. Quelle: ${sourceLabel}.`,
-      mimeType: RESOURCE_MIME_TYPE,
-      _meta: {
-        ui: {
-          prefersBorder: false,
-          csp: { connectDomains: [], resourceDomains: [] },
-        },
-      },
-    },
-    async () => ({
-      contents: [
-        {
-          uri: ARNOLD_RESOURCE_URI,
-          mimeType: RESOURCE_MIME_TYPE,
-          text: await readFile(uiFile, "utf8"),
-          _meta: {
-            ui: {
-              prefersBorder: false,
-              csp: { connectDomains: [], resourceDomains: [] },
-            },
+  // The tools point at the URI of this very bundle; earlier URIs stay
+  // readable for cards in older chats (see ui-resource.ts).
+  const resourceUri = dashboardResourceUri(uiFile);
+  for (const uri of [resourceUri, ...LEGACY_DASHBOARD_URIS])
+    registerAppResource(
+      server,
+      uri === resourceUri ? "Arnold" : "Arnold (bisherige Karten)",
+      uri,
+      {
+        description: `Interaktiver Trainingsbegleiter Arnold auf Basis des Arnold-Schemas v1. Quelle: ${sourceLabel}.`,
+        mimeType: RESOURCE_MIME_TYPE,
+        _meta: {
+          ui: {
+            prefersBorder: false,
+            csp: { connectDomains: [], resourceDomains: [] },
           },
         },
-      ],
-    }),
-  );
+      },
+      async () => ({
+        contents: [
+          {
+            uri,
+            mimeType: RESOURCE_MIME_TYPE,
+            text: await readFile(uiFile, "utf8"),
+            _meta: {
+              ui: {
+                prefersBorder: false,
+                csp: { connectDomains: [], resourceDomains: [] },
+              },
+            },
+          },
+        ],
+      }),
+    );
 
   /**
    * Opens the app with a valid initial state. It never simulates onboarding: an
@@ -374,7 +380,7 @@ export function createArnoldMcpServer(
       inputSchema: ShowDashboardInputSchema,
       outputSchema: ArnoldDashboardViewSchema,
       annotations: readOnly,
-      _meta: { ui: { resourceUri: ARNOLD_RESOURCE_URI } },
+      _meta: { ui: { resourceUri } },
     },
     async (input) => {
       try {
