@@ -161,8 +161,9 @@ test("edits a draft: add, replace, reorder, retarget, rename, duplicate, remove"
   await expect(
     page.getByText("Entwurf gespeichert und bestätigt."),
   ).toBeVisible();
+  // The note above may still show from the previous step; wait for the order.
+  await expect.poll(names).not.toEqual(before);
   const after = await names();
-  expect(after).not.toEqual(before);
   expect(after.indexOf("Demo Seitheben")).toBeGreaterThan(
     before.indexOf("Demo Seitheben"),
   );
