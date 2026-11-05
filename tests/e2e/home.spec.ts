@@ -25,8 +25,11 @@ test("Arnold opens on the start screen with four tiles", async ({ page }) => {
     /^Alle Rekorde ansehen/,
   ])
     await expect(page.getByRole("button", { name })).toBeVisible();
+  // The invented history may hold a workout today: then the tile opens it.
   await expect(
-    page.getByRole("button", { name: "Training starten", exact: true }),
+    page.getByRole("button", {
+      name: /^(Training starten|Training ansehen)$/,
+    }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Plan bearbeiten", exact: true }),

@@ -65,11 +65,14 @@ export function TrainingCard({
   view,
   onChanged,
   onOpen,
+  fresh = false,
 }: {
   client: ArnoldMcpClient;
   view: ArnoldDashboardView;
   onChanged: () => void;
   onOpen: (card: CardId) => void;
+  /** Opened for another workout: today's plan, not the one already saved. */
+  fresh?: boolean;
 }) {
   const logger = useWorkoutLogger(client, onChanged);
   const data = logger.data;
@@ -77,7 +80,7 @@ export function TrainingCard({
   // Set when the user saves here, so only that save is posted to the chat,
   // never one replayed when the chat is reopened.
   const announced = useRef<string | undefined>(undefined);
-  const [another, setAnother] = useState(false);
+  const [another, setAnother] = useState(fresh);
 
   // Opening the card shows what is going on today: a running workout first,
   // else one already saved today, else today's plan.
@@ -91,9 +94,11 @@ export function TrainingCard({
     const running = [...data.workouts].sort((a, b) =>
       b.created_at_utc.localeCompare(a.created_at_utc),
     )[0];
-    const today = view.recent_workouts.find(
-      (w) => w.status === "completed" && w.date === localDate(),
-    );
+    const today = fresh
+      ? undefined
+      : view.recent_workouts.find(
+          (w) => w.status === "completed" && w.date === localDate(),
+        );
     const id = running?.workout_id ?? today?.workout_id;
     if (id) void logger.select(id).finally(() => setResumed(true));
     else setResumed(true);

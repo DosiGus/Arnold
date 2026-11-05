@@ -51,6 +51,8 @@ export function ArnoldDashboardApp({
   const [target, setTarget] = useState<{
     exercise_id?: string;
     workout_id?: string;
+    /** The training card opened for another workout today. */
+    fresh?: boolean;
   }>({});
   // A new request from the chat replaces whatever the card showed before.
   useEffect(() => {
@@ -80,7 +82,11 @@ export function ArnoldDashboardApp({
   const open = useCallback(
     (
       next: CardId,
-      focus: { exercise_id?: string; workout_id?: string } = {},
+      focus: {
+        exercise_id?: string;
+        workout_id?: string;
+        fresh?: boolean;
+      } = {},
     ) => {
       setTarget(focus);
       setTrail((t) => [...t, next]);
@@ -195,6 +201,7 @@ export function ArnoldDashboardApp({
           view={view}
           onChanged={dashboard.reload}
           onOpen={open}
+          fresh={target.fresh}
         />
       )}
       {card === "progress" && (

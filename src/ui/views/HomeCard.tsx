@@ -37,10 +37,15 @@ export function HomeCard({
 }: {
   view: ArnoldDashboardView;
   canWrite: boolean;
-  onOpen: (card: CardId) => void;
+  onOpen: (card: CardId, focus?: { fresh?: boolean }) => void;
 }) {
   const home = view.home;
   const today = new Intl.DateTimeFormat("en-CA").format(new Date());
+  // Once today's workout is saved, the tile says so and the button opens it;
+  // a second workout is a small link that goes straight to the plan.
+  const doneToday = view.recent_workouts.find(
+    (w) => w.status === "completed" && w.date === today,
+  );
   const week =
     view.weeks.find((w) => w.is_current_week) ??
     view.weeks[view.weeks.length - 1];
@@ -87,7 +92,7 @@ export function HomeCard({
           type="button"
           className="ac-tile-hit"
           onClick={() => onOpen("today")}
-          aria-label={`Training: heute ansehen. Trainiert an ${trained.size} ${trained.size === 1 ? "Tag" : "Tagen"}.${next ? ` Als Nächstes ${next.session_name}.` : ""}`}
+          aria-label={`Training: heute ansehen. Trainiert an ${trained.size} ${trained.size === 1 ? "Tag" : "Tagen"}.${doneToday ? ` Heute erledigt: ${doneToday.title}.` : next ? ` Als Nächstes ${next.session_name}.` : ""}`}
         >
           <TileHead>Training</TileHead>
           {weekStart && (
@@ -108,7 +113,15 @@ export function HomeCard({
               })}
             </span>
           )}
-          {next ? (
+          {doneToday ? (
+            <span className="ac-tile-next done">
+              <small>Heute erledigt</small>
+              <strong>
+                <Check size={18} strokeWidth={3} aria-hidden="true" />
+                {doneToday.title}
+              </strong>
+            </span>
+          ) : next ? (
             <span className="ac-tile-next">
               <small>Als Nächstes</small>
               <strong>
@@ -127,17 +140,36 @@ export function HomeCard({
           )}
         </button>
         <div className="ac-tile-action">
-          {canWrite && (
+          {doneToday ? (
             <button
               type="button"
               className="ac-btn primary"
               onClick={() => onOpen("today")}
             >
-              <Play size={14} fill="currentColor" aria-hidden="true" />
-              Training starten
+              Training ansehen
             </button>
+          ) : (
+            canWrite && (
+              <button
+                type="button"
+                className="ac-btn primary"
+                onClick={() => onOpen("today")}
+              >
+                <Play size={14} fill="currentColor" aria-hidden="true" />
+                Training starten
+              </button>
+            )
           )}
           <span className="ac-tile-links">
+            {doneToday && canWrite && (
+              <button
+                type="button"
+                className="ac-link ac-tile-link"
+                onClick={() => onOpen("today", { fresh: true })}
+              >
+                Noch ein Training
+              </button>
+            )}
             <button
               type="button"
               className="ac-link ac-tile-link"

@@ -86,6 +86,19 @@ test("saves the day's plan with typed weights, edits it and takes it back", asyn
     rows(page).filter({ hasText: "Demo Schrägbankdrücken" }),
   ).toContainText("3 × 12 · 20 kg pro Hantel");
 
+  // The start screen says today is done: the button opens the saved
+  // workout, the small link goes straight to the plan for another one.
+  await page.goto(`${URL}/preview`);
+  await expect(page.getByText("Heute erledigt")).toBeVisible();
+  await expect(button(page, "Training starten")).toHaveCount(0);
+  await button(page, "Training ansehen").click();
+  await expect(card).toContainText("Gespeichert");
+  await page.goto(`${URL}/preview`);
+  await button(page, "Noch ein Training").click();
+  await expect(button(page, "So gemacht, speichern")).toBeVisible();
+  await page.goto(`${URL}/preview?card=today`);
+  await expect(card).toContainText("Gespeichert");
+
   // The same training again on the same day asks first and saves nothing.
   await button(page, "Noch ein Training eintragen").click();
   // Unchanged, it is the plan with last time's values: one tap.

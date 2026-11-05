@@ -90,6 +90,15 @@
   font-weight: 700;
   letter-spacing: -0.015em;
 }
+.ac-tile-next.done strong {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.ac-tile-next.done svg {
+  flex: none;
+  color: var(--ac-good);
+}
 .ac-tile-next .ac-text {
   font-size: 0.875rem;
   font-weight: 500;
