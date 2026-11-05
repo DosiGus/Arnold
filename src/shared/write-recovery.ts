@@ -64,7 +64,9 @@ export function recoveryFor(code: string, retryable: boolean): Recovery {
     case "ACTIVE_PLAN_CONFLICT":
       return "reload_then_retry";
     case "DUPLICATE_OPERATION":
-      return "retry_same_request";
+      // Retryable only when two identical requests raced; then the same id
+      // replays. An id reused for a different payload needs a new id instead.
+      return retryable ? "retry_same_request" : "none";
     case "SESSION_EXPIRED":
     case "SESSION_CANCELLED":
     case "CONFIRMATION_INVALID":

@@ -198,8 +198,9 @@ export function summarizeVersion(
 /**
  * The plan families, newest version first inside each.
  *
- * A family has no row of its own, so its name is the name of its newest
- * version: that is what a user recognises as "my plan".
+ * A family has no row of its own, so its name is the name of its active
+ * version, else of its newest version that is not archived: a draft that was
+ * thrown away never renames the plan the user trains with.
  */
 export function projectFamilies(dataset: ArnoldDataset): TrainingPlan[] {
   const groups = new Map<string, ArnoldPlanVersion[]>();
@@ -220,7 +221,11 @@ export function projectFamilies(dataset: ArnoldDataset): TrainingPlan[] {
       const active = plans.find((plan) => plan.status === "active") ?? null;
       return {
         plan_family_id,
-        name: versions[0].name,
+        name: (
+          versions.find((v) => v.status === "active") ??
+          versions.find((v) => v.status !== "archived") ??
+          versions[0]
+        ).name,
         active_plan_version_id: active?.plan_version_id ?? null,
         latest_version_no: Math.max(...plans.map((plan) => plan.version_no)),
         draft_plan_version_ids: versions

@@ -37,9 +37,20 @@ function missingOf(
 
 /** Sets after the shorthand or explicit values of one change. */
 function withValues(
-  slot: ProposedExercise,
+  base: ProposedExercise,
   change: LogWorkoutExercise,
 ): ProposedExercise {
+  // "Klimmzüge mit 10 kg Zusatz": the load means something else today.
+  const slot = change.load_basis
+    ? {
+        ...base,
+        conventions: { ...base.conventions, load_basis: change.load_basis },
+        sets: base.sets.map((s) => ({
+          ...s,
+          load_kg: change.load_basis === "bodyweight_only" ? null : s.load_kg,
+        })),
+      }
+    : base;
   const bodyweight = slot.conventions.load_basis === "bodyweight_only";
   if (
     bodyweight &&

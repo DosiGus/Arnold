@@ -137,6 +137,9 @@ export const LogWorkoutExerciseSchema = z
     load_kg: s.load_kg
       .optional()
       .describe("Gewicht für jeden Satz, in der Lastdefinition der Übung."),
+    load_basis: ArnoldLoadBasisSchema.optional().describe(
+      "Nur wenn die Last anders gemeint ist als bei der Übung üblich, z. B. added für Zusatzgewicht bei Klimmzügen oder Dips („mit 10 kg Zusatz“), assistance für Unterstützung an der Maschine.",
+    ),
   })
   .refine((v) => v.plan_item_id || v.exercise_id, {
     message: "plan_item_id oder exercise_id erforderlich.",

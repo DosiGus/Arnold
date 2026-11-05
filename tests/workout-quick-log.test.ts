@@ -333,6 +333,72 @@ describe("log_workout: a whole workout in one step", () => {
   });
 });
 
+describe("log_workout: findings of the ChatGPT stress test", () => {
+  it("uses the newest values also for a past day, and a set count keeps them", async () => {
+    const r = createFixtureLogging();
+    // Newer workout first, then a day before it is logged.
+    ok(
+      await r.service.execute(
+        "log_workout",
+        firstTime({
+          workout_date_local: "2026-10-20",
+          exercises: [
+            { plan_item_id: "fixture-item-1", reps: 15, load_kg: 60 },
+            { plan_item_id: "fixture-item-2", load_kg: 20 },
+          ],
+        }),
+      ),
+    );
+    const past = ok(
+      await r.service.execute(
+        "log_workout",
+        base({
+          workout_date_local: "2026-10-10",
+          exercises: [{ plan_item_id: "fixture-item-1", set_count: 2 }],
+        }),
+      ),
+    );
+    const bench = past.sets.filter((s) => s.exercise_id === "fixture-bench");
+    expect(bench.map((s) => [s.reps, s.load_kg])).toEqual([
+      [15, 60],
+      [15, 60],
+    ]);
+  });
+
+  it("logs added weight on a bodyweight exercise", async () => {
+    const r = createFixtureLogging();
+    const pullups = (extra: Record<string, unknown> = {}) =>
+      base({
+        exercises: [
+          { plan_item_id: "fixture-item-2", skip: true },
+          { plan_item_id: "fixture-item-1", skip: true },
+          {
+            exercise_id: "fixture-pullup",
+            set_count: 3,
+            reps: 8,
+            load_kg: 10,
+            ...extra,
+          },
+        ],
+      });
+    // Without the basis a weight on a bodyweight exercise is refused.
+    const plain = code(
+      await r.service.execute("log_workout", pullups()),
+      "VALIDATION_ERROR",
+    );
+    expect(plain.message).toContain("Körpergewicht");
+    const saved = ok(
+      await r.service.execute("log_workout", pullups({ load_basis: "added" })),
+    );
+    expect(saved.sets).toHaveLength(3);
+    expect(saved.sets[0]).toMatchObject({
+      load_basis: "added",
+      load_kg: 10,
+      reps: 8,
+    });
+  });
+});
+
 describe("void_workout: taking a saved workout back", () => {
   it("voids the workout and its sets, never deletes, checks the revision", async () => {
     const r = createFixtureLogging();

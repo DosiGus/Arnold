@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { draft, harness, session, type Harness } from "./fixtures/arnold-plan";
 import { planVersionAt } from "../src/analytics/plans";
 import { canonical } from "../src/server/workout/infrastructure";
+import { projectFamilies } from "../src/server/plan/domain";
 
 /** A valid draft derived from the active plan, ready to be confirmed. */
 async function newVersion(h: Harness) {
@@ -396,6 +397,27 @@ describe("discarding a draft", () => {
     expect(data.plans.find((p) => p.plan_version_id === "pfx-v2")!.status).toBe(
       "active",
     );
+  });
+
+  it("never renames the plan family after a discarded draft", async () => {
+    const h = harness();
+    const before = projectFamilies(await h.dataset())[0].name;
+    const created = await h.ok("create_plan_version", {
+      request_id: "named-draft",
+      source_plan_version_id: "pfx-v2",
+      name: "STRESSTEST Entwurf",
+    });
+    const version = created.plan!.version;
+    // While the draft is open the family still carries the active name.
+    expect(projectFamilies(await h.dataset())[0].name).toBe(before);
+    h.advance();
+    await h.ok("archive_plan_draft", {
+      request_id: "named-arch",
+      plan_version_id: version.plan_version_id,
+      expected_row_revision: version.row_revision,
+      reason: "Test",
+    });
+    expect(projectFamilies(await h.dataset())[0].name).toBe(before);
   });
 
   it("keeps the discarded rows readable", async () => {

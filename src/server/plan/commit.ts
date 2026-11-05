@@ -112,7 +112,7 @@ export async function commitWrite<R>(
       )
         throw new WriteError(
           "DUPLICATE_OPERATION",
-          "Operations-ID wurde bereits für einen anderen Payload oder Akteur verwendet.",
+          "Diese request_id gehört schon zu einem anderen Vorgang. Es wurde nichts gespeichert. Für diesen Vorgang eine neue request_id erzeugen.",
         );
       assertReceiptHolds(parsed.data, entry);
       return { result: entry.result as R, replayed: true };

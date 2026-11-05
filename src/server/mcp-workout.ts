@@ -25,7 +25,7 @@ const descriptions: Record<WriteOperation, string> = {
   cancel_workout:
     "Bricht ein geplantes oder laufendes Training ab. Sätze und historische Referenzen bleiben erhalten.",
   log_workout:
-    "Trägt ein ganzes Training in einem Schritt ein und schließt es ab. Der Standardweg, wenn der Nutzer nach dem Training berichtet (z. B. „Push A gemacht, alles wie letztes Mal“): session_id des Trainingstags aus get_workout (proposals) angeben; ohne exercises werden genau die Sätze des Vorschlags gespeichert (letztes Mal, sonst Planziel). In exercises nur Abweichungen nennen: Tausch (plan_item_id und neue exercise_id), Weglassen (plan_item_id und skip), andere Werte (set_count, reps, load_kg oder sets einzeln) oder eine zusätzliche Übung (nur exercise_id). Sagt der Nutzer klar, was er gemacht hat, sofort speichern und nicht vorher um Bestätigung bitten; nur nachfragen, wenn Werte fehlen (VALIDATION_ERROR nennt sie) oder die Übung unklar ist. Für getauschte oder zusätzliche Übungen das Gewicht so angeben, wie der Nutzer es nennt; nennt er keines, fragt Arnold mit VALIDATION_ERROR nach – dann den Nutzer fragen, nie aus dem Verlauf oder Plan ergänzen. Ist derselbe Trainingstag für dieses Datum schon gespeichert, antwortet Arnold mit DUPLICATE_WORKOUT: den Nutzer fragen, ob ersetzen (replaces_workout_id), zusätzlich speichern (confirm_duplicate: true) oder nichts. Danach show_arnold_dashboard mit card today aufrufen: Die Karte zeigt das gespeicherte Training, dort kann der Nutzer es bearbeiten oder zurücknehmen. Einzelne Werte eines gespeicherten Trainings korrigiert update_set.",
+    "Trägt ein ganzes Training in einem Schritt ein und schließt es ab. Der Standardweg, wenn der Nutzer nach dem Training berichtet (z. B. „Push A gemacht, alles wie letztes Mal“): session_id des Trainingstags aus get_workout (proposals) angeben; ohne exercises werden genau die Sätze des Vorschlags gespeichert (das zuletzt gespeicherte Training mit der Übung, auch beim Nachtragen eines früheren Tages; sonst Planziel). Eine geänderte Satzanzahl behält Wiederholungen und Gewicht des Vorschlags. Zusatzgewicht bei Körpergewichtsübungen mit load_basis added und load_kg. In exercises nur Abweichungen nennen: Tausch (plan_item_id und neue exercise_id), Weglassen (plan_item_id und skip), andere Werte (set_count, reps, load_kg oder sets einzeln) oder eine zusätzliche Übung (nur exercise_id). Sagt der Nutzer klar, was er gemacht hat, sofort speichern und nicht vorher um Bestätigung bitten; nur nachfragen, wenn Werte fehlen (VALIDATION_ERROR nennt sie) oder die Übung unklar ist. Für getauschte oder zusätzliche Übungen das Gewicht so angeben, wie der Nutzer es nennt; nennt er keines, fragt Arnold mit VALIDATION_ERROR nach – dann den Nutzer fragen, nie aus dem Verlauf oder Plan ergänzen. Ist derselbe Trainingstag für dieses Datum schon gespeichert, antwortet Arnold mit DUPLICATE_WORKOUT: den Nutzer fragen, ob ersetzen (replaces_workout_id), zusätzlich speichern (confirm_duplicate: true) oder nichts. Danach show_arnold_dashboard mit card today aufrufen: Die Karte zeigt das gespeicherte Training, dort kann der Nutzer es bearbeiten oder zurücknehmen. Einzelne Werte eines gespeicherten Trainings korrigiert update_set.",
   void_workout:
     "Nimmt ein gespeichertes oder laufendes Training vollständig zurück: Status verworfen, alle Sätze storniert, nichts wird physisch gelöscht. Nur auf ausdrücklichen Wunsch, z. B. wenn ein Training doppelt oder versehentlich eingetragen wurde. correction_reason kurz angeben.",
   create_exercise:
@@ -179,11 +179,16 @@ export function registerWorkoutTools(
                 ? payload.replayed
                   ? "Bereits bestätigter Vorgang; keine weitere Änderung."
                   : "Änderung gespeichert und verifiziert."
-                : failureText(
-                    payload.error!.code,
-                    payload.error!.message,
-                    payload.error!.recovery,
-                  ),
+                : [
+                    failureText(
+                      payload.error!.code,
+                      payload.error!.message,
+                      payload.error!.recovery,
+                    ),
+                    ...(payload.error!.details.length
+                      ? [`Details: ${payload.error!.details.join("; ")}`]
+                      : []),
+                  ].join("\n"),
             },
           ],
         };

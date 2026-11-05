@@ -126,7 +126,7 @@ export function buildGoalChange(
       if (existing)
         throw new WriteError(
           "GOAL_EXISTS",
-          "Dafür gibt es schon ein aktives Ziel. Mit update_training_goal den Zielwert ändern.",
+          `Dafür gibt es schon ein aktives Ziel (goal_id ${existing.goal_id}, row_revision ${existing.row_revision}). Mit update_training_goal den Zielwert ändern.`,
           false,
           [`goal_id=${existing.goal_id}`],
         );

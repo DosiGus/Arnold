@@ -776,10 +776,9 @@ export class WorkoutLoggingService {
           input.session_name,
           input.workout_date_local,
         );
-        const options = {
-          before: input.workout_date_local,
-          excludeWorkoutId: replaced?.workout_id,
-        };
+        // Always the newest values, also when a past day is logged: that is
+        // what the card and get_workout show as "wie letztes Mal".
+        const options = { excludeWorkoutId: replaced?.workout_id };
         const proposal =
           plan && session
             ? proposeSession(data, plan, session, options)

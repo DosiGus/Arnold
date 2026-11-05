@@ -124,9 +124,9 @@ describe("recovery field", () => {
   it("maps the shared codes to their default next step", () => {
     expect(recoveryFor("SETUP_REQUIRED", false)).toBe("finish_setup");
     expect(recoveryFor("REVISION_CONFLICT", false)).toBe("reload_then_retry");
-    expect(recoveryFor("DUPLICATE_OPERATION", false)).toBe(
-      "retry_same_request",
-    );
+    // A reused id needs a new one; only a race is retried with the same id.
+    expect(recoveryFor("DUPLICATE_OPERATION", false)).toBe("none");
+    expect(recoveryFor("DUPLICATE_OPERATION", true)).toBe("retry_same_request");
     expect(recoveryFor("SESSION_EXPIRED", false)).toBe("start_over");
     expect(recoveryFor("PERMISSION_DENIED", false)).toBe("contact_support");
     expect(recoveryFor("STORAGE_UNAVAILABLE", true)).toBe("retry_same_request");

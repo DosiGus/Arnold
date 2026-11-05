@@ -341,7 +341,8 @@ export class InMemoryArnoldStore implements ArnoldStore {
           )
             throw new WriteError(
               "DUPLICATE_OPERATION",
-              "Operations-ID wurde bereits verwendet.",
+              "Operations-ID wurde gleichzeitig schon verwendet; dieselbe Anfrage erneut senden.",
+              true,
             );
           data = changedDataset(data, parsed.changes);
           staged.set(parsed.requestId, parsed);

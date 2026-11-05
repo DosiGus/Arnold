@@ -265,7 +265,8 @@ export class PostgresArnoldStore implements ArnoldStore {
             if (receipt.rowCount !== 1)
               throw new WriteError(
                 "DUPLICATE_OPERATION",
-                "Operations-ID wurde bereits verwendet.",
+                "Operations-ID wurde gleichzeitig schon verwendet; dieselbe Anfrage erneut senden.",
+                true,
               );
           },
         };
