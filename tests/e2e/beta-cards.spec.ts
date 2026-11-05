@@ -204,8 +204,8 @@ for (const width of [375, 1024])
           await expect(page.locator(".ac-big")).toBeVisible();
         await capture(card);
         if (card === "history") {
-          await page.locator(".ac-training-row").first().click();
-          await expect(page.locator(".workout-detail")).toBeVisible();
+          await page.locator(".ac-history-row").first().click();
+          await expect(page.locator(".ac-history-exercises")).toBeVisible();
           await capture("history-detail");
         }
       }
@@ -496,20 +496,19 @@ test("chat-selected history opens the requested session and still lets another s
   page,
 }) => {
   await page.goto(`${BASE}/preview?card=history&workout_id=w-test-6`);
-  await expect(
-    page
-      .locator(".workout-detail")
-      .getByRole("heading", { name: "Abgebrochene Einheit", exact: true }),
-  ).toBeVisible();
+  // A cancelled session is listed where it belongs and opens right away.
+  const cancelled = page.getByRole("button", {
+    name: /^Abgebrochene Einheit .*Abgebrochen/,
+  });
+  await expect(cancelled).toHaveAttribute("aria-expanded", "true");
   await page
-    .getByRole("button", { name: "Zur Trainingsliste", exact: true })
+    .getByRole("button", { name: /^Freies Training / })
+    .first()
     .click();
-  await page.getByRole("button", { name: /Freies Training am/ }).click();
   await expect(
-    page
-      .locator(".workout-detail")
-      .getByRole("heading", { name: "Freies Training", exact: true }),
+    page.getByRole("list", { name: "Übungen Freies Training" }).first(),
   ).toBeVisible();
+  await expect(cancelled).toHaveAttribute("aria-expanded", "false");
 });
 
 test("a completed setup in a new chat opens as completed without the old secret", async ({

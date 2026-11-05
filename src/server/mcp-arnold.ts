@@ -252,7 +252,8 @@ function today(clock: ArnoldServerClock): string {
 export const ARNOLD_INSTRUCTIONS = [
   "Arnold ist ein Trainingsbegleiter für Krafttraining.",
   "Neue Nutzer werden zuerst eingerichtet: Bei der ersten Nachricht eines Nutzers, der Arnold noch nicht eingerichtet hat, show_arnold_onboarding aufrufen – egal womit er beginnt. Antwortet ein Arnold-Werkzeug mit SETUP_REQUIRED, ebenfalls show_arnold_onboarding aufrufen.",
-  "Die Einrichtung läuft nur einmal pro Konto. Danach öffnet show_arnold_dashboard ohne card die Startansicht mit Training, Fortschritt, Zielen und Rekorden; mit passendem card öffnet es direkt die Karte zur Frage (Training, Woche, Fortschritt, Ziele, Rekorde, Übungsverlauf, Verlauf, Plan). Planänderungen laufen über die übrigen Werkzeuge.",
+  "Die Einrichtung läuft nur einmal pro Konto. Danach ist die Startansicht (show_arnold_dashboard ohne card) mit Training, Fortschritt, Zielen und Rekorden der Einstieg: Ruft der Nutzer Arnold nur auf (z. B. „@Arnold“), begrüßt er, öffnet Arnold neu oder nennt keinen konkreten Wunsch, immer die Startansicht zeigen – nie eine einzelne Karte. Eine bestimmte Karte (Training, Fortschritt, Ziele, Rekorde, Übungsverlauf, Einheiten, Plan) nur, wenn der Nutzer ausdrücklich danach fragt. Planänderungen laufen über die übrigen Werkzeuge.",
+  "Begrüßung beim Öffnen der Startansicht: höchstens zwei kurze, freundliche Sätze auf Deutsch, per du. Den nächsten Schritt nennen (z. B. das heutige Training oder dass heute schon trainiert wurde), keine Zahlen aus der Karte wiederholen, keine Listen, keine Erklärung der Kacheln.",
   "Ziele und Körpergewicht: Nennt der Nutzer ein Ziel (z. B. „100 kg Bankdrücken“, „80 kg wiegen“) oder sein heutiges Gewicht, mit create_training_goal bzw. log_body_weight speichern. Werte nie schätzen oder erfinden.",
   "In der Einrichtung erfasst die App die Angaben per Button. Im Chat begleiten, kurz erklären und nur fragen, was die App nicht abfragt. Der Text jedes Einrichtungswerkzeugs sagt, was als Nächstes zu tun ist.",
   "Die Arnold-Karten melden dir still, was gerade zu sehen ist und welche Sätze gespeichert sind (mit set_id); darauf bei Rückfragen und Korrekturen zurückgreifen. Schickt die App „Training beendet: …“, kurz würdigen, die Zahlen nicht wiederholen und höchstens einen nächsten Schritt vorschlagen.",
@@ -264,6 +265,27 @@ export const ARNOLD_INSTRUCTIONS = [
   "Korrekturen eines gespeicherten Satzes mit update_set, nicht verwerfen und neu anlegen. Bei mehreren möglichen Sätzen, Trainings oder Entwürfen zuerst fragen, welcher gemeint ist.",
   "Das Wochenziel sind die Trainingstage pro Woche aus dem aktiven Plan (days_per_week); zwei Einheiten an einem Tag zählen als ein Tag. Ein anderes Ziel heißt: eine neue Planversion entwerfen und erst nach Rückfrage aktivieren.",
 ].join(" ");
+
+/**
+ * What the chat says under the start screen: the next step in one or two
+ * short sentences. The card shows every number, so the chat repeats none.
+ */
+function welcomeHint(
+  view: ReturnType<typeof buildDashboardView>,
+  date: string,
+): string {
+  const next = view.home.next_session?.session_name;
+  const trainedToday = view.weeks.some((w) => w.trained_dates.includes(date));
+  const lead =
+    "Startansicht geöffnet. Begrüße den Nutzer in höchstens zwei kurzen Sätzen, per du, ohne Zahlen aus der Karte und ohne die Kacheln zu erklären.";
+  if (view.state === "empty_history" || view.state === "empty_catalog")
+    return `${lead} Es gibt noch kein gespeichertes Training: zum ersten Training einladen.`;
+  if (trainedToday)
+    return `${lead} Heute wurde schon trainiert: kurz anerkennen, kein weiteres Training vorschlagen.`;
+  if (next)
+    return `${lead} Als Nächstes steht „${next}“ an: dazu einladen, über „Training starten“ loszulegen.`;
+  return `${lead} Den nächsten Schritt kurz nennen.`;
+}
 
 export function createArnoldMcpServer(
   source: ArnoldDataSource,
@@ -348,7 +370,7 @@ export function createArnoldMcpServer(
     "show_arnold_dashboard",
     {
       title: "Arnold öffnen",
-      description: `Öffnet Arnold als Karte im Chat. Quelle: ${sourceLabel}. Liefert den Dashboard-Vertrag arnold.dashboard/2. Ohne card öffnet die Startansicht (home) mit vier Kacheln: Training, Fortschritt, Ziele, Rekorde; das ist die richtige Karte, wenn der Nutzer Arnold einfach öffnet oder begrüßt. Mit card gezielt öffnen: today, wenn der Nutzer trainieren oder Sätze eintragen will oder fragt, was heute ansteht; stats für Serie, Jahreszahlen und Muskelgruppen; goals für Ziele und Körpergewicht; records für alle Rekorde; progress für den Verlauf einer Übung (mit exercise_id aus get_arnold_dashboard.exercises öffnet die Karte direkt diese Übung, metric optional); history für vergangene Trainings (mit workout_id direkt dieses Training); plan zum Ansehen oder Bearbeiten des Trainingsplans. Will der Nutzer heute trainieren, zuerst die Karte today zeigen; start_workout erst, wenn er wirklich startet oder einen Satz nennt. Die Karte zeigt die Zahlen selbst; im Chat danach nur kurz einordnen und nichts wiederholen.`,
+      description: `Öffnet Arnold als Karte im Chat. Quelle: ${sourceLabel}. Liefert den Dashboard-Vertrag arnold.dashboard/2. Ohne card öffnet die Startansicht (home) mit vier Kacheln: Training, Fortschritt, Ziele, Rekorde. Sie ist immer die richtige Karte, wenn der Nutzer Arnold nur aufruft („@Arnold“), begrüßt, neu öffnet oder keinen konkreten Wunsch nennt; card nur setzen, wenn er ausdrücklich nach genau dieser Karte fragt. Mit card gezielt öffnen: today, wenn der Nutzer trainieren oder Sätze eintragen will oder fragt, was heute ansteht; stats für Serie, Jahreszahlen und Muskelgruppen; goals für Ziele und Körpergewicht; records für alle Rekorde; progress für den Verlauf einer Übung (mit exercise_id aus get_arnold_dashboard.exercises öffnet die Karte direkt diese Übung, metric optional); history für alle gespeicherten Einheiten nach Wochen (mit workout_id direkt dieses Training aufgeklappt); plan zum Ansehen oder Bearbeiten des Trainingsplans. Will der Nutzer heute trainieren, zuerst die Karte today zeigen; start_workout erst, wenn er wirklich startet oder einen Satz nennt. Die Karte zeigt die Zahlen selbst; im Chat danach nur kurz einordnen und nichts wiederholen.`,
       inputSchema: ShowDashboardInputSchema,
       outputSchema: ArnoldDashboardViewSchema,
       annotations: readOnly,
@@ -404,7 +426,9 @@ export function createArnoldMcpServer(
             ? `${sourceLabel}: Die Trainingsdatenbasis ist bereit, es sind noch keine Trainings erfasst.`
             : view.state === "master_template"
               ? `${sourceLabel}: Master-Vorlage ohne persönliche Trainingsdaten.`
-              : `${sourceLabel}: ${workouts ?? 0} Trainingseinheiten im Zeitraum.`,
+              : `${sourceLabel}: ${workouts ?? 0} Trainingseinheiten im Zeitraum.${
+                  input.card ? "" : ` ${welcomeHint(view, today(clock))}`
+                }`,
         );
       } catch (error) {
         return failure(error);

@@ -39,39 +39,18 @@ test("a read-only today card never offers an unavailable write", async ({
   await expect(page.locator(".ac")).toContainText("Nur Ansicht");
 });
 
-test("history details keep raw load, side and set type readable without a table", async ({
+test("all workouts by week open in place with readable loads", async ({
   page,
 }) => {
   await openCard(page, "history");
-  await page
-    .getByRole("button", { name: /Oberkörper A am 5\. Oktober 2026/ })
-    .click();
-  const detail = page.locator(".workout-detail");
-  await expect(detail).toContainText("75 kg");
-  await expect(detail).toContainText("20 kg pro Hantel");
-  await expect(detail).toContainText("Links");
-  await expect(detail).toContainText("Rechts");
-  await expect(detail.locator("table")).toHaveCount(0);
-  await expect(detail).not.toContainText("per_implement");
-});
-
-test("the full history retains period and plan filters", async ({ page }) => {
-  await openCard(page, "history");
-  await page.getByRole("button", { name: "Alle Trainings ansehen" }).click();
-  await page
-    .getByRole("group", { name: "Trainingsplan auswählen" })
-    .getByRole("button", { name: /Version 1/ })
-    .click();
-  await expect(page.getByText("2 Trainings gefunden")).toBeVisible();
-  await page.getByLabel("Trainings von", { exact: true }).fill("2030-01-01");
-  await page.getByLabel("Trainings bis", { exact: true }).fill("2030-01-31");
-  await expect(
-    page.getByText(/Keine Trainings in dieser Auswahl/),
-  ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Auswahl zurücksetzen", exact: true })
-    .click();
-  await expect(page.locator(".ac-training-row").first()).toBeVisible();
+  await expect(page.locator(".ac-history-week h3").first()).toBeVisible();
+  await page.getByRole("button", { name: /^Oberkörper A .*5\. Okt\./ }).click();
+  const exercises = page.getByRole("list", { name: "Übungen Oberkörper A" });
+  await expect(exercises).toContainText("75 kg");
+  await expect(exercises).toContainText("20 kg");
+  await expect(exercises).toContainText("1 × 10");
+  await expect(exercises.locator("table")).toHaveCount(0);
+  await expect(exercises).not.toContainText("per_implement");
 });
 
 test("exercise switching keeps the selected comparison class beside the headline", async ({

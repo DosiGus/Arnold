@@ -137,17 +137,28 @@ export function HomeCard({
               Training starten
             </button>
           )}
-          <button
-            type="button"
-            className="ac-link ac-tile-link"
-            onClick={() => onOpen("plan")}
-          >
-            {!canWrite
-              ? "Plan ansehen"
-              : view.active_plan
-                ? "Plan bearbeiten"
-                : "Plan anlegen"}
-          </button>
+          <span className="ac-tile-links">
+            <button
+              type="button"
+              className="ac-link ac-tile-link"
+              onClick={() => onOpen("plan")}
+            >
+              {!canWrite
+                ? "Plan ansehen"
+                : view.active_plan
+                  ? "Plan bearbeiten"
+                  : "Plan anlegen"}
+            </button>
+            {!empty && (
+              <button
+                type="button"
+                className="ac-link ac-tile-link"
+                onClick={() => onOpen("history")}
+              >
+                Alle Einheiten
+              </button>
+            )}
+          </span>
         </div>
       </div>
 

@@ -1,56 +1,93 @@
 import { useEffect, useState } from "react";
-import { Trophy } from "lucide-react";
-import type { ArnoldDashboardView } from "../../shared/arnold-view";
+import { ChevronDown, Trophy } from "lucide-react";
+import type {
+  ArnoldDashboardView,
+  ViewWorkoutDetail,
+} from "../../shared/arnold-view";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
 import { useAsync, useWorkoutHistory } from "../hooks";
 import { useModelContext } from "../hooks/useModelContext";
-import {
-  ArnoldCard,
-  CardActions,
-  CardNote,
-  CardSkeleton,
-  ChipGroup,
-} from "../components/cards";
+import { ArnoldCard, CardSkeleton } from "../components/cards";
+import { DetailHead } from "../components/home";
 import { RecoveryCard } from "../components/recovery";
-import {
-  dateLabel,
-  formatSetLine,
-  formatExecution,
-  SET_TYPE_LABEL,
-} from "../format";
+import { exerciseSummary } from "../workout-draft";
 
+const PAGE = 12;
+const WEEKDAY = new Intl.DateTimeFormat("de-DE", {
+  weekday: "short",
+  timeZone: "UTC",
+});
+const DAY_MONTH = new Intl.DateTimeFormat("de-DE", {
+  day: "numeric",
+  month: "short",
+  timeZone: "UTC",
+});
+const MONTH = new Intl.DateTimeFormat("de-DE", {
+  month: "long",
+  timeZone: "UTC",
+});
+
+const at = (isoDate: string) => new Date(`${isoDate}T12:00:00Z`);
+function addDays(isoDate: string, days: number) {
+  const date = at(isoDate);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+/** The Monday of the calendar week a local date falls in. */
+function weekOf(isoDate: string) {
+  return addDays(isoDate, -((at(isoDate).getUTCDay() + 6) % 7));
+}
+function weekLabel(start: string, thisWeek: string) {
+  if (start === thisWeek) return "Diese Woche";
+  if (start === addDays(thisWeek, -7)) return "Letzte Woche";
+  const end = addDays(start, 6);
+  return start.slice(5, 7) === end.slice(5, 7)
+    ? `${at(start).getUTCDate()}.–${at(end).getUTCDate()}. ${MONTH.format(at(end))}`
+    : `${DAY_MONTH.format(at(start))}–${DAY_MONTH.format(at(end))}`;
+}
+
+/** One exercise of a saved workout as one line: "3 × 8 · 62,5 kg". */
+function exerciseLine(block: ViewWorkoutDetail["exercises"][number]) {
+  const sets = block.sets.filter((s) => !s.voided && s.set_type === "working");
+  if (!sets.length) return undefined;
+  const first = sets[0];
+  const summary = exerciseSummary({
+    conventions: {
+      load_basis: first.load_basis,
+      execution_mode: first.execution_mode,
+      implement_count: first.implement_count,
+      reps_basis: first.reps_basis,
+    },
+    sets: sets.map((s) => ({
+      reps: s.reps,
+      load_kg: s.load_basis === "bodyweight_only" ? null : s.load_kg,
+      side: s.side,
+    })),
+  });
+  return `${summary.volume} · ${summary.load}`;
+}
+
+/**
+ * "Alle Einheiten": the saved workouts by calendar week, newest first. A row
+ * opens in place to show its exercises; a record is marked where it was set.
+ * Deliberately plain: no filters, more on request.
+ */
 export function WorkoutHistoryView({
   client,
   dashboard,
   initialWorkoutId,
+  onBack,
 }: {
   client: ArnoldMcpClient;
   dashboard: ArnoldDashboardView;
   initialWorkoutId?: string;
+  onBack?: () => void;
 }) {
-  const [expanded, setExpanded] = useState(Boolean(initialWorkoutId));
-  const [selectedId, setSelectedId] = useState(initialWorkoutId);
-  const [period, setPeriod] = useState<{ from?: string; to?: string }>({});
-  const [planId, setPlanId] = useState<string>();
-  const [sessionName, setSessionName] = useState<string>();
-  const [includeAll, setIncludeAll] = useState(Boolean(initialWorkoutId));
-  const [offset, setOffset] = useState(0);
-  // Workouts in which the user set a record. Only the newest record is green;
-  // older ones get a quiet trophy, so the list does not turn green throughout.
-  const recordWorkouts = new Set(
-    dashboard.home.records.map((r) => r.workout_id),
-  );
-  const newestRecordWorkout = dashboard.home.records[0]?.workout_id;
-  const history = useWorkoutHistory(client, {
-    ...period,
-    plan_version_ids: planId ? [planId] : undefined,
-    session_name: sessionName,
-    workout_statuses: includeAll
-      ? ["completed", "cancelled", "in_progress", "planned"]
-      : undefined,
-    limit: 8,
-    offset,
-  });
+  const home = dashboard.home;
+  const today = new Intl.DateTimeFormat("en-CA").format(new Date());
+  const thisWeek = weekOf(today);
+  const [open, setOpen] = useState<string | undefined>(initialWorkoutId);
+  // Opened on one workout (from a record): the list starts at its date.
   const direct = useAsync(
     () =>
       initialWorkoutId
@@ -58,49 +95,60 @@ export function WorkoutHistoryView({
         : Promise.resolve(undefined),
     [client, initialWorkoutId],
   );
+  const anchor = direct.data?.workouts.find(
+    (w) => w.workout_id === initialWorkoutId,
+  )?.date;
+  const [fromNewest, setFromNewest] = useState(false);
+  const to = fromNewest ? undefined : anchor;
+  const [offset, setOffset] = useState(0);
+  const [shown, setShown] = useState<ViewWorkoutDetail[]>([]);
+  const waiting = !!initialWorkoutId && direct.loading;
+  const history = useWorkoutHistory(client, {
+    ...(to ? { to } : {}),
+    // A query that waits for the anchor would only be thrown away.
+    ...(waiting ? { limit: 1 } : { limit: PAGE }),
+    offset,
+  });
+  // Pages add up; a new starting point starts over.
   useEffect(() => {
-    if (initialWorkoutId) void client.displayMode("fullscreen");
-  }, [client, initialWorkoutId]);
-  const selected = (
-    selectedId === initialWorkoutId && direct.data
-      ? direct.data.workouts
-      : history.data?.workouts
-  )?.find((w) => w.workout_id === selectedId);
-  const open = (id?: string) => {
-    void client.displayMode("fullscreen");
-    setExpanded(true);
-    setSelectedId(id);
-  };
-  const close = () => {
-    void client.displayMode("inline");
-    setExpanded(false);
-    setSelectedId(undefined);
-    setPeriod({});
-    setSessionName(undefined);
-    setPlanId(undefined);
-    setIncludeAll(false);
     setOffset(0);
-  };
-  const filter = (update: () => void) => {
-    setOffset(0);
-    setSelectedId(undefined);
-    update();
-  };
+    setShown([]);
+  }, [to]);
+  useEffect(() => {
+    const page = history.data?.workouts;
+    if (!page || waiting) return;
+    setShown((current) => {
+      const known = new Set(current.map((w) => w.workout_id));
+      return offset === 0
+        ? page
+        : [...current, ...page.filter((w) => !known.has(w.workout_id))];
+    });
+  }, [history.data, offset, waiting]);
+
+  const recordWorkouts = new Set(home.records.map((r) => r.workout_id));
+  const recordAt = (workoutId: string, exerciseId: string) =>
+    home.records.some(
+      (r) => r.workout_id === workoutId && r.exercise_id === exerciseId,
+    );
+  // The workout asked for is listed even when the list leaves it out (an
+  // open or cancelled one), in its place by date.
+  const asked = direct.data?.workouts.find(
+    (w) => w.workout_id === initialWorkoutId,
+  );
+  const rows =
+    asked &&
+    !fromNewest &&
+    !shown.some((w) => w.workout_id === asked.workout_id)
+      ? [...shown, asked].sort((a, b) => b.date.localeCompare(a.date))
+      : shown;
+  const selected = rows.find((w) => w.workout_id === open);
   useModelContext(
     client,
     selected
-      ? `Arnold zeigt das Training „${selected.title}“ am ${selected.date}, workout_id ${selected.workout_id}, Status ${selected.status_label}. Gespeicherte Sätze: ${JSON.stringify(selected.exercises.map((block) => ({ exercise: block.name, sets: block.sets })))}. Die Karte zeigt diese Werte bereits. Für Korrekturen aktuelle Revision mit get_workout lesen.`
-      : `Arnold zeigt den Trainingsverlauf${history.data ? ` mit ${history.data.total} Treffern` : ""}. Der Nutzer kann ein Training öffnen oder im Chat nach einem Datum fragen.`,
+      ? `Arnold zeigt im Verlauf das Training „${selected.title}“ am ${selected.date}, workout_id ${selected.workout_id}. Gespeicherte Sätze: ${JSON.stringify(selected.exercises.map((block) => ({ exercise: block.name, sets: block.sets })))}. Die Karte zeigt diese Werte bereits. Für Korrekturen aktuelle Revision mit get_workout lesen.`
+      : `Arnold zeigt alle Einheiten nach Wochen${history.data ? `, ${history.data.total} insgesamt` : ""}. Der Nutzer kann eine Einheit aufklappen oder im Chat nach einem Datum fragen.`,
   );
-  if (selectedId === initialWorkoutId && initialWorkoutId && direct.loading)
-    return <CardSkeleton />;
-  if (selectedId === initialWorkoutId && initialWorkoutId && direct.error)
-    return (
-      <RecoveryCard
-        recovery={direct.failure?.recovery ?? "retry_same_request"}
-        onAction={direct.reload}
-      />
-    );
+
   if (history.error)
     return (
       <RecoveryCard
@@ -108,252 +156,142 @@ export function WorkoutHistoryView({
         onAction={history.reload}
       />
     );
-  if (!history.data) return <CardSkeleton />;
-  if (selectedId)
-    return (
-      <ArnoldCard
-        className="ac-fullscreen workout-detail"
-        label="Trainingsverlauf"
-        title={selected?.title ?? "Training nicht in dieser Auswahl"}
-        subtitle={
-          selected
-            ? `${dateLabel(selected.date, true)} · ${selected.status_label}`
-            : "Passe die Auswahl an, um dieses Training zu finden."
-        }
-      >
-        {selected?.notes && <p className="ac-text">{selected.notes}</p>}
-        {selected?.exercises.map((block) => (
-          <section className="ac-exercise-detail" key={block.exercise_id}>
-            <h3 className="ac-section-title">{block.name}</h3>
-            {block.retired && (
-              <p className="ac-caption">Inzwischen ausgemustert</p>
-            )}
-            {block.mixed_load_basis && (
-              <p className="ac-caption">
-                Die Gewichtsangabe steht direkt an jedem Satz.
-              </p>
-            )}
-            <ol className="ac-set-rows">
-              {block.sets.map((set) => (
-                <li
-                  key={set.set_id}
-                  className={set.voided ? "is-voided" : undefined}
-                >
-                  <span>
-                    <strong>{formatSetLine(set)}</strong>
-                    <small>
-                      {SET_TYPE_LABEL[set.set_type]} {set.set_number}
-                      {formatExecution(set) ? ` · ${formatExecution(set)}` : ""}
-                      {set.voided ? " · Verworfen" : ""}
-                      {set.rir !== null ? ` · RIR ${set.rir}` : ""}
-                      {set.rpe !== null ? ` · RPE ${set.rpe}` : ""}
-                    </small>
-                    {set.notes && <small>{set.notes}</small>}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          </section>
-        ))}
-        <CardActions
-          primary={{
-            label: "Zur Trainingsliste",
-            onClick: () => setSelectedId(undefined),
-          }}
-          secondary={{ label: "Zurück zum Chat", onClick: close }}
-        />
-      </ArnoldCard>
-    );
+  if (!history.data || waiting || (!shown.length && history.loading && !asked))
+    return <CardSkeleton />;
+
+  const weeks = new Map<string, ViewWorkoutDetail[]>();
+  for (const workout of rows) {
+    const start = weekOf(workout.date);
+    weeks.set(start, [...(weeks.get(start) ?? []), workout]);
+  }
+  const goal = home.streak.weekly_goal;
+  const weekCount = (start: string, rows: number) => {
+    const days = home.streak.weeks.find(
+      (w) => w.week_start === start,
+    )?.training_days;
+    if (days === undefined)
+      return `${rows} ${rows === 1 ? "Einheit" : "Einheiten"}`;
+    return goal
+      ? `${days} von ${goal} Tagen`
+      : `${days} ${days === 1 ? "Trainingstag" : "Trainingstage"}`;
+  };
+  const total = history.data.total;
+
   return (
-    <ArnoldCard
-      className={expanded ? "ac-fullscreen" : ""}
-      label="Dein Verlauf"
-      title={
-        history.data.total
-          ? "Deine letzten Trainings"
-          : "Hier beginnt dein Trainingsverlauf"
-      }
-      subtitle={
-        history.data.total
-          ? `${history.data.total} ${history.data.total === 1 ? "Training gefunden" : "Trainings gefunden"}`
-          : "Dein erstes gespeichertes Training erscheint hier."
-      }
-      busy={history.loading}
-    >
-      {expanded && (
-        <div className="ac-field">
-          <ChipGroup
-            label="Training auswählen"
-            options={[
-              { value: "all", label: "Alle Trainings" },
-              ...dashboard.session_names.map((name) => ({
-                value: name,
-                label: name,
-              })),
-            ]}
-            value={sessionName ?? "all"}
-            onChange={(value) =>
-              filter(() => setSessionName(value === "all" ? undefined : value))
-            }
-          />
-          <ChipGroup
-            label="Trainingsplan auswählen"
-            value={planId ?? "all"}
-            options={[
-              { value: "all", label: "Alle Pläne" },
-              ...dashboard.plan_history.map((plan) => ({
-                value: plan.plan_version_id,
-                label: `${plan.name} · Version ${plan.version_no}`,
-              })),
-            ]}
-            onChange={(value) =>
-              filter(() => setPlanId(value === "all" ? undefined : value))
-            }
-          />
-          <div className="ac-date-range">
-            <label>
-              Von
-              <input
-                type="date"
-                aria-label="Trainings von"
-                value={period.from ?? ""}
-                onChange={(e) =>
-                  filter(() =>
-                    setPeriod((p) => ({
-                      ...p,
-                      from: e.target.value || undefined,
-                    })),
-                  )
-                }
-              />
-            </label>
-            <label>
-              Bis
-              <input
-                type="date"
-                aria-label="Trainings bis"
-                value={period.to ?? ""}
-                onChange={(e) =>
-                  filter(() =>
-                    setPeriod((p) => ({
-                      ...p,
-                      to: e.target.value || undefined,
-                    })),
-                  )
-                }
-              />
-            </label>
-          </div>
-          <button
-            className="ac-switch"
-            role="switch"
-            aria-checked={includeAll}
-            onClick={() => filter(() => setIncludeAll((v) => !v))}
-          >
-            <span>Offene und abgebrochene Trainings zeigen</span>
-            <span className="ac-switch-track" aria-hidden="true">
-              <i />
-            </span>
-          </button>
-        </div>
+    <ArnoldCard aria-label="Alle Einheiten" busy={history.loading}>
+      <DetailHead crumb="Übersicht · Einheiten" onBack={onBack} />
+      <div>
+        <h2 className="ac-title">
+          {total || rows.length ? "Deine Einheiten" : "Noch keine Einheiten"}
+        </h2>
+        <p className="ac-sub">
+          {to
+            ? `Ab ${DAY_MONTH.format(at(to))} zurück`
+            : total
+              ? `${total} ${total === 1 ? "Einheit" : "Einheiten"} gespeichert`
+              : "Dein erstes gespeichertes Training erscheint hier."}
+        </p>
+      </div>
+      {to && (
+        <button
+          type="button"
+          className="ac-link ac-history-newest"
+          onClick={() => setFromNewest(true)}
+        >
+          Neueste Einheiten zeigen
+        </button>
       )}
-      {history.data.workouts.length ? (
-        <ul className="ac-training-list">
-          {history.data.workouts.slice(0, expanded ? 8 : 4).map((workout) => (
-            <li key={workout.workout_id}>
-              <button
-                type="button"
-                className="ac-training-row"
-                aria-label={`${workout.title} am ${dateLabel(workout.date, true)}${recordWorkouts.has(workout.workout_id) ? ", mit Rekord" : ""}`}
-                onClick={() => open(workout.workout_id)}
-              >
-                <span>
-                  <strong>
-                    {workout.title}
-                    {workout.workout_id === newestRecordWorkout ? (
-                      <>
-                        {" "}
-                        <span className="ac-pill">Neuer Rekord</span>
-                      </>
-                    ) : (
-                      recordWorkouts.has(workout.workout_id) && (
-                        <>
-                          {" "}
-                          <span className="ac-record-mark" aria-hidden="true">
-                            <Trophy size={13} />
-                          </span>
-                        </>
-                      )
-                    )}
-                  </strong>
-                  <small>
-                    {dateLabel(workout.date)} · {workout.exercise_count}{" "}
-                    {workout.exercise_count === 1 ? "Übung" : "Übungen"} ·{" "}
-                    {workout.status_label}
-                  </small>
-                </span>
-                <span aria-hidden="true">›</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : expanded ? (
-        <CardNote>
-          Keine Trainings in dieser Auswahl. Wähle einen anderen Zeitraum oder
-          setze die Auswahl zurück.
-        </CardNote>
-      ) : null}
-      {expanded &&
-        (period.from || period.to || sessionName || planId || includeAll) && (
-          <button
-            className="ac-link"
-            onClick={() =>
-              filter(() => {
-                setPeriod({});
-                setSessionName(undefined);
-                setPlanId(undefined);
-                setIncludeAll(false);
-              })
-            }
-          >
-            Auswahl zurücksetzen
-          </button>
-        )}
-      {expanded ? (
-        <>
-          <CardActions
-            primary={
-              history.data.has_more
-                ? {
-                    label: "Weitere Trainings",
-                    onClick: () => setOffset((n) => n + 8),
-                  }
-                : undefined
-            }
-            secondary={
-              offset > 0
-                ? {
-                    label: "Vorherige Trainings",
-                    onClick: () => setOffset((n) => Math.max(0, n - 8)),
-                  }
-                : undefined
-            }
-          />
-          <button type="button" className="ac-link" onClick={close}>
-            Zurück zum Chat
-          </button>
-        </>
-      ) : (
-        <CardActions
-          primary={
-            history.data.total
-              ? { label: "Alle Trainings ansehen", onClick: () => open() }
-              : {
-                  label: "Training ansehen",
-                  onClick: () => void client.openDashboard(),
-                }
-          }
-        />
+      {[...weeks.entries()].map(([start, rows]) => (
+        <section key={start} className="ac-history-week">
+          <h3>
+            <span>{weekLabel(start, thisWeek)}</span>
+            <span>{weekCount(start, rows.length)}</span>
+          </h3>
+          <ul className="ac-history-list">
+            {rows.map((workout) => {
+              const expanded = open === workout.workout_id;
+              const record = recordWorkouts.has(workout.workout_id);
+              return (
+                <li key={workout.workout_id}>
+                  <button
+                    type="button"
+                    className="ac-history-row"
+                    aria-expanded={expanded}
+                    onClick={() =>
+                      setOpen(expanded ? undefined : workout.workout_id)
+                    }
+                  >
+                    <span className="ac-history-date" aria-hidden="true">
+                      <small>{WEEKDAY.format(at(workout.date))}</small>
+                      <b>{at(workout.date).getUTCDate()}</b>
+                    </span>
+                    <span className="ac-history-main">
+                      <strong>
+                        {workout.title}
+                        {record && <span className="ac-pill">Rekord</span>}
+                      </strong>
+                      <small>
+                        <span className="visually-hidden">
+                          {DAY_MONTH.format(at(workout.date))} ·{" "}
+                        </span>
+                        {workout.exercise_count}{" "}
+                        {workout.exercise_count === 1 ? "Übung" : "Übungen"} ·{" "}
+                        {workout.working_set_count}{" "}
+                        {workout.working_set_count === 1 ? "Satz" : "Sätze"}
+                        {workout.status !== "completed" &&
+                          ` · ${workout.status_label}`}
+                      </small>
+                    </span>
+                    <ChevronDown
+                      size={18}
+                      aria-hidden="true"
+                      className="ac-history-chev"
+                    />
+                  </button>
+                  {expanded && (
+                    <ul
+                      className="ac-history-exercises"
+                      aria-label={`Übungen ${workout.title}`}
+                    >
+                      {workout.exercises.map((block) => {
+                        const line = exerciseLine(block);
+                        if (!line) return null;
+                        return (
+                          <li key={`${block.exercise_order}`}>
+                            <span>
+                              {block.name}
+                              {recordAt(
+                                workout.workout_id,
+                                block.exercise_id,
+                              ) && (
+                                <Trophy
+                                  size={13}
+                                  aria-label="Rekord"
+                                  className="ac-history-trophy"
+                                />
+                              )}
+                            </span>
+                            <span>{line}</span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ))}
+      {history.data.has_more && (
+        <button
+          type="button"
+          className="ac-btn secondary"
+          disabled={history.loading}
+          onClick={() => setOffset((n) => n + PAGE)}
+        >
+          Ältere Einheiten
+        </button>
       )}
     </ArnoldCard>
   );

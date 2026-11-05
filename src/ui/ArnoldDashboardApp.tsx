@@ -149,7 +149,11 @@ export function ArnoldDashboardApp({
     );
 
   // The views behind the start screen tiles bring their own back button.
-  const ownBack = card === "stats" || card === "goals" || card === "records";
+  const ownBack =
+    card === "stats" ||
+    card === "goals" ||
+    card === "records" ||
+    card === "history";
   const goBack = trail.length > 1 ? back : undefined;
   const backLink =
     trail.length > 1 && !ownBack ? (
@@ -212,6 +216,7 @@ export function ArnoldDashboardApp({
           initialWorkoutId={
             target.workout_id ?? initial.focus?.workout_id ?? undefined
           }
+          onBack={goBack}
         />
       )}
       {card === "plan" && (
