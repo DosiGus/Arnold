@@ -319,10 +319,18 @@ export function requestExercises(draft: Draft) {
   ];
 }
 
-/** A weight as short as it stays unambiguous: two dumbbells read "2 × 22 kg". */
+/**
+ * A weight as short as it stays unambiguous, for the right column of a row:
+ * two dumbbells read "2 × 22 kg", a machine its display ("45 kg"), added
+ * weight "+10 kg". Unloaded help keeps its word, because "20 kg" would read
+ * as the opposite.
+ */
 export function compactLoad(load_kg: number, c: SetConventions): string {
+  const kg = `${formatNumber(load_kg, 2)} kg`;
   if (c.load_basis === "per_implement" && c.implement_count === 2)
-    return `2 × ${formatNumber(load_kg, 2)} kg`;
+    return `2 × ${kg}`;
+  if (c.load_basis === "machine_display") return kg;
+  if (c.load_basis === "added") return `+${kg}`;
   return formatLoad({ load_kg, load_basis: c.load_basis });
 }
 

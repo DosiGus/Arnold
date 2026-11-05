@@ -5,6 +5,7 @@ import {
 } from "../../src/server/plan/fixture";
 import { createFixtureOnboarding } from "../../src/server/onboarding/fixture";
 import { demoHistoryDataset } from "../../src/server/plan/demo-history";
+import { newTrackerDataset } from "../../src/server/account/catalog";
 /**
  * Fixture servers for the Arnold v2 browser tests.
  *
@@ -120,6 +121,14 @@ createHttpApp({ ...common, workoutRuntime: createFixturePlanning() }).listen(
   8805,
   "127.0.0.1",
 );
+
+/** A setup on a new tracker with the starter catalog: start weights. */
+createHttpApp({
+  ...common,
+  workoutRuntime: createFixtureOnboarding({
+    dataset: newTrackerDataset(planFixtureDataset("empty").config.tracker_id),
+  }),
+}).listen(8806, "127.0.0.1");
 
 /** A short-lived setup, for the expiry and restart states. */
 createHttpApp({

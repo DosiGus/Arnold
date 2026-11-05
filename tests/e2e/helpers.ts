@@ -74,7 +74,7 @@ export async function setupMenu(page: Page, entry: string) {
 }
 export const next = (page: Page) =>
   wizard(page).getByRole("button", { name: "Weiter", exact: true }).click();
-export async function fillProfile(page: Page) {
+export async function fillProfile(page: Page, known: { bench?: string } = {}) {
   const main = wizard(page);
   await main
     .getByRole("button", { name: /^Plan mit Arnold erstellen/ })
@@ -91,6 +91,17 @@ export async function fillProfile(page: Page) {
   await next(page);
   await choose(page, "Fitnessstudio");
   await next(page);
+  // Someone with training behind them in a gym is asked for known weights.
+  await expect(
+    main.getByRole("heading", { name: "Kennst du deine Gewichte?" }),
+  ).toBeVisible();
+  if (known.bench) {
+    await main.getByRole("textbox", { name: "Bankdrücken" }).fill(known.bench);
+    await next(page);
+  } else
+    await main
+      .getByRole("button", { name: "Überspringen", exact: true })
+      .click();
   await expect(
     main.getByRole("heading", { name: "Deine Wünsche für den Plan" }),
   ).toBeVisible();

@@ -609,3 +609,50 @@
     -webkit-backdrop-filter: none;
   }
 }
+/* Plan proposal: start weights, the "Startgewichte" switch on top. */
+.ac-proposal {
+  display: grid;
+  gap: 0.75rem;
+}
+.ac-proposal-feel {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-radius: var(--ac-radius-inner);
+  background: var(--soft);
+}
+.ac-proposal-feel-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.ac-segment {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 62.4375rem;
+  background: var(--surface-strong);
+}
+.arnold-cards .ac-segment button {
+  min-height: var(--ac-tap);
+  border: 0;
+  border-radius: 62.4375rem;
+  background: none;
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.arnold-cards .ac-segment button[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--on-ink);
+}
+.ac-sessions .ac-proposal-day {
+  padding: 0 0.875rem 0.375rem;
+}
+.ac-proposal-day .ac-day-values strong[data-estimate] {
+  color: var(--muted);
+}
+.ac-proposal-day .ac-day-panel {
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+}

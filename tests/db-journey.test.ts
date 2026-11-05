@@ -408,7 +408,9 @@ describe("signed-in users with the database", () => {
     );
     const day = context.proposals[0];
     expect(day.session_name).toBe("Einheit 1");
-    expect(day.exercises[0].missing).toContain("load");
+    // The setup's plan carries Arnold's start weight: nothing to fill in.
+    expect(day.exercises[0].missing).toEqual([]);
+    expect(day.exercises[0].sets[0].load_kg).toBeGreaterThan(0);
     const session = {
       timezone: "Europe/Berlin",
       plan_version_id: day.plan_version_id,

@@ -31,7 +31,7 @@ export default defineConfig({
       // 8795 writable workout logger, 8796 plan editor, 8797 plan first run,
       // 8798/8799 plan activation and conflict, 8800-8803 onboarding,
       // 8804 start screen with invented history and goals, 8805 plan change
-      // from the training card.
+      // from the training card, 8806 setup with the starter catalog.
       command: "npx tsx tests/fixtures/arnold-server.ts",
       url: "http://127.0.0.1:8792/health",
       reuseExistingServer: false,

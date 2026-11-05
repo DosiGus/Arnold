@@ -7,6 +7,7 @@ export type Page =
   | "experience"
   | "rhythm"
   | "environment"
+  | "loads"
   | "wishes"
   | "review";
 
@@ -23,6 +24,7 @@ export const TITLE: Record<Page, string> = {
   experience: "Wie lange trainierst du schon?",
   rhythm: "Wie oft und wie lange?",
   environment: "Wo trainierst du?",
+  loads: "Kennst du deine Gewichte?",
   wishes: "Deine Wünsche für den Plan",
   review: "So wird dein Plan",
 };
@@ -34,6 +36,7 @@ export const PAGE_FIELD: Record<Page, string[]> = {
   experience: ["training.experience"],
   rhythm: ["training.days_per_week", "training.session_minutes"],
   environment: ["training.environment"],
+  loads: [],
   wishes: [],
   review: [],
 };
@@ -75,23 +78,45 @@ export function initialProfileQuestion(profile: OnboardingProfile): Page {
   return anyAnswer ? firstMissing : "person";
 }
 
+/**
+ * Whether the setup asks for known weights: only someone with some training
+ * behind them, in a gym, knows a bench press or lat pulldown weight. Everyone
+ * else gets Arnold's estimate without an extra question.
+ */
+export function asksForLoads(
+  experience: string | null | undefined,
+  environment: string | null | undefined,
+): boolean {
+  return (
+    !!experience &&
+    experience !== "beginner" &&
+    (environment === "gym" || environment === "mixed")
+  );
+}
+
 /** The page after `current`; an edit started from the review returns there. */
-export function nextPage(current: Page, fromReview: boolean): Page {
+export function nextPage(
+  current: Page,
+  fromReview: boolean,
+  withLoads = false,
+): Page {
   if (fromReview) return "review";
   if (current === "person") return "goal";
   const index = QUESTIONS.indexOf(current);
   if (index >= 0 && index < QUESTIONS.length - 1) return QUESTIONS[index + 1];
-  if (current === "environment") return "wishes";
+  if (current === "environment") return withLoads ? "loads" : "wishes";
+  if (current === "loads") return "wishes";
   return "review";
 }
 
 /** The page before `current`, or null on the first page. */
-export function previousPage(current: Page): Page | null {
+export function previousPage(current: Page, withLoads = false): Page | null {
   if (current === "person") return null;
   if (current === "goal") return "person";
   const index = QUESTIONS.indexOf(current);
   if (index > 0) return QUESTIONS[index - 1];
-  if (current === "wishes") return "environment";
+  if (current === "loads") return "environment";
+  if (current === "wishes") return withLoads ? "loads" : "environment";
   if (current === "review") return "wishes";
   return null;
 }

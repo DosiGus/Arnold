@@ -3,15 +3,15 @@ import type { OnboardingState } from "../../shared/onboarding-contract";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
 import { OWN_PLAN_MESSAGE, useOnboarding } from "../hooks/useOnboarding";
 import { useModelContext } from "../hooks/useModelContext";
-import { Check, ChevronDown } from "lucide-react";
+import { Check } from "lucide-react";
 import { ProfileStep, SetupHead, WelcomeStep } from "../components/onboarding";
+import { ProposalWeights } from "../components/onboarding/proposal-weights";
 import { formatNumber } from "../format";
 import {
   ArnoldCard,
   CardActions,
   CardNote,
   CardSkeleton,
-  Rows,
 } from "../components/cards";
 import { RecoveryNotice, RecoveryCard } from "../components/recovery";
 import { TrainingPlanEditorView } from "./TrainingPlanEditorView";
@@ -37,7 +37,6 @@ export function OnboardingView({
   const [cancelling, setCancelling] = useState(false);
   const [editing, setEditing] = useState(false);
   const [question, setQuestion] = useState("");
-  const [openSession, setOpenSession] = useState(0);
   // B19: switching to the training card takes a round trip. Until it is done
   // the button stays disabled, so a second tap cannot land on this card,
   // open the dashboard again and be lost.
@@ -383,51 +382,13 @@ export function OnboardingView({
         title={confirming ? "Diesen Plan bestätigen?" : "Dein Planvorschlag"}
         subtitle={plan.name}
       >
-        <ul className="ac-sessions" aria-label="Trainingstage deines Plans">
-          {[...plan.sessions]
-            .sort((a, b) => a.session_order - b.session_order)
-            .map((day, i) => {
-              const open = openSession === i;
-              return (
-                <li key={day.session_id} className={open ? "open" : ""}>
-                  <button
-                    type="button"
-                    aria-expanded={open}
-                    onClick={() => setOpenSession(open ? -1 : i)}
-                  >
-                    <span className="ac-session-badge">{i + 1}</span>
-                    <span className="ac-session-text">
-                      <strong>{day.session_name}</strong>
-                      <small>
-                        {day.exercises.length}{" "}
-                        {day.exercises.length === 1 ? "Übung" : "Übungen"}
-                      </small>
-                    </span>
-                    <ChevronDown
-                      size={16}
-                      aria-hidden="true"
-                      className="ac-fold-chevron"
-                    />
-                  </button>
-                  {open && (
-                    <Rows
-                      label={`Übungen ${day.session_name}`}
-                      items={day.exercises.map((ex) => ({
-                        key: ex.plan_item_id,
-                        label: ex.exercise_name,
-                        value:
-                          ex.target_sets && (ex.rep_min || ex.rep_max)
-                            ? `${ex.target_sets} × ${ex.rep_min ?? ex.rep_max}${ex.rep_max && ex.rep_min && ex.rep_max !== ex.rep_min ? `–${ex.rep_max}` : ""}`
-                            : ex.target_sets
-                              ? `${ex.target_sets} Sätze`
-                              : "",
-                      }))}
-                    />
-                  )}
-                </li>
-              );
-            })}
-        </ul>
+        <ProposalWeights
+          client={client}
+          plan={plan}
+          estimates={state.load_estimates}
+          editable={plan.editable && !confirming && !blocked}
+          onChanged={() => onb.reload(false)}
+        />
         {confirming && (
           <p className="ac-text">
             Arnold aktiviert genau diesen Plan. Ändern kannst du ihn später

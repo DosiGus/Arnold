@@ -102,6 +102,16 @@ describe("exerciseSummary", () => {
       exerciseSummary({ conventions: dumbbells, sets: sets(3, 12, 22.5) }).load,
     ).toBe("2 × 22,5 kg");
   });
+  it("keeps machine and added weight short", () => {
+    const machine = { ...total, load_basis: "machine_display" as const };
+    const added = { ...total, load_basis: "added" as const };
+    expect(
+      exerciseSummary({ conventions: machine, sets: sets(3, 10, 45) }).load,
+    ).toBe("45 kg");
+    expect(
+      exerciseSummary({ conventions: added, sets: sets(3, 8, 10) }).load,
+    ).toBe("+10 kg");
+  });
   it("names bodyweight and never zeroes an unknown weight", () => {
     expect(
       exerciseSummary({ conventions: bodyweight, sets: sets(4, 8, null) }).load,

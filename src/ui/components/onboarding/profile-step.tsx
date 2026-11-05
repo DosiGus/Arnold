@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type {
+  KnownLoads,
   OnboardingProfile,
   OnboardingProfilePatch,
   OnboardingProgress,
@@ -17,6 +18,7 @@ import {
   PAGE_FIELD,
   QUESTIONS,
   TITLE,
+  asksForLoads,
   initialProfileQuestion,
   nextPage,
   previousPage,
@@ -27,6 +29,7 @@ import { SetupHead } from "./setup-head";
 import { renderPersonPage } from "./person-page";
 import { renderQuestionPage } from "./question-page";
 import { renderWishesPage } from "./wishes-page";
+import { renderLoadsPage } from "./loads-page";
 import { renderReviewPage } from "./review-page";
 
 /**
@@ -82,6 +85,7 @@ export function ProfileStep({
   const [days, setDays] = useState<number | undefined>();
   const [minutesText, setMinutesText] = useState("");
   const [environment, setEnvironment] = useState<string | undefined>();
+  const [loads, setLoads] = useState<KnownLoads>({});
   const [wishes, setWishes] = useState<WishesDraft>({
     training_days: [],
     split: undefined,
@@ -112,6 +116,7 @@ export function ProfileStep({
       training.session_minutes !== null ? String(training.session_minutes) : "",
     );
     setEnvironment(training.environment ?? undefined);
+    setLoads(training.known_loads ?? {});
     setWishes({
       training_days: training.training_days ?? [],
       split: training.split,
@@ -142,6 +147,12 @@ export function ProfileStep({
           : page === "environment"
             ? !!environment
             : true;
+
+  // Asked on the strength of the answers on screen, saved or not yet.
+  const withLoads = asksForLoads(
+    experience ?? training.experience,
+    environment ?? training.environment,
+  );
 
   const go = (next: Page, edit = false) => {
     setFromReview(edit);
@@ -175,6 +186,10 @@ export function ProfileStep({
         return { training: { days_per_week: days, session_minutes: minutes } };
       case "environment":
         return { training: { environment: environment as never } };
+      case "loads":
+        return {
+          training: { known_loads: Object.keys(loads).length ? loads : null },
+        };
       case "wishes":
         return {
           training: {
@@ -199,7 +214,11 @@ export function ProfileStep({
       setError("Wähle eine Antwort aus.");
       return;
     }
-    if (!skip && page === "person" && invalidNumbers.length) {
+    if (
+      !skip &&
+      (page === "person" || page === "loads") &&
+      invalidNumbers.length
+    ) {
       setError("Prüf die markierten Zahlen oder lass das Feld leer.");
       return;
     }
@@ -225,14 +244,14 @@ export function ProfileStep({
         const patch = patchFor(page);
         if (patch && !(await onSave(patch))) return;
       }
-      go(nextPage(page, fromReview));
+      go(nextPage(page, fromReview, withLoads));
     } finally {
       guard.current = false;
     }
   }
   const back = () => {
     if (fromReview) return go("review");
-    const previous = previousPage(page);
+    const previous = previousPage(page, withLoads);
     if (previous) go(previous);
     else onBack();
   };
@@ -262,15 +281,19 @@ export function ProfileStep({
             ? `Angaben · Frage ${questionIndex + 1} von ${QUESTIONS.length}`
             : page === "wishes"
               ? "Wünsche · freiwillig"
-              : "Prüfen"
+              : page === "loads"
+                ? "Angaben · Gewichte"
+                : "Prüfen"
       }
       phase={page === "wishes" ? 1 : page === "review" ? 2 : 0}
       within={
         page === "person"
           ? 0.1
-          : questionIndex >= 0
-            ? (questionIndex + 1) / QUESTIONS.length
-            : 0.6
+          : page === "loads"
+            ? 1
+            : questionIndex >= 0
+              ? (questionIndex + 1) / QUESTIONS.length
+              : 0.6
       }
       onBack={back}
       menu={menu}
@@ -339,6 +362,17 @@ export function ProfileStep({
       minutesOk,
       environment,
       setEnvironment,
+    });
+
+  if (page === "loads")
+    return renderLoadsPage({
+      head,
+      errorNote,
+      actions: actions(true),
+      busy,
+      loads,
+      setLoads,
+      setInvalidNumbers,
     });
 
   if (page === "wishes")

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import {
   Clock,
+  Dumbbell,
   MapPin,
   Pencil,
   Sparkles,
@@ -23,7 +24,7 @@ import {
 } from "../../../shared/onboarding-contract";
 import { CardActions, CardNote } from "../cards";
 import { formatNumber } from "../../format";
-import { ICON, TITLE, type Page } from "./pages";
+import { ICON, TITLE, asksForLoads, type Page } from "./pages";
 
 /**
  * The review in plain words: one sentence for the whole plan, then one row
@@ -90,6 +91,17 @@ export function renderReviewPage({
       ? `${formatNumber(person.body_weight_kg, 1)} kg`
       : null,
   ].filter(Boolean);
+  const known = training.known_loads ?? {};
+  const knownText = (
+    [
+      ["bench-press", "Bankdrücken"],
+      ["squat", "Kniebeuge"],
+      ["lat-pulldown", "Latzug"],
+    ] as const
+  )
+    .filter(([key]) => known[key] !== undefined)
+    .map(([key, name]) => `${name} ${formatNumber(known[key]!, 1)} kg`)
+    .join(" · ");
   const rows: {
     key: string;
     icon: ReactNode;
@@ -132,6 +144,17 @@ export function renderReviewPage({
         : "Noch offen",
       edit: "environment",
     },
+    ...(asksForLoads(training.experience, training.environment)
+      ? [
+          {
+            key: "loads",
+            icon: <Dumbbell size={ICON} />,
+            label: "Deine Gewichte",
+            value: knownText || "Arnold schätzt",
+            edit: "loads" as Page,
+          },
+        ]
+      : []),
     {
       key: "wishes",
       icon: <Sparkles size={ICON} />,

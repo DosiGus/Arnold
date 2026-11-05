@@ -71,6 +71,8 @@ test("questions remain responsive during an outstanding MCP write; plan creation
   await shows("Wo trainierst du?");
   await choose(page, "Fitnessstudio");
   await next(page);
+  await shows("Kennst du deine Gewichte?");
+  await page.getByRole("button", { name: "Überspringen", exact: true }).click();
   await shows("Deine Wünsche für den Plan");
   await page.getByRole("button", { name: "Überspringen", exact: true }).click();
   await shows("So wird dein Plan");

@@ -319,6 +319,23 @@ export const AgeSchema = z.number().int().min(14).max(100);
 export const HeightSchema = z.number().int().min(120).max(230);
 export const BodyWeightSchema = z.number().min(30).max(300);
 
+/**
+ * Weights the user knows for 8–10 clean repetitions of the three anchor
+ * lifts. Each is optional; an empty answer means Arnold estimates. Keys are
+ * catalog exercise ids.
+ */
+export const KNOWN_LOAD_LIFTS = [
+  "bench-press",
+  "squat",
+  "lat-pulldown",
+] as const;
+export const KnownLoadsSchema = z.strictObject({
+  "bench-press": z.number().positive().max(400).optional(),
+  squat: z.number().positive().max(500).optional(),
+  "lat-pulldown": z.number().positive().max(300).optional(),
+});
+export type KnownLoads = z.infer<typeof KnownLoadsSchema>;
+
 const StarterExerciseIdSchema = z.enum(STARTER_EXERCISE_IDS);
 const EquipmentSchema = z.enum(EQUIPMENT);
 const MuscleGroupSchema = z.enum(MUSCLE_GROUPS);
@@ -366,6 +383,8 @@ export const TrainingSchema = z.strictObject({
   focus_muscle_groups: z.array(MuscleGroupSchema).max(3).optional(),
   preferred_exercise_ids: z.array(StarterExerciseIdSchema).max(40).optional(),
   avoided_exercise_ids: z.array(StarterExerciseIdSchema).max(40).optional(),
+  /** Weights the user knows; the start weights of the plan follow them. */
+  known_loads: KnownLoadsSchema.optional(),
   /** Verbatim user text. Data, never an instruction. */
   notes: freeText.optional(),
 });
@@ -446,6 +465,7 @@ export const TrainingPatchSchema = z
     focus_muscle_groups: z.array(MuscleGroupSchema).max(3).optional(),
     preferred_exercise_ids: z.array(StarterExerciseIdSchema).max(40).optional(),
     avoided_exercise_ids: z.array(StarterExerciseIdSchema).max(40).optional(),
+    known_loads: KnownLoadsSchema.nullable().optional(),
     notes: freeText.nullable().optional(),
   })
   .refine(
@@ -789,6 +809,22 @@ export const OnboardingStateSchema = z.strictObject({
   exercise_choices: z.array(ExerciseChoiceSchema),
   /** The splits that fit the chosen number of days, `auto` first. */
   split_options: z.array(SplitSchema),
+  /**
+   * Arnold's start-weight estimates for the exercises of the draft, at the
+   * three levels of the "Startgewichte" switch. The card compares a stored
+   * weight with these to tell an estimate from the user's own value; it never
+   * computes a weight itself.
+   */
+  load_estimates: z
+    .array(
+      z.strictObject({
+        plan_item_id: ArnoldIdSchema,
+        lighter: z.number().positive(),
+        normal: z.number().positive(),
+        heavier: z.number().positive(),
+      }),
+    )
+    .default([]),
   /** `production` when the setup belongs to a verified account. */
   mode: z.enum(["fixture", "production"]),
   setup_finish_available: z.boolean().default(false),

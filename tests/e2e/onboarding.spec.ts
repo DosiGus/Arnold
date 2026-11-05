@@ -391,3 +391,93 @@ test("question cards are operable by keyboard and pass accessibility checks", as
     ),
   ).toBe(true);
 });
+
+test("the plan proposal starts with Arnold's weights, a switch and the user's own", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await openWizard(page, "http://127.0.0.1:8806");
+  await fillProfile(page, { bench: "80" });
+  const main = wizard(page);
+  await expect(main).toContainText("Bankdrücken 80 kg");
+  await main
+    .getByRole("button", { name: "Plan erstellen", exact: true })
+    .click();
+  // The chat leaves every weight empty; Arnold fills them when the draft is stored.
+  const claim = await storedClaim(page);
+  const submitted = await callTool(page, "submit_onboarding_plan_proposal", {
+    ...claim,
+    request_id: crypto.randomUUID(),
+    name: "Ganzkörper",
+    origin: "ai_proposal",
+    sessions: ["A", "B", "C"].map((session_name) => ({
+      session_name,
+      exercises: [
+        { exercise_id: "bench-press", target_sets: 3, rep_min: 8, rep_max: 10 },
+        {
+          exercise_id: "lat-pulldown",
+          target_sets: 3,
+          rep_min: 8,
+          rep_max: 10,
+        },
+        { exercise_id: "pull-up", target_sets: 3, rep_min: 6, rep_max: 8 },
+      ],
+    })),
+  });
+  expect(submitted.ok).toBe(true);
+  await main.getByRole("button", { name: "Nach dem Vorschlag suchen" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Dein Planvorschlag" }),
+  ).toBeVisible();
+
+  const row = (name: string) =>
+    main.locator(".ac-day-row").filter({ hasText: name }).first();
+  const passt = main.getByRole("button", { name: "Passt", exact: true });
+  await expect(passt).toHaveAttribute("aria-pressed", "true");
+  await expect(row("Bankdrücken")).toContainText(/≈ \d/);
+  await expect(row("Klimmzüge")).toContainText("Körpergewicht");
+  const weight = async (name: string) =>
+    Number(
+      ((await row(name).locator("strong").textContent()) ?? "")
+        .replace(/[^\d,]/g, "")
+        .replace(",", "."),
+    );
+  const before = await weight("Latzug");
+
+  // The switch moves every estimate at once.
+  await main.getByRole("button", { name: "Leichter", exact: true }).click();
+  await expect(
+    main.getByRole("button", { name: "Leichter", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  expect(await weight("Latzug")).toBeLessThan(before);
+
+  // A weight set by hand is the user's and stays when the switch moves.
+  await row("Bankdrücken").locator(".ac-day-head").click();
+  await row("Bankdrücken")
+    .getByRole("textbox", { name: /^Gewicht/ })
+    .fill("77,5");
+  await row("Bankdrücken")
+    .getByRole("button", { name: "Fertig", exact: true })
+    .click();
+  await expect(row("Bankdrücken")).toContainText("Von dir angepasst");
+  await expect(row("Bankdrücken")).toContainText("77,5 kg");
+  await main.getByRole("button", { name: "Schwerer", exact: true }).click();
+  await expect(
+    main.getByRole("button", { name: "Schwerer", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(row("Bankdrücken")).toContainText("77,5 kg");
+  expect(await weight("Latzug")).toBeGreaterThan(before);
+
+  // What the card shows is what the plan holds.
+  const state = await callTool(page, "get_onboarding_state", claim);
+  const bench = state.plan.sessions[0].exercises.find(
+    (e: { exercise_id: string }) => e.exercise_id === "bench-press",
+  );
+  expect(bench.target_load_kg).toBe(77.5);
+  const accessibility = await new AxeBuilder({ page })
+    .include('main[data-card="onboarding"]')
+    .analyze();
+  expect(accessibility.violations).toEqual([]);
+  expect(errors).toEqual([]);
+});

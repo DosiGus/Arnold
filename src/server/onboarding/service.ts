@@ -98,6 +98,7 @@ import {
   type OnboardingMachineState,
   type TransitionEffect,
 } from "./state-machine.js";
+import { loadEstimates, withStartLoads } from "./start-loads.js";
 
 export class OnboardingError extends Error {
   constructor(
@@ -576,6 +577,9 @@ export class OnboardingService {
       handoff,
       allowed_events: expired ? ["CANCEL"] : allowedEvents(machine),
       exercise_choices: exerciseChoices(session.profile),
+      load_estimates: plan
+        ? loadEstimates(plan, session.profile, await this.catalog())
+        : [],
       split_options: splitsForDays(session.profile.training.days_per_week),
       mode: this.mode,
       setup_finish_available: this.options.setupFinishAvailable ?? false,
@@ -1086,7 +1090,13 @@ export class OnboardingService {
           ...(training.primary_goal !== null
             ? { goal_key: training.primary_goal }
             : {}),
-          sessions: input.sessions,
+          // Weights the chat was not told are Arnold's estimate, so the
+          // first training starts with numbers instead of gaps.
+          sessions: withStartLoads(
+            input.sessions,
+            current.session.profile,
+            await this.catalog(),
+          ),
           ...(input.custom_exercises?.length
             ? { custom_exercises: input.custom_exercises }
             : {}),
