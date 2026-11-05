@@ -47,7 +47,9 @@ function weekLabel(start: string, thisWeek: string) {
 }
 
 /** One exercise of a saved workout as one line: "3 × 8 · 62,5 kg". */
-function exerciseLine(block: ViewWorkoutDetail["exercises"][number]) {
+export function historyExerciseLine(
+  block: ViewWorkoutDetail["exercises"][number],
+) {
   const sets = block.sets.filter((s) => !s.voided && s.set_type === "working");
   if (!sets.length) return undefined;
   const first = sets[0];
@@ -254,7 +256,7 @@ export function WorkoutHistoryView({
                       aria-label={`Übungen ${workout.title}`}
                     >
                       {workout.exercises.map((block) => {
-                        const line = exerciseLine(block);
+                        const line = historyExerciseLine(block);
                         if (!line) return null;
                         return (
                           <li key={`${block.exercise_order}`}>

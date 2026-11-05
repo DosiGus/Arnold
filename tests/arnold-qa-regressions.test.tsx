@@ -10,21 +10,13 @@ import {
   buildDashboardView,
   buildExerciseProgressView,
 } from "../src/server/arnold-presenter";
-import { MetricCard } from "../src/ui/components";
+import { LOAD_BASIS_LABEL, metricDisplay } from "../src/ui/format";
 import { ProgressChart } from "../src/ui/components/TrendChart";
 import { ArnoldDatasetSchema } from "../src/shared/arnold-schema-v1";
 import { dataset, exercise, set, workout } from "./fixtures/arnold-analytics";
 import { EXERCISES, fullDataset } from "./fixtures/arnold-dashboard";
 
 const CTX = { generatedAt: "2026-10-25T09:00:00Z" };
-const text = (node: Parameters<typeof renderToStaticMarkup>[0]) =>
-  renderToStaticMarkup(node)
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&#x27;/g, "'")
-    .replace(/&quot;/g, '"')
-    .replace(/&amp;/g, "&")
-    .replace(/\s+/g, " ")
-    .trim();
 
 describe("T3-03: a working-set count is not a volume coverage", () => {
   /** One completed bodyweight working set: countable, but with no derivable load. */
@@ -143,16 +135,16 @@ describe("T3-04: load conventions survive into KPIs and curves", () => {
     );
   });
 
-  it("renders the convention on the card instead of a bare 20 kg", () => {
+  it("names the convention instead of a bare 20 kg", () => {
     const kpi = buildExerciseProgressView(
       dumbbells(),
       CTX,
       "ex-db",
       "max_load",
     ).kpis.find((k) => k.key === "max_comparable_load")!;
-    const output = text(<MetricCard metric={kpi} />);
-    expect(output).toContain("kg pro Hantel");
-    expect(output).not.toContain("per_implement");
+    // The progress card names the convention next to the number.
+    expect(LOAD_BASIS_LABEL[kpi.load_basis!]).toContain("pro Hantel");
+    expect(metricDisplay(kpi)).toMatchObject({ unit: "kg", known: true });
   });
 
   it("shows a caveat on a value the engine marked valid", () => {
@@ -166,7 +158,8 @@ describe("T3-04: load conventions survive into KPIs and curves", () => {
     ).kpis.find((k) => k.key === "best_estimated_1rm")!;
     expect(kpi.status).toBe("valid");
     expect(kpi.note).toBeTruthy();
-    expect(text(<MetricCard metric={kpi} />)).toContain("nicht als Gesamtlast");
+    // The progress card shows the note under the value.
+    expect(kpi.note).toContain("nicht als Gesamtlast");
   });
 
   it("names the convention on the chart as well", () => {
@@ -189,7 +182,7 @@ describe("T3-04: load conventions survive into KPIs and curves", () => {
       "max_load",
     ).kpis.find((k) => k.key === "max_comparable_load")!;
     expect(kpi.load_basis).toBe("total");
-    expect(text(<MetricCard metric={kpi} />)).not.toContain("pro Hantel");
+    expect(LOAD_BASIS_LABEL[kpi.load_basis!]).not.toContain("pro Hantel");
   });
 });
 
@@ -243,6 +236,6 @@ describe("unknown values still never render as a confident zero", () => {
       (k) => k.key === "comparable_volume",
     )!;
     expect(kpi.value).toBeNull();
-    expect(text(<MetricCard metric={kpi} />)).toContain("–");
+    expect(metricDisplay(kpi).value).toBe("–");
   });
 });

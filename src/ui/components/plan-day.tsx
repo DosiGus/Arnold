@@ -6,7 +6,7 @@ import type {
   SessionProposal,
 } from "../../shared/workout-contract";
 import { NumberField } from "./workout-editor";
-import { Stepper } from "./stepper";
+import { PlusMinusRow } from "./plus-minus-row";
 import {
   exerciseSummary,
   isBodyweight,
@@ -363,7 +363,7 @@ function Values({
   if (exercise.each)
     return (
       <div className="ac-day-values-edit">
-        <Stepper
+        <PlusMinusRow
           label="Sätze"
           disabled={disabled}
           minusDisabled={all.length <= 1}
@@ -386,7 +386,7 @@ function Values({
           <output className="ac-day-count" aria-live="polite">
             {all.length}
           </output>
-        </Stepper>
+        </PlusMinusRow>
         <ol className="ac-day-sets">
           {all.map((round, index) => (
             <li key={index}>
@@ -431,7 +431,7 @@ function Values({
 
   return (
     <div className="ac-day-values-edit">
-      <Stepper
+      <PlusMinusRow
         label="Sätze"
         disabled={disabled}
         minusDisabled={all.length <= 1}
@@ -447,8 +447,8 @@ function Values({
         <output className="ac-day-count" aria-live="polite">
           {all.length}
         </output>
-      </Stepper>
-      <Stepper
+      </PlusMinusRow>
+      <PlusMinusRow
         label={repsLabel}
         disabled={disabled}
         minusDisabled={!reps || reps <= 1}
@@ -467,14 +467,14 @@ function Values({
             onChange(setUniform(exercise, { reps: value ?? 0 }))
           }
         />
-      </Stepper>
+      </PlusMinusRow>
       {bodyweight ? (
         <div className="ac-day-step">
           <span className="ac-day-step-label">Gewicht</span>
           <span className="ac-day-step-static">Körpergewicht</span>
         </div>
       ) : (
-        <Stepper
+        <PlusMinusRow
           label={loadLabel}
           disabled={disabled}
           minusDisabled={load === null || load <= 0}
@@ -507,7 +507,7 @@ function Values({
               onChange(setUniform(exercise, { load_kg: value }))
             }
           />
-        </Stepper>
+        </PlusMinusRow>
       )}
       {all.length > 1 && (
         <button

@@ -16,7 +16,7 @@ import {
   TRAINING_GOALS,
 } from "../../../shared/onboarding-contract";
 import { OptionTiles } from "./controls";
-import { Stepper } from "../stepper";
+import { PlusMinusRow } from "../plus-minus-row";
 import type { PageFrame } from "./page-frame";
 import { MINUTES_STEP, RHYTHM_DEFAULT, TITLE, type Page } from "./pages";
 
@@ -113,7 +113,7 @@ export function renderQuestionPage({
       );
     content = (
       <div className="ac-rhythm">
-        <Stepper
+        <PlusMinusRow
           label="Tage pro Woche"
           disabled={busy}
           minusDisabled={shownDays <= DAYS_PER_WEEK_MIN}
@@ -124,8 +124,8 @@ export function renderQuestionPage({
           <output className="ac-day-count" aria-live="polite">
             {shownDays}
           </output>
-        </Stepper>
-        <Stepper
+        </PlusMinusRow>
+        <PlusMinusRow
           label="Minuten pro Training"
           disabled={busy}
           minusDisabled={shownMinutes <= SESSION_MINUTES_MIN}
@@ -136,7 +136,7 @@ export function renderQuestionPage({
           <output className="ac-day-count" aria-live="polite">
             {shownMinutes} Min.
           </output>
-        </Stepper>
+        </PlusMinusRow>
         <p className="ac-rhythm-hint">
           Mit Pausen. Arnold plant die Sätze so, dass es passt.
         </p>

@@ -13,11 +13,10 @@ import {
   buildWorkoutHistoryView,
 } from "../src/server/arnold-presenter";
 import { HomeCard } from "../src/ui/views/HomeCard";
-import { MetricCard, RecordRow, SetList } from "../src/ui/components";
-import {
-  WeeklyTrendChart,
-  ProgressChart,
-} from "../src/ui/components/TrendChart";
+import { recordValue } from "../src/ui/views/HomeCard";
+import { historyExerciseLine } from "../src/ui/views/WorkoutHistoryView";
+import { ProgressChart } from "../src/ui/components/TrendChart";
+import { metricDisplay } from "../src/ui/format";
 import { ArnoldDatasetSchema } from "../src/shared/arnold-schema-v1";
 import {
   EXERCISES,
@@ -126,87 +125,76 @@ describe("empty and template states in the UI", () => {
 });
 
 describe("weights and execution modes in the UI", () => {
+  // "Alle Einheiten" shows each exercise of a saved workout as one line.
   const history = buildWorkoutHistoryView(fullDataset(), CONTEXT);
-  const workout = history.workouts.find((w) => w.workout_id === "w-test-3")!;
+  const block = (workoutId: string, exerciseId: string) =>
+    history.workouts
+      .find((w) => w.workout_id === workoutId)!
+      .exercises.find((e) => e.exercise_id === exerciseId)!;
 
   it("labels a per-implement dumbbell load as kg pro Hantel", () => {
-    const block = workout.exercises.find(
-      (e) => e.exercise_id === EXERCISES.row,
-    )!;
-    const output = text(<SetList sets={block.sets} />);
-    expect(output).toContain("20 kg pro Hantel");
-    expect(output).not.toContain("per_implement");
+    const line = historyExerciseLine(block("w-test-3", EXERCISES.row));
+    expect(line).toContain("20 kg pro Hantel");
+    expect(line).not.toContain("per_implement");
   });
 
-  it("shows left and right instead of a merged number", () => {
-    const block = workout.exercises.find(
-      (e) => e.exercise_id === EXERCISES.row,
-    )!;
-    const output = text(<SetList sets={block.sets} />);
-    expect(output).toContain("Rechts");
-    expect(output).toContain("Links");
+  it("counts left and right of one set as one set, not two", () => {
+    const row = block("w-test-3", EXERCISES.row);
+    expect(row.sets.map((s) => s.side).sort()).toEqual(["left", "right"]);
+    expect(historyExerciseLine(row)).toMatch(/^1 × 10 /);
   });
 
-  it("renders each set of a workout with its own weight and reps", () => {
+  it("keeps different reps and weights instead of one averaged set", () => {
     const first = buildWorkoutHistoryView(fullDataset(), CONTEXT, {
       filter: { from: "2026-09-07", to: "2026-09-07" },
     }).workouts[0];
     const bench = first.exercises.find(
       (e) => e.exercise_id === EXERCISES.bench,
     )!;
-    const output = text(<SetList sets={bench.sets} />);
     // The Task 003 example: 60 kg x 10, 70 kg x 8, 70 kg x 7.
-    expect(output).toMatch(/1\s+60 kg\s+10/);
-    expect(output).toMatch(/2\s+70 kg\s+8/);
-    expect(output).toMatch(/3\s+70 kg\s+7/);
+    expect(historyExerciseLine(bench)).toBe("3 Sätze · 10, 8, 7 · 60–70 kg");
   });
 
   it("names a bodyweight set rather than printing 0 kg", () => {
-    const free = history.workouts.find((w) => w.workout_id === "w-test-5")!;
-    const block = free.exercises.find(
-      (e) => e.exercise_id === EXERCISES.pullup,
-    )!;
-    const output = text(<SetList sets={block.sets} />);
-    expect(output).toContain("Körpergewicht");
-    expect(output).not.toContain("0 kg");
+    const line = historyExerciseLine(block("w-test-5", EXERCISES.pullup));
+    expect(line).toContain("Körpergewicht");
+    expect(line).not.toContain("0 kg");
   });
 
-  it("marks a warm-up set and a voided set as such", () => {
-    const free = history.workouts.find((w) => w.workout_id === "w-test-5")!;
-    const block = free.exercises.find(
-      (e) => e.exercise_id === EXERCISES.bench,
-    )!;
-    const output = text(<SetList sets={block.sets} />);
-    expect(output).toContain("Aufwärmsatz");
-    expect(output).toContain("Verworfen");
-  });
-
-  it("labels a machine load as a machine reading", () => {
-    const machine = history.workouts.find((w) => w.workout_id === "w-test-4")!;
-    const block = machine.exercises.find(
-      (e) => e.exercise_id === EXERCISES.press,
-    )!;
-    expect(text(<SetList sets={block.sets} />)).toContain("Maschinenanzeige");
+  it("leaves warm-up and voided sets out of the line", () => {
+    const bench = block("w-test-5", EXERCISES.bench);
+    expect(bench.sets.some((s) => s.set_type === "warmup")).toBe(true);
+    expect(bench.sets.some((s) => s.voided)).toBe(true);
+    // Only a warm-up and a voided set: nothing to show, rather than 999 kg.
+    expect(historyExerciseLine(bench)).toBeUndefined();
   });
 
   it("keeps a per-implement record from reading as a total load", () => {
-    const view = buildDashboardView(fullDataset(), CONTEXT);
-    const record = view.records.find((r) => r.exercise_id === EXERCISES.row)!;
-    const output = text(<RecordRow record={record} />);
+    // The value line of the records card and the start screen tile.
+    const record = {
+      metric: "max_load",
+      value: 20,
+      load_kg: 20,
+      reps: 10,
+      load_basis: "per_implement",
+    };
+    const output = recordValue(record);
     expect(output).toContain("kg pro Hantel");
     expect(output).not.toContain("per_implement");
   });
 });
 
 describe("unknown metrics in the UI", () => {
-  it("renders a placeholder and the reason instead of a zero", () => {
+  it("renders a placeholder instead of a zero", () => {
     const view = buildDashboardView(machineOnlyDataset(), CONTEXT);
     const metric = view.kpis.find((k) => k.key === "comparable_volume")!;
     expect(metric.value).toBeNull();
-    const output = text(<MetricCard metric={metric} />);
-    expect(output).toContain("–");
-    expect(output).not.toMatch(/\b0\b/);
-    expect(output).toContain("nicht mit freien Gewichten vergleichbar");
+    expect(metricDisplay(metric)).toEqual({
+      value: "–",
+      unit: "",
+      known: false,
+    });
+    expect(metric.note).toContain("nicht mit freien Gewichten vergleichbar");
   });
 });
 
@@ -227,19 +215,7 @@ function machineOnlyDataset() {
   });
 }
 
-describe("charts expose their values without the graphic", () => {
-  it("puts every weekly figure into the accessible label and table", () => {
-    const view = buildDashboardView(fullDataset(), CONTEXT);
-    const markup = render(
-      <WeeklyTrendChart weeks={view.weeks} metric="workouts" />,
-    );
-    expect(markup).toContain('role="img"');
-    expect(markup).toContain("Einheiten pro Woche:");
-    // The mirrored table carries the same numbers for screen readers.
-    expect(markup).toContain("visually-hidden");
-    expect(markup).toContain("Woche ab");
-  });
-
+describe("the progress chart exposes its values without the graphic", () => {
   it("renders a single measurement point as one labelled value", () => {
     const progress = buildExerciseProgressView(
       singleSetDataset(),
@@ -269,35 +245,5 @@ describe("charts expose their values without the graphic", () => {
       />,
     );
     expect(markup).toContain("keine Messpunkte");
-  });
-
-  it("omits an unknown week instead of plotting it as zero", () => {
-    const weeks = [
-      {
-        week_start: "2026-10-05",
-        label: "05. Okt",
-        workouts: 1,
-        training_days: 1,
-        working_sets: 2,
-        nominal_volume: 1200,
-      },
-      {
-        week_start: "2026-10-12",
-        label: "12. Okt",
-        workouts: 1,
-        training_days: 1,
-        working_sets: 1,
-        nominal_volume: null,
-      },
-    ];
-    const markup = render(
-      <WeeklyTrendChart weeks={weeks} metric="nominal_volume" />,
-    );
-    // The known week appears in the chart label; the unknown one does not.
-    expect(markup).toContain("05. Okt: 1.200");
-    expect(markup).not.toContain("12. Okt: 0");
-    expect(markup).toContain("Nominales Volumen in kg");
-    // The table still lists it, explicitly as unavailable.
-    expect(markup).toContain("nicht verfügbar");
   });
 });

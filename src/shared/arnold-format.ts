@@ -48,19 +48,6 @@ export const SIDE_LABEL: Record<ArnoldSide, string> = {
   alternating: "Abwechselnd",
 };
 
-export const REPS_BASIS_LABEL: Record<ArnoldRepsBasis, string> = {
-  total: "Wiederholungen gesamt",
-  per_side: "Wiederholungen pro Seite",
-};
-
-export const SET_TYPE_LABEL = {
-  warmup: "Aufwärmsatz",
-  working: "Arbeitssatz",
-  drop: "Drop-Satz",
-  failure: "Satz bis zum Muskelversagen",
-  other: "Sonstiger Satz",
-} as const;
-
 export const WORKOUT_STATUS_LABEL = {
   planned: "Geplant",
   in_progress: "Läuft",
@@ -125,52 +112,4 @@ export function formatSetLine(
   },
 ): string {
   return `${formatLoad(set)} × ${formatReps(set.reps, set.reps_basis ?? "total")}`;
-}
-
-/**
- * How a set was performed, as a short label, or `null` when it carries no
- * information beyond the plain two-sided default. Only the stored values are
- * read, so a set that deviates from its exercise's default still reports what
- * actually happened.
- */
-export function formatExecution(set: {
-  readonly execution_mode: ArnoldExecutionMode;
-  readonly side: ArnoldSide;
-  readonly implement_count?: number;
-}): string | null {
-  if (set.execution_mode === "bilateral_simultaneous" && set.side === "both")
-    return null;
-  // For a unilateral set the side is the information; the mode is implied by it.
-  if (set.execution_mode === "unilateral") return SIDE_LABEL[set.side];
-  return EXECUTION_MODE_LABEL[set.execution_mode];
-}
-
-/**
- * Accessible one-sentence description of a set, for screen readers and
- * `title`/`aria-label` text, where the compact line would lose its meaning.
- */
-export function describeSet(set: {
-  readonly load_kg: number | null;
-  readonly load_basis: ArnoldLoadBasis;
-  readonly reps: number;
-  readonly reps_basis: ArnoldRepsBasis;
-  readonly execution_mode: ArnoldExecutionMode;
-  readonly side: ArnoldSide;
-  readonly set_number: number;
-  readonly set_type: keyof typeof SET_TYPE_LABEL;
-}): string {
-  const parts = [
-    `${SET_TYPE_LABEL[set.set_type]} ${set.set_number}`,
-    set.load_basis === "bodyweight_only"
-      ? "Körpergewicht"
-      : set.load_kg === null
-        ? "Gewicht unbekannt"
-        : `${formatNumber(set.load_kg, 2)} Kilogramm ${LOAD_BASIS_LABEL[set.load_basis]}`,
-    set.reps_basis === "per_side"
-      ? `${set.reps} Wiederholungen pro Seite`
-      : `${set.reps} Wiederholungen`,
-  ];
-  const execution = formatExecution(set);
-  if (execution) parts.push(execution);
-  return `${parts.join(", ")}.`;
 }

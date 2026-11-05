@@ -245,11 +245,6 @@
 .ac-hint-line.on {
   color: var(--ac-accent-text);
 }
-.ac-field-label {
-  margin-bottom: 0.5rem;
-  color: var(--muted);
-  font-size: 0.875rem;
-}
 /* "Wie oft und wie lange?": two plus/minus rows in one frame */
 .ac-rhythm {
   display: grid;

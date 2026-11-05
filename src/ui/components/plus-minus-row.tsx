@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Minus, Plus } from "lucide-react";
 
 /** One labelled row with minus, the value and plus. */
-export function Stepper({
+export function PlusMinusRow({
   label,
   children,
   onMinus,

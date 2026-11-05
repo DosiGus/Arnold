@@ -263,23 +263,6 @@ export function Stepper({
   );
 }
 
-export function StatGrid({
-  items,
-}: {
-  items: readonly { label: string; value: ReactNode }[];
-}) {
-  return (
-    <div className="ac-stats">
-      {items.map((item) => (
-        <div className="ac-stat" key={item.label}>
-          <strong>{item.value}</strong>
-          <span>{item.label}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export function Rows({
   items,
   label,

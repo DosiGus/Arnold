@@ -13,19 +13,13 @@ import {
 import type { ViewMetric } from "../shared/arnold-view";
 
 export {
-  describeSet,
   EXECUTION_MODE_LABEL,
-  formatExecution,
   formatLoad,
   formatNumber,
-  formatReps,
   formatSetLine,
   LOAD_BASIS_LABEL,
-  REPS_BASIS_LABEL,
-  SET_TYPE_LABEL,
   SIDE_LABEL,
   UNKNOWN,
-  WORKOUT_STATUS_LABEL,
 } from "../shared/arnold-format";
 
 const SHORT = new Intl.DateTimeFormat("de-DE", {
@@ -60,7 +54,7 @@ export function dateTimeLabel(iso: string): string {
       });
 }
 
-export const UNIT_LABEL: Record<string, string> = {
+const UNIT_LABEL: Record<string, string> = {
   kg: "kg",
   reps: "Wdh.",
   sets: "Sätze",
@@ -88,16 +82,4 @@ export function metricDisplay(metric: ViewMetric): {
       ? formatNumber(metric.value * 100, 0)
       : formatNumber(metric.value, digits);
   return { value, unit: UNIT_LABEL[metric.unit] ?? "", known: true };
-}
-
-/** Full sentence for assistive technology, including the reason when unknown. */
-export function metricAriaLabel(metric: ViewMetric): string {
-  const shown = metricDisplay(metric);
-  if (!shown.known)
-    return `${metric.label}: nicht verfügbar. ${metric.note ?? ""}`.trim();
-  const basis =
-    metric.load_basis && metric.load_basis !== "total"
-      ? ` ${LOAD_BASIS_LABEL[metric.load_basis]}`
-      : "";
-  return `${metric.label}: ${shown.value} ${shown.unit}${basis}`.trim();
 }

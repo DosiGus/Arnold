@@ -186,12 +186,6 @@ fieldset {
   line-height: 1.4;
   font-weight: 600;
 }
-.ac-optional {
-  display: inline-block;
-  font-size: 0.75rem;
-  color: var(--muted);
-  margin-inline-start: 0.3rem;
-}
 .ac-plain-list {
   padding-inline-start: 1.1rem;
   margin-block: 0.5rem 0;
@@ -234,40 +228,6 @@ fieldset {
   opacity: 0.5;
   cursor: default;
 }
-.ac-switch {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  min-height: var(--ac-tap);
-  width: 100%;
-  padding: 0.4rem 0;
-  text-align: start;
-  font-size: 0.875rem;
-}
-.ac-switch-track {
-  display: flex;
-  align-items: center;
-  flex: 0 0 2.5rem;
-  height: 1.5rem;
-  border-radius: 999px;
-  padding: 0.1875rem;
-  background: var(--border);
-}
-.ac-switch-track i {
-  width: 1.125rem;
-  height: 1.125rem;
-  border-radius: 50%;
-  background: var(--surface-strong);
-  transition: transform 120ms ease-out;
-}
-.ac-switch[aria-checked="true"] .ac-switch-track {
-  background: var(--ink);
-}
-.ac-switch[aria-checked="true"] .ac-switch-track i {
-  background: var(--on-ink);
-  transform: translateX(1rem);
-}
 .ac-progress-value {
   display: grid;
   gap: 0.4rem;
@@ -279,60 +239,6 @@ fieldset {
 }
 .ac-chart {
   height: 9rem;
-}
-.ac-training-list,
-.ac-set-rows {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-.ac-training-list li + li,
-.ac-set-rows li + li {
-  border-top: 1px solid var(--border);
-}
-.ac-training-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.75rem;
-  width: 100%;
-  min-height: 4rem;
-  padding: 0.75rem 0;
-  text-align: start;
-}
-.ac-training-row > span:first-child {
-  min-width: 0;
-}
-.ac-training-row strong {
-  font-weight: 550;
-  font-size: 0.9375rem;
-  overflow-wrap: anywhere;
-}
-.ac-training-row small,
-.ac-set-rows small {
-  display: block;
-  color: var(--muted);
-  font-size: 0.8125rem;
-  line-height: 1.5;
-  margin-top: 0.2rem;
-}
-.ac-training-row > span:last-child {
-  font-size: 1.5rem;
-  color: var(--muted);
-}
-.ac-training-row:active {
-  background: var(--soft);
-}
-/* An older record in the history list: a quiet trophy, not a green pill. */
-.ac-record-mark {
-  display: inline-grid;
-  place-items: center;
-  width: 1.375rem;
-  height: 1.375rem;
-  border-radius: 50%;
-  background: var(--hover);
-  color: var(--muted);
-  vertical-align: -0.25rem;
 }
 .ac-fullscreen {
   min-width: 0;
@@ -352,26 +258,4 @@ fieldset {
   font-size: 1.25rem;
   font-weight: 600;
   letter-spacing: -0.02em;
-}
-.ac-exercise-detail {
-  display: grid;
-  gap: 0.5rem;
-  padding-top: 0.5rem;
-}
-.ac-set-rows li {
-  display: flex;
-  padding: 0.75rem 0;
-  font-size: 0.9375rem;
-}
-.ac-set-rows strong {
-  font-weight: 500;
-}
-.is-voided strong {
-  text-decoration: line-through;
-  color: var(--muted);
-}
-.ac-date-range {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
 }
