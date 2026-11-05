@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import type { TrainingGoal } from "../../../shared/onboarding-contract";
 import {
+  DAYS_PER_WEEK_MAX,
+  DAYS_PER_WEEK_MIN,
   ENVIRONMENT_HINT,
   ENVIRONMENT_LABEL,
   EXPERIENCE_HINT,
@@ -14,8 +16,9 @@ import {
   TRAINING_GOALS,
 } from "../../../shared/onboarding-contract";
 import { OptionTiles } from "./controls";
+import { Stepper } from "../stepper";
 import type { PageFrame } from "./page-frame";
-import { TITLE, type Page } from "./pages";
+import { MINUTES_STEP, RHYTHM_DEFAULT, TITLE, type Page } from "./pages";
 
 /** One of the four questions: goal, experience, rhythm or environment. */
 export function renderQuestionPage({
@@ -93,56 +96,53 @@ export function renderQuestionPage({
         disabled={busy}
       />
     );
-  else
+  else {
+    // Two plus/minus rows; the page starts on 3 days and 60 minutes.
+    const shownDays = days ?? RHYTHM_DEFAULT.days;
+    const shownMinutes = minutesOk
+      ? Number(minutesText)
+      : RHYTHM_DEFAULT.minutes;
+    const stepMinutes = (delta: number) =>
+      setMinutesText(
+        String(
+          Math.min(
+            SESSION_MINUTES_MAX,
+            Math.max(SESSION_MINUTES_MIN, shownMinutes + delta),
+          ),
+        ),
+      );
     content = (
-      <>
-        <fieldset className="ac-field">
-          <legend className="ac-field-label">Trainingstage pro Woche</legend>
-          <div className="ac-day-count">
-            {[1, 2, 3, 4, 5, 6, 7].map((n) => (
-              <label key={n} className={`ac-count ${days === n ? "on" : ""}`}>
-                <input
-                  className="visually-hidden"
-                  type="radio"
-                  name="days_per_week"
-                  checked={days === n}
-                  disabled={busy}
-                  onChange={() => setDays(n)}
-                />
-                {n}
-              </label>
-            ))}
-          </div>
-        </fieldset>
-        <div className="ac-minutes">
-          <label htmlFor="session-minutes">
-            Minuten pro Training, mit Pausen
-          </label>
-          <span>
-            <input
-              id="session-minutes"
-              inputMode="numeric"
-              value={minutesText}
-              disabled={busy}
-              aria-invalid={(minutesText !== "" && !minutesOk) || undefined}
-              aria-describedby="session-minutes-hint"
-              onChange={(event) =>
-                setMinutesText(event.target.value.replace(/[^0-9]/g, ""))
-              }
-            />
-            <small>Min.</small>
-          </span>
-          <p
-            id="session-minutes-hint"
-            className={minutesText !== "" && !minutesOk ? "bad" : ""}
-          >
-            {minutesText !== "" && !minutesOk
-              ? `Bitte eine Zahl zwischen ${SESSION_MINUTES_MIN} und ${SESSION_MINUTES_MAX}.`
-              : "Arnold plant die Sätze so, dass es passt."}
-          </p>
-        </div>
-      </>
+      <div className="ac-rhythm">
+        <Stepper
+          label="Tage pro Woche"
+          disabled={busy}
+          minusDisabled={shownDays <= DAYS_PER_WEEK_MIN}
+          plusDisabled={shownDays >= DAYS_PER_WEEK_MAX}
+          onMinus={() => setDays(shownDays - 1)}
+          onPlus={() => setDays(shownDays + 1)}
+        >
+          <output className="ac-day-count" aria-live="polite">
+            {shownDays}
+          </output>
+        </Stepper>
+        <Stepper
+          label="Minuten pro Training"
+          disabled={busy}
+          minusDisabled={shownMinutes <= SESSION_MINUTES_MIN}
+          plusDisabled={shownMinutes >= SESSION_MINUTES_MAX}
+          onMinus={() => stepMinutes(-MINUTES_STEP)}
+          onPlus={() => stepMinutes(MINUTES_STEP)}
+        >
+          <output className="ac-day-count" aria-live="polite">
+            {shownMinutes} Min.
+          </output>
+        </Stepper>
+        <p className="ac-rhythm-hint">
+          Mit Pausen. Arnold plant die Sätze so, dass es passt.
+        </p>
+      </div>
     );
+  }
   return (
     <section
       className="ac"

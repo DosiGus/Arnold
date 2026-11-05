@@ -53,8 +53,7 @@
   padding: calc(0.875rem - 1px) calc(1rem - 1px);
   background: var(--soft);
 }
-.ac-option-tile:has(input:focus-visible),
-.ac-count:has(input:focus-visible) {
+.ac-option-tile:has(input:focus-visible) {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
@@ -251,72 +250,31 @@
   color: var(--muted);
   font-size: 0.875rem;
 }
-.ac-day-count {
+/* "Wie oft und wie lange?": two plus/minus rows in one frame */
+.ac-rhythm {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 0.375rem;
-}
-.ac-count {
-  display: grid;
-  place-items: center;
-  min-height: 3.25rem;
+  padding: 0.25rem 1rem;
   border: 1px solid var(--border);
-  border-radius: 0.875rem;
-  font-size: 1.125rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-.ac-count.on {
-  border-color: transparent;
-  background: var(--ac-accent);
-  color: var(--ac-on-accent);
-}
-.ac-minutes {
-  display: grid;
-  justify-items: center;
-  gap: 0.5rem;
-  padding: 1rem 0.75rem;
   border-radius: var(--ac-radius);
-  background: var(--soft);
 }
-.ac-minutes label {
-  color: var(--muted);
-  font-size: 0.875rem;
-}
-.ac-minutes > span {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-}
-.arnold-cards .ac-minutes input {
-  width: 7rem;
+.ac-rhythm .ac-day-step {
   min-height: 4rem;
-  border: 1px solid var(--border);
-  border-radius: 1rem;
-  background: var(--card);
+}
+.ac-rhythm .ac-day-step + .ac-day-step {
+  border-top: 1px solid var(--border);
+}
+.ac-rhythm .ac-day-step-label {
   color: var(--text);
-  font: inherit;
-  font-size: 2.5rem;
-  font-weight: 750;
-  letter-spacing: -0.03em;
-  text-align: center;
+  font-size: 1rem;
 }
-.ac-minutes input:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
+.ac-rhythm .ac-day-count {
+  min-width: 4.75rem;
+  font-size: 1.25rem;
 }
-.ac-minutes small {
-  color: var(--muted);
-  font-size: 1.0625rem;
-  font-weight: 600;
-}
-.ac-minutes p {
+.ac-rhythm-hint {
+  padding: 0.25rem 0 0.75rem;
   color: var(--muted);
   font-size: 0.8125rem;
-  text-align: center;
-}
-.ac-minutes p.bad {
-  color: var(--ac-bad);
 }
 .arnold-cards .ac-textarea {
   width: 100%;

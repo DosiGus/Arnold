@@ -11,6 +11,7 @@ import {
   next,
   setRhythm,
   setupMenu,
+  stepTo,
 } from "./helpers";
 
 test("question cards reach a revision-bound plan confirmation that finishes the setup", async ({
@@ -171,7 +172,13 @@ test("resumes at the next unanswered question and adopts answers from chat", asy
   await expect(
     page.getByRole("heading", { name: "Wie oft und wie lange?" }),
   ).toBeVisible();
-  await page.getByRole("textbox", { name: /Minuten pro Training/ }).fill("45");
+  // The stored 4 days stay; minutes start at 60 and go down in steps of 15.
+  await expect(
+    wizard(page)
+      .getByRole("group", { name: "Tage pro Woche", exact: true })
+      .locator("output"),
+  ).toHaveText("4");
+  await stepTo(page, "Minuten pro Training", 45);
   await next(page);
   await expect(
     page.getByRole("heading", { name: "Wo trainierst du?" }),

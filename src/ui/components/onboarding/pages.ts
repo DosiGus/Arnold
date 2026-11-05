@@ -29,6 +29,11 @@ export const TITLE: Record<Page, string> = {
   review: "So wird dein Plan",
 };
 
+/** "Wie oft und wie lange?" starts here when nothing is stored yet. */
+export const RHYTHM_DEFAULT = { days: 3, minutes: 60 } as const;
+/** One tap on the minutes row. */
+export const MINUTES_STEP = 15;
+
 /** The server fields each page answers, to match its "missing" findings. */
 export const PAGE_FIELD: Record<Page, string[]> = {
   person: [],

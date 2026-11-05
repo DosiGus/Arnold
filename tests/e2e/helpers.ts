@@ -55,15 +55,27 @@ export async function choose(page: Page, title: string) {
     .first()
     .click();
 }
+/** Taps minus or plus on a setup stepper row until it shows the target. */
+export async function stepTo(page: Page, label: string, target: number) {
+  const row = wizard(page).getByRole("group", { name: label, exact: true });
+  for (let i = 0; i < 20; i++) {
+    const shown = parseInt(
+      (await row.locator("output").textContent()) ?? "",
+      10,
+    );
+    if (shown === target) return;
+    await row
+      .getByRole("button", {
+        name: `${label} ${shown < target ? "mehr" : "weniger"}`,
+      })
+      .click();
+  }
+  await expect(row.locator("output")).toContainText(String(target));
+}
 /** Sets "Wie oft und wie lange?". */
 export async function setRhythm(page: Page, days: number, minutes: number) {
-  await wizard(page)
-    .locator("label.ac-count")
-    .filter({ hasText: new RegExp(`^${days}$`) })
-    .click();
-  await wizard(page)
-    .getByRole("textbox", { name: /Minuten pro Training/ })
-    .fill(String(minutes));
+  await stepTo(page, "Tage pro Woche", days);
+  await stepTo(page, "Minuten pro Training", minutes);
 }
 /** Opens the three-dot menu of the setup card and picks an entry. */
 export async function setupMenu(page: Page, entry: string) {

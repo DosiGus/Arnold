@@ -1,11 +1,12 @@
-import { useId, useState, type ReactNode } from "react";
-import { ArrowLeftRight, ChevronDown, Minus, Pencil, Plus } from "lucide-react";
+import { useId, useState } from "react";
+import { ArrowLeftRight, ChevronDown, Pencil } from "lucide-react";
 import type { ArnoldExercise } from "../../shared/arnold-schema-v1";
 import type {
   ProposedExercise,
   SessionProposal,
 } from "../../shared/workout-contract";
 import { NumberField } from "./workout-editor";
+import { Stepper } from "./stepper";
 import {
   exerciseSummary,
   isBodyweight,
@@ -334,50 +335,6 @@ function DayRow({
         </div>
       )}
     </li>
-  );
-}
-
-/** One labelled row with minus, the value and plus. */
-function Stepper({
-  label,
-  children,
-  onMinus,
-  onPlus,
-  disabled,
-  minusDisabled,
-}: {
-  label: string;
-  children: ReactNode;
-  onMinus: () => void;
-  onPlus: () => void;
-  disabled?: boolean;
-  minusDisabled?: boolean;
-}) {
-  return (
-    <div className="ac-day-step" role="group" aria-label={label}>
-      <span className="ac-day-step-label">{label}</span>
-      <span className="ac-day-step-ctl">
-        <button
-          type="button"
-          className="ac-round small"
-          aria-label={`${label} weniger`}
-          disabled={disabled || minusDisabled}
-          onClick={onMinus}
-        >
-          <Minus size={15} aria-hidden="true" />
-        </button>
-        {children}
-        <button
-          type="button"
-          className="ac-round small"
-          aria-label={`${label} mehr`}
-          disabled={disabled}
-          onClick={onPlus}
-        >
-          <Plus size={15} aria-hidden="true" />
-        </button>
-      </span>
-    </div>
   );
 }
 

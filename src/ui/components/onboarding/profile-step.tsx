@@ -17,6 +17,7 @@ import { CardActions, CardNote } from "../cards";
 import {
   PAGE_FIELD,
   QUESTIONS,
+  RHYTHM_DEFAULT,
   TITLE,
   asksForLoads,
   initialProfileQuestion,
@@ -111,10 +112,8 @@ export function ProfileStep({
         : [],
     );
     setExperience(training.experience ?? undefined);
-    setDays(training.days_per_week ?? undefined);
-    setMinutesText(
-      training.session_minutes !== null ? String(training.session_minutes) : "",
-    );
+    setDays(training.days_per_week ?? RHYTHM_DEFAULT.days);
+    setMinutesText(String(training.session_minutes ?? RHYTHM_DEFAULT.minutes));
     setEnvironment(training.environment ?? undefined);
     setLoads(training.known_loads ?? {});
     setWishes({
