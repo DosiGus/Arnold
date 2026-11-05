@@ -118,3 +118,32 @@ export function describeResult(result: unknown): {
     ...(status || step ? { onboarding: { status, step } } : {}),
   };
 }
+
+/**
+ * Which protocol step the host took: listing tools or resources, and which
+ * UI template it read. Only the method and an `ui://arnold/…` address are
+ * logged, so a deploy can be checked for the host picking up the new UI.
+ */
+export function logProtocolStep(body: unknown): void {
+  if (!toolLogEnabled()) return;
+  const value = body as { method?: unknown; params?: { uri?: unknown } };
+  const method = value?.method;
+  if (
+    method !== "tools/list" &&
+    method !== "resources/list" &&
+    method !== "resources/read"
+  )
+    return;
+  const uri =
+    typeof value.params?.uri === "string" &&
+    /^ui:\/\/arnold\/[a-z0-9-]{1,60}\.html$/.test(value.params.uri)
+      ? value.params.uri
+      : undefined;
+  console.log(
+    JSON.stringify({
+      severity: "INFO",
+      message: `mcp ${method}`,
+      ...(uri ? { uri } : {}),
+    }),
+  );
+}

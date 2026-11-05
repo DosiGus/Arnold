@@ -1,4 +1,4 @@
-import { logServerError } from "./tool-log.js";
+import { logProtocolStep, logServerError } from "./tool-log.js";
 import { writeModeFromEnv } from "./workout/fixture.js";
 import { createFixtureOnboarding } from "./onboarding/fixture.js";
 import { demoHistoryDataset } from "./plan/demo-history.js";
@@ -295,6 +295,7 @@ export function createHttpApp(options: ServerOptions = {}) {
     res.sendFile(resolve(root, "dist/host/host.html"), { dotfiles: "allow" }),
   );
   app.all("/mcp", auth.bearerGate, async (req, res) => {
+    logProtocolStep(req.body);
     const handle = async () => {
       const userRuntime = options.database
         ? await options.database.forUser(await auth.resolveRequest(req))

@@ -123,3 +123,35 @@ describe("server log privacy", () => {
     expect(lines.slice(before).join("\n")).not.toContain(MARKER);
   });
 });
+
+describe("protocol step log", () => {
+  it("names the method and the UI address, nothing else", async () => {
+    const { logProtocolStep } = await import("../src/server/tool-log");
+    const lines: string[] = [];
+    const original = console.log;
+    const env = process.env.ARNOLD_TOOL_LOG;
+    process.env.ARNOLD_TOOL_LOG = "json";
+    console.log = (line: string) => lines.push(line);
+    try {
+      logProtocolStep({
+        method: "resources/read",
+        params: { uri: "ui://arnold/dashboard-v2-0123456789ab.html" },
+      });
+      logProtocolStep({
+        method: "resources/read",
+        params: { uri: "https://example.test/?token=secret" },
+      });
+      logProtocolStep({ method: "tools/call", params: { name: "x" } });
+    } finally {
+      console.log = original;
+      process.env.ARNOLD_TOOL_LOG = env;
+    }
+    expect(lines).toHaveLength(2);
+    expect(JSON.parse(lines[0])).toEqual({
+      severity: "INFO",
+      message: "mcp resources/read",
+      uri: "ui://arnold/dashboard-v2-0123456789ab.html",
+    });
+    expect(lines[1]).not.toContain("secret");
+  });
+});
