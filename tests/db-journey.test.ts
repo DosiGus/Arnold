@@ -11,6 +11,7 @@ import {
   describe,
   expect,
   it,
+  vi,
 } from "vitest";
 import { createServer, type Server } from "node:http";
 import { randomUUID } from "node:crypto";
@@ -48,6 +49,8 @@ import {
 } from "./fixtures/arnold-auth.js";
 import { missingHints } from "./fixtures/tool-hints.js";
 import { appDatabase } from "./fixtures/arnold-db.js";
+import { PostgresOnboardingRepository } from "../src/server/db/onboarding.js";
+import type { OnboardingRecord } from "../src/server/onboarding/repository.js";
 
 const key = makeRsaKey("journey-issuer");
 const scopes = "arnold.read arnold.write arnold.plan arnold.account";
@@ -533,5 +536,234 @@ describe("signed-in users with the database", () => {
     // Bob is untouched.
     const bobsPlan = await call(bob, "get_training_plan", {});
     expect(bobsPlan.isError).toBeFalsy();
+  });
+});
+
+/* ------------------------------------------------ setup after interruptions */
+
+const response = async (
+  subject: string,
+  name: string,
+  args: Record<string, unknown>,
+) =>
+  OnboardingResponseSchema.parse(
+    (await call(subject, name, args)).structuredContent,
+  );
+
+async function profileReady(subject: string) {
+  const opened = OnboardingViewSchema.parse(
+    (await call(subject, "show_arnold_onboarding", {})).structuredContent,
+  );
+  const claim = {
+    onboarding_session_id: opened.state.session.onboarding_session_id,
+    session_token: opened.session_token!,
+  };
+  const saved = await response(subject, "update_onboarding_profile", {
+    ...claim,
+    request_id: randomUUID(),
+    expected_revision: opened.state.session.revision,
+    profile: {
+      path: "arnold_plan",
+      training: {
+        primary_goal: "strength",
+        experience: "intermediate",
+        days_per_week: 3,
+        session_minutes: 60,
+        environment: "gym",
+      },
+    },
+  });
+  expect(saved.ok, saved.error?.message).toBe(true);
+  return { claim, state: saved.state! };
+}
+
+const proposalInput = (claim: Record<string, unknown>, revision: number) => ({
+  ...claim,
+  request_id: randomUUID(),
+  expected_revision: revision,
+  name: "Mein Trainingsplan",
+  origin: "manual",
+  sessions: ["bench-press", "lat-pulldown", "squat"].map((exercise_id, i) => ({
+    session_name: `Einheit ${i + 1}`,
+    exercises: [{ exercise_id, target_sets: 3, rep_min: 8, rep_max: 12 }],
+  })),
+});
+
+async function proposed(subject: string) {
+  const ready = await profileReady(subject);
+  const submitted = await response(
+    subject,
+    "submit_onboarding_plan_proposal",
+    proposalInput(ready.claim, ready.state.session.revision),
+  );
+  expect(submitted.ok, submitted.error?.message).toBe(true);
+  return { claim: ready.claim, state: submitted.state! };
+}
+
+/**
+ * Fails the next setup write that would store `status`, as if the server had
+ * stopped right before it. Everything before that write stays stored.
+ */
+function interruptBefore(status: string) {
+  const original = PostgresOnboardingRepository.prototype.updateSession;
+  let fired = false;
+  return vi
+    .spyOn(PostgresOnboardingRepository.prototype, "updateSession")
+    .mockImplementation(async function (
+      this: PostgresOnboardingRepository,
+      record: OnboardingRecord,
+      ...rest: [number, unknown?]
+    ) {
+      if (!fired && record.session.status === status) {
+        fired = true;
+        throw new Error("synthetic interruption");
+      }
+      return original.call(this, record, ...(rest as [number]));
+    });
+}
+
+describe("setup after interruptions", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("keeps the first card working when the setup is opened again", async () => {
+    const first = OnboardingViewSchema.parse(
+      (await call(alice, "show_arnold_onboarding", {})).structuredContent,
+    );
+    const claim = {
+      onboarding_session_id: first.state.session.onboarding_session_id,
+      session_token: first.session_token!,
+    };
+    const second = OnboardingViewSchema.parse(
+      (await call(alice, "show_arnold_onboarding", {})).structuredContent,
+    );
+    expect(second.state.session.onboarding_session_id).toBe(
+      claim.onboarding_session_id,
+    );
+    expect(second.session_token).not.toBe(claim.session_token);
+
+    // Both cards read and write the same setup, with the revision check.
+    expect(
+      (await call(alice, "get_onboarding_state", claim)).isError,
+    ).toBeFalsy();
+    const saved = await response(alice, "update_onboarding_profile", {
+      ...claim,
+      request_id: randomUUID(),
+      expected_revision: first.state.session.revision,
+      profile: { training: { days_per_week: 4 } },
+    });
+    expect(saved.ok, saved.error?.message).toBe(true);
+    const stale = await response(alice, "update_onboarding_profile", {
+      ...claim,
+      session_token: second.session_token!,
+      request_id: randomUUID(),
+      expected_revision: first.state.session.revision,
+      profile: { training: { days_per_week: 2 } },
+    });
+    expect(stale.error?.code).toBe("REVISION_CONFLICT");
+    expect(stale.state?.session.profile.training.days_per_week).toBe(4);
+
+    // Another account gets nowhere with either secret.
+    for (const token of [claim.session_token, second.session_token!])
+      expect(
+        (
+          await call(bob, "get_onboarding_state", {
+            ...claim,
+            session_token: token,
+          })
+        ).isError,
+      ).toBe(true);
+  });
+
+  it("replays a lost request-plan answer with its original revision", async () => {
+    const { claim, state } = await profileReady(alice);
+    const input = {
+      ...claim,
+      request_id: randomUUID(),
+      expected_revision: state.session.revision,
+    };
+    expect((await response(alice, "request_onboarding_plan", input)).ok).toBe(
+      true,
+    );
+    const retry = await response(alice, "request_onboarding_plan", input);
+    expect(retry.ok, retry.error?.message).toBe(true);
+    expect(retry.replayed).toBe(true);
+  });
+
+  it("replays a lost confirmation answer with its original revision", async () => {
+    const { claim, state } = await proposed(alice);
+    const input = {
+      ...claim,
+      request_id: randomUUID(),
+      expected_revision: state.session.revision,
+      confirmation: {
+        plan_version_id: state.plan!.plan_version_id,
+        row_revision: state.plan!.row_revision,
+        confirmed: true,
+      },
+    };
+    const first = await response(alice, "confirm_onboarding_plan", input);
+    expect(first.state?.session.status).toBe("COMPLETED");
+    const retry = await response(alice, "confirm_onboarding_plan", input);
+    expect(retry.ok, retry.error?.message).toBe(true);
+    expect(retry.replayed).toBe(true);
+    expect(retry.state?.session.status).toBe("COMPLETED");
+  });
+
+  it("finishes a confirmation that stopped between its two steps", async () => {
+    const { claim, state } = await proposed(alice);
+    const input = {
+      ...claim,
+      request_id: randomUUID(),
+      expected_revision: state.session.revision,
+      confirmation: {
+        plan_version_id: state.plan!.plan_version_id,
+        row_revision: state.plan!.row_revision,
+        confirmed: true,
+      },
+    };
+    interruptBefore("READY_TO_FINISH");
+    const first = await response(alice, "confirm_onboarding_plan", input);
+    expect(first.ok).toBe(false);
+    expect(first.state?.session.status).toBe("PLAN_CONFIRMED");
+    vi.restoreAllMocks();
+
+    // The very same call, original revision included, finishes the setup.
+    const retry = await response(alice, "confirm_onboarding_plan", input);
+    expect(retry.ok, retry.error?.message).toBe(true);
+    expect(retry.state?.session.status).toBe("COMPLETED");
+    expect((await call(alice, "get_training_plan", {})).isError).toBeFalsy();
+  });
+
+  it("finishes a plan proposal that stopped after opening the proposal phase", async () => {
+    const { claim, state } = await profileReady(alice);
+    const input = proposalInput(claim, state.session.revision);
+    interruptBefore("REVIEWING_PLAN");
+    const first = await response(
+      alice,
+      "submit_onboarding_plan_proposal",
+      input,
+    );
+    expect(first.ok).toBe(false);
+    expect(first.state?.session.status).toBe("WAITING_FOR_PLAN_PROPOSAL");
+    vi.restoreAllMocks();
+
+    const retry = await response(
+      alice,
+      "submit_onboarding_plan_proposal",
+      input,
+    );
+    expect(retry.ok, retry.error?.message).toBe(true);
+    expect(retry.state?.session.status).toBe("REVIEWING_PLAN");
+    expect(retry.state?.plan?.plan_version_id).toBeTruthy();
+    // A third send is a replay of the finished request, not a second draft.
+    const again = await response(
+      alice,
+      "submit_onboarding_plan_proposal",
+      input,
+    );
+    expect(again.replayed).toBe(true);
+    expect(again.state?.plan?.plan_version_id).toBe(
+      retry.state?.plan?.plan_version_id,
+    );
   });
 });

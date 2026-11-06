@@ -1471,7 +1471,8 @@ describe("one setup per account", () => {
     expect(again.token).toBeTruthy();
     expect(again.token).not.toBe(claim.session_token);
 
-    // The new secret works, the old one no longer does.
+    // The new secret works, and so does the old one: the first chat's card
+    // stays usable. Another account gets in with neither.
     await expect(
       service.getOnboardingState(
         { ...claim, session_token: again.token! },
@@ -1480,6 +1481,15 @@ describe("one setup per account", () => {
     ).resolves.toBeTruthy();
     await expect(
       service.getOnboardingState(claim, account("user-1")),
+    ).resolves.toBeTruthy();
+    await expect(
+      service.getOnboardingState(claim, account("user-2")),
+    ).rejects.toMatchObject({ code: "AUTH_REQUIRED" });
+    await expect(
+      service.getOnboardingState(
+        { ...claim, session_token: "z".repeat(43) },
+        account("user-1"),
+      ),
     ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
   });
 

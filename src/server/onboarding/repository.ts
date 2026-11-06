@@ -28,7 +28,10 @@ import {
   OnboardingSessionSchema,
   type OnboardingSession,
 } from "../../shared/onboarding-contract.js";
-import { InProcessWriteCoordinator } from "../workout/infrastructure.js";
+import {
+  InProcessWriteCoordinator,
+  type AuditEvent,
+} from "../workout/infrastructure.js";
 
 /**
  * A session plus the fields that must never leave the server.
@@ -41,12 +44,48 @@ export const OnboardingRecordSchema = z.strictObject({
   session: OnboardingSessionSchema,
   /** SHA-256 of the session secret. The secret itself is never stored. */
   token_fingerprint: z.string().length(64),
+  /**
+   * Secrets handed out later for the same setup (a second card or chat), newest
+   * last. Each one opens the setup just like the first; the first one stays
+   * the setup's identity (see `setupBinding`).
+   */
+  extra_token_fingerprints: z.array(z.string().length(64)).max(16).optional(),
   /** The principal that created the session. A fixture subject before Task 007. */
   owner_subject: z.string().min(1),
   /** Request ids already applied, with the revision they produced. Idempotency. */
   applied: z.record(z.string(), z.number().int().positive()),
 });
 export type OnboardingRecord = z.infer<typeof OnboardingRecordSchema>;
+
+/** How many extra secrets one setup keeps. The oldest is dropped beyond this. */
+export const MAX_EXTRA_TOKENS = 8;
+
+/** The record with one more secret, keeping only the newest few. */
+export const withExtraToken = (
+  record: OnboardingRecord,
+  fingerprint: string,
+): OnboardingRecord => ({
+  ...record,
+  extra_token_fingerprints: [
+    ...(record.extra_token_fingerprints ?? []),
+    fingerprint,
+  ].slice(-MAX_EXTRA_TOKENS),
+});
+
+/**
+ * The record a write may store: identity fields as they stand in storage.
+ * Secrets are added only by `addToken`, so a write built on an older read can
+ * neither drop a secret another card just received nor swap one in.
+ */
+export const keepStoredSecrets = (
+  current: OnboardingRecord,
+  next: OnboardingRecord,
+): OnboardingRecord => {
+  const { extra_token_fingerprints: _dropped, ...rest } = next;
+  return current.extra_token_fingerprints
+    ? { ...rest, extra_token_fingerprints: current.extra_token_fingerprints }
+    : rest;
+};
 
 /** How long after expiry a record is kept before it is collectable. */
 export const ONBOARDING_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -58,13 +97,31 @@ export interface OnboardingStateRepository {
    * client so resumption is never overstated.
    */
   readonly durability: "memory" | "local" | "distributed";
-  createSession(record: OnboardingRecord): Promise<OnboardingRecord>;
+  /**
+   * `audit` is written together with the session where the backend can do so
+   * in one transaction (`auditInTransaction`); otherwise the caller writes it.
+   */
+  createSession(
+    record: OnboardingRecord,
+    audit?: readonly AuditEvent[],
+  ): Promise<OnboardingRecord>;
   getSession(sessionId: string): Promise<OnboardingRecord | undefined>;
-  /** Refuses when `expectedRevision` no longer matches the stored one. */
+  /**
+   * Refuses when `expectedRevision` no longer matches the stored one. The
+   * session and its audit events are stored together or not at all where
+   * `auditInTransaction` is true.
+   */
   updateSession(
     record: OnboardingRecord,
     expectedRevision: number,
+    audit?: readonly AuditEvent[],
   ): Promise<OnboardingRecord>;
+  /**
+   * True when `createSession`/`updateSession` store the audit events in the
+   * same transaction as the session. Then the service must not append them a
+   * second time.
+   */
+  readonly auditInTransaction: boolean;
   /** Marks a session expired. Idempotent. */
   expireSession(sessionId: string): Promise<OnboardingRecord | undefined>;
   /**
@@ -73,15 +130,11 @@ export interface OnboardingStateRepository {
    */
   findLatestByOwner(owner: string): Promise<OnboardingRecord | undefined>;
   /**
-   * Replaces the stored secret fingerprint, so a verified owner who lost the
-   * secret (a new chat) can be handed a fresh one. The old secret stops
-   * working. Refuses when `expectedRevision` no longer matches.
+   * Adds a secret, so a verified owner who opens the setup again (a new chat,
+   * a second card) gets one of their own. Earlier secrets keep working, up to
+   * `MAX_EXTRA_TOKENS`; the revision does not change.
    */
-  reissueToken(
-    sessionId: string,
-    fingerprint: string,
-    expectedRevision: number,
-  ): Promise<OnboardingRecord>;
+  addToken(sessionId: string, fingerprint: string): Promise<OnboardingRecord>;
   /** Drops records whose retention window has passed. Returns how many. */
   purge(now: Date): Promise<number>;
 }
@@ -110,8 +163,12 @@ abstract class BaseOnboardingRepository implements OnboardingStateRepository {
   /** Serialises read-modify-write so two concurrent updates cannot interleave. */
   protected queue = new InProcessWriteCoordinator();
   protected lock = "onboarding";
+  readonly auditInTransaction = false;
 
-  async createSession(record: OnboardingRecord) {
+  async createSession(
+    record: OnboardingRecord,
+    _audit?: readonly AuditEvent[],
+  ) {
     return this.queue.exclusive(this.lock, async () => {
       const parsed = OnboardingRecordSchema.parse(record);
       const records = await this.load();
@@ -138,7 +195,11 @@ abstract class BaseOnboardingRepository implements OnboardingStateRepository {
     return record && structuredClone(record);
   }
 
-  async updateSession(record: OnboardingRecord, expectedRevision: number) {
+  async updateSession(
+    record: OnboardingRecord,
+    expectedRevision: number,
+    _audit?: readonly AuditEvent[],
+  ) {
     return this.queue.exclusive(this.lock, async () => {
       const parsed = OnboardingRecordSchema.parse(record);
       const records = await this.load();
@@ -166,9 +227,11 @@ abstract class BaseOnboardingRepository implements OnboardingStateRepository {
         throw new RepositoryConflictError(
           "Identität einer Einrichtungssitzung ist unveränderlich.",
         );
-      records[index] = parsed;
+      records[index] = OnboardingRecordSchema.parse(
+        keepStoredSecrets(current, parsed),
+      );
       await this.store(records);
-      return structuredClone(parsed);
+      return structuredClone(records[index]);
     });
   }
 
@@ -207,11 +270,7 @@ abstract class BaseOnboardingRepository implements OnboardingStateRepository {
     return latest && structuredClone(latest);
   }
 
-  async reissueToken(
-    sessionId: string,
-    fingerprint: string,
-    expectedRevision: number,
-  ) {
+  async addToken(sessionId: string, fingerprint: string) {
     return this.queue.exclusive(this.lock, async () => {
       const records = await this.load();
       const index = records.findIndex(
@@ -221,12 +280,9 @@ abstract class BaseOnboardingRepository implements OnboardingStateRepository {
         throw new RepositoryConflictError(
           "Diese Einrichtungssitzung existiert nicht mehr.",
         );
-      if (records[index].session.revision !== expectedRevision)
-        throw new RepositoryConflictError();
-      records[index] = OnboardingRecordSchema.parse({
-        ...records[index],
-        token_fingerprint: fingerprint,
-      });
+      records[index] = OnboardingRecordSchema.parse(
+        withExtraToken(records[index], fingerprint),
+      );
       await this.store(records);
       return structuredClone(records[index]);
     });

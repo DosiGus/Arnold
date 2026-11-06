@@ -7,6 +7,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import type { Database } from "../src/server/db/database";
 import { PostgresArnoldStore } from "../src/server/db/store";
+import { PostgresOnboardingRepository } from "../src/server/db/onboarding";
+import { OnboardingService } from "../src/server/onboarding/service";
+import { AuthenticatedOnboardingAccessControl } from "../src/server/onboarding/access";
+import { MAX_EXTRA_TOKENS } from "../src/server/onboarding/repository";
+import type { AuditEvent } from "../src/server/workout/infrastructure";
 import { canonical } from "../src/server/workout/infrastructure";
 import { ArnoldDatasetSchema } from "../src/shared/arnold-schema-v1";
 import { WorkoutLoggingService } from "../src/server/workout/service";
@@ -343,5 +348,86 @@ describe("retention", () => {
     );
     expect(left).toEqual(["done"]);
     expect((await account.store.read()).sets).toHaveLength(1);
+  });
+});
+
+describe("PostgresOnboardingRepository", () => {
+  async function openSetup() {
+    const account = await newAccount(db);
+    const repository = new PostgresOnboardingRepository(db, account.userId);
+    const service = new OnboardingService({
+      trackerId: account.trackerId,
+      repository,
+      access: new AuthenticatedOnboardingAccessControl(account.userId),
+      read: () => account.store.read(),
+      audit: account.store.audit,
+    });
+    const opened = await service.openOnboarding({ userId: account.userId });
+    const record = (await repository.getSession(
+      opened.state.session.onboarding_session_id,
+    ))!;
+    return { account, repository, record };
+  }
+
+  it("stores a setup step and its audit events together or not at all", async () => {
+    const { account, repository, record } = await openSetup();
+    const next = {
+      ...record,
+      session: { ...record.session, revision: record.session.revision + 1 },
+    };
+    // An event the database refuses (no entity) stands for an audit write
+    // that fails after the session row was already updated.
+    const broken = {
+      operation_id: "op-broken",
+      event_type: "ONBOARDING_PROFILE_UPDATED",
+      entity_id: null,
+    } as unknown as AuditEvent;
+    await expect(
+      repository.updateSession(next, record.session.revision, [broken]),
+    ).rejects.toThrow();
+    expect(
+      (await repository.getSession(record.session.onboarding_session_id))!
+        .session.revision,
+    ).toBe(record.session.revision);
+
+    const ok = {
+      ...broken,
+      operation_id: "op-ok",
+      entity_id: record.session.onboarding_session_id,
+    } as AuditEvent;
+    await repository.updateSession(next, record.session.revision, [ok]);
+    const audited = await asOwner(
+      async (c) =>
+        (
+          await c.query<{ n: number }>(
+            "select count(*)::int as n from arnold.audit_events where user_id = $1 and operation_id = 'op-ok'",
+            [account.userId],
+          )
+        ).rows[0].n,
+    );
+    expect(audited).toBe(1);
+  });
+
+  it("adds secrets without replacing the first, and a write cannot drop one", async () => {
+    const { repository, record } = await openSetup();
+    const id = record.session.onboarding_session_id;
+    for (let i = 0; i < MAX_EXTRA_TOKENS + 2; i++)
+      await repository.addToken(id, String(i).padStart(64, "a"));
+    const withTokens = (await repository.getSession(id))!;
+    expect(withTokens.token_fingerprint).toBe(record.token_fingerprint);
+    expect(withTokens.extra_token_fingerprints).toHaveLength(MAX_EXTRA_TOKENS);
+    expect(withTokens.session.revision).toBe(record.session.revision);
+
+    // A write built on the read from before the new secrets keeps them.
+    const stored = await repository.updateSession(
+      {
+        ...record,
+        session: { ...record.session, revision: record.session.revision + 1 },
+      },
+      record.session.revision,
+    );
+    expect(stored.extra_token_fingerprints).toEqual(
+      withTokens.extra_token_fingerprints,
+    );
   });
 });

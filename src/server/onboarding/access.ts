@@ -86,6 +86,24 @@ export function tokenMatches(fingerprint: string, presented: string): boolean {
 }
 
 /**
+ * True when the presented secret is one this setup handed out: the first one
+ * or one given to a later card. Every candidate is compared, so the time taken
+ * does not reveal which one matched.
+ */
+export function recordTokenMatches(
+  record: OnboardingRecord,
+  presented: string,
+): boolean {
+  let matched = false;
+  for (const fingerprint of [
+    record.token_fingerprint,
+    ...(record.extra_token_fingerprints ?? []),
+  ])
+    matched = tokenMatches(fingerprint, presented) || matched;
+  return matched;
+}
+
+/**
  * The local test guard.
  *
  * Grants one fixed synthetic subject, and only when the presented secret
@@ -117,7 +135,7 @@ export class FixtureOnboardingAccessControl implements OnboardingAccessControl {
         "AUTH_REQUIRED",
         "Für diese Einrichtungssitzung fehlt der Sitzungsnachweis.",
       );
-    if (!tokenMatches(record.token_fingerprint, presentedToken))
+    if (!recordTokenMatches(record, presentedToken))
       // Deliberately the same wording as an unknown session: whether an id
       // exists is itself information a caller without the secret may not have.
       throw new OnboardingAccessError(
@@ -181,7 +199,7 @@ export class AuthenticatedOnboardingAccessControl implements OnboardingAccessCon
     const principal = await this.establish(context);
     if (
       record.owner_subject !== principal.subject ||
-      !tokenMatches(record.token_fingerprint, token)
+      !recordTokenMatches(record, token)
     )
       throw new OnboardingAccessError(
         "PERMISSION_DENIED",

@@ -258,7 +258,8 @@ export class OnboardingService {
     };
   }
 
-  private async audit(
+  /** One audit event, or none where this deployment keeps no audit log. */
+  private auditEvent(
     event_type: AuditEvent["event_type"],
     record: OnboardingRecord,
     operationId: string,
@@ -269,12 +270,12 @@ export class OnboardingService {
       fields?: Record<string, { before: unknown; after: unknown }>;
       reason?: string | null;
     },
-  ) {
-    if (!this.options.audit) return;
+  ): AuditEvent[] {
+    if (!this.options.audit) return [];
     const fields = detail.fields ?? {
       revision: { before: detail.previous, after: detail.next },
     };
-    await this.options.audit.append([
+    return [
       {
         operation_id: operationId,
         event_type,
@@ -290,7 +291,16 @@ export class OnboardingService {
         correction_reason: detail.reason ?? null,
         changes: fields,
       },
-    ]);
+    ];
+  }
+
+  /**
+   * Writes the audit events the repository did not already store together
+   * with the session.
+   */
+  private async appendAudit(events: readonly AuditEvent[]) {
+    if (events.length && !this.options.repository.auditInTransaction)
+      await this.options.audit?.append(events);
   }
 
   /**
@@ -374,42 +384,50 @@ export class OnboardingService {
       },
     };
 
-    const stored = await this.options.repository.updateSession(
-      next,
-      previousRevision,
-    );
-    await this.audit(
-      options.auditEvent,
-      stored,
-      options.operationId,
-      options.principal,
-      {
-        previous: previousRevision,
-        next: stored.session.revision,
-        fields: options.fields,
-        reason: options.reason ?? null,
-      },
-    );
-    // A voided confirmation is its own audited fact: it is the trace that shows
-    // an approved revision stopped being approved, and when.
-    if (invalidated)
-      await this.audit(
-        "ONBOARDING_CONFIRMATION_INVALIDATED",
-        stored,
+    const events = [
+      ...this.auditEvent(
+        options.auditEvent,
+        next,
         options.operationId,
         options.principal,
         {
           previous: previousRevision,
-          next: stored.session.revision,
-          fields: {
-            confirmed_plan_reference: {
-              before:
-                record.session.confirmed_plan_reference?.row_revision ?? null,
-              after: null,
-            },
-          },
+          next: next.session.revision,
+          fields: options.fields,
+          reason: options.reason ?? null,
         },
-      );
+      ),
+      // A voided confirmation is its own audited fact: it is the trace that
+      // shows an approved revision stopped being approved, and when.
+      ...(invalidated
+        ? this.auditEvent(
+            "ONBOARDING_CONFIRMATION_INVALIDATED",
+            next,
+            options.operationId,
+            options.principal,
+            {
+              previous: previousRevision,
+              next: next.session.revision,
+              fields: {
+                confirmed_plan_reference: {
+                  before:
+                    record.session.confirmed_plan_reference?.row_revision ??
+                    null,
+                  after: null,
+                },
+              },
+            },
+          )
+        : []),
+    ];
+    // Where the backend can, session and audit are one transaction: an
+    // interruption leaves both or neither, never a half-stored step.
+    const stored = await this.options.repository.updateSession(
+      next,
+      previousRevision,
+      events,
+    );
+    await this.appendAudit(events);
     return stored;
   }
 
@@ -673,12 +691,12 @@ export class OnboardingService {
         throw this.alreadyDone();
       if (latest && this.resumable(latest)) {
         // The owner is verified; the secret only names this session. A new
-        // chat has lost it, so it is replaced rather than asked for.
+        // chat has none, so it gets one of its own; cards that are already
+        // open keep theirs.
         const token = createSessionToken();
-        const reissued = await this.options.repository.reissueToken(
+        const reissued = await this.options.repository.addToken(
           latest.session.onboarding_session_id,
           fingerprintToken(token),
-          latest.session.revision,
         );
         const stored = await this.commit(
           reissued,
@@ -723,14 +741,15 @@ export class OnboardingService {
     // Old sessions are collected on the way in rather than by a background
     // job, so an abandoned setup cannot pile up unnoticed.
     await this.options.repository.purge(this.clock()).catch(() => 0);
-    const stored = await this.options.repository.createSession(record);
-    await this.audit(
+    const events = this.auditEvent(
       "ONBOARDING_STARTED",
-      stored,
+      record,
       input.request_id,
       principal,
-      { previous: null, next: stored.session.revision },
+      { previous: null, next: record.session.revision },
     );
+    const stored = await this.options.repository.createSession(record, events);
+    await this.appendAudit(events);
     return { state: await this.project(stored), token, resumed: false };
   }
 
@@ -797,12 +816,12 @@ export class OnboardingService {
       // Set up, but the completed session was already deleted (B15).
       if (await this.accountSetUp()) throw this.alreadyDone();
       if (latest && this.resumable(latest)) {
-        // Opening is a read plus a new secret.
+        // Opening is a read plus a secret for this card. A card opened
+        // earlier, in this chat or another, keeps working.
         const token = createSessionToken();
-        const reissued = await this.options.repository.reissueToken(
+        const reissued = await this.options.repository.addToken(
           latest.session.onboarding_session_id,
           fingerprintToken(token),
-          latest.session.revision,
         );
         return { state: await this.project(reissued), token, resumed: true };
       }
@@ -981,13 +1000,15 @@ export class OnboardingService {
   ): Promise<OnboardingResponse> {
     return this.run("request_onboarding_plan", raw, async (input) => {
       const { record, principal } = await this.open(input, context);
-      this.assertRevision(record, input.expected_revision);
+      // A lost acknowledgement must replay the original operation even though
+      // that operation has already advanced the revision.
       if (this.replay(record, input.request_id))
         return {
           state: await this.project(record),
           token: null,
           replayed: true,
         };
+      this.assertRevision(record, input.expected_revision, input.request_id);
       const stored = await this.commit(
         record,
         { type: "REQUEST_PLAN" },
@@ -1016,13 +1037,15 @@ export class OnboardingService {
   ): Promise<OnboardingResponse> {
     return this.run("submit_onboarding_plan_proposal", raw, async (input) => {
       const { record, principal } = await this.open(input, context);
-      this.assertRevision(record, input.expected_revision);
+      // A lost acknowledgement must replay the original operation even though
+      // that operation has already advanced the revision.
       if (this.replay(record, input.request_id))
         return {
           state: await this.project(record),
           token: null,
           replayed: true,
         };
+      this.assertRevision(record, input.expected_revision, input.request_id);
       if (!this.options.plans)
         throw fail(
           "PLAN_WRITE_UNAVAILABLE",
@@ -1188,13 +1211,18 @@ export class OnboardingService {
   ): Promise<OnboardingResponse> {
     return this.run("confirm_onboarding_plan", raw, async (input) => {
       const { record, principal } = await this.open(input, context);
-      this.assertRevision(record, input.expected_revision);
+      // A lost acknowledgement must replay the original operation even though
+      // that operation has already advanced the revision. Confirming is two
+      // steps; a retry after an interruption between them finishes the second.
       if (this.replay(record, input.request_id))
         return {
-          state: await this.project(record),
+          state: await this.project(
+            await this.prepareAfterConfirm(record, principal, input.request_id),
+          ),
           token: null,
           replayed: true,
         };
+      this.assertRevision(record, input.expected_revision, input.request_id);
       if (isExpired(record.session, this.clock()))
         throw fail(
           "SESSION_EXPIRED",
@@ -1280,17 +1308,45 @@ export class OnboardingService {
       );
       // Both transitions are real machine transitions, run in order, so the
       // documented path PLAN_CONFIRMED -> READY_TO_FINISH holds.
-      const stored = await this.commit(
+      const stored = await this.prepareAfterConfirm(
         confirmed,
-        { type: "PREPARE_HANDOFF" },
-        {
-          principal,
-          operationId: `${input.request_id}:handoff`,
-          auditEvent: "ONBOARDING_HANDOFF_PREPARED",
-        },
+        principal,
+        input.request_id,
       );
       return { state: await this.project(stored), token: null };
     });
+  }
+
+  /**
+   * The second step of a confirmation: PLAN_CONFIRMED -> READY_TO_FINISH.
+   *
+   * Runs only while the confirmation still stands for the current draft, so a
+   * retry can never hand over a plan that changed in between. Anything else
+   * is left as it is.
+   */
+  private async prepareAfterConfirm(
+    record: OnboardingRecord,
+    principal: OnboardingPrincipal,
+    requestId: string,
+  ): Promise<OnboardingRecord> {
+    if (
+      record.session.status !== "PLAN_CONFIRMED" ||
+      `${requestId}:handoff` in record.applied ||
+      isExpired(record.session, this.clock())
+    )
+      return record;
+    const { plan } = await this.referencedPlan(record);
+    if (this.handoffFor(record, plan).status !== "ready_to_finish")
+      return record;
+    return this.commit(
+      record,
+      { type: "PREPARE_HANDOFF" },
+      {
+        principal,
+        operationId: `${requestId}:handoff`,
+        auditEvent: "ONBOARDING_HANDOFF_PREPARED",
+      },
+    );
   }
 
   /**
@@ -1305,13 +1361,15 @@ export class OnboardingService {
   ): Promise<OnboardingResponse> {
     return this.run("revise_onboarding_plan", raw, async (input) => {
       const { record, principal } = await this.open(input, context);
-      this.assertRevision(record, input.expected_revision);
+      // A lost acknowledgement must replay the original operation even though
+      // that operation has already advanced the revision.
       if (this.replay(record, input.request_id))
         return {
           state: await this.project(record),
           token: null,
           replayed: true,
         };
+      this.assertRevision(record, input.expected_revision, input.request_id);
       const stored = await this.commit(
         record,
         { type: "REVISE_PLAN" },
@@ -1530,8 +1588,30 @@ export class OnboardingService {
 
   /* ---------------------------------------------------------------- helpers */
 
-  private assertRevision(record: OnboardingRecord, expected?: number) {
-    if (expected !== undefined && record.session.revision !== expected)
+  /**
+   * Refuses a write built on another revision than the stored one.
+   *
+   * One exception: a step of this very request (`<request_id>:…`) moved the
+   * revision. Then the retry of an interrupted request is still built on the
+   * right state and may finish it.
+   */
+  private assertRevision(
+    record: OnboardingRecord,
+    expected?: number,
+    requestId?: string,
+  ) {
+    const ownStep =
+      requestId !== undefined &&
+      Object.entries(record.applied).some(
+        ([id, revision]) =>
+          id.startsWith(`${requestId}:`) &&
+          revision === record.session.revision,
+      );
+    if (
+      expected !== undefined &&
+      record.session.revision !== expected &&
+      !ownStep
+    )
       throw fail(
         "REVISION_CONFLICT",
         "Dieser Einrichtungsstand ist nicht mehr aktuell. Bitte neu laden und die Änderung erneut vornehmen.",

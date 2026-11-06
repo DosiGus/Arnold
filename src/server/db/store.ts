@@ -146,7 +146,7 @@ async function applyChange(
     );
 }
 
-async function appendAudit(
+export async function appendAudit(
   client: Queryable,
   userId: string,
   events: readonly AuditEvent[],

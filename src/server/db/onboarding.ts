@@ -2,21 +2,28 @@
  * One user's setup sessions in Postgres.
  *
  * Each session is one JSON document with an optimistic revision: an update
- * built on an older revision is refused instead of overwriting.
+ * built on an older revision is refused instead of overwriting. The session
+ * and its audit events are written in one transaction, so an interruption
+ * leaves either both or neither.
  */
 import {
   ONBOARDING_RETENTION_MS,
   OnboardingRecordSchema,
   RepositoryConflictError,
+  keepStoredSecrets,
+  withExtraToken,
   type OnboardingRecord,
   type OnboardingStateRepository,
 } from "../onboarding/repository.js";
+import type { AuditEvent } from "../workout/infrastructure.js";
 import type { Database, Queryable } from "./database.js";
+import { appendAudit } from "./store.js";
 
 const parse = (raw: unknown) => OnboardingRecordSchema.parse(raw);
 
 export class PostgresOnboardingRepository implements OnboardingStateRepository {
   readonly durability = "distributed" as const;
+  readonly auditInTransaction = true;
 
   constructor(
     private readonly db: Database,
@@ -66,7 +73,7 @@ export class PostgresOnboardingRepository implements OnboardingStateRepository {
     );
   }
 
-  createSession(record: OnboardingRecord) {
+  createSession(record: OnboardingRecord, audit: readonly AuditEvent[] = []) {
     const parsed = parse(record);
     return this.run(async (client) => {
       if (await this.load(client, parsed.session.onboarding_session_id))
@@ -74,6 +81,7 @@ export class PostgresOnboardingRepository implements OnboardingStateRepository {
           "Diese Einrichtungssitzung existiert bereits.",
         );
       await this.store(client, parsed, true);
+      await appendAudit(client, this.userId, audit);
       return structuredClone(parsed);
     });
   }
@@ -82,7 +90,11 @@ export class PostgresOnboardingRepository implements OnboardingStateRepository {
     return this.run((client) => this.load(client, sessionId));
   }
 
-  updateSession(record: OnboardingRecord, expectedRevision: number) {
+  updateSession(
+    record: OnboardingRecord,
+    expectedRevision: number,
+    audit: readonly AuditEvent[] = [],
+  ) {
     const parsed = parse(record);
     return this.run(async (client) => {
       const current = await this.load(
@@ -106,8 +118,10 @@ export class PostgresOnboardingRepository implements OnboardingStateRepository {
         throw new RepositoryConflictError(
           "Identität einer Einrichtungssitzung ist unveränderlich.",
         );
-      await this.store(client, parsed, false);
-      return structuredClone(parsed);
+      const next = parse(keepStoredSecrets(current, parsed));
+      await this.store(client, next, false);
+      await appendAudit(client, this.userId, audit);
+      return next;
     });
   }
 
@@ -143,20 +157,14 @@ export class PostgresOnboardingRepository implements OnboardingStateRepository {
     });
   }
 
-  reissueToken(
-    sessionId: string,
-    fingerprint: string,
-    expectedRevision: number,
-  ) {
+  addToken(sessionId: string, fingerprint: string) {
     return this.run(async (client) => {
       const current = await this.load(client, sessionId, true);
       if (!current)
         throw new RepositoryConflictError(
           "Diese Einrichtungssitzung existiert nicht mehr.",
         );
-      if (current.session.revision !== expectedRevision)
-        throw new RepositoryConflictError();
-      const next = parse({ ...current, token_fingerprint: fingerprint });
+      const next = parse(withExtraToken(current, fingerprint));
       await this.store(client, next, false);
       return next;
     });

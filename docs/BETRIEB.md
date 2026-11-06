@@ -88,13 +88,14 @@ Das Passwort von `arnold_app` lässt sich jederzeit erneuern: `npm run db:setup 
 
 ## Alarme
 
-Eingerichtet mit `bash scripts/setup-monitoring.sh` (wiederholbar). Die E-Mails gehen an das angemeldete `gcloud`-Konto oder an `ARNOLD_ALERT_EMAIL`.
+Eingerichtet mit `bash scripts/setup-monitoring.sh` (wiederholbar), zuletzt am 06.11.2026; Übungen `thrown`, `storage` und `uptime` am selben Tag. Die E-Mails gehen an das angemeldete `gcloud`-Konto oder an `ARNOLD_ALERT_EMAIL`.
 
-| Alarm                              | Bedeutung                                                        | Erste Schritte                                                                                   |
-| ---------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Arnold: /health nicht erreichbar   | `/health` antwortet aus mindestens zwei Regionen nicht mit `ok`. | `curl /health`. Logs ansehen (unten). Kam es direkt nach einem Deploy: Rollback.                 |
-| Arnold: Serverfehler (5xx) gehäuft | Mehr als 4 Antworten 5xx in 5 Minuten.                           | Logs nach `severity>=ERROR` filtern. Nach Deploy: Rollback. Sonst Supabase-Status prüfen.        |
-| Arnold: Tool-Aufruf abgestürzt     | Ein Tool ist mit einer unerwarteten Ausnahme abgebrochen.        | Logzeile ansehen: Tool, Zeit, interne Nutzerkennung. Als Issue mit Label `beta-bug` an Worker B. |
+| Alarm                              | Bedeutung                                                                     | Erste Schritte                                                                                                         |
+| ---------------------------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Arnold: /health nicht erreichbar   | `/health` antwortet aus mindestens zwei Regionen nicht mit `ok`.              | `curl /health`. Logs ansehen (unten). Kam es direkt nach einem Deploy: Rollback.                                       |
+| Arnold: Serverfehler (5xx) gehäuft | Mehr als 4 Antworten 5xx in 5 Minuten.                                        | Logs nach `severity>=ERROR` filtern. Nach Deploy: Rollback. Sonst Supabase-Status prüfen.                              |
+| Arnold: Tool-Aufruf abgestürzt     | Ein Tool ist mit einer unerwarteten Ausnahme abgebrochen.                     | Logzeile ansehen: Tool, Zeit, interne Nutzerkennung. Als Issue mit Label `beta-bug` an Worker B.                       |
+| Arnold: Datenbank nicht erreichbar | Ein Tool meldet `STORAGE_UNAVAILABLE` (höchstens eine E-Mail pro 15 Minuten). | Supabase-Status und -Dashboard prüfen (pausiert? Wartung?). `/health` prüft die Datenbank nicht und bleibt dabei grün. |
 
 Logs ansehen:
 
@@ -107,6 +108,7 @@ gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.serv
 
 ```bash
 bash scripts/setup-monitoring.sh drill thrown   # synthetische Logzeile, echte Regel
+bash scripts/setup-monitoring.sh drill storage  # synthetische Logzeile STORAGE_UNAVAILABLE, echte Regel
 bash scripts/setup-monitoring.sh drill 5xx      # gleiche Regel für 4xx, 8 Anfragen ohne Token
 bash scripts/setup-monitoring.sh drill uptime   # Prüfung, die nie passt
 bash scripts/setup-monitoring.sh drill-cleanup  # Übungsregeln entfernen

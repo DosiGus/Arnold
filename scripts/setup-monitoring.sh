@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Monitoring for Arnold on Cloud Run: one e-mail channel, one uptime check,
-# three alert policies. Safe to run again: everything is found by its display
+# four alert policies. Safe to run again: everything is found by its display
 # name and updated in place, nothing is created twice.
 #
 #   bash scripts/setup-monitoring.sh                 set up or update
 #   bash scripts/setup-monitoring.sh drill thrown    trigger the tool alarm
+#   bash scripts/setup-monitoring.sh drill storage   trigger the storage alarm
 #   bash scripts/setup-monitoring.sh drill 5xx       trigger the error-rate path
 #   bash scripts/setup-monitoring.sh drill uptime    trigger the uptime path
 #   bash scripts/setup-monitoring.sh drill-cleanup   remove drill leftovers
@@ -13,15 +14,18 @@
 #   1. /health fails from at least two regions (uptime check every 5 minutes),
 #   2. more than 4 responses with status 5xx within 5 minutes,
 #   3. any tool log line with outcome "thrown" (log-based alert, at most one
-#      e-mail per 5 minutes).
+#      e-mail per 5 minutes),
+#   4. any tool log line with code STORAGE_UNAVAILABLE: the database could not
+#      be reached or refused the write. /health does not touch the database,
+#      and tools catch these errors, so neither 1 nor 3 would notice.
 #
 # The e-mail address is ARNOLD_ALERT_EMAIL, or else the signed-in gcloud
 # account. It is never written into the repository.
 #
 # Drills never touch the real check or policies: `5xx` and `uptime` create a
 # temporary copy (4xx instead of 5xx, a content check that cannot match) and
-# `drill-cleanup` removes it again. `thrown` writes one synthetic log line
-# (tool "alarm_drill") that the real policy picks up. Runbook: docs/BETRIEB.md.
+# `drill-cleanup` removes it again. `thrown` and `storage` write one synthetic
+# log line (tool "alarm_drill") that the real policy picks up. Runbook: docs/BETRIEB.md.
 #
 # Uses the Monitoring and Logging REST APIs directly, because the gcloud
 # commands for alert policies and channels are alpha/beta-only.
@@ -36,6 +40,7 @@ UPTIME_NAME="Arnold /health"
 POLICY_UPTIME="Arnold: /health nicht erreichbar"
 POLICY_5XX="Arnold: Serverfehler (5xx) gehäuft"
 POLICY_THROWN="Arnold: Tool-Aufruf abgestürzt"
+POLICY_STORAGE="Arnold: Datenbank nicht erreichbar"
 DRILL_PREFIX="Arnold Übung:"
 RUNBOOK="Was tun: docs/BETRIEB.md im Repository, Abschnitt Alarme."
 
@@ -127,8 +132,7 @@ status_policy_json() { # DISPLAY-NAME STATUS-CLASS CHANNEL
         filter: `resource.type="cloud_run_revision" AND resource.label.service_name="${service}" AND metric.type="run.googleapis.com/request_count" AND metric.label.response_code_class="${cls}"`,
         aggregations: [{ alignmentPeriod: "300s", perSeriesAligner: "ALIGN_DELTA",
           crossSeriesReducer: "REDUCE_SUM", groupByFields: ["resource.label.service_name"] }],
-        comparison: "COMPARISON_GT", thresholdValue: 4, duration: "0s", trigger: { count: 1 },
-        evaluationMissingData: "EVALUATION_MISSING_DATA_INACTIVE" } }],
+        comparison: "COMPARISON_GT", thresholdValue: 4, duration: "0s", trigger: { count: 1 } } }],
       alertStrategy: { autoClose: "1800s" },
     }));' "$1" "$2" "$3" "$SERVICE" "$RUNBOOK"
 }
@@ -146,6 +150,36 @@ thrown_policy_json() { # CHANNEL
         labelExtractors: { tool: "EXTRACT(jsonPayload.tool)" } } }],
       alertStrategy: { notificationRateLimit: { period: "300s" }, autoClose: "1800s" },
     }));' "$POLICY_THROWN" "$1" "$SERVICE" "$RUNBOOK"
+}
+
+storage_policy_json() { # CHANNEL
+  node -e '
+    const [name, channel, service, runbook] = process.argv.slice(1);
+    console.log(JSON.stringify({
+      displayName: name, combiner: "OR", enabled: true,
+      notificationChannels: [channel],
+      documentation: { mimeType: "text/markdown", content:
+        "Ein Tool konnte nicht speichern oder lesen (code STORAGE_UNAVAILABLE). Meist ist Supabase nicht erreichbar oder pausiert. " + runbook },
+      conditions: [{ displayName: "Tool-Logzeile mit code STORAGE_UNAVAILABLE", conditionMatchedLog: {
+        filter: `resource.type="cloud_run_revision" AND resource.labels.service_name="${service}" AND jsonPayload.code="STORAGE_UNAVAILABLE"`,
+        labelExtractors: { tool: "EXTRACT(jsonPayload.tool)" } } }],
+      alertStrategy: { notificationRateLimit: { period: "900s" }, autoClose: "1800s" },
+    }));' "$POLICY_STORAGE" "$1" "$SERVICE" "$RUNBOOK"
+}
+
+# drill_log OUTCOME CODE  → writes one synthetic tool log line
+drill_log() {
+  api POST https://logging.googleapis.com/v2/entries:write "$(node -e '
+    const [project, region, service, outcome, code] = process.argv.slice(1);
+    console.log(JSON.stringify({ entries: [{
+      logName: `projects/${project}/logs/arnold-alarm-drill`,
+      severity: outcome === "thrown" ? "ERROR" : "WARNING",
+      resource: { type: "cloud_run_revision", labels: { project_id: project,
+        location: region, service_name: service, configuration_name: service,
+        revision_name: "alarm-drill" } },
+      jsonPayload: { message: "tool alarm_drill", tool: "alarm_drill",
+        access: "DRILL", outcome, ...(code ? { code } : {}), ms: 0, drill: true } }] }));' \
+    "$PROJECT" "$REGION" "$SERVICE" "$1" "${2:-}")" >/dev/null
 }
 
 channel() {
@@ -179,6 +213,7 @@ setup() {
   upsert alertPolicies alertPolicies "$(uptime_policy_json "$POLICY_UPTIME" "$(check_id "$UPTIME")" "$CHANNEL")" >/dev/null
   upsert alertPolicies alertPolicies "$(status_policy_json "$POLICY_5XX" 5xx "$CHANNEL")" >/dev/null
   upsert alertPolicies alertPolicies "$(thrown_policy_json "$CHANNEL")" >/dev/null
+  upsert alertPolicies alertPolicies "$(storage_policy_json "$CHANNEL")" >/dev/null
   echo
   echo "Fertig. Alarme gehen an den Kanal \"$CHANNEL_NAME\"."
 }
@@ -192,17 +227,13 @@ drill() {
   case "${1:-}" in
     thrown)
       echo "› Synthetische Logzeile (tool alarm_drill, outcome thrown)"
-      api POST https://logging.googleapis.com/v2/entries:write "$(node -e '
-        const [project, region, service] = process.argv.slice(1);
-        console.log(JSON.stringify({ entries: [{
-          logName: `projects/${project}/logs/arnold-alarm-drill`, severity: "ERROR",
-          resource: { type: "cloud_run_revision", labels: { project_id: project,
-            location: region, service_name: service, configuration_name: service,
-            revision_name: "alarm-drill" } },
-          jsonPayload: { message: "tool alarm_drill", tool: "alarm_drill",
-            access: "DRILL", outcome: "thrown", ms: 0, drill: true } }] }));' \
-        "$PROJECT" "$REGION" "$SERVICE")" >/dev/null
+      drill_log thrown
       echo "E-Mail \"$POLICY_THROWN\" kommt in etwa 1–5 Minuten."
+      ;;
+    storage)
+      echo "› Synthetische Logzeile (tool alarm_drill, code STORAGE_UNAVAILABLE)"
+      drill_log error STORAGE_UNAVAILABLE
+      echo "E-Mail \"$POLICY_STORAGE\" kommt in etwa 1–5 Minuten."
       ;;
     5xx)
       echo "› Übungsalarm: gleiche Regel wie 5xx, aber für 4xx"
@@ -226,7 +257,7 @@ drill() {
       echo "Danach: bash scripts/setup-monitoring.sh drill-cleanup"
       ;;
     *)
-      echo "Aufruf: bash scripts/setup-monitoring.sh drill thrown|5xx|uptime" >&2
+      echo "Aufruf: bash scripts/setup-monitoring.sh drill thrown|storage|5xx|uptime" >&2
       exit 1
       ;;
   esac
@@ -254,7 +285,7 @@ case "${1:-setup}" in
   drill) drill "${2:-}" ;;
   drill-cleanup) drill_cleanup ;;
   *)
-    echo "Aufruf: bash scripts/setup-monitoring.sh [setup|drill thrown|drill 5xx|drill uptime|drill-cleanup]" >&2
+    echo "Aufruf: bash scripts/setup-monitoring.sh [setup|drill thrown|drill storage|drill 5xx|drill uptime|drill-cleanup]" >&2
     exit 1
     ;;
 esac
