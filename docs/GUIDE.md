@@ -121,6 +121,24 @@ Die Engine ist rein und deterministisch; Ergebnisse tragen die Version der Konve
 - **Ziele** speichern nur Art, Übung, Lastdefinition, Ziel- und Startwert. Der Stand wird berechnet: Körpergewicht = letzte Messung, Übungsziel = bester Arbeitssatz eines abgeschlossenen Trainings in der Lastdefinition des Ziels. Prognose aus der Veränderung der letzten 8 Wochen. Pro Art und Übung ein aktives Ziel (Schema und Datenbank).
 - Schreiben über `create_training_goal`, `update_training_goal`, `archive_training_goal`, `log_body_weight`, `void_body_weight` im Workout-Dienst, also über `commitWrite` wie jeder Satz. Ein zweiter Gewichtseintrag am selben Tag verwirft den ersten.
 
+### Fortschritt: Gewicht fürs nächste Training (`src/analytics/progression.ts`)
+
+Arnold rechnet die Werte fürs nächste Training selbst, ChatGPT erklärt sie nur. Methode: **doppelte Progression** im Wiederholungsbereich der Planposition (`rep_min`–`rep_max`; eine feste Zahl ist ein Bereich von eins). Grundlage sind die Arbeitssätze der letzten abgeschlossenen Trainings mit der Übung (höchstens sechs), nur solange sie gleich gemessen sind (Lastdefinition, Ausführung, Gerätezahl, Wiederholungsbasis).
+
+| Lage (letztes Training)                                                   | Empfehlung (`decision`)                                                      |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Alle Sätze an oder über der Obergrenze                                    | `increase`: jeder Satz eine Gewichtsstufe mehr, Wdh. = Untergrenze           |
+| Sonst                                                                     | `more_reps`: gleiches Gewicht, je Satz eine Wdh. mehr (höchstens Obergrenze) |
+| Zweimal in Folge die meisten Sätze unter der Untergrenze (`missed_range`) | `reduce`: etwa 10 % leichter auf Gerätestufen, Wdh. = Untergrenze            |
+| Dreimal in Folge kein Fortschritt beim selben Gewicht (`stalled`)         | `reduce` wie oben                                                            |
+| Körpergewicht oder Unterstützung an der Obergrenze                        | `top_reached`: Wdh. bleiben, Arnold ändert kein Gewicht                      |
+
+- Gewichtsstufen (`weightStep`): Langhantel und Kabelzug 2,5 kg, Kurzhantel 2 kg je Hantel, Kettlebell 4 kg, Maschine 5 kg; sonst nach Lastdefinition.
+- Ein leichteres Training beendet die Zählung „ohne Fortschritt“; nach einem Deload folgt also nie sofort der nächste. Kann ein Gewicht nicht weiter sinken, baut Arnold Wiederholungen auf.
+- Keine Empfehlung (`source: last_time`, Werte wie beim letzten Mal) ohne Wiederholungsbereich, mit unbekanntem Gewicht, für getauschte oder zusätzliche Übungen. Ohne Verlauf gilt das Planziel bzw. das Startgewicht.
+- Der Vorschlag (`proposals` aus `get_workout`) trägt die Begründung als `progression`; die Karte zeigt sie unter dem Übungsnamen, die Chat-Brücke als Satz. „So gemacht“ und `log_workout` ohne Änderungen speichern genau diesen Vorschlag; `same_as_last_time: true` speichert ausdrücklich die Werte vom letzten Mal.
+- Bewusst nicht berücksichtigt: Pausen zwischen Trainings (die Karte und das Speichern hätten sonst je nach Uhrzeit verschiedene Werte), Wiederholungen in Reserve (die Karte fragt sie nicht ab). Regelversion: `PROGRESSION_VERSION`.
+
 ### Trainingspläne (`src/server/plan`, `src/shared/plan-contract.ts`)
 
 - Eine Planfamilie hat mehrere **Versionen**. Lebenszyklus: `draft → active → archived` oder `draft → archived`; nie zurück. „Alten Plan wieder nutzen“ heißt: neue Draft-Version auf Basis der alten.
@@ -131,7 +149,7 @@ Die Engine ist rein und deterministisch; Ergebnisse tragen die Version der Konve
 
 ### Workout-Logging (`src/server/workout`)
 
-Standard nach dem Training: `log_workout` speichert einen Trainingstag in einem Schritt (ohne Änderungen die Sätze vom letzten Mal, sonst das Planziel; Abweichungen als Tausch, Weglassen, andere Werte oder Zusatzübung). `replaces_workout_id` ersetzt ein gespeichertes Training, `void_workout` nimmt es zurück (Status `voided`, Sätze storniert). Satz für Satz während des Trainings: `start_workout` → `log_workout_sets` / `update_set` / `void_set` → `complete_workout` oder `cancel_workout`. Jeder Schreibaufruf trägt eine `request_id`; Wiederholungen mit derselben ID erzeugen nie eine zweite Zeile. Gelöscht wird nichts: ein verworfener Satz bleibt als Tombstone (`status = voided`) erhalten.
+Standard nach dem Training: `log_workout` speichert einen Trainingstag in einem Schritt (ohne Änderungen Arnolds Empfehlung aus dem letzten Training, mit `same_as_last_time` die Sätze vom letzten Mal, ohne Verlauf das Planziel; Abweichungen als Tausch, Weglassen, andere Werte oder Zusatzübung). `replaces_workout_id` ersetzt ein gespeichertes Training, `void_workout` nimmt es zurück (Status `voided`, Sätze storniert). Satz für Satz während des Trainings: `start_workout` → `log_workout_sets` / `update_set` / `void_set` → `complete_workout` oder `cancel_workout`. Jeder Schreibaufruf trägt eine `request_id`; Wiederholungen mit derselben ID erzeugen nie eine zweite Zeile. Gelöscht wird nichts: ein verworfener Satz bleibt als Tombstone (`status = voided`) erhalten.
 
 ### Einrichtung (`src/server/onboarding`)
 

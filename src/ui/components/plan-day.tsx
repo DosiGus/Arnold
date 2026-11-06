@@ -12,6 +12,7 @@ import {
   isBodyweight,
   missing,
   plannedExercise,
+  progressionNote,
   rounds,
   setRound,
   setUniform,
@@ -202,6 +203,8 @@ function DayRow({
   const name = skipped
     ? planned.exercise_name
     : (exercise?.exercise_name ?? planned.exercise_name);
+  // Why Arnold proposes these values; only while the row shows them.
+  const why = tag ? undefined : progressionNote(planned);
 
   return (
     <li
@@ -220,6 +223,7 @@ function DayRow({
         <span className="ac-day-name">
           <span>{name}</span>
           {tag && <span className="ac-day-tag">{tag}</span>}
+          {why && <span className="ac-day-why">{why}</span>}
         </span>
         {!skipped && summary && (
           <span className="ac-day-values">

@@ -425,13 +425,23 @@ describe("signed-in users with the database", () => {
     expect(first.result!.workout!.status).toBe("completed");
     expect(first.result!.sets).toHaveLength(3);
 
-    // "Alles wie letztes Mal": no changes at all.
+    // "So gemacht" with no changes saves Arnold's recommendation: every set
+    // reached the plan's repetitions, so one step more, from the bottom.
+    const next = WorkoutContextSchema.parse(
+      (await call(alice, "get_workout", {})).structuredContent,
+    ).proposals[0].exercises[0];
+    expect(next.source).toBe("progression");
+    expect(next.progression?.decision).toBe("increase");
     const again = await write(alice, "log_workout", {
       ...session,
       workout_date_local: "2026-10-30",
     });
     expect(again.ok, again.error?.message).toBe(true);
-    expect(again.result!.sets.map((s) => s.load_kg)).toEqual([60, 60, 60]);
+    const bench = again.result!.sets.filter(
+      (s) => s.exercise_id === day.exercises[0].exercise_id,
+    );
+    expect(bench.map((s) => s.load_kg)).toEqual([62.5, 62.5, 62.5]);
+    expect(bench.map((s) => s.reps)).toEqual(next.sets.map((s) => s.reps));
 
     // Bob knows the id and still cannot replace or take it back.
     const foreign = await write(bob, "void_workout", {

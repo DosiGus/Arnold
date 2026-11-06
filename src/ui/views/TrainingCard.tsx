@@ -375,14 +375,17 @@ function TodayCard({
   const incomplete =
     !draft.exercises.length ||
     draft.exercises.some((e) => missing(e).length > 0);
-  const fromLast = proposal.exercises.filter((e) => e.source === "last_time");
   const count = proposal.exercises.length;
+  const recommended = proposal.exercises.some((e) => e.progression);
+  const fromLast = proposal.exercises.filter((e) => e.source !== "plan");
   const subtitle = `${count} ${count === 1 ? "Übung" : "Übungen"} · ${
-    fromLast.length === count
-      ? "Werte vom letzten Mal"
-      : fromLast.length
-        ? "vom letzten Mal, sonst aus dem Plan"
-        : "Werte aus deinem Plan"
+    recommended
+      ? "Arnolds Vorschlag"
+      : fromLast.length === count
+        ? "Werte vom letzten Mal"
+        : fromLast.length
+          ? "vom letzten Mal, sonst aus dem Plan"
+          : "Werte aus deinem Plan"
   }`;
 
   const replaceInPlan = async (planItemId: string, next: ArnoldExercise) => {

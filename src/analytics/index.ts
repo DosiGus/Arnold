@@ -59,4 +59,12 @@ export {
   type GoalTarget,
 } from "./goals.js";
 export { computeHome, type HomeAnalytics } from "./home.js";
+export {
+  PROGRESSION_VERSION,
+  ProgressionSchema,
+  recommendProgression,
+  weightStep,
+  type Progression,
+  type ProgressionResult,
+} from "./progression.js";
 export * from "./types.js";

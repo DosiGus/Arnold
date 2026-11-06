@@ -268,6 +268,12 @@
   color: var(--muted);
   text-decoration: line-through;
 }
+.ac-day-why {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
 .ac-day-row[data-skipped] .ac-day-tag {
   color: var(--muted);
 }

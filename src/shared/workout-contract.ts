@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { toolErrorSchema } from "./write-recovery.js";
+import { ProgressionSchema } from "../analytics/progression.js";
 import {
   ArnoldBodyWeightSchema,
   ArnoldGoalKindSchema,
@@ -65,9 +66,10 @@ export const ProposedSetSchema = z.strictObject({
 });
 export type ProposedSet = z.infer<typeof ProposedSetSchema>;
 /**
- * One exercise of a session as "so gemacht" would save it: the last working
- * sets, else the plan target. `missing` names what is unknown; such an
- * exercise is not saved until it is filled in.
+ * One exercise of a session as "so gemacht" would save it: Arnold's
+ * recommendation from the last working sets (`progression`), else the last
+ * working sets as they were, else the plan target. `missing` names what is
+ * unknown; such an exercise is not saved until it is filled in.
  */
 export const ProposedExerciseSchema = z.strictObject({
   plan_item_id: id.nullable(),
@@ -75,8 +77,10 @@ export const ProposedExerciseSchema = z.strictObject({
   exercise_name: z.string().min(1),
   conventions: SetConventionsSchema,
   sets: z.array(ProposedSetSchema),
-  source: z.enum(["last_time", "plan"]),
+  source: z.enum(["progression", "last_time", "plan"]),
   last_date: z.iso.date().nullable(),
+  /** Why the values differ from last time; only with source `progression`. */
+  progression: ProgressionSchema.optional(),
   target_sets: z.number().int().positive().nullable(),
   rep_min: z.number().int().nonnegative().nullable(),
   rep_max: z.number().int().nonnegative().nullable(),
@@ -207,7 +211,13 @@ export const WriteInputs = {
     session_id: id
       .optional()
       .describe(
-        "Trainingstag des Plans; ohne Änderungen werden die Sätze aus dem Vorschlag gespeichert (letztes Mal, sonst Planziel).",
+        "Trainingstag des Plans; ohne Änderungen werden die Sätze aus dem Vorschlag gespeichert (Arnolds Empfehlung aus dem letzten Training, sonst letztes Mal, sonst Planziel).",
+      ),
+    same_as_last_time: z
+      .literal(true)
+      .optional()
+      .describe(
+        "Nur wenn der Nutzer ausdrücklich genau die Werte vom letzten Mal gemacht hat („alles wie letztes Mal“): speichert die Sätze des letzten Trainings statt Arnolds Empfehlung.",
       ),
     session_name: text
       .optional()

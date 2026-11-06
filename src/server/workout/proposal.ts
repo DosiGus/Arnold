@@ -4,6 +4,11 @@ import type {
   ArnoldPlanItem,
   ArnoldSet,
 } from "../../shared/arnold-schema-v1.js";
+import {
+  PROGRESSION_HISTORY,
+  recommendProgression,
+  weightStep,
+} from "../../analytics/progression.js";
 import type {
   ProposedExercise,
   ProposedSet,
@@ -12,8 +17,14 @@ import type {
 } from "../../shared/workout-contract.js";
 
 /**
- * What "so gemacht" saves for a plan session: per exercise the working sets of
- * the last completed workout with that exercise, else the plan's own targets.
+ * What "so gemacht" saves for a plan session, per exercise:
+ *
+ *   1. Arnold's recommendation (src/analytics/progression.ts) built on the
+ *      working sets of the last completed workouts with that exercise, when
+ *      the plan gives a repetition range;
+ *   2. else last time's working sets as they were;
+ *   3. else the plan's own targets.
+ *
  * Nothing is guessed: a missing weight or repetition count stays missing and
  * the exercise is marked, so the user (or the chat) fills it in first.
  *
@@ -25,6 +36,15 @@ type Data = Pick<
   ArnoldDataset,
   "workouts" | "sets" | "exercises" | "planItems"
 >;
+
+export interface ProposalOptions {
+  /** Only workouts on or before this calendar day. */
+  before?: string;
+  /** Leave out this workout, the one being replaced. */
+  excludeWorkoutId?: string;
+  /** false: last time's values as they were, without a recommendation. */
+  progression?: boolean;
+}
 
 /** The conventions of a set come from the plan item, else from the exercise. */
 export function conventionsFor(
@@ -68,13 +88,19 @@ function completedNewestFirst(data: Data, before?: string) {
     );
 }
 
-/** The working sets of the newest completed workout that has this exercise. */
-export function lastTime(
+/**
+ * The working sets of the newest completed workouts that have this exercise,
+ * newest first, at most `limit` of them.
+ */
+export function pastSessions(
   data: Data,
   exerciseId: string,
-  options: { before?: string; excludeWorkoutId?: string } = {},
-): { date: string; sets: ArnoldSet[] } | undefined {
+  options: ProposalOptions = {},
+  limit = 1,
+): { date: string; sets: ArnoldSet[] }[] {
+  const found: { date: string; sets: ArnoldSet[] }[] = [];
   for (const workout of completedNewestFirst(data, options.before)) {
+    if (found.length >= limit) break;
     if (workout.workout_id === options.excludeWorkoutId) continue;
     const sets = data.sets
       .filter(
@@ -85,10 +111,17 @@ export function lastTime(
           s.set_type === "working",
       )
       .sort((a, b) => a.set_number - b.set_number);
-    if (sets.length) return { date: workout.workout_date_local, sets };
+    if (sets.length) found.push({ date: workout.workout_date_local, sets });
   }
-  return undefined;
+  return found;
 }
+
+/** Same load basis, execution and implements: the sets measure the same thing. */
+const sameMeasure = (a: ArnoldSet, b: ArnoldSet) =>
+  a.load_basis === b.load_basis &&
+  a.execution_mode === b.execution_mode &&
+  a.implement_count === b.implement_count &&
+  a.reps_basis === b.reps_basis;
 
 const bodyweight = (c: SetConventions) => c.load_basis === "bodyweight_only";
 
@@ -100,9 +133,15 @@ export function proposeExercise(
   data: Data,
   exercise: ArnoldExercise,
   item: ArnoldPlanItem | undefined,
-  options: { before?: string; excludeWorkoutId?: string } = {},
+  options: ProposalOptions = {},
 ): ProposedExercise {
-  const last = lastTime(data, exercise.exercise_id, options);
+  const history = pastSessions(
+    data,
+    exercise.exercise_id,
+    options,
+    PROGRESSION_HISTORY,
+  );
+  const last = history[0];
   const base = {
     plan_item_id: item?.plan_item_id ?? null,
     exercise_id: exercise.exercise_id,
@@ -119,14 +158,50 @@ export function proposeExercise(
       implement_count: first.implement_count,
       reps_basis: first.reps_basis,
     };
+    const lastSets: ProposedSet[] = last.sets.map((s) => ({
+      reps: s.reps,
+      load_kg: bodyweight(conventions) ? null : s.load_kg,
+      side: s.side,
+    }));
+    // Only sessions measured like the last one: a switch from dumbbells to
+    // the barbell, or from both sides to one, starts the history anew.
+    const comparable: { date: string; sets: ProposedSet[] }[] = [];
+    for (const session of history) {
+      if (!session.sets.every((s) => sameMeasure(s, first))) break;
+      comparable.push({
+        date: session.date,
+        sets: session.sets.map((s) => ({
+          reps: s.reps,
+          load_kg: bodyweight(conventions) ? null : s.load_kg,
+          side: s.side,
+        })),
+      });
+    }
+    // The first session is the last one, so it always holds lastSets' values.
+    const next =
+      item && options.progression !== false
+        ? recommendProgression({
+            sessions: comparable,
+            load_basis: conventions.load_basis,
+            rep_min: item.rep_min,
+            rep_max: item.rep_max,
+            step_kg: weightStep(exercise.equipment, conventions.load_basis),
+          })
+        : undefined;
+    if (next?.status === "recommended")
+      return {
+        ...base,
+        conventions,
+        sets: next.sets,
+        source: "progression",
+        last_date: last.date,
+        progression: next.progression,
+        missing: [],
+      };
     return {
       ...base,
       conventions,
-      sets: last.sets.map((s) => ({
-        reps: s.reps,
-        load_kg: bodyweight(conventions) ? null : s.load_kg,
-        side: s.side,
-      })),
+      sets: lastSets,
       source: "last_time",
       last_date: last.date,
       missing: [],
@@ -175,7 +250,7 @@ export function proposeSession(
   data: Data,
   planVersionId: string,
   sessionId: string,
-  options: { before?: string; excludeWorkoutId?: string } = {},
+  options: ProposalOptions = {},
 ): SessionProposal | undefined {
   const items = sessionItems(data, planVersionId, sessionId);
   if (!items.length) return undefined;

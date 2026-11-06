@@ -17,6 +17,7 @@ import type {
   ViewWorkoutSummary,
 } from "../shared/arnold-view";
 import { dateLabel, formatNumber, formatSetLine, UNKNOWN } from "./format";
+import { progressionForModel } from "./workout-draft";
 
 const SEEN =
   "Die Karte zeigt das bereits; im Chat nicht wiederholen, nur kurz einordnen.";
@@ -59,8 +60,10 @@ function proposalLines(proposal: SessionProposal) {
     const gaps = e.missing.length
       ? ` – fehlt: ${e.missing.map((m) => MISSING[m]).join(", ")}`
       : "";
-    const from =
-      e.source === "last_time" && e.last_date
+    const why = progressionForModel(e);
+    const from = why
+      ? ` (${why})`
+      : e.source === "last_time" && e.last_date
         ? ` (wie am ${dateLabel(e.last_date, true)})`
         : " (Planziel)";
     return `- ${e.exercise_name} [plan_item_id ${e.plan_item_id}, exercise_id ${e.exercise_id}]: ${sets}${from}${gaps}`;
@@ -88,9 +91,12 @@ export function todayContext(input: {
   return [
     `Arnold zeigt gerade den Trainingstag „${proposal.session_name}“${input.planName ? ` aus dem Plan „${input.planName}“` : ""}${input.of > 1 ? `, Tag ${proposal.session_order} von ${input.of}` : ""} (plan_version_id ${proposal.plan_version_id}, session_id ${proposal.session_id}). So würde „So gemacht, speichern“ eintragen:`,
     ...proposalLines(proposal),
+    proposal.exercises.some((e) => e.progression)
+      ? "Die Empfehlungen rechnet Arnold nach festen Regeln (doppelte Progression). Gewichte nie selbst ändern oder schätzen; auf Nachfrage die Begründung in eigenen Worten nennen."
+      : "",
     input.editing ? "Der Nutzer passt die Werte gerade in der Karte an." : "",
     input.canWrite
-      ? "Sagt der Nutzer im Chat, dass er das Training gemacht hat, sofort mit log_workout speichern (diese session_id, nur Abweichungen in exercises) und danach show_arnold_dashboard mit card today zeigen."
+      ? "Sagt der Nutzer im Chat, dass er das Training gemacht hat, sofort mit log_workout speichern (diese session_id, nur Abweichungen in exercises) und danach show_arnold_dashboard mit card today zeigen. Sagt er ausdrücklich „alles wie letztes Mal“, same_as_last_time: true senden; dann gelten die Werte vom letzten Mal statt Arnolds Empfehlung."
       : "Diese Verbindung kann keine Trainings speichern.",
     SEEN,
   ]

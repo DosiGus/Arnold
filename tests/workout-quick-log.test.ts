@@ -80,7 +80,7 @@ describe("log_workout: a whole workout in one step", () => {
     expect(await completed(r)).toBe(1);
   });
 
-  it("repeats last time without any changes", async () => {
+  it("saves Arnold's recommendation from last time without any changes", async () => {
     const r = createFixtureLogging();
     ok(
       await r.service.execute(
@@ -101,10 +101,20 @@ describe("log_workout: a whole workout in one step", () => {
       ),
     );
     const proposal = proposeActivePlan(await r.store.read())[0];
+    // 10, 9, 8 in a range of 8–12: same weight, one repetition more per set.
     expect(proposal.exercises[0]).toMatchObject({
-      source: "last_time",
+      source: "progression",
       last_date: "2026-10-20",
       missing: [],
+      progression: {
+        decision: "more_reps",
+        change_kg: 0,
+        last_sets: [
+          { reps: 10, load_kg: 60 },
+          { reps: 9, load_kg: 60 },
+          { reps: 8, load_kg: 60 },
+        ],
+      },
     });
     const again = ok(
       await r.service.execute(
@@ -117,9 +127,9 @@ describe("log_workout: a whole workout in one step", () => {
         .filter((s) => s.exercise_id === "fixture-bench")
         .map((s) => [s.reps, s.load_kg]),
     ).toEqual([
+      [11, 60],
       [10, 60],
       [9, 60],
-      [8, 60],
     ]);
     expect(await completed(r)).toBe(2);
   });
@@ -358,10 +368,11 @@ describe("log_workout: findings of the ChatGPT stress test", () => {
         }),
       ),
     );
+    // 15 repetitions are above the range of 8–12: one step up, back to 8.
     const bench = past.sets.filter((s) => s.exercise_id === "fixture-bench");
     expect(bench.map((s) => [s.reps, s.load_kg])).toEqual([
-      [15, 60],
-      [15, 60],
+      [8, 62.5],
+      [8, 62.5],
     ]);
   });
 

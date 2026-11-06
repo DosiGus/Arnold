@@ -9,6 +9,8 @@ import {
   carryOver,
   draftFromProposal,
   exerciseSummary,
+  progressionForModel,
+  progressionNote,
   setUniform,
   similarExercises,
   swapExercise,
@@ -217,5 +219,129 @@ describe("draft against proposal", () => {
       { plan_item_id: "n2", exercise_name: "row" },
     ]);
     expect(next.exercises.map((e) => e.plan_item_id)).toEqual(["n1"]);
+  });
+});
+
+describe("progression notes", () => {
+  const progression = (
+    over: Partial<NonNullable<ProposedExercise["progression"]>> = {},
+  ): NonNullable<ProposedExercise["progression"]> => ({
+    version: "1.0.0",
+    decision: "increase",
+    reason: "all_sets_at_top",
+    change_kg: 2.5,
+    rep_min: 8,
+    rep_max: 10,
+    last_date: "2026-11-01",
+    last_sets: [
+      { reps: 10, load_kg: 80 },
+      { reps: 10, load_kg: 80 },
+      { reps: 10, load_kg: 80 },
+    ],
+    stalled_sessions: 0,
+    ...over,
+  });
+
+  it("says in a few words why the values changed", () => {
+    expect(
+      progressionNote(proposed("i", "bench", { progression: progression() })),
+    ).toBe("+2,5 kg · zuletzt 3 × 10 geschafft");
+    expect(
+      progressionNote(
+        proposed("i", "bench", {
+          progression: progression({
+            decision: "more_reps",
+            reason: "building_reps",
+            change_kg: 0,
+            last_sets: [
+              { reps: 10, load_kg: 80 },
+              { reps: 9, load_kg: 80 },
+              { reps: 8, load_kg: 80 },
+            ],
+          }),
+        }),
+      ),
+    ).toBe("1 Wdh. mehr · zuletzt 10, 9, 8");
+    expect(
+      progressionNote(
+        proposed("i", "bench", {
+          progression: progression({
+            decision: "reduce",
+            reason: "missed_range",
+            change_kg: -7.5,
+          }),
+        }),
+      ),
+    ).toBe("−7,5 kg · zweimal unter 8 Wdh.");
+    expect(
+      progressionNote(
+        proposed("i", "bench", {
+          progression: progression({
+            decision: "reduce",
+            reason: "stalled",
+            change_kg: -7.5,
+            stalled_sessions: 3,
+          }),
+        }),
+      ),
+    ).toBe("−7,5 kg · 3 Trainings ohne Fortschritt");
+    expect(
+      progressionNote(
+        proposed("i", "row", {
+          conventions: dumbbells,
+          progression: progression({ change_kg: 2 }),
+        }),
+      ),
+    ).toBe("+2 kg je Hantel · zuletzt 3 × 10 geschafft");
+    expect(
+      progressionNote(
+        proposed("i", "dips", {
+          conventions: bodyweight,
+          progression: progression({ decision: "top_reached", change_kg: 0 }),
+        }),
+      ),
+    ).toBe("Ziel erreicht · bereit für Zusatzgewicht");
+    expect(progressionNote(proposed("i", "bench"))).toBeUndefined();
+  });
+
+  it("counts one-sided sets once per round", () => {
+    const unilateral: SetConventions = {
+      ...dumbbells,
+      execution_mode: "unilateral",
+      implement_count: 1,
+      reps_basis: "per_side",
+    };
+    const sides = [
+      { reps: 12, load_kg: 20 },
+      { reps: 12, load_kg: 20 },
+    ];
+    expect(
+      progressionNote(
+        proposed("i", "row", {
+          conventions: unilateral,
+          progression: progression({
+            change_kg: 2,
+            last_sets: [...sides, ...sides, ...sides],
+          }),
+        }),
+      ),
+    ).toBe("+2 kg je Hantel · zuletzt 3 × 12 geschafft");
+  });
+
+  it("tells the model the rule and never invents a weight for bodyweight", () => {
+    const text = progressionForModel(
+      proposed("i", "bench", { progression: progression() }),
+    );
+    expect(text).toContain("+2,5 kg");
+    expect(text).toContain("8–10 Wdh.");
+    expect(text).toContain("2026-11-01");
+    const top = progressionForModel(
+      proposed("i", "dips", {
+        conventions: bodyweight,
+        progression: progression({ decision: "top_reached", change_kg: 0 }),
+      }),
+    );
+    expect(top).toContain("kein Gewicht");
+    expect(top).toContain("vom Nutzer nennen lassen");
   });
 });

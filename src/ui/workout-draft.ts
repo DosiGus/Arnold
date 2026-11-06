@@ -2,7 +2,8 @@
  * The editable form of one workout: what the card shows under "Anpassen" and
  * turns into a `log_workout` request. Pure functions, no I/O.
  *
- * A draft starts from the server's proposal (last time, else plan) or from a
+ * A draft starts from the server's proposal (Arnold's recommendation, else
+ * last time, else plan) or from a
  * saved workout. Every exercise in it is sent with its sets spelled out, so
  * what the user sees is exactly what is stored.
  */
@@ -454,4 +455,73 @@ export function carryOver(
     ),
     skipped,
   };
+}
+
+/* ------------------------------------------------------------ progression */
+
+type Progression = NonNullable<ProposedExercise["progression"]>;
+
+/** Last time's repetitions per set, short: "3 × 12" or "10, 9, 8". */
+function lastReps(p: Progression, c: SetConventions): string {
+  const per = sidesFor(c).length;
+  const reps = p.last_sets.filter((_, i) => i % per === 0).map((s) => s.reps);
+  return new Set(reps).size === 1
+    ? `${reps.length} × ${formatNumber(reps[0], 0)}`
+    : reps.map((r) => formatNumber(r, 0)).join(", ");
+}
+
+/** A weight change with its sign and meaning: "+2,5 kg", "−2 kg je Hantel". */
+function change(kg: number, c: SetConventions): string {
+  const sign = kg > 0 ? "+" : "−";
+  const each = c.load_basis === "per_implement" ? " je Hantel" : "";
+  return `${sign}${formatNumber(Math.abs(kg), 2)} kg${each}`;
+}
+
+/**
+ * Why Arnold proposes these values, in a few words under the exercise name.
+ * The numbers come from the engine; this only puts them into words.
+ */
+export function progressionNote(
+  exercise: Pick<ProposedExercise, "progression" | "conventions">,
+): string | undefined {
+  const p = exercise.progression;
+  if (!p) return undefined;
+  const c = exercise.conventions;
+  switch (p.decision) {
+    case "increase":
+      return `${change(p.change_kg, c)} · zuletzt ${lastReps(p, c)} geschafft`;
+    case "more_reps":
+      return `1 Wdh. mehr · zuletzt ${lastReps(p, c)}`;
+    case "top_reached":
+      return c.load_basis === "assistance"
+        ? "Ziel erreicht · weniger Unterstützung möglich"
+        : "Ziel erreicht · bereit für Zusatzgewicht";
+    case "reduce":
+      return p.reason === "stalled"
+        ? `${change(p.change_kg, c)} · ${p.stalled_sessions} Trainings ohne Fortschritt`
+        : `${change(p.change_kg, c)} · zweimal unter ${formatNumber(p.rep_min, 0)} Wdh.`;
+  }
+}
+
+/** The same reasoning for the chat model, with the rule behind it. */
+export function progressionForModel(
+  exercise: Pick<ProposedExercise, "progression" | "conventions" | "last_date">,
+): string | undefined {
+  const p = exercise.progression;
+  if (!p) return undefined;
+  const c = exercise.conventions;
+  const range = `${p.rep_min}–${p.rep_max} Wdh.`;
+  const last = `zuletzt am ${p.last_date}: ${lastReps(p, c)}`;
+  switch (p.decision) {
+    case "increase":
+      return `Arnolds Empfehlung: ${change(p.change_kg, c)}, weil alle Sätze die Obergrenze erreicht haben (${range}; ${last}); wieder unten im Bereich anfangen`;
+    case "more_reps":
+      return `Arnolds Empfehlung: gleiches Gewicht, je Satz eine Wiederholung mehr bis zur Obergrenze (${range}; ${last})`;
+    case "top_reached":
+      return `Obergrenze erreicht (${range}; ${last}); Arnold ändert hier kein Gewicht. Höchstens anbieten: ${c.load_basis === "assistance" ? "weniger Unterstützung" : "Zusatzgewicht oder eine schwerere Variante"}, Wert vom Nutzer nennen lassen`;
+    case "reduce":
+      return p.reason === "stalled"
+        ? `Arnolds Empfehlung: ${change(p.change_kg, c)} (etwa 10 % leichter), weil seit ${p.stalled_sessions} Trainings mit diesem Gewicht kein Fortschritt kam (${range}; ${last}); von dort wieder aufbauen`
+        : `Arnolds Empfehlung: ${change(p.change_kg, c)} (etwa 10 % leichter), weil zweimal die meisten Sätze unter ${p.rep_min} Wdh. lagen (${range}; ${last}); von dort wieder aufbauen`;
+  }
 }

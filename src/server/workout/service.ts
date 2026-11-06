@@ -777,8 +777,12 @@ export class WorkoutLoggingService {
           input.workout_date_local,
         );
         // Always the newest values, also when a past day is logged: that is
-        // what the card and get_workout show as "wie letztes Mal".
-        const options = { excludeWorkoutId: replaced?.workout_id };
+        // what the card and get_workout show. "Alles wie letztes Mal" keeps
+        // last time's values instead of Arnold's recommendation.
+        const options = {
+          excludeWorkoutId: replaced?.workout_id,
+          progression: input.same_as_last_time !== true,
+        };
         const proposal =
           plan && session
             ? proposeSession(data, plan, session, options)

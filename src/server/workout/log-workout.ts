@@ -10,7 +10,12 @@ import type {
   ProposedSet,
 } from "../../shared/workout-contract.js";
 import { WriteError } from "./infrastructure.js";
-import { conventionsFor, proposeExercise, sidesFor } from "./proposal.js";
+import {
+  conventionsFor,
+  proposeExercise,
+  sidesFor,
+  type ProposalOptions,
+} from "./proposal.js";
 
 export const MISSING_LABEL = {
   sets: "Sätze",
@@ -117,7 +122,7 @@ export function applyChanges(
   data: ArnoldDataset,
   proposal: readonly ProposedExercise[],
   changes: readonly LogWorkoutExercise[],
-  options: { before?: string; excludeWorkoutId?: string },
+  options: ProposalOptions,
 ): ProposedExercise[] {
   const slots = [...proposal];
   const exercise = (id: string) => {
@@ -169,9 +174,7 @@ export function applyChanges(
       // neither from the old exercise nor from the new one's history: the
       // user names it, or Arnold asks.
       const conventions =
-        swapped.source === "last_time"
-          ? swapped.conventions
-          : conventionsFor(next);
+        swapped.source !== "plan" ? swapped.conventions : conventionsFor(next);
       const sides = sidesFor(conventions.execution_mode);
       const oldSides = sidesFor(slot.conventions.execution_mode).length;
       const count =
