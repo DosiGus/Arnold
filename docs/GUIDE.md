@@ -206,6 +206,10 @@ Rund 40 Tools in fünf Bereichen; die vollständige, verbindliche Liste ist die 
 | Einrichtung   | `show_arnold_onboarding`, `start_arnold_onboarding`, `update_onboarding_profile`, `request_onboarding_plan`, `submit_onboarding_plan_proposal`, `confirm_onboarding_plan`, `finish_arnold_setup`, …                                                                                    |
 | Konto         | `get_arnold_stored_data`, `delete_arnold_account`                                                                                                                                                                                                                                      |
 
+## ChatGPT-Plugin und Skills (`plugins/arnold`)
+
+Das Plugin bündelt den MCP-Server (`mcp.json`, Live-Adresse, OAuth mit Selbstregistrierung) mit zwei Skills: `arnold-trainingsplan` (Plan erstellen, übernehmen, ändern; Planungsregeln, Namen, Stoßzeit-Geräte) und `arnold-coach` (Fragen, Fortschritt, Stillstand, Schmerzen). Skills sind Abläufe und Regeln für ChatGPT; sie ersetzen keine Server-Prüfung, und die Server-Anweisungen gelten weiter für Nutzer ohne Plugin. Wer ein Tool umbenennt, passt die Skills an; `tests/plugin-skills.test.ts` meldet es sonst. Testen und Testfälle: `plugins/arnold/README.md`.
+
 # Teil 2 – Betrieb
 
 Alle Variablen mit Kommentar stehen in `.env.example`; `.env*`-Dateien sind ignoriert und enthalten nie etwas im Repository.

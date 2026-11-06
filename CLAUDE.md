@@ -19,6 +19,7 @@ npm run deploy:cloud-run -- <projekt-id> <authkit-domain>   # Arnold mit Login a
 - **Kennzahl:** nur in `src/analytics`, rein und ohne I/O. Presenter und UI rechnen nicht nach.
 - **Plan/Workout-Schreiben:** immer über die Dienste in `src/server/plan` bzw. `workout` und `commitWrite` (Revisionen, `request_id`, eine Transaktion mit Audit und Quittung). Nie direkt in die Tabelle.
 - **Datenbank:** Schemaänderung nur als neue Datei in `db/migrations` plus `EXPECTED_SCHEMA_VERSION` in `src/server/db/database.ts`. Jede Nutzertabelle braucht `user_id`, Row Level Security und die Richtlinie `own_rows`; Bezüge enthalten immer `user_id`. Zugriff nur über `Database.asUser`. Test in `tests/db-*.test.ts`.
+- **Skills (ChatGPT-Plugin):** `plugins/arnold/skills/<name>/SKILL.md` plus `references/`. Nur veröffentlichte Tools nennen; `trainingswissenschaft.md` in beiden Skills gleich halten. Test: `tests/plugin-skills.test.ts`.
 - **UI:** Ansichten in `src/ui/views`, Zustand in `src/ui/hooks`, Bausteine in `src/ui/components`. Die UI hat keinen Netzwerkzugriff außer `callServerTool`.
 
 ## Regeln, die man leicht verletzt

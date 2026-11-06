@@ -1,0 +1,17 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "arnold": {
+      "type": "streamable-http",
+      "url": "https://arnold-789221393068.europe-west1.run.app/mcp",
+      "extensions": {
+        "com.openai": {
+          "auth": {
+            "type": "oauth",
+            "client": { "mode": "cimd" }
+          }
+        }
+      }
+    }
+  }
+}

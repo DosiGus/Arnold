@@ -1,0 +1,31 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "arnold",
+  "version": "0.1.0",
+  "description": "Arnold ist dein Krafttrainings-Coach in ChatGPT: Trainingsplan, einfaches Loggen, Fortschritt und Rückfragen an einem Ort.",
+  "author": {
+    "name": "Arnold",
+    "url": "https://arnold-789221393068.europe-west1.run.app/support"
+  },
+  "homepage": "https://arnold-789221393068.europe-west1.run.app/support",
+  "keywords": ["krafttraining", "trainingsplan", "fitness", "coach"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Arnold",
+        "shortDescription": "Dein Krafttrainings-Coach mit Plan, Logging und Fortschritt.",
+        "longDescription": "Arnold erstellt mit dir einen Trainingsplan, der zu deinen Tagen, deiner Zeit und deinem Studio passt. Du loggst dein Training mit einem Satz, Arnold schlägt die Gewichte für das nächste Mal vor und erklärt dir deinen Fortschritt.",
+        "developerName": "Arnold",
+        "capabilities": ["Read", "Write"],
+        "websiteURL": "https://arnold-789221393068.europe-west1.run.app/support",
+        "privacyPolicyURL": "https://arnold-789221393068.europe-west1.run.app/datenschutz",
+        "termsOfServiceURL": "https://arnold-789221393068.europe-west1.run.app/bedingungen",
+        "defaultPrompt": [
+          "Erstelle mir mit Arnold einen Trainingsplan.",
+          "Wie entwickelt sich mein Bankdrücken?",
+          "Tausch im Plan die Beinpresse gegen etwas ohne Gerät."
+        ]
+      }
+    }
+  }
+}
