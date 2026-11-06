@@ -136,7 +136,7 @@ Arnold rechnet die Werte fürs nächste Training selbst, ChatGPT erklärt sie nu
 - Gewichtsstufen (`weightStep`): Langhantel und Kabelzug 2,5 kg, Kurzhantel 2 kg je Hantel, Kettlebell 4 kg, Maschine 5 kg; sonst nach Lastdefinition.
 - Ein leichteres Training beendet die Zählung „ohne Fortschritt“; nach einem Deload folgt also nie sofort der nächste. Kann ein Gewicht nicht weiter sinken, baut Arnold Wiederholungen auf.
 - Keine Empfehlung (`source: last_time`, Werte wie beim letzten Mal) ohne Wiederholungsbereich, mit unbekanntem Gewicht, für getauschte oder zusätzliche Übungen. Ohne Verlauf gilt das Planziel bzw. das Startgewicht.
-- Der Vorschlag (`proposals` aus `get_workout`) trägt die Begründung als `progression`; die Karte zeigt sie unter dem Übungsnamen, die Chat-Brücke als Satz. „So gemacht“ und `log_workout` ohne Änderungen speichern genau diesen Vorschlag; `same_as_last_time: true` speichert ausdrücklich die Werte vom letzten Mal.
+- Der Vorschlag (`proposals` aus `get_workout`) trägt die Begründung als `progression`; die Karte zeigt „Zuletzt …“ unter dem Übungsnamen und markiert die Änderung mit einem Pfeil, die Chat-Brücke nennt die Regel als Satz. „So gemacht“ und `log_workout` ohne Änderungen speichern genau diesen Vorschlag. Der Umschalter „Wie letztes Mal“ in der Karte schickt die Sätze vom letzten Mal ausdrücklich mit; im Chat speichert `same_as_last_time: true` sie.
 - Bewusst nicht berücksichtigt: Pausen zwischen Trainings (die Karte und das Speichern hätten sonst je nach Uhrzeit verschiedene Werte), Wiederholungen in Reserve (die Karte fragt sie nicht ab). Regelversion: `PROGRESSION_VERSION`.
 
 ### Trainingspläne (`src/server/plan`, `src/shared/plan-contract.ts`)

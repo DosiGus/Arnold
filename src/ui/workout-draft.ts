@@ -477,30 +477,71 @@ function change(kg: number, c: SetConventions): string {
   return `${sign}${formatNumber(Math.abs(kg), 2)} kg${each}`;
 }
 
+/** Which values the training card shows and "So gemacht" saves. */
+export type ProposalMode = "recommended" | "last_time";
+
+/** True when Arnold recommends something for at least one exercise. */
+export function hasRecommendation(proposal: SessionProposal): boolean {
+  return proposal.exercises.some((e) => e.progression);
+}
+
 /**
- * Why Arnold proposes these values, in a few words under the exercise name.
- * The numbers come from the engine; this only puts them into words.
+ * The proposal "wie letztes Mal": every recommended exercise back to the sets
+ * its recommendation was built on, which are last time's working sets in the
+ * same order (the engine changes values, never the sets or their sides).
  */
-export function progressionNote(
-  exercise: Pick<ProposedExercise, "progression" | "conventions">,
+export function asLastTime(proposal: SessionProposal): SessionProposal {
+  return {
+    ...proposal,
+    exercises: proposal.exercises.map((e) => {
+      const { progression: p, ...rest } = e;
+      if (!p || p.last_sets.length !== e.sets.length) return e;
+      return {
+        ...rest,
+        source: "last_time",
+        sets: e.sets.map((s, i) => ({
+          ...s,
+          reps: p.last_sets[i].reps,
+          load_kg: isBodyweight(e.conventions) ? null : p.last_sets[i].load_kg,
+        })),
+      };
+    }),
+  };
+}
+
+/**
+ * Last time under the exercise name, so it is never mistaken for today:
+ * "Zuletzt 80 kg · 3 × 10" or "Zuletzt 105 kg · 5, 4, 3, 2".
+ */
+export function lastTimeLine(
+  exercise: Pick<ProposedExercise, "progression" | "conventions" | "sets">,
 ): string | undefined {
   const p = exercise.progression;
-  if (!p) return undefined;
-  const c = exercise.conventions;
-  switch (p.decision) {
-    case "increase":
-      return `${change(p.change_kg, c)} · zuletzt ${lastReps(p, c)} geschafft`;
-    case "more_reps":
-      return `1 Wdh. mehr · zuletzt ${lastReps(p, c)}`;
-    case "top_reached":
-      return c.load_basis === "assistance"
-        ? "Ziel erreicht · weniger Unterstützung möglich"
-        : "Ziel erreicht · bereit für Zusatzgewicht";
-    case "reduce":
-      return p.reason === "stalled"
-        ? `${change(p.change_kg, c)} · ${p.stalled_sessions} Trainings ohne Fortschritt`
-        : `${change(p.change_kg, c)} · zweimal unter ${formatNumber(p.rep_min, 0)} Wdh.`;
-  }
+  if (!p || p.last_sets.length !== exercise.sets.length) return undefined;
+  const last = {
+    conventions: exercise.conventions,
+    sets: exercise.sets.map((s, i) => ({
+      ...s,
+      reps: p.last_sets[i].reps,
+      load_kg: p.last_sets[i].load_kg,
+    })),
+  };
+  const { load } = exerciseSummary(last);
+  const reps = lastReps(p, exercise.conventions);
+  return `Zuletzt ${load} · ${reps}${repsUnit(exercise.conventions)}`;
+}
+
+/** What Arnold changed against last time: the weight, the repetitions, both or neither. */
+export function changeOf(exercise: Pick<ProposedExercise, "progression">): {
+  load?: "up" | "down";
+  reps?: "up";
+} {
+  const p = exercise.progression;
+  if (!p) return {};
+  if (p.decision === "increase") return { load: "up" };
+  if (p.decision === "reduce") return { load: "down" };
+  if (p.decision === "more_reps") return { reps: "up" };
+  return {};
 }
 
 /** The same reasoning for the chat model, with the rule behind it. */

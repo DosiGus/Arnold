@@ -1,5 +1,11 @@
 import { useId, useState } from "react";
-import { ArrowLeftRight, ChevronDown, Pencil } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowLeftRight,
+  ArrowUp,
+  ChevronDown,
+  Pencil,
+} from "lucide-react";
 import type { ArnoldExercise } from "../../shared/arnold-schema-v1";
 import type {
   ProposedExercise,
@@ -11,8 +17,9 @@ import {
   exerciseSummary,
   isBodyweight,
   missing,
+  changeOf,
+  lastTimeLine,
   plannedExercise,
-  progressionNote,
   rounds,
   setRound,
   setUniform,
@@ -203,8 +210,9 @@ function DayRow({
   const name = skipped
     ? planned.exercise_name
     : (exercise?.exercise_name ?? planned.exercise_name);
-  // Why Arnold proposes these values; only while the row shows them.
-  const why = tag ? undefined : progressionNote(planned);
+  // Last time next to Arnold's values; only while the row shows them.
+  const last = tag ? undefined : lastTimeLine(planned);
+  const trend = tag ? {} : changeOf(planned);
 
   return (
     <li
@@ -223,16 +231,18 @@ function DayRow({
         <span className="ac-day-name">
           <span>{name}</span>
           {tag && <span className="ac-day-tag">{tag}</span>}
-          {why && <span className="ac-day-why">{why}</span>}
+          {last && <span className="ac-day-last">{last}</span>}
         </span>
         {!skipped && summary && (
           <span className="ac-day-values">
             <strong
               data-missing={summary.load === "Gewicht fehlt" || undefined}
             >
+              <Trend direction={trend.load} />
               {summary.load}
             </strong>
             <span data-missing={summary.volume.includes("?") || undefined}>
+              <Trend direction={trend.reps} />
               {summary.volume}
             </span>
           </span>
@@ -669,5 +679,19 @@ function Swap({
         </div>
       )}
     </div>
+  );
+}
+
+/** A small arrow at a value Arnold raised or lowered against last time. */
+function Trend({ direction }: { direction?: "up" | "down" }) {
+  if (!direction) return null;
+  const Icon = direction === "up" ? ArrowUp : ArrowDown;
+  return (
+    <span className="ac-day-trend">
+      <Icon size={13} strokeWidth={2.5} aria-hidden="true" />
+      <span className="visually-hidden">
+        {direction === "up" ? "mehr als zuletzt: " : "weniger als zuletzt: "}
+      </span>
+    </span>
   );
 }

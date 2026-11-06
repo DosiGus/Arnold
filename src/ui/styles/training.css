@@ -268,11 +268,20 @@
   color: var(--muted);
   text-decoration: line-through;
 }
-.ac-day-why {
+.ac-day-last {
   color: var(--muted);
   font-size: 0.75rem;
   font-weight: 400;
   font-variant-numeric: tabular-nums;
+}
+.ac-day-trend {
+  display: inline-flex;
+  margin-right: 0.1875rem;
+  color: var(--muted);
+  vertical-align: -0.0625rem;
+}
+.ac-training .ac-segment {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .ac-day-row[data-skipped] .ac-day-tag {
   color: var(--muted);

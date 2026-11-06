@@ -35,15 +35,18 @@ import type { CardId } from "../cards";
 import { PlanDay } from "../components/plan-day";
 import { usePlanReplace } from "../hooks/usePlanReplace";
 import {
+  asLastTime,
   carryOver,
   draftFromProposal,
   draftFromSaved,
   exerciseLine,
+  hasRecommendation,
   missing,
   plannedExercise,
   requestExercises,
   unchanged,
   type Draft,
+  type ProposalMode,
 } from "../workout-draft";
 
 type Logger = ReturnType<typeof useWorkoutLogger>;
@@ -294,8 +297,17 @@ function TodayCard({
   const nextIndex = useNextSession(view, proposals);
   const [chosen, setChosen] = useState<string>();
   const [choosing, setChoosing] = useState(false);
-  const proposal =
+  const planned =
     proposals.find((p) => p.session_id === chosen) ?? proposals[nextIndex];
+  // "Arnolds Vorschlag" or "Wie letztes Mal": the card shows one of the two,
+  // and "So gemacht" saves exactly what it shows.
+  const [mode, setMode] = useState<ProposalMode>("recommended");
+  const recommendable = !!planned && hasRecommendation(planned);
+  const lastTime = recommendable && mode === "last_time";
+  const proposal = useMemo(
+    () => (planned && lastTime ? asLastTime(planned) : planned),
+    [planned, lastTime],
+  );
   const disabled = logger.busy || !!logger.pending || !data.can_write;
   const plan = view.active_plan;
   const planReplace = usePlanReplace(client);
@@ -305,18 +317,27 @@ function TodayCard({
 
   // The draft is what "So gemacht" saves. It follows the chosen day; when the
   // plan itself changes ("Dauerhaft im Plan"), the user's other changes stay.
-  const [held, setHeld] = useState<{ base: SessionProposal; draft: Draft }>();
+  // Switching between Arnold's values and last time's starts a fresh draft.
+  const [held, setHeld] = useState<{
+    base: SessionProposal;
+    draft: Draft;
+    lastTime: boolean;
+  }>();
   let current = held;
   if (
     proposal &&
     (!held ||
+      held.lastTime !== lastTime ||
       held.base.session_id !== proposal.session_id ||
       held.base.plan_version_id !== proposal.plan_version_id)
   ) {
     current = {
       base: proposal,
+      lastTime,
       draft:
-        held && held.base.session_id === proposal.session_id
+        held &&
+        held.lastTime === lastTime &&
+        held.base.session_id === proposal.session_id
           ? carryOver(held.draft, held.base, proposal)
           : draftFromProposal(proposal),
     };
@@ -333,6 +354,7 @@ function TodayCard({
       of: proposals.length,
       editing: changed,
       canWrite: data.can_write,
+      lastTime,
     }),
   );
 
@@ -347,7 +369,9 @@ function TodayCard({
       timezone: timezone(),
       plan_version_id: proposal.plan_version_id,
       session_id: proposal.session_id,
-      ...(changed ? { exercises: requestExercises(draft) } : {}),
+      // Last time's values are sent spelled out, so the saved sets are the
+      // ones on the card even if the server's view of "last time" moved.
+      ...(changed || lastTime ? { exercises: requestExercises(draft) } : {}),
       source: "ui",
     });
   };
@@ -376,17 +400,18 @@ function TodayCard({
     !draft.exercises.length ||
     draft.exercises.some((e) => missing(e).length > 0);
   const count = proposal.exercises.length;
-  const recommended = proposal.exercises.some((e) => e.progression);
   const fromLast = proposal.exercises.filter((e) => e.source !== "plan");
-  const subtitle = `${count} ${count === 1 ? "Übung" : "Übungen"} · ${
-    recommended
-      ? "Arnolds Vorschlag"
-      : fromLast.length === count
-        ? "Werte vom letzten Mal"
-        : fromLast.length
-          ? "vom letzten Mal, sonst aus dem Plan"
-          : "Werte aus deinem Plan"
-  }`;
+  const exercises = `${count} ${count === 1 ? "Übung" : "Übungen"}`;
+  // With a recommendation the switch below names the values.
+  const subtitle = recommendable
+    ? exercises
+    : `${exercises} · ${
+        fromLast.length === count
+          ? "Werte vom letzten Mal"
+          : fromLast.length
+            ? "vom letzten Mal, sonst aus dem Plan"
+            : "Werte aus deinem Plan"
+      }`;
 
   const replaceInPlan = async (planItemId: string, next: ArnoldExercise) => {
     const before = proposal.exercises.find(
@@ -437,12 +462,32 @@ function TodayCard({
           }}
         />
       )}
+      {recommendable && (
+        <div className="ac-segment" role="group" aria-label="Welche Werte">
+          {(
+            [
+              ["recommended", "Arnolds Vorschlag"],
+              ["last_time", "Wie letztes Mal"],
+            ] as const
+          ).map(([value, text]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={mode === value}
+              disabled={logger.busy || !!logger.pending}
+              onClick={() => setMode(value)}
+            >
+              {text}
+            </button>
+          ))}
+        </div>
+      )}
       <PlanDay
-        key={proposal.session_id}
+        key={`${proposal.session_id}-${lastTime}`}
         proposal={proposal}
         draft={draft}
         catalog={data.exercises}
-        onChange={(next) => setHeld({ base: proposal, draft: next })}
+        onChange={(next) => setHeld({ base: proposal, draft: next, lastTime })}
         onReplaceInPlan={replaceInPlan}
         replacing={planReplace.busy}
         replacedInPlan={replacedInPlan}

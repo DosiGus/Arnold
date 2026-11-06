@@ -78,6 +78,8 @@ export function todayContext(input: {
   of: number;
   editing: boolean;
   canWrite: boolean;
+  /** The user switched the card from Arnold's recommendation to last time. */
+  lastTime?: boolean;
 }) {
   const { proposal } = input;
   if (!proposal)
@@ -93,6 +95,9 @@ export function todayContext(input: {
     ...proposalLines(proposal),
     proposal.exercises.some((e) => e.progression)
       ? "Die Empfehlungen rechnet Arnold nach festen Regeln (doppelte Progression). Gewichte nie selbst ändern oder schätzen; auf Nachfrage die Begründung in eigenen Worten nennen."
+      : "",
+    input.lastTime
+      ? "Der Nutzer hat in der Karte „Wie letztes Mal“ gewählt: Sie zeigt die Werte vom letzten Training statt Arnolds Empfehlung."
       : "",
     input.editing ? "Der Nutzer passt die Werte gerade in der Karte an." : "",
     input.canWrite

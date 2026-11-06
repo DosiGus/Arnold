@@ -8,9 +8,12 @@ import type {
 import {
   carryOver,
   draftFromProposal,
+  asLastTime,
+  changeOf,
   exerciseSummary,
+  hasRecommendation,
+  lastTimeLine,
   progressionForModel,
-  progressionNote,
   setUniform,
   similarExercises,
   swapExercise,
@@ -222,7 +225,7 @@ describe("draft against proposal", () => {
   });
 });
 
-describe("progression notes", () => {
+describe("Arnold's recommendation against last time", () => {
   const progression = (
     over: Partial<NonNullable<ProposedExercise["progression"]>> = {},
   ): NonNullable<ProposedExercise["progression"]> => ({
@@ -241,67 +244,66 @@ describe("progression notes", () => {
     stalled_sessions: 0,
     ...over,
   });
+  const increased = proposed("i1", "bench", {
+    source: "progression",
+    sets: sets(3, 8, 82.5),
+    progression: progression(),
+  });
+  const moreReps = proposed("i2", "squat", {
+    source: "progression",
+    sets: [
+      { reps: 6, load_kg: 105, side: "both" },
+      { reps: 5, load_kg: 105, side: "both" },
+    ],
+    progression: progression({
+      decision: "more_reps",
+      reason: "building_reps",
+      change_kg: 0,
+      rep_min: 6,
+      rep_max: 8,
+      last_sets: [
+        { reps: 5, load_kg: 105 },
+        { reps: 4, load_kg: 105 },
+      ],
+    }),
+  });
 
-  it("says in a few words why the values changed", () => {
+  it("names last time with its weight, apart from today's values", () => {
+    expect(lastTimeLine(increased)).toBe("Zuletzt 80 kg · 3 × 10");
+    expect(lastTimeLine(moreReps)).toBe("Zuletzt 105 kg · 5, 4");
     expect(
-      progressionNote(proposed("i", "bench", { progression: progression() })),
-    ).toBe("+2,5 kg · zuletzt 3 × 10 geschafft");
-    expect(
-      progressionNote(
-        proposed("i", "bench", {
+      lastTimeLine(
+        proposed("i", "row", {
+          conventions: dumbbells,
+          sets: sets(3, 10, 24),
           progression: progression({
-            decision: "more_reps",
-            reason: "building_reps",
-            change_kg: 0,
+            change_kg: 2,
             last_sets: [
-              { reps: 10, load_kg: 80 },
-              { reps: 9, load_kg: 80 },
-              { reps: 8, load_kg: 80 },
+              { reps: 12, load_kg: 22 },
+              { reps: 12, load_kg: 22 },
+              { reps: 12, load_kg: 22 },
             ],
           }),
         }),
       ),
-    ).toBe("1 Wdh. mehr · zuletzt 10, 9, 8");
+    ).toBe("Zuletzt 2 × 22 kg · 3 × 12");
     expect(
-      progressionNote(
-        proposed("i", "bench", {
-          progression: progression({
-            decision: "reduce",
-            reason: "missed_range",
-            change_kg: -7.5,
-          }),
-        }),
-      ),
-    ).toBe("−7,5 kg · zweimal unter 8 Wdh.");
-    expect(
-      progressionNote(
-        proposed("i", "bench", {
-          progression: progression({
-            decision: "reduce",
-            reason: "stalled",
-            change_kg: -7.5,
-            stalled_sessions: 3,
-          }),
-        }),
-      ),
-    ).toBe("−7,5 kg · 3 Trainings ohne Fortschritt");
-    expect(
-      progressionNote(
-        proposed("i", "row", {
-          conventions: dumbbells,
-          progression: progression({ change_kg: 2 }),
-        }),
-      ),
-    ).toBe("+2 kg je Hantel · zuletzt 3 × 10 geschafft");
-    expect(
-      progressionNote(
+      lastTimeLine(
         proposed("i", "dips", {
           conventions: bodyweight,
-          progression: progression({ decision: "top_reached", change_kg: 0 }),
+          sets: sets(2, 12, null),
+          progression: progression({
+            decision: "top_reached",
+            change_kg: 0,
+            last_sets: [
+              { reps: 12, load_kg: null },
+              { reps: 13, load_kg: null },
+            ],
+          }),
         }),
       ),
-    ).toBe("Ziel erreicht · bereit für Zusatzgewicht");
-    expect(progressionNote(proposed("i", "bench"))).toBeUndefined();
+    ).toBe("Zuletzt Körpergewicht · 12, 13");
+    expect(lastTimeLine(proposed("i", "bench"))).toBeUndefined();
   });
 
   it("counts one-sided sets once per round", () => {
@@ -311,27 +313,72 @@ describe("progression notes", () => {
       implement_count: 1,
       reps_basis: "per_side",
     };
-    const sides = [
-      { reps: 12, load_kg: 20 },
-      { reps: 12, load_kg: 20 },
+    const side = (reps: number, load: number) => [
+      { reps, load_kg: load, side: "left" as const },
+      { reps, load_kg: load, side: "right" as const },
     ];
+    const pair = { reps: 12, load_kg: 20 };
     expect(
-      progressionNote(
+      lastTimeLine(
         proposed("i", "row", {
           conventions: unilateral,
+          sets: [...side(10, 22), ...side(10, 22), ...side(10, 22)],
           progression: progression({
             change_kg: 2,
-            last_sets: [...sides, ...sides, ...sides],
+            last_sets: [pair, pair, pair, pair, pair, pair],
           }),
         }),
       ),
-    ).toBe("+2 kg je Hantel · zuletzt 3 × 12 geschafft");
+    ).toBe("Zuletzt 20 kg pro Hantel · 3 × 12 je Seite");
+  });
+
+  it("marks what changed: the weight up or down, or the repetitions", () => {
+    expect(changeOf(increased)).toEqual({ load: "up" });
+    expect(changeOf(moreReps)).toEqual({ reps: "up" });
+    expect(
+      changeOf(
+        proposed("i", "bench", {
+          progression: progression({
+            decision: "reduce",
+            reason: "stalled",
+            change_kg: -7.5,
+          }),
+        }),
+      ),
+    ).toEqual({ load: "down" });
+    expect(
+      changeOf(
+        proposed("i", "dips", {
+          progression: progression({ decision: "top_reached" }),
+        }),
+      ),
+    ).toEqual({});
+    expect(changeOf(proposed("i", "bench"))).toEqual({});
+  });
+
+  it("switches the whole day back to last time's sets", () => {
+    const today = day("v1", [increased, moreReps, proposed("i3", "curl")]);
+    expect(hasRecommendation(today)).toBe(true);
+    const last = asLastTime(today);
+    expect(hasRecommendation(last)).toBe(false);
+    expect(last.exercises[0]).toMatchObject({
+      source: "last_time",
+      sets: sets(3, 10, 80),
+    });
+    expect(last.exercises[0]).not.toHaveProperty("progression");
+    expect(last.exercises[1].sets).toEqual([
+      { reps: 5, load_kg: 105, side: "both" },
+      { reps: 4, load_kg: 105, side: "both" },
+    ]);
+    // Without a recommendation an exercise stays as it was.
+    expect(last.exercises[2]).toBe(today.exercises[2]);
+    // The proposal itself is untouched.
+    expect(today.exercises[0].sets).toEqual(sets(3, 8, 82.5));
+    expect(hasRecommendation(day("v1", [proposed("i", "curl")]))).toBe(false);
   });
 
   it("tells the model the rule and never invents a weight for bodyweight", () => {
-    const text = progressionForModel(
-      proposed("i", "bench", { progression: progression() }),
-    );
+    const text = progressionForModel(increased);
     expect(text).toContain("+2,5 kg");
     expect(text).toContain("8–10 Wdh.");
     expect(text).toContain("2026-11-01");

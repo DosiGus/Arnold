@@ -101,7 +101,7 @@ test("saves the day's plan with typed weights, edits it and takes it back", asyn
 
   // The same training again on the same day asks first and saves nothing.
   await button(page, "Noch ein Training eintragen").click();
-  // Unchanged, it is the plan with last time's values: one tap.
+  // Unchanged, it is Arnold's proposal from last time (same weight): one tap.
   await expect(row(page, "Demo Bankdrücken")).toContainText("60 kg");
   await button(page, "So gemacht, speichern").click();
   await expect(
