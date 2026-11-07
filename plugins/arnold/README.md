@@ -13,6 +13,18 @@ Dieses Paket verbindet den Arnold-MCP-Server mit zwei Skills. Der Server bleibt 
 
 Das Onboarding braucht keinen Skill: Es wird vom Server und den Einrichtungs-Werkzeugen geführt. Die Server-Anweisungen gelten weiter auch für Nutzer, die Arnold ohne Plugin verbinden.
 
+## Stand der Tests (7. November 2026)
+
+Getestet auf chatgpt.com mit dem bestehenden Arnold-Plugin und den beiden Skills als einzeln hochgeladene Skills (Skills → Hinzufügen → „Von deinem Computer hochladen“, je Skill-Ordner ein ZIP):
+
+- **Skills greifen nur im Modus „Work“.** Im Modus „Chat“ lädt ChatGPT selbst hochgeladene Skills nicht; der Plan sah dann aus wie ohne Skill („Tag A/B/C“, drei Stoßzeit-Geräte an einem Tag). Ob Skills im Chat-Modus greifen, wenn sie im Arnold-Plugin selbst stecken, ist noch offen.
+- **Plan-Skill (Work):** Ablauf wie im Skill (aktiver Plan, Katalog, Entwurf, Prüfung), Namen „Beinfokus“/„Rückenfokus“, höchstens zwei Stoßzeit-Geräte pro Tag, engere Wiederholungsbereiche, kurze Erklärung. Offen: Ein Ganzkörpertag hieß „Brust & Schultern“.
+- **Coach-Skill (Work):** kurze Einordnung mit Datengrundlage, Verweis auf Arnolds Progression, eine Rückfrage. Die erste Fassung hat die Sicherheitsprüfung von ChatGPT nicht bestanden (sie erlaubte Speichern ohne Rückfrage); seitdem liest der Coach nur.
+- **Loggen (Work):** „Ganzkörper B heute gemacht, alles wie letztes Mal“ wird sofort gespeichert, ohne Coaching.
+- Arnold-Karten werden auch im Work-Modus angezeigt.
+
+Die registrierte MCP-Verbindung in ChatGPT hat die ID `plugin_asdk_app_6ae4ff061f588191a0ecf58dd697efd8`.
+
 ## Lokal testen
 
 1. ChatGPT-Desktop-App mit dem Repository als Projekt öffnen; sie liest `.agents/plugins/marketplace.json`. Alternativ den Ordner nach `~/.codex/plugins/arnold` kopieren und in `~/.agents/plugins/marketplace.json` eintragen.
@@ -21,7 +33,7 @@ Das Onboarding braucht keinen Skill: Es wird vom Server und den Einrichtungs-Wer
 
 Nach Änderungen an den Skills den Plugin-Ordner aktualisieren und die App neu starten. Nach Änderungen an Server-Werkzeugen zusätzlich in ChatGPT „Tools aktualisieren“.
 
-Für die Veröffentlichung braucht es noch die registrierte MCP-Verbindung aus ChatGPT (ID `plugin_asdk_app…`, über „Add custom MCP server“ → „Create as a plugin“) und Logo-Dateien. Beides ist bewusst nicht erfunden.
+Für die Veröffentlichung fehlen noch Logo-Dateien und die Verknüpfung der Skills mit der registrierten MCP-Verbindung (ID oben).
 
 ## Testfälle
 
