@@ -457,7 +457,9 @@ describe("watch API front door (GAR-B2-02)", () => {
     const crashed = await get(`${api}/plan`, watch.token);
     expect(crashed.status).toBe(503);
     expect(await crashed.text()).not.toContain(MARKER);
-    await get(`${api}/device`, `${watch.token.slice(0, -1)}A`);
+    // A token that differs in its last character, never the real one (M048).
+    const last = watch.token.endsWith("A") ? "B" : "A";
+    await get(`${api}/device`, `${watch.token.slice(0, -1)}${last}`);
     await new Promise((resolve) => setTimeout(resolve, 20));
     const log = lines.join("\n");
     expect(log).toContain('"message":"watch POST /workouts"');
