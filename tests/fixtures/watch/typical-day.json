@@ -1,0 +1,155 @@
+{
+  "api_version": 1,
+  "min_app_version": "1.0.0",
+  "p": "plv_d2a94dbc-b1d1-5834-8a13-53ce4fa3634b",
+  "id": "s_d2a94dbc-b1d1-5834-8a13-53ce4fa3634b",
+  "n": "Oberkörper A",
+  "cat": [
+    {
+      "id": "exc_b39135bd-d5d7-5454-a352-67adcb2b6f6c",
+      "n": "Überzüge am Kabelzug",
+      "g": 2500,
+      "l": { "b": "total" },
+      "s": [[4, 8, 60000]]
+    },
+    {
+      "id": "exc_d2a94dbc-b1d1-5834-8a13-53ce4fa3634b",
+      "n": "Kurzhantel-Schrägbankdrücken",
+      "g": 2500,
+      "l": { "b": "total" },
+      "s": [[4, 8, 60000]]
+    },
+    {
+      "id": "exc_f27054e3-a641-5c22-a872-0fb345a6b30b",
+      "n": "Überzüge am Kabelzug",
+      "g": 2500,
+      "l": { "b": "total" },
+      "s": [[4, 8, 60000]]
+    },
+    {
+      "id": "exc_06b29a7a-32b0-546b-b3f5-258982b7928d",
+      "n": "Kurzhantel-Schrägbankdrücken",
+      "g": 2500,
+      "l": { "b": "total" },
+      "s": [[4, 8, 60000]]
+    },
+    {
+      "id": "exc_36ae1e51-46e6-510f-bb9e-7ec732bbed03",
+      "n": "Überzüge am Kabelzug",
+      "g": 2500,
+      "l": { "b": "total" },
+      "s": [[4, 8, 60000]]
+    },
+    {
+      "id": "exc_d2c2a6b3-2306-5715-a9d3-826e84594aa0",
+      "n": "Kurzhantel-Schrägbankdrücken",
+      "g": 2500,
+      "l": { "b": "total" },
+      "s": [[4, 8, 60000]]
+    },
+    {
+      "id": "exc_0f834f6a-dc68-58e9-bed9-6ada3d2ecb30",
+      "n": "Überzüge am Kabelzug",
+      "g": 2500,
+      "l": { "b": "total" },
+      "s": [[4, 8, 60000]]
+    },
+    {
+      "id": "exc_5f2473bb-c2c1-5255-9e0f-326e876fe1d1",
+      "n": "Kurzhantel-Schrägbankdrücken",
+      "g": 2500,
+      "l": { "b": "total" },
+      "s": [[4, 8, 60000]]
+    },
+    {
+      "id": "exc_7b63513c-8fd2-5727-9976-d312511e3750",
+      "n": "Überzüge am Kabelzug",
+      "g": 2500,
+      "l": { "b": "total" },
+      "s": [[4, 8, 60000]]
+    },
+    {
+      "id": "exc_c3b4b938-b222-5fe7-b6ed-fd72f32dca33",
+      "n": "Kurzhantel-Schrägbankdrücken",
+      "g": 2500,
+      "l": { "b": "total" },
+      "s": [[4, 8, 60000]]
+    },
+    {
+      "id": "exc_2878808b-5461-5263-b679-1c725ba99acc",
+      "n": "Überzüge am Kabelzug",
+      "g": 2500,
+      "l": { "b": "total" },
+      "s": [[4, 8, 60000]]
+    },
+    {
+      "id": "exc_61869964-bb15-513a-93d8-7e81fb503afd",
+      "n": "Kurzhantel-Schrägbankdrücken",
+      "g": 2500,
+      "l": { "b": "total" },
+      "s": [[4, 8, 60000]]
+    }
+  ],
+  "items": [
+    {
+      "id": "pli_b39135bd-d5d7-5454-a352-67adcb2b6f6c",
+      "c": 0,
+      "r": 120,
+      "rr": [6, 10],
+      "h": "Heute +2,5 kg",
+      "l": "Letztes Mal 8 · 8 · 7",
+      "n": "Schulterblätter zusammen",
+      "a": [1]
+    },
+    {
+      "id": "pli_d2a94dbc-b1d1-5834-8a13-53ce4fa3634b",
+      "c": 2,
+      "r": 120,
+      "rr": [6, 10],
+      "h": "Heute +2,5 kg",
+      "l": "Letztes Mal 8 · 8 · 7",
+      "n": "Schulterblätter zusammen",
+      "a": [3]
+    },
+    {
+      "id": "pli_7bdce8e3-ea1f-53ce-868a-eaf1c32a30e4",
+      "c": 4,
+      "r": 120,
+      "rr": [6, 10],
+      "h": "Heute +2,5 kg",
+      "l": "Letztes Mal 8 · 8 · 7",
+      "n": "Schulterblätter zusammen",
+      "a": [5]
+    },
+    {
+      "id": "pli_d3aafe07-538b-52fb-b188-f5efda5134ca",
+      "c": 6,
+      "r": 120,
+      "rr": [6, 10],
+      "h": "Heute +2,5 kg",
+      "l": "Letztes Mal 8 · 8 · 7",
+      "n": "Schulterblätter zusammen",
+      "a": [7]
+    },
+    {
+      "id": "pli_f27054e3-a641-5c22-a872-0fb345a6b30b",
+      "c": 8,
+      "r": 120,
+      "rr": [6, 10],
+      "h": "Heute +2,5 kg",
+      "l": "Letztes Mal 8 · 8 · 7",
+      "n": "Schulterblätter zusammen",
+      "a": [9]
+    },
+    {
+      "id": "pli_06b29a7a-32b0-546b-b3f5-258982b7928d",
+      "c": 10,
+      "r": 120,
+      "rr": [6, 10],
+      "h": "Heute +2,5 kg",
+      "l": "Letztes Mal 8 · 8 · 7",
+      "n": "Schulterblätter zusammen",
+      "a": [11]
+    }
+  ]
+}

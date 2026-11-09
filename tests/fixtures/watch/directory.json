@@ -1,0 +1,57 @@
+{
+  "api_version": 1,
+  "min_app_version": "1.0.0",
+  "p": "plv_d2a94dbc-b1d1-5834-8a13-53ce4fa3634b",
+  "next": "s_d2a94dbc-b1d1-5834-8a13-53ce4fa3634b",
+  "days": [
+    {
+      "id": "s_d2a94dbc-b1d1-5834-8a13-53ce4fa3634b",
+      "n": "Oberkörper 1",
+      "c": 6,
+      "m": 55,
+      "tag": "\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\""
+    },
+    {
+      "id": "s_7bdce8e3-ea1f-53ce-868a-eaf1c32a30e4",
+      "n": "Oberkörper 2",
+      "c": 6,
+      "m": 55,
+      "tag": "\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\""
+    },
+    {
+      "id": "s_d3aafe07-538b-52fb-b188-f5efda5134ca",
+      "n": "Oberkörper 3",
+      "c": 6,
+      "m": 55,
+      "tag": "\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\""
+    },
+    {
+      "id": "s_f27054e3-a641-5c22-a872-0fb345a6b30b",
+      "n": "Oberkörper 4",
+      "c": 6,
+      "m": 55,
+      "tag": "\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\""
+    },
+    {
+      "id": "s_06b29a7a-32b0-546b-b3f5-258982b7928d",
+      "n": "Oberkörper 5",
+      "c": 6,
+      "m": 55,
+      "tag": "\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\""
+    },
+    {
+      "id": "s_3387b851-997c-5b4c-8d26-cd2b904acedb",
+      "n": "Oberkörper 6",
+      "c": 6,
+      "m": 55,
+      "tag": "\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\""
+    },
+    {
+      "id": "s_0b1769cd-73f3-5fbc-b046-d7f5a354cc02",
+      "n": "Oberkörper 7",
+      "c": 6,
+      "m": 55,
+      "tag": "\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\""
+    }
+  ]
+}
