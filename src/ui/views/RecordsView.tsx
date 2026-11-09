@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Trophy } from "lucide-react";
 import type { ArnoldDashboardView, HomeRecord } from "../../shared/arnold-view";
 import { ArnoldCard, ChipGroup } from "../components/cards";
 import { DetailHead, monthName } from "../components/home";
@@ -75,11 +74,6 @@ export function RecordsView({
           aria-expanded={expanded}
           onClick={() => setOpen(expanded ? null : id)}
         >
-          <span
-            className={`ac-medal ${record.key === newest?.key ? "fresh" : ""}`}
-          >
-            <Trophy size={15} aria-hidden="true" />
-          </span>
           <span className="ac-record-main">
             <strong>{record.exercise_name}</strong>
             <span className="ac-record-value">
@@ -150,9 +144,6 @@ export function RecordsView({
     <ArnoldCard aria-label="Rekorde">
       <DetailHead crumb="Übersicht · Rekorde" onBack={onBack} />
       <div className="ac-records-hero">
-        <span className="ac-medal large">
-          <Trophy size={24} aria-hidden="true" />
-        </span>
         <span>
           <h2 className="ac-title">
             {home.records.length}{" "}

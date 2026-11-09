@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Check, ChevronLeft, ChevronRight, Flame } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight } from "lucide-react";
 import type { ArnoldHome, HomeGoal } from "../../shared/arnold-view";
 import { formatNumber } from "../format";
 
@@ -68,6 +68,7 @@ export function DetailHead({
           onClick={onBack}
         >
           <ChevronLeft size={20} aria-hidden="true" />
+          <span className="ac-back-label">{backLabel}</span>
         </button>
       )}
       <span className="ac-label">{crumb}</span>
@@ -94,7 +95,8 @@ export function ProgressBar({
   value: number | null;
   label: string;
 }) {
-  const percent = value === null ? 0 : Math.round(value * 100);
+  const percent =
+    value === null ? 0 : Math.round(Math.max(0, Math.min(1, value)) * 100);
   return (
     <span
       className="ac-bar"
@@ -104,15 +106,7 @@ export function ProgressBar({
       aria-valuemax={100}
       aria-valuenow={value === null ? undefined : percent}
     >
-      <b style={{ width: `${value === null ? 0 : Math.max(3, percent)}%` }} />
-    </span>
-  );
-}
-
-export function FlameBadge({ size = "large" }: { size?: "large" | "small" }) {
-  return (
-    <span className={`ac-flame ${size}`} aria-hidden="true">
-      <Flame size={size === "large" ? 28 : 18} fill="currentColor" />
+      <b style={{ width: `${percent}%` }} />
     </span>
   );
 }

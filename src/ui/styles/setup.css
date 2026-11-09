@@ -69,7 +69,7 @@
 }
 .ac-option-text strong {
   font-size: 1rem;
-  font-weight: 650;
+  font-weight: 500;
 }
 .ac-option-text span {
   color: var(--muted);
@@ -137,7 +137,7 @@
 }
 .ac-fold-text strong {
   font-size: 1rem;
-  font-weight: 650;
+  font-weight: 500;
 }
 .ac-fold-text span {
   overflow: hidden;
@@ -148,7 +148,7 @@
 }
 .ac-fold-text span.set {
   color: var(--ac-accent-text);
-  font-weight: 600;
+  font-weight: 500;
 }
 .ac-fold-chevron {
   flex: none;
@@ -214,7 +214,7 @@
   color: var(--text);
   font: inherit;
   font-size: 1.25rem;
-  font-weight: 700;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 .arnold-cards .ac-mini-value input:focus-visible {
@@ -386,7 +386,7 @@
 }
 .ac-review-text strong {
   font-size: 0.9375rem;
-  font-weight: 600;
+  font-weight: 500;
 }
 .arnold-cards .ac-review-rows .ac-icon-btn {
   margin: 0;
@@ -405,7 +405,7 @@
 }
 .ac-next-box strong {
   font-size: 1.25rem;
-  font-weight: 700;
+  font-weight: 500;
 }
 .ac-next-box .ac-text {
   font-size: 0.875rem;
@@ -484,7 +484,7 @@
   border-radius: 0.75rem;
   background: var(--ac-accent);
   color: var(--ac-on-accent);
-  font-weight: 700;
+  font-weight: 500;
 }
 .ac-session-text {
   display: grid;
@@ -529,7 +529,7 @@
   background: var(--ac-accent);
   color: var(--ac-on-accent);
   font-size: 0.8125rem;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -576,7 +576,7 @@
 }
 .ac-proposal-feel-label {
   font-size: 0.8125rem;
-  font-weight: 600;
+  font-weight: 500;
 }
 .ac-segment {
   display: grid;
@@ -593,7 +593,7 @@
   background: none;
   color: var(--muted);
   font-size: 0.875rem;
-  font-weight: 600;
+  font-weight: 500;
 }
 .arnold-cards .ac-segment button[aria-pressed="true"] {
   background: var(--ink);

@@ -32,8 +32,10 @@ test("T3-06: the workout list does not change the start screen", async ({
   page,
 }) => {
   await openCard(page, "home");
-  const headline = await page.locator(".ac-title").innerText();
-  const status = await page.locator(".ac-sub").first().innerText();
+  const headline = await page.locator(".ac-dashboard-head h2").innerText();
+  const status = await page
+    .locator(".ac-widget-week-total .ac-widget-ring")
+    .getAttribute("aria-label");
   // Start screen → Rekorde → the record's training, opened in the list.
   await page.getByRole("button", { name: /^Alle Rekorde ansehen/ }).click();
   await page.getByRole("button", { name: "Training ansehen" }).click();
@@ -42,8 +44,10 @@ test("T3-06: the workout list does not change the start screen", async ({
   ).toHaveCount(1);
   await page.getByRole("button", { name: "Zurück zur Übersicht" }).click();
   await page.getByRole("button", { name: "Zurück zur Übersicht" }).click();
-  await expect(page.locator(".ac-title")).toHaveText(headline);
-  await expect(page.locator(".ac-sub").first()).toHaveText(status);
+  await expect(page.locator(".ac-dashboard-head h2")).toHaveText(headline);
+  await expect(
+    page.locator(".ac-widget-week-total .ac-widget-ring"),
+  ).toHaveAttribute("aria-label", status!);
   // The start screen leads to the list as well.
   await page
     .getByRole("button", { name: "Alle Einheiten", exact: true })

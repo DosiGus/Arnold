@@ -10,26 +10,31 @@ import { callTool } from "./helpers";
 const BASE = "http://127.0.0.1:8804";
 const main = (page: import("@playwright/test").Page) => page.locator("main");
 
-test("Arnold opens on the start screen with four tiles", async ({ page }) => {
+test("Arnold opens on the monochrome widget overview", async ({ page }) => {
   await page.goto(`${BASE}/preview`);
   await expect(page.locator('main[data-card="home"]')).toBeVisible();
   await expect(
     page.getByRole("heading", {
-      name: /^(Heute: .+|Heute geschafft|Dein Training)$/,
+      name: "Dein Überblick",
+      exact: true,
     }),
   ).toBeVisible();
+  await expect(page.locator(".ac-widget")).toHaveCount(5);
   for (const name of [
-    /^Training: heute ansehen/,
-    /^Fortschritt: \d+ Wochen? am Stück/,
-    /^Ziele ansehen/,
-    /^Alle Rekorde ansehen/,
+    "Dein Training",
+    "Deine Woche",
+    "Demo-Scores",
+    "Deine Ziele",
+    "Deine Rekorde",
   ])
-    await expect(page.getByRole("button", { name })).toBeVisible();
+    await expect(page.getByRole("region", { name, exact: true })).toBeVisible();
   // The invented history may hold a workout today: then the tile opens it.
   await expect(
-    page.getByRole("button", {
-      name: /^(Training starten|Training ansehen)$/,
-    }),
+    page
+      .getByRole("region", { name: "Dein Training", exact: true })
+      .getByRole("button", {
+        name: /^(Training bearbeiten|Training ansehen)$/,
+      }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Plan bearbeiten", exact: true }),
@@ -40,7 +45,9 @@ test("every tile opens its view and the back button returns", async ({
   page,
 }) => {
   await page.goto(`${BASE}/preview`);
-  await page.getByRole("button", { name: /^Fortschritt:/ }).click();
+  await page
+    .getByRole("button", { name: "Trainingsentwicklung ansehen" })
+    .click();
   await expect(main(page)).toHaveAttribute("data-card", "stats");
   await expect(page.getByText("am Stück trainiert")).toBeVisible();
   await page.getByRole("button", { name: "Sätze/Woche" }).click();
@@ -56,9 +63,14 @@ test("every tile opens its view and the back button returns", async ({
   await page.getByRole("button", { name: "Nach Übung" }).click();
   await page.getByRole("button", { name: "Zurück zur Übersicht" }).click();
 
-  await page.getByRole("button", { name: /^Training: heute ansehen/ }).click();
+  await page
+    .getByRole("region", { name: "Dein Training", exact: true })
+    .getByRole("button", { name: /Training (bearbeiten|ansehen)/ })
+    .click();
   await expect(main(page)).toHaveAttribute("data-card", "today");
-  await page.getByRole("button", { name: "Zurück", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Zurück zur Übersicht", exact: true })
+    .click();
 
   await page
     .getByRole("button", { name: "Plan bearbeiten", exact: true })
@@ -119,7 +131,9 @@ test("start screen and its views stay accessible and fit 375px", async ({
     await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
     for (const card of ["home", "stats", "goals", "records"]) {
       await page.goto(`${BASE}/preview?card=${card}`);
-      await expect(page.locator(`main[data-card="${card}"] .ac`)).toBeVisible();
+      await expect(
+        page.locator(`main[data-card="${card}"] .ac`).first(),
+      ).toBeVisible();
       expect(
         await page.evaluate(
           () => document.documentElement.scrollWidth <= innerWidth + 1,
@@ -143,7 +157,9 @@ test("start screen and its views fit narrow phones without sideways scrolling", 
     await page.setViewportSize({ width, height: 800 });
     for (const card of ["home", "stats", "goals", "records"]) {
       await page.goto(`${BASE}/preview?card=${card}`);
-      await expect(page.locator(`main[data-card="${card}"] .ac`)).toBeVisible();
+      await expect(
+        page.locator(`main[data-card="${card}"] .ac`).first(),
+      ).toBeVisible();
       expect(
         await page.evaluate(
           () => document.documentElement.scrollWidth <= innerWidth + 1,

@@ -279,6 +279,7 @@ test("account deletion sends its private confirmation only after an explicit cli
           `test-results/screens/${browserName}-account-${width}-${theme}.png`,
         ),
         fullPage: true,
+        animations: "disabled",
       });
     }
   await page

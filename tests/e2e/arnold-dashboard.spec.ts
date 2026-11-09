@@ -7,7 +7,9 @@ test("the start screen leads to the plan and progress without an app frame", asy
 }) => {
   await openCard(page, "home");
   const card = page.locator(".ac").first();
-  await expect(card).toContainText("Trainingstag");
+  await expect(
+    page.getByRole("region", { name: "Deine Woche", exact: true }),
+  ).toContainText("Trainingstag");
   await expect(page.getByRole("navigation")).toHaveCount(0);
   await expect(page.locator("h1")).toHaveCount(0);
   await card
@@ -15,8 +17,12 @@ test("the start screen leads to the plan and progress without an app frame", asy
     .click();
   await expect(page.locator('main[data-card="plan"]')).toBeVisible();
   await expect(page.locator("table:not(.visually-hidden)")).toHaveCount(0);
-  await page.getByRole("button", { name: "Zurück", exact: true }).click();
-  await page.getByRole("button", { name: /^Fortschritt:/ }).click();
+  await page
+    .getByRole("button", { name: "Zurück zur Übersicht", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Trainingsentwicklung ansehen" })
+    .click();
   await expect(page.locator('main[data-card="stats"]')).toBeVisible();
 });
 
@@ -25,7 +31,7 @@ test("an older chat asking for the week card gets the start screen", async ({
 }) => {
   await page.goto("http://127.0.0.1:8792/preview?card=week");
   await expect(page.locator('main[data-card="home"]')).toBeVisible();
-  await expect(page.locator(".ac-tile")).not.toHaveCount(0);
+  await expect(page.locator(".ac-widget")).toHaveCount(5);
 });
 
 test("a read-only today card never offers an unavailable write", async ({
@@ -81,10 +87,10 @@ test("empty and failed reads never turn into example numbers", async ({
   page,
 }) => {
   await openCard(page, "home", "http://127.0.0.1:8793");
-  await expect(page.locator(".ac")).toContainText(
+  await expect(page.locator(".ac-dashboard")).toContainText(
     "Dein erstes Training ist der Anfang.",
   );
-  await expect(page.locator(".ac-week i.done")).toHaveCount(0);
+  await expect(page.locator(".ac-widget-week-days .done")).toHaveCount(0);
   await page.goto("http://127.0.0.1:8794/preview");
   await expect(page.getByRole("alert")).toBeVisible();
   await expect(
@@ -131,7 +137,9 @@ test("keyboard focus is visible and operates card navigation", async ({
   page,
 }) => {
   await openCard(page, "home");
-  const button = page.getByRole("button", { name: /^Fortschritt:/ });
+  const button = page.getByRole("button", {
+    name: "Trainingsentwicklung ansehen",
+  });
   await button.focus();
   expect(
     await button.evaluate((el) => getComputedStyle(el).outlineStyle),

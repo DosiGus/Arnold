@@ -28,8 +28,8 @@ body:has(.arnold-cards) {
   border-radius: var(--ac-radius);
   background: var(--card);
   box-shadow: var(--shadow);
-  backdrop-filter: blur(1rem);
-  -webkit-backdrop-filter: blur(1rem);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 .ac-head {
   display: flex;
@@ -48,7 +48,7 @@ body:has(.arnold-cards) {
 }
 .ac-title {
   font-size: 1.625rem;
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: -0.025em;
   line-height: 1.15;
   text-wrap: balance;
@@ -77,13 +77,13 @@ body:has(.arnold-cards) {
   align-items: center;
   justify-content: center;
   gap: 0.4375rem;
-  min-height: 3.25rem;
+  min-height: var(--ac-tap);
   padding: 0.75rem 1.125rem;
   line-height: 1.35;
   border: 0;
   border-radius: 62.4375rem;
-  font-size: 1rem;
-  font-weight: 650;
+  font-size: 0.875rem;
+  font-weight: 500;
   letter-spacing: -0.01em;
   transition:
     transform 120ms,
@@ -104,8 +104,8 @@ body:has(.arnold-cards) {
   background: var(--hover);
 }
 .arnold-cards .ac-btn.danger {
-  background: #ad332a;
-  color: #fff;
+  background: var(--ink);
+  color: var(--on-ink);
 }
 .arnold-cards .ac-link {
   min-width: var(--ac-tap);
@@ -195,7 +195,7 @@ body:has(.arnold-cards) {
   justify-content: center;
   min-width: 0;
   font-size: 1.875rem;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: -0.03em;
   line-height: 1.1;
   flex-wrap: wrap;
@@ -244,14 +244,14 @@ body:has(.arnold-cards) {
 /* Numbers */
 .ac-big {
   font-size: 2.5rem;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: -0.035em;
   line-height: 1;
 }
 .ac-big small {
   margin-left: 3px;
   color: var(--muted);
-  font-size: 1rem;
+  font-size: 0.875rem;
   font-weight: 500;
   letter-spacing: 0;
 }
@@ -376,7 +376,7 @@ body:has(.arnold-cards) {
   background: var(--soft);
 }
 .arnold-cards .ac-menu-item[aria-current="true"] {
-  font-weight: 600;
+  font-weight: 500;
 }
 .arnold-cards .ac-menu-item small {
   color: var(--muted);
@@ -408,7 +408,7 @@ body:has(.arnold-cards) {
 }
 .ac-week li.today {
   color: var(--text);
-  font-weight: 600;
+  font-weight: 500;
 }
 .ac-week i {
   display: grid;
@@ -432,7 +432,7 @@ body:has(.arnold-cards) {
 }
 .ac-week > span.today {
   color: var(--text);
-  font-weight: 700;
+  font-weight: 500;
 }
 .ac-week li.today i,
 .ac-week > span.today i {
@@ -503,9 +503,8 @@ body:has(.arnold-cards) {
   display: block;
   height: 0.75rem;
   border-radius: 0.375rem;
-  background: linear-gradient(90deg, var(--soft), var(--hover), var(--soft));
+  background: var(--soft);
   background-size: 200% 100%;
-  animation: ac-shimmer 1.4s infinite linear;
 }
 @keyframes ac-shimmer {
   to {

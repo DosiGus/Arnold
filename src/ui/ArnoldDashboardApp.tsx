@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ArnoldDashboardView } from "../shared/arnold-view";
 import type { ArnoldMcpClient } from "./client/ArnoldMcpClient";
+import type { WorkoutContext } from "../shared/workout-contract";
+import { ArrowLeft } from "lucide-react";
 import { useDashboardData } from "./hooks";
 import { CardNote, CardSkeleton } from "./components/cards";
 import { TrainingCard } from "./views/TrainingCard";
@@ -53,6 +55,8 @@ export function ArnoldDashboardApp({
     workout_id?: string;
     /** The training card opened for another workout today. */
     fresh?: boolean;
+    goal_id?: string;
+    newGoal?: boolean;
   }>({});
   // A new request from the chat replaces whatever the card showed before.
   useEffect(() => {
@@ -66,19 +70,9 @@ export function ArnoldDashboardApp({
   // Start screen and goals need to know whether writing is possible; the
   // training card reads the same context through its own logger.
   const [canWrite, setCanWrite] = useState(false);
-  useEffect(() => {
-    if (card !== "home" && card !== "goals") return;
-    let active = true;
-    void client
-      .workout()
-      .then((context) => {
-        if (active) setCanWrite(context.can_write);
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, [client, card]);
+  const [workoutContext, setWorkoutContext] = useState<WorkoutContext | null>(
+    null,
+  );
   const open = useCallback(
     (
       next: CardId,
@@ -86,6 +80,8 @@ export function ArnoldDashboardApp({
         exercise_id?: string;
         workout_id?: string;
         fresh?: boolean;
+        goal_id?: string;
+        newGoal?: boolean;
       } = {},
     ) => {
       setTarget(focus);
@@ -106,6 +102,23 @@ export function ArnoldDashboardApp({
       : loaded;
   }, [dashboard.data, initial]);
   const showStale = stale && view === initial;
+  useEffect(() => {
+    if (card !== "home" && card !== "goals") return;
+    let active = true;
+    setCanWrite(false);
+    setWorkoutContext(null);
+    void client
+      .workout()
+      .then((context) => {
+        if (!active) return;
+        setCanWrite(context.can_write);
+        setWorkoutContext(context);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [client, card, view.source.generated_at]);
   // The training card reports its own state; the others are reported here.
   useModelContext(
     client,
@@ -160,19 +173,28 @@ export function ArnoldDashboardApp({
     card === "goals" ||
     card === "records" ||
     card === "history";
-  const goBack = trail.length > 1 ? back : undefined;
+  const goBack = trail.length > 1 ? back : () => open("home");
   const backLink =
-    trail.length > 1 && !ownBack ? (
-      <button type="button" className="ac-link" onClick={back}>
-        Zurück
+    card !== "home" && !ownBack ? (
+      <button type="button" className="ac-link ac-page-back" onClick={goBack}>
+        <ArrowLeft size={16} aria-hidden="true" />
+        {trail.length <= 1 || trail.at(-2) === "home"
+          ? "Zurück zur Übersicht"
+          : "Zurück"}
       </button>
     ) : undefined;
 
   return (
     <main className="arnold-cards" id="main-content" data-card={card}>
       {notes}
+      {backLink}
       {card === "home" && (
-        <HomeCard view={view} canWrite={canWrite} onOpen={open} />
+        <HomeCard
+          view={view}
+          canWrite={canWrite}
+          workoutContext={workoutContext}
+          onOpen={open}
+        />
       )}
       {card === "stats" && (
         <StatsView view={view} onBack={goBack} onOpen={open} />
@@ -182,6 +204,8 @@ export function ArnoldDashboardApp({
           client={client}
           view={view}
           canWrite={canWrite}
+          initialGoalId={target.goal_id}
+          startAdding={target.newGoal}
           onBack={goBack}
           onChanged={dashboard.reload}
           onOpenProgress={(exercise_id) => open("progress", { exercise_id })}
@@ -233,7 +257,6 @@ export function ArnoldDashboardApp({
           onChanged={dashboard.reload}
         />
       )}
-      {backLink && <div style={{ paddingInline: 4 }}>{backLink}</div>}
     </main>
   );
 }

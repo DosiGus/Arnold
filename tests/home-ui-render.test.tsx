@@ -28,19 +28,26 @@ describe("start screen with history", () => {
     reference_date: "2026-11-03",
   });
 
-  it("shows the four tiles with server figures", () => {
+  it("shows the five approved widgets with server figures and labelled demo scores", () => {
     const output = text(<HomeCard view={view} canWrite onOpen={noop} />);
     expect(output).toContain("Training");
     expect(output).toContain("Als Nächstes");
-    expect(output).toContain("Training starten");
+    expect(output).toContain("Training bearbeiten");
     expect(output).toContain("Plan bearbeiten");
     expect(output).not.toMatch(/Guten (Morgen|Abend)|Hallo/);
-    expect(output).toContain(`${view.home.streak.current} Wochen`);
+    expect(output).toContain("Dein Überblick");
+    expect(output).toContain("Demo-Scores");
+    expect(output).toContain("Konstanz");
+    expect(output).toContain("Recovery");
+    expect(output).toContain("Progress");
     expect(output).toContain(
-      `${view.home.workouts_this_year} Einheiten in 2026`,
+      `${view.home.streak.current_week_training_days} / ${view.home.streak.weekly_goal}`,
     );
     expect(output).toContain("Körpergewicht");
-    expect(output).toContain(`Rekorde · ${view.home.records.length}`);
+    expect(output).toContain(`1 / ${Math.min(3, view.home.records.length)}`);
+    expect(output).toContain(view.home.records[0].exercise_name);
+    for (const goal of view.home.goals.slice(0, 4))
+      expect(output).toContain(goal.name);
     expect(output).not.toMatch(/NaN|undefined|null/);
   });
 

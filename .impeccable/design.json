@@ -1,0 +1,480 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-09T17:57:11.399340+00:00",
+  "title": "Design System: Arnold",
+  "extensions": {
+    "colorMeta": {
+      "bg": {
+        "role": "neutral",
+        "displayName": "Bg",
+        "canonical": "#fff",
+        "tonalRamp": [
+          "#171717",
+          "#242424",
+          "#303030",
+          "#424242",
+          "#666",
+          "#aaa",
+          "#e5e5e5",
+          "#f5f5f5"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Text",
+        "canonical": "#171717",
+        "tonalRamp": [
+          "#171717",
+          "#242424",
+          "#303030",
+          "#424242",
+          "#666",
+          "#aaa",
+          "#e5e5e5",
+          "#f5f5f5"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted",
+        "canonical": "#666",
+        "tonalRamp": [
+          "#171717",
+          "#242424",
+          "#303030",
+          "#424242",
+          "#666",
+          "#aaa",
+          "#e5e5e5",
+          "#f5f5f5"
+        ]
+      },
+      "card": {
+        "role": "neutral",
+        "displayName": "Card",
+        "canonical": "#fff",
+        "tonalRamp": [
+          "#171717",
+          "#242424",
+          "#303030",
+          "#424242",
+          "#666",
+          "#aaa",
+          "#e5e5e5",
+          "#f5f5f5"
+        ]
+      },
+      "soft": {
+        "role": "neutral",
+        "displayName": "Soft",
+        "canonical": "#f5f5f5",
+        "tonalRamp": [
+          "#171717",
+          "#242424",
+          "#303030",
+          "#424242",
+          "#666",
+          "#aaa",
+          "#e5e5e5",
+          "#f5f5f5"
+        ]
+      },
+      "hover": {
+        "role": "neutral",
+        "displayName": "Hover",
+        "canonical": "#ededed",
+        "tonalRamp": [
+          "#171717",
+          "#242424",
+          "#303030",
+          "#424242",
+          "#666",
+          "#aaa",
+          "#e5e5e5",
+          "#f5f5f5"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Border",
+        "canonical": "#e5e5e5",
+        "tonalRamp": [
+          "#171717",
+          "#242424",
+          "#303030",
+          "#424242",
+          "#666",
+          "#aaa",
+          "#e5e5e5",
+          "#f5f5f5"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#171717",
+        "tonalRamp": [
+          "#171717",
+          "#242424",
+          "#303030",
+          "#424242",
+          "#666",
+          "#aaa",
+          "#e5e5e5",
+          "#f5f5f5"
+        ]
+      },
+      "on-ink": {
+        "role": "neutral",
+        "displayName": "On Ink",
+        "canonical": "#fff",
+        "tonalRamp": [
+          "#171717",
+          "#242424",
+          "#303030",
+          "#424242",
+          "#666",
+          "#aaa",
+          "#e5e5e5",
+          "#f5f5f5"
+        ]
+      },
+      "bar-muted": {
+        "role": "neutral",
+        "displayName": "Bar Muted",
+        "canonical": "#777",
+        "tonalRamp": [
+          "#171717",
+          "#242424",
+          "#303030",
+          "#424242",
+          "#666",
+          "#aaa",
+          "#e5e5e5",
+          "#f5f5f5"
+        ]
+      },
+      "dark-bg": {
+        "role": "neutral",
+        "displayName": "Dark Bg",
+        "canonical": "#171717",
+        "tonalRamp": [
+          "#171717",
+          "#242424",
+          "#303030",
+          "#424242",
+          "#666",
+          "#aaa",
+          "#e5e5e5",
+          "#f5f5f5"
+        ]
+      },
+      "dark-text": {
+        "role": "neutral",
+        "displayName": "Dark Text",
+        "canonical": "#f5f5f5",
+        "tonalRamp": [
+          "#171717",
+          "#242424",
+          "#303030",
+          "#424242",
+          "#666",
+          "#aaa",
+          "#e5e5e5",
+          "#f5f5f5"
+        ]
+      },
+      "dark-muted": {
+        "role": "neutral",
+        "displayName": "Dark Muted",
+        "canonical": "#b4b4b4",
+        "tonalRamp": [
+          "#171717",
+          "#242424",
+          "#303030",
+          "#424242",
+          "#666",
+          "#aaa",
+          "#e5e5e5",
+          "#f5f5f5"
+        ]
+      },
+      "dark-card": {
+        "role": "neutral",
+        "displayName": "Dark Card",
+        "canonical": "#242424",
+        "tonalRamp": [
+          "#171717",
+          "#242424",
+          "#303030",
+          "#424242",
+          "#666",
+          "#aaa",
+          "#e5e5e5",
+          "#f5f5f5"
+        ]
+      },
+      "dark-soft": {
+        "role": "neutral",
+        "displayName": "Dark Soft",
+        "canonical": "#303030",
+        "tonalRamp": [
+          "#171717",
+          "#242424",
+          "#303030",
+          "#424242",
+          "#666",
+          "#aaa",
+          "#e5e5e5",
+          "#f5f5f5"
+        ]
+      },
+      "dark-hover": {
+        "role": "neutral",
+        "displayName": "Dark Hover",
+        "canonical": "#383838",
+        "tonalRamp": [
+          "#171717",
+          "#242424",
+          "#303030",
+          "#424242",
+          "#666",
+          "#aaa",
+          "#e5e5e5",
+          "#f5f5f5"
+        ]
+      },
+      "dark-border": {
+        "role": "neutral",
+        "displayName": "Dark Border",
+        "canonical": "#424242",
+        "tonalRamp": [
+          "#171717",
+          "#242424",
+          "#303030",
+          "#424242",
+          "#666",
+          "#aaa",
+          "#e5e5e5",
+          "#f5f5f5"
+        ]
+      },
+      "dark-ink": {
+        "role": "neutral",
+        "displayName": "Dark Ink",
+        "canonical": "#f5f5f5",
+        "tonalRamp": [
+          "#171717",
+          "#242424",
+          "#303030",
+          "#424242",
+          "#666",
+          "#aaa",
+          "#e5e5e5",
+          "#f5f5f5"
+        ]
+      },
+      "dark-on-ink": {
+        "role": "neutral",
+        "displayName": "Dark On Ink",
+        "canonical": "#171717",
+        "tonalRamp": [
+          "#171717",
+          "#242424",
+          "#303030",
+          "#424242",
+          "#666",
+          "#aaa",
+          "#e5e5e5",
+          "#f5f5f5"
+        ]
+      },
+      "dark-bar-muted": {
+        "role": "neutral",
+        "displayName": "Dark Bar Muted",
+        "canonical": "#aaa",
+        "tonalRamp": [
+          "#171717",
+          "#242424",
+          "#303030",
+          "#424242",
+          "#666",
+          "#aaa",
+          "#e5e5e5",
+          "#f5f5f5"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Rekordzahl."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Trainingsname im Übersichts-Widget."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Titel der Aufgabenkarte."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Grundtext der Karten."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Orientierung und Kontrollen."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Nebeninformationen."
+      }
+    },
+    "shadows": [
+      {
+        "name": "card-flat",
+        "value": "none",
+        "purpose": "Flache Karten ohne Flächenschatten."
+      },
+      {
+        "name": "plan-dialog",
+        "value": "0 12px 50px rgb(0 0 0 / 0.2)",
+        "purpose": "Bestehender modaler Plan-Dialog; nicht auf Karten übertragen."
+      },
+      {
+        "name": "today-marker",
+        "value": "inset 0 0 0 1px var(--ink)",
+        "purpose": "Heutiger untrainierter Kalendertag."
+      }
+    ],
+    "motion": [
+      {
+        "name": "button-feedback",
+        "value": "transform 120ms, background 160ms",
+        "purpose": "Direkte Druckrückmeldung der gemeinsamen Knöpfe."
+      },
+      {
+        "name": "progress-change",
+        "value": "width 0.3s ease",
+        "purpose": "Bestehende Fortschrittsbalken; bei reduzierter Bewegung deaktiviert."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "dashboard-mobile",
+        "value": "36rem"
+      },
+      {
+        "name": "dashboard-stack",
+        "value": "21rem"
+      },
+      {
+        "name": "detail-compact",
+        "value": "22rem"
+      },
+      {
+        "name": "start-narrow",
+        "value": "20rem"
+      },
+      {
+        "name": "plan-editor-mobile",
+        "value": "40rem"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "So gemacht",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Bestätigende Hauptaktion.",
+      "html": "<button class=\"ds-btn-primary\">So gemacht</button>",
+      "css": ".ds-btn-primary{display:inline-flex;align-items:center;justify-content:center;gap:0.4375rem;min-height:var(--ac-tap,2.75rem);padding:0.75rem 1.125rem;border:0;border-radius:62.4375rem;font:500 0.875rem/1.35 system-ui,sans-serif;letter-spacing:-0.01em;cursor:pointer;transition:transform 120ms,background 160ms;background:var(--ink,#171717);color:var(--on-ink,#fff);} .ds-btn-primary:hover{background:var(--ink,#171717);} .ds-btn-primary:active{transform:scale(0.97);} .ds-btn-primary:focus-visible{outline:2px solid var(--focus,#171717);outline-offset:3px;} .ds-btn-primary:disabled{opacity:0.5;cursor:default;} @media(prefers-reduced-motion:reduce){.ds-btn-primary{transition:none;transform:none;}}"
+    },
+    {
+      "name": "Anpassen",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Neutrale zweite Aktion.",
+      "html": "<button class=\"ds-btn-secondary\">Anpassen</button>",
+      "css": ".ds-btn-secondary{display:inline-flex;align-items:center;justify-content:center;gap:0.4375rem;min-height:var(--ac-tap,2.75rem);padding:0.75rem 1.125rem;border:0;border-radius:62.4375rem;font:500 0.875rem/1.35 system-ui,sans-serif;letter-spacing:-0.01em;cursor:pointer;transition:transform 120ms,background 160ms;background:var(--soft,#f5f5f5);color:var(--text,#171717);} .ds-btn-secondary:hover{background:var(--hover,#ededed);} .ds-btn-secondary:active{transform:scale(0.97);} .ds-btn-secondary:focus-visible{outline:2px solid var(--focus,#171717);outline-offset:3px;} .ds-btn-secondary:disabled{opacity:0.5;cursor:default;} @media(prefers-reduced-motion:reduce){.ds-btn-secondary{transition:none;transform:none;}}"
+    },
+    {
+      "name": "Gewicht eingeben",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Native Eingabe mit sichtbarer Beschriftung.",
+      "html": "<label class=\"ds-field\">Gewicht pro Hantel (kg)<input type=\"text\" inputmode=\"decimal\" value=\"24\" /></label>",
+      "css": ".ds-field{display:grid;gap:0.4rem;color:var(--text,#171717);font:0.875rem/1.5 system-ui,sans-serif;} .ds-field input{min-width:0;min-height:var(--ac-tap,2.75rem);border:1px solid var(--border,#e5e5e5);border-radius:0.75rem;padding:0.6rem 0.75rem;background:var(--surface-strong,#fff);color:inherit;font:1rem system-ui,sans-serif;} .ds-field input:hover{border-color:var(--border,#e5e5e5);} .ds-field input:focus-visible{outline:2px solid var(--focus,#171717);outline-offset:3px;} .ds-field input:disabled{opacity:0.5;}"
+    },
+    {
+      "name": "Auswahl-Chip",
+      "kind": "chip",
+      "refersTo": "chip-selected",
+      "description": "Auswahl ist durch Füllung und Semantik erkennbar.",
+      "html": "<button class=\"ds-chip\" aria-pressed=\"true\">Zu Hause</button>",
+      "css": ".ds-chip{min-width:var(--ac-tap,2.75rem);min-height:var(--ac-tap,2.75rem);padding:0 0.9375rem;border:1px solid var(--border,#e5e5e5);border-radius:62.4375rem;background:transparent;color:var(--text,#171717);font:500 0.875rem system-ui,sans-serif;cursor:pointer;} .ds-chip:hover{background:var(--soft,#f5f5f5);} .ds-chip[aria-pressed=\"true\"]{background:var(--ink,#171717);border-color:var(--ink,#171717);color:var(--on-ink,#fff);} .ds-chip:focus-visible{outline:2px solid var(--focus,#171717);outline-offset:3px;}"
+    },
+    {
+      "name": "Aufgabenkarte",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Flache deckende Fläche für eine Aufgabe.",
+      "html": "<section class=\"ds-card\"><span class=\"ds-label\">Dein Training</span><h2>Heute trainieren</h2><p>Änderungen gehen auch im Chat.</p></section>",
+      "css": ".ds-card{display:grid;gap:0.875rem;padding:var(--ac-pad,1.25rem);border:1px solid var(--border,#e5e5e5);border-radius:var(--ac-radius,1rem);background:var(--card,#fff);color:var(--text,#171717);box-shadow:none;backdrop-filter:none;font:0.9375rem/1.45 system-ui,sans-serif;} .ds-card h2{margin:0;font-size:1.75rem;line-height:1.15;font-weight:500;letter-spacing:-0.025em;} .ds-card p{margin:0;font-size:0.875rem;color:var(--muted,#666);} .ds-label{font-size:0.75rem;font-weight:500;color:var(--muted,#666);}"
+    },
+    {
+      "name": "Zur Übersicht",
+      "kind": "nav",
+      "refersTo": "card",
+      "description": "Beschrifteter Rückweg aus der fokussierten Karte.",
+      "html": "<button class=\"ds-back\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"m12 19-7-7 7-7M5 12h14\"/></svg>Zur Übersicht</button>",
+      "css": ".ds-back{display:inline-flex;align-items:center;gap:0.5rem;min-height:var(--ac-tap,2.75rem);min-width:var(--ac-tap,2.75rem);padding:0.25rem 0;border:0;border-radius:0.25rem;background:transparent;color:var(--text,#171717);font:0.8125rem system-ui,sans-serif;text-align:start;cursor:pointer;} .ds-back:hover{background:transparent;} .ds-back:focus-visible{outline:2px solid var(--focus,#171717);outline-offset:3px;}"
+    },
+    {
+      "name": "Zielzeile",
+      "kind": "custom",
+      "refersTo": "card",
+      "description": "Backend-Fortschritt als leiser Balken mit sichtbaren Einheiten.",
+      "html": "<button class=\"ds-goal\"><span class=\"ds-goal-head\"><strong>Bankdrücken</strong><span>80 kg / 100 kg</span></span><span class=\"ds-bar\" role=\"progressbar\" aria-label=\"Bankdrücken Fortschritt\" aria-valuenow=\"80\" aria-valuemin=\"0\" aria-valuemax=\"100\"><i></i></span></button>",
+      "css": ".ds-goal{display:grid;gap:0.5625rem;width:100%;min-height:3.625rem;padding:0.6875rem 0 0.25rem;border:0;background:transparent;color:var(--text,#171717);text-align:start;cursor:pointer;font:0.8125rem system-ui,sans-serif;} .ds-goal-head{display:flex;justify-content:space-between;flex-wrap:wrap;gap:0.25rem 0.625rem;} .ds-goal strong{font-weight:500;} .ds-goal-head>span{font-size:0.75rem;color:var(--muted,#666);} .ds-bar{display:block;height:0.25rem;border-radius:99px;background:var(--border,#e5e5e5);overflow:hidden;} .ds-bar i{display:block;width:80%;height:100%;background:var(--ink,#171717);} .ds-goal:hover strong{text-decoration:underline;text-underline-offset:0.2rem;} .ds-goal:focus-visible{outline:2px solid var(--focus,#171717);outline-offset:3px;}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Arnolds neutraler Trainingsüberblick",
+    "overview": "Arnold begleitet Training im ChatGPT-Chat. Einsteiger erhalten Unterstützung, erfahrene Trainierende erfassen schnell. Chat und Sprache tragen Wünsche und Änderungen; Karten machen die nächste Aktion, Ziele und Trainingsgeschichte greifbar. Training und Protokollierung bilden den aktuellen Umfang; Ernährung und Geräteanbindung sind Zukunftsthemen.\n\nDie freigegebene Gestaltung ist neutral und monochrom: ruhige Systemschrift, klare Flächen, dünne Konturen und deutliche Zahlen. Die Übersicht führt in eine einzelne fokussierte Aufgabenkarte und von dort zurück. Die dokumentierte Umsetzung ist die verbindliche Grundlage für weitere Ansichten.",
+    "keyCharacteristics": [
+      "Ausschließlich Graustufen in beiden Host-Themes.",
+      "Deckende, flache Karten mit feiner Kontur.",
+      "Klarer Weg von der Übersicht zur Aufgabe und zurück.",
+      "Echte Trainingsdaten mit sichtbaren Einheiten; illustrative Scores ausdrücklich als Demo."
+    ],
+    "rules": [
+      {
+        "name": "Monochrome",
+        "body": "Erfolg, Warnung, Auswahl und Fortschritt bleiben achromatisch. Text, Symbol, Kontur und Füllung vermitteln den Zustand gemeinsam.",
+        "section": "colors"
+      },
+      {
+        "name": "Flat Surface",
+        "body": "Karten bleiben deckend und flach. Hierarchie entsteht durch Raster, Kontur, Abstand und Typografie.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do verwende die bestehenden semantischen Tokens und dieselben flachen Karten in Übersicht, Einrichtung und Editoren.",
+      "Do halte interaktive Ziele mindestens 2.75rem hoch und reine Icon-Knöpfe ebenso breit.",
+      "Do zeige Einheiten, Lastdefinition und unbekannte Werte ehrlich an.",
+      "Do erhalte die genaue Trainings-, Ziel- und Rekordidentität bei jeder Navigation.",
+      "Do prüfe Hell/Dunkel, schmale Ansichten, 720px, Tastatur und reduzierte Bewegung am gerenderten Ergebnis."
+    ],
+    "donts": [
+      "Don't ergänze farbige Akzente, Glasflächen, dekorative Flammen oder Trophäen.",
+      "Don't stelle Demo-Scores als berechnete Trainings- oder Gesundheitswerte dar.",
+      "Don't ändere Backend-Vergleiche, Vorschläge oder Schreibsemantik für eine visuelle Vereinfachung.",
+      "Don't zeige technische IDs, Revisionen oder private Bestätigungstokens als Bedienoberfläche.",
+      "Don't bestätige einen Schreibvorgang vor der Serverantwort oder erzeuge einen neuen Vorgang für einen Retry."
+    ]
+  }
+}

@@ -53,6 +53,8 @@ export function GoalsView({
   onBack,
   onChanged,
   onOpenProgress,
+  initialGoalId,
+  startAdding = false,
 }: {
   client: ArnoldMcpClient;
   view: ArnoldDashboardView;
@@ -60,9 +62,17 @@ export function GoalsView({
   onBack?: () => void;
   onChanged: () => void;
   onOpenProgress: (exerciseId: string) => void;
+  initialGoalId?: string;
+  startAdding?: boolean;
 }) {
   const home = view.home;
-  const [phase, setPhase] = useState<Phase>({ name: "list" });
+  const [phase, setPhase] = useState<Phase>(() =>
+    initialGoalId
+      ? { name: "detail", goalId: initialGoalId }
+      : startAdding && canWrite
+        ? { name: "add", step: "type" }
+        : { name: "list" },
+  );
   const [edit, setEdit] = useState<Edit>(null);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [flash, setFlash] = useState("");

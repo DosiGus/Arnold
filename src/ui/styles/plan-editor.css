@@ -7,7 +7,7 @@
 }
 .plan-editor :where(h2, h3) {
   font-size: 1.125rem;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: -0.015em;
 }
 .plan-editor :where(p, small) {
@@ -77,7 +77,7 @@
   margin-top: 0.15rem;
 }
 .plan-notice.warning {
-  border-inline-start: 3px solid var(--ac-bad);
+  border-color: var(--border);
 }
 .plan-notice.success {
   color: var(--ac-good);
@@ -112,7 +112,7 @@
 }
 .plan-facts dd {
   font-size: 1.375rem;
-  font-weight: 600;
+  font-weight: 500;
   margin: 0;
 }
 .plan-session-title {
@@ -188,7 +188,7 @@
 .plan-exercise-text strong {
   display: block;
   font-size: 0.9375rem;
-  font-weight: 550;
+  font-weight: 500;
   overflow-wrap: anywhere;
 }
 .plan-exercise-text small,
@@ -311,7 +311,7 @@
 }
 .plan-picker-name strong {
   font-size: 0.9375rem;
-  font-weight: 550;
+  font-weight: 500;
 }
 .plan-picker-item:hover {
   background: var(--soft);
@@ -326,7 +326,7 @@
 .plan-issue-group h4,
 .plan-family h4 {
   font-size: 0.875rem;
-  font-weight: 600;
+  font-weight: 500;
 }
 .plan-issue-group ul {
   padding-left: 1rem;
@@ -367,7 +367,7 @@
   border-radius: 999px;
   padding: 0.6rem 1rem;
   font-size: 0.875rem;
-  font-weight: 550;
+  font-weight: 500;
 }
 button.primary {
   background: var(--ink);
@@ -391,7 +391,7 @@ button.secondary:active {
 }
 .empty strong {
   font-size: 1.125rem;
-  font-weight: 600;
+  font-weight: 500;
 }
 .empty p {
   color: var(--muted);

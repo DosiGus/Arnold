@@ -89,9 +89,14 @@ test("saves the day's plan with typed weights, edits it and takes it back", asyn
   // The start screen says today is done: the button opens the saved
   // workout, the small link goes straight to the plan for another one.
   await page.goto(`${URL}/preview`);
-  await expect(page.getByText("Heute erledigt")).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Dein Training", exact: true }),
+  ).toContainText("Training gespeichert");
   await expect(button(page, "Training starten")).toHaveCount(0);
-  await button(page, "Training ansehen").click();
+  await page
+    .getByRole("region", { name: "Dein Training", exact: true })
+    .getByRole("button", { name: "Training ansehen", exact: true })
+    .click();
   await expect(card).toContainText("Gespeichert");
   await page.goto(`${URL}/preview`);
   await button(page, "Noch ein Training").click();

@@ -47,9 +47,11 @@ describe("start screen renders an engine payload", () => {
   it("shows the week status and one main action in the training tile", () => {
     const markup = render(<HomeCard view={view} canWrite onOpen={noop} />);
     const output = text(<HomeCard view={view} canWrite onOpen={noop} />);
-    expect(output).toMatch(/Diese Woche \d+ (von \d+ )?Trainingstag/);
+    expect(markup).toContain(
+      `${view.home.streak.current_week_training_days} von ${view.home.streak.weekly_goal} Trainingstagen`,
+    );
     expect(markup.match(/class="ac-btn /g)).toHaveLength(1);
-    expect(output).toContain("Training starten");
+    expect(output).toContain("Training bearbeiten");
     expect(output).toContain("Plan bearbeiten");
   });
 
@@ -67,7 +69,7 @@ describe("start screen renders an engine payload", () => {
       <HomeCard view={payload} canWrite={false} onOpen={noop} />,
     );
     expect(markup).toContain("2 von 3 Trainingstagen");
-    expect(markup.match(/class="done"/g)).toHaveLength(1);
+    expect(markup.match(/class="done\s*"/g)).toHaveLength(1);
   });
 
   it("titles the day with the next session instead of a greeting", () => {
@@ -77,9 +79,7 @@ describe("start screen renders an engine payload", () => {
       <HomeCard view={payload} canWrite={false} onOpen={noop} />,
     );
     if (payload.active_plan && payload.home.next_session)
-      expect(output).toContain(
-        `Heute: ${payload.home.next_session.session_name}`,
-      );
+      expect(output).toContain(payload.home.next_session.session_name);
     else expect(output).toContain("Dein Training");
     expect(output).not.toMatch(/Guten (Morgen|Abend)|Hallo/);
   });

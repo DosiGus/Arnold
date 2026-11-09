@@ -47,7 +47,7 @@ Vite bündelt `dashboard.html` (App) und `host.html` (Test-Host) zu je einer Dat
 
 ## Karten im Chat
 
-Arnold zeigt im Chat Karten, keine App: kein Logo, kein Menü, kein Hell-Dunkel-Schalter (das liefert der Host). Ohne `card` öffnet `show_arnold_dashboard` die Startansicht `home` mit vier Kacheln (Training, Fortschritt, Ziele, Rekorde); jede Kachel öffnet ihre Ansicht (`week`, `stats`, `goals`, `records`) mit Zurück-Knopf. Das Modell kann jede Karte direkt wählen (`home`, `today`, `week`, `stats`, `goals`, `records`, `progress`, `history`, `plan`; Liste in `src/shared/dashboard-cards.ts`), die UI liest es über `ontoolinput`. Gestaltungsregeln: `docs/DESIGN.md`.
+Arnold zeigt im Chat Karten, keine App: kein Logo, kein Menü, kein Hell-Dunkel-Schalter (das liefert der Host). Ohne `card` öffnet `show_arnold_dashboard` die monochrome Startansicht `home` mit fünf Widgets: Training, Woche, Demo-Scores, Ziele und Rekorde. Aktionen öffnen eine einzelne Ansicht mit Zurück-Knopf; beim Bearbeiten bleiben die anderen Widgets ausgeblendet. Die Woche führt zu allen Einheiten, der Rekordwechsel zeigt die drei neuesten Rekorde und öffnet das zugehörige Training, Ziele führen direkt zu ihrem Detail oder zur Erstellung. `week` bleibt ein älterer Name der Startansicht; die Trainingsentwicklung ist über `stats` erreichbar. Das Modell kann jede Karte direkt wählen (`home`, `today`, `week`, `stats`, `goals`, `records`, `progress`, `history`, `plan`; Liste in `src/shared/dashboard-cards.ts`), die UI liest es über `ontoolinput`. Gestaltungsregeln: `docs/DESIGN.md`.
 
 **Chat-Brücke** (`src/ui/model-context.ts`): Jede Karte meldet dem Modell still über `ui/update-model-context`, was sie zeigt, bei laufendem Training mit allen gespeicherten Sätzen samt `set_id`. So kann der Nutzer im Chat nachfragen oder korrigieren. Nur „Training beenden“ schickt eine sichtbare Nachricht, einmal und nur nach einem Tipp in der Karte.
 
@@ -114,7 +114,7 @@ Die Engine ist rein und deterministisch; Ergebnisse tragen die Version der Konve
 
 ### Startansicht, Ziele und Körpergewicht (`src/analytics/home.ts`, `goals.ts`)
 
-- Alle Zahlen der Startansicht rechnet die Engine (`buildHomeAnalytics`), ohne Filter über die ganze Historie; der Presenter ergänzt nur Namen (`home` im Dashboard-Vertrag).
+- Trainings-, Wochen-, Ziel- und Rekorddaten der Startansicht kommen aus der Engine (`buildHomeAnalytics`), ohne Filter über die ganze Historie; der Presenter ergänzt Namen (`home` im Dashboard-Vertrag). Die Übungsvorschau nutzt dieselben `proposals` aus `get_workout` wie die Trainingskarte. Ausschließlich die drei ausdrücklich markierten Demo-Scores sind feste illustrative UI-Werte; es gibt dafür noch keine Berechnung oder Health-Geräteanbindung. Auch der Modellkontext kennzeichnet sie als Demo.
 - **Serie:** Wochen am Stück mit erreichtem Wochenziel (Trainingstage aus `days_per_week` des aktiven Plans, egal an welchen Tagen). Die laufende Woche bricht eine Serie nie. Ohne Plan keine Serie.
 - **Rekorde:** mehr Gewicht oder mehr Wiederholungen bei gleichem Gewicht (Engine-Rekorde `max_load`/`max_reps_at_load`, nur Verbesserungen), bei Eigengewicht mehr Wiederholungen. Eine Übung in einem Training ist höchstens ein Rekord (auch bei links und rechts). Nur abgeschlossene Trainings zählen.
 - **Stärker seit:** mittlere Veränderung des geschätzten 1RM je Übung (erste gegen letzte Messung, häufigste Vergleichsklasse). Muskelgruppen nutzen dasselbe für die letzten 8 Wochen, Arbeitssätze pro Woche für die letzten 4 Wochen; die Gruppe ist `primary_muscle` der Übung.

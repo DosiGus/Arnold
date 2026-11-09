@@ -1,71 +1,262 @@
-# Arnold – Designregeln
+---
+name: Arnold
+description: "Neutraler Trainingsbegleiter im Chat mit klaren Aktionen und echtem Fortschritt."
+colors:
+  bg: "#fff"
+  text: "#171717"
+  muted: "#666"
+  card: "#fff"
+  soft: "#f5f5f5"
+  hover: "#ededed"
+  border: "#e5e5e5"
+  ink: "#171717"
+  on-ink: "#fff"
+  bar-muted: "#777"
+  dark-bg: "#171717"
+  dark-text: "#f5f5f5"
+  dark-muted: "#b4b4b4"
+  dark-card: "#242424"
+  dark-soft: "#303030"
+  dark-hover: "#383838"
+  dark-border: "#424242"
+  dark-ink: "#f5f5f5"
+  dark-on-ink: "#171717"
+  dark-bar-muted: "#aaa"
+typography:
+  display:
+    fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+    fontSize: "3.5rem"
+    fontWeight: 400
+    lineHeight: 1
+    letterSpacing: "-0.04em"
+  headline:
+    fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+    fontSize: "1.75rem"
+    fontWeight: 400
+    lineHeight: 1.1
+    letterSpacing: "-0.035em"
+  title:
+    fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+    fontSize: "1.75rem"
+    fontWeight: 500
+    lineHeight: 1.15
+    letterSpacing: "-0.025em"
+  body:
+    fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+    fontSize: "0.9375rem"
+    lineHeight: 1.45
+  label:
+    fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+    fontSize: "0.75rem"
+    fontWeight: 500
+  caption:
+    fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+    fontSize: "0.8125rem"
+    lineHeight: 1.5
+rounded:
+  ac-radius: "1rem"
+  ac-radius-inner: "0.5rem"
+  field: "0.75rem"
+  pill: "62.4375rem"
+spacing:
+  ac-pad: "1.25rem"
+  widget-gap: "0.75rem"
+  card-gap: "0.875rem"
+  action-gap: "0.5rem"
+components:
+  button-primary:
+    backgroundColor: "{colors.ink}"
+    textColor: "{colors.on-ink}"
+    rounded: "{rounded.pill}"
+    padding: "0.75rem 1.125rem"
+    height: "2.75rem"
+  button-secondary:
+    backgroundColor: "{colors.soft}"
+    textColor: "{colors.text}"
+    rounded: "{rounded.pill}"
+    padding: "0.75rem 1.125rem"
+    height: "2.75rem"
+  button-secondary-hover:
+    backgroundColor: "{colors.hover}"
+  card:
+    backgroundColor: "{colors.card}"
+    textColor: "{colors.text}"
+    rounded: "{rounded.ac-radius}"
+    padding: "{spacing.ac-pad}"
+  input:
+    backgroundColor: "{colors.card}"
+    textColor: "{colors.text}"
+    rounded: "{rounded.field}"
+    padding: "0.6rem 0.75rem"
+    height: "2.75rem"
+  chip-selected:
+    backgroundColor: "{colors.ink}"
+    textColor: "{colors.on-ink}"
+    rounded: "{rounded.pill}"
+    padding: "0 0.9375rem"
+    height: "2.75rem"
+---
 
-Arnold ist ein Trainingsbegleiter im Chat. Karten helfen beim Entscheiden, Eingeben und Nachsehen. Die Unterhaltung bleibt der Ort für Wünsche, Rückfragen und Änderungen in eigenen Worten.
+# Design System: Arnold
 
-Die Grundlage ist der [Apple-Design-Skill von Emil Kowalski](https://github.com/emilkowalski/skills/blob/main/skills/apple-design/SKILL.md): direkte Reaktion, vertraute Bedienung, klare Hierarchie, zurückhaltende Materialien und verständliche Rückmeldung. Wir übernehmen passende Prinzipien in die Chat-Karten; Gestenphysik oder weitere Bibliotheken sind für diese Abläufe nicht erforderlich.
+## Overview
 
-## Gemeinsames System
+**Creative North Star: "Arnolds neutraler Trainingsüberblick"**
 
-- `src/ui/style.css` ist der einzige Einstieg für Styles; er bindet die Bereiche aus `src/ui/styles/` ein (Basis, Karten, Start, Einrichtung, Plan-Editor, Training), und Vite fügt alles in das eine Bundle ein. Der lokale Test-Host hat ein eigenes, getrenntes Stylesheet.
-- `components/cards.tsx` enthält `ArnoldCard`, `CardActions`, `ChipGroup`, `Stepper`, `Rows`, `CardNote` und `CardSkeleton`. Die Karten verwenden diese Bausteine. Der Vollbildeditor nutzt dieselben Tokens und Bedienelement-Maße.
-- Hell und Dunkel kommen aus dem Host. Die eigenständige Vorschau verwendet beim Öffnen das System-Theme. Kein Theme-Schalter in der Karte, keine externen Schriften oder Assets.
-- Flächen und Schrift sind weitgehend achromatisch. Ein helles Grün (`--ac-accent`) kennzeichnet Fortschritt und bestätigten Erfolg; Balken, Punkte und Ringe nutzen `--ac-accent-fill`, das im hellen Modus dunkler ist (mindestens 3:1 zur Kachel), Rot eine Warnung oder destruktive Aktion. Eine Auswahl ist durch Füllung und Semantik erkennbar, auch ohne Farbe.
+Arnold begleitet Training im ChatGPT-Chat. Einsteiger erhalten Unterstützung, erfahrene Trainierende erfassen schnell. Chat und Sprache tragen Wünsche und Änderungen; Karten machen die nächste Aktion, Ziele und Trainingsgeschichte greifbar. Training und Protokollierung bilden den aktuellen Umfang; Ernährung und Geräteanbindung sind Zukunftsthemen.
 
-## Tokens und Maße
+Die freigegebene Gestaltung ist neutral und monochrom: ruhige Systemschrift, klare Flächen, dünne Konturen und deutliche Zahlen. Die Übersicht führt in eine einzelne fokussierte Aufgabenkarte und von dort zurück. Die dokumentierte Umsetzung ist die verbindliche Grundlage für weitere Ansichten.
 
-Die semantischen Farb-Tokens sind `--bg`, `--text`, `--muted`, `--card`, `--surface-strong`, `--soft`, `--hover`, `--border`, `--ink`, `--on-ink`, `--focus` und `--chart`. Zustandstöne verwenden `--ac-good` und `--ac-bad`.
+**Key Characteristics:**
 
-Das Kartenraster verwendet `--ac-pad: 1rem`, `--ac-radius: 1.25rem`, `--ac-radius-inner: .875rem` und `--ac-tap: 2.75rem`. Das ergibt bei Standardschrift mindestens 44 CSS-Pixel hohe und breite Bedienelemente. Abstände skalieren mit der Schrift. Der Karteninhalt bleibt bis 375 Pixel Breite und bei 200 Prozent Grundschrift ohne horizontalen Überlauf zugänglich.
+- Ausschließlich Graustufen in beiden Host-Themes.
+- Deckende, flache Karten mit feiner Kontur.
+- Klarer Weg von der Übersicht zur Aufgabe und zurück.
+- Echte Trainingsdaten mit sichtbaren Einheiten; illustrative Scores ausdrücklich als Demo.
 
-Die Schrift ist die Systemschrift. Titel, Fließtext und Nebeninformationen unterscheiden sich durch Größe, Gewicht und Zeilenhöhe; große Zahlen haben eine enge Laufweite. Zahlen verwenden tabellarische Ziffern. Lange Übungsnamen brechen um und werden nicht abgeschnitten.
+Diese Datei ersetzt die früheren Apple-, Grün-/Rot- und Vier-Kachel-Regeln. Sie ist die maßgebliche Designquelle unter `docs/DESIGN.md`; kein zweites Design-Dokument anlegen. Die tatsächlichen Werte stammen aus `src/ui/styles/base.css`, `cards.css` und `dashboard.css`. `src/ui/style.css` bündelt alle Bereiche. Die Ergänzungen in `.impeccable/design.json` enthalten Zustände, Breakpoints und renderbare Komponenten; Primitive gehören ins Frontmatter. Die spezifische Dashboard-Komposition ist zusätzlich in `.impeccable/surfaces/src-ui-arnolddashboardapp-tsx.md` festgehalten.
 
-## Kartenregeln
+## Colors
 
-Eine Karte beantwortet eine Frage. Unten stehen höchstens zwei Hauptaktionen; eine leise Textaktion ist möglich. Umfangreiche Trainingsdaten und Planbearbeitung gehören in eine vollständige Ansicht. Inline-Karten enthalten keine Reiter, sichtbaren Tabellen oder eigenen Scrollbereiche. Einzige Navigation: die Kacheln der Startansicht öffnen ihre Ansicht, die oben einen Zurück-Knopf hat.
+Die Palette besteht vollständig aus neutralen Graustufen. Das Frontmatter dokumentiert die hellen Standardwerte und ihre `dark-`-Entsprechungen; im Code bleiben dieselben CSS-Variablen aktiv, während der Host das Theme wechselt.
 
-Fokus-Stil: oben eine kleine Kopfzeile (wo bin ich, ggf. Fortschrittsbalken und Drei-Punkte-Knopf oder Zurück), darunter ein großer Titel, große Zahlen mit enger Laufweite, Knöpfe mit 52 px Höhe. Grün (`--ac-accent`) heißt neu und verdient: Haken, Serie, neuester Rekord, Zielbalken. Höchstens ein grünes Abzeichen pro Karte; weitere Hinweise (Bestwert, Spitzenreiter, ältere Rekorde) bleiben neutral (`ac-pill muted`).
+### Primary
 
-- **Startansicht:** öffnet, wenn Arnold ohne konkrete Frage gestartet wird; `week` ist ein älterer Name dafür. Titel „Heute: <nächste Einheit>“, „Heute geschafft“ oder ohne Plan „Dein Training“, darunter der Wochenstand. Vier Kacheln, jede eine Zusammenfassung und ein Knopf: Training (Wochentage und nächste Einheit, „Training starten“ öffnet `today`, leise Textaktion „Plan bearbeiten“), Fortschritt (Serie und Einheiten im Jahr), Ziele (zwei Balken), Rekorde (die drei neuesten; Name bis zwei Zeilen, Wert darunter in einer Zeile).
-- **Fortschritt (Kachel):** Serie wie bei einer Lauf-App: Flamme, Zahl, acht Wochen als Kreise, die laufende Woche als Ring. Darunter Einheiten im Jahr, „stärker seit“ und bester Monat, dann Muskelgruppen umschaltbar nach Fortschritt, Rekorden und Sätzen pro Woche, jeweils mit Erklärung, wie gerechnet wird.
-- **Ziele:** Balken von Start- zu Zielwert, Detail mit Kurve, gestrichelter Ziellinie und Prognose. Gewicht eintragen und Ziel ändern direkt in der Karte; Ziel beenden braucht einen zweiten Tipp. Neues Ziel in drei Schritten (Art, Übung, Zielwert).
-- **Rekorde:** neueste zuerst nach Monat oder nach Muskelgruppe und Übung; ein Rekord klappt seinen Verlauf auf. Zuerst zwölf, mehr auf Wunsch.
-- **Training (Heute):** Arnold ist kein Tracker, durch den man sich klickt. „Training starten“ zeigt den Trainingstag mit einer Zeile je Übung: Sätze × Wiederholungen · Gewicht als Arnolds Empfehlung aus dem letzten Training, sonst vom letzten Mal, sonst aus dem Plan (`proposals` aus `get_workout`). Mit einer Empfehlung steht unter dem Titel ein Umschalter „Arnolds Vorschlag · Wie letztes Mal“; er stellt alle Werte der Karte um, und „So gemacht“ speichert genau das Angezeigte. Im Vorschlag steht unter dem Übungsnamen grau „Zuletzt 80 kg · 3 × 10“, rechts die Werte für heute; ein kleiner Pfeil markiert, was Arnold geändert hat (Gewicht hoch oder runter, Wiederholungen hoch). Ein Hinweis wie „Heute angepasst“ hat Vorrang. Unten „So gemacht“ (speichert alles mit `log_workout`) und „Anpassen“; darunter der Hinweis, dass Änderungen auch im Chat gehen. Fehlt ein Gewicht, heißt der Hauptknopf „Werte eintragen“; nichts wird geraten. Ein anderer Trainingstag ist eine leise Textaktion.
-- **Anpassen:** je Übung Sätze (Plus/Minus), Wiederholungen und Gewicht als getippte Felder, wahlweise Satz für Satz. Tauschen (nur für heute, das Volumen bleibt, das Gewicht ist neu), Weglassen mit Zurückholen, Übung hinzufügen. Gespeichert wird der ganze Entwurf auf einmal.
-- **Gespeichert:** dieselbe Karte zeigt, was gespeichert ist, und höchstens einen neuen Rekord. „Zur Übersicht“ und „Bearbeiten“ (ersetzt das Training in einem Schritt), leise „Rückgängig“ (zweiter Tipp) und „Noch ein Training eintragen“. Speichern in der Karte schickt eine kurze Chat-Nachricht. Sagt der Nutzer im Chat, was er gemacht hat, speichert Arnold sofort und zeigt danach diese Karte.
-- **Laufend:** ein im Chat Satz für Satz begonnenes Training zeigt die eingetragenen Sätze mit „Training abschließen“ und „Verwerfen“. Es gibt keinen Pausen-Timer und keine Frage nach Wiederholungen in Reserve; das kommt mit einem späteren Anfänger-Modus.
-- **Wochenstreifen:** Trainingstage kommen aus `training_days`, Haken aus `trained_dates`. Zwei Trainings am selben Tag ergeben einen Trainingstag. Arbeitssätze und letzter Rekord haben Vorrang vor einer unkommentierten Volumenzahl.
-- **Fortschritt:** eine Übung, eine Hauptzahl, ein fertiger Vergleich aus `selected_comparison`, eine kleine Kurve. Lastdefinition, Ausführung und Seite bleiben sichtbar. Die Kurve enthält nur gelieferte Messpunkte mit echten zeitlichen Abständen. Die UI berechnet keine Differenz.
-- **Verlauf:** wenige ruhige Zeilen im Chat. Die vollständige Liste und einzelne Trainings öffnen im Vollbild, mit denselben Inhalten als Fallback im Dokumentfluss. Sätze bleiben lesbare Zeilen mit Lastdefinition, Seite und Satztyp. Zeitraum, Plan und Status werden serverseitig gefiltert. Eine angeforderte Einheit wird niemals durch eine andere ersetzt.
-- **Plan:** kurzer Überblick über die Trainingstage. Die ausführliche Ansicht und Bearbeitung sind im Vollbild. Ein aktiver Plan wird über einen neuen Entwurf verändert. Aktivierung bleibt eine ausdrückliche Bestätigung der angezeigten Version und Revision.
-- **Einrichtung:** oben Phase, Balken in vier Abschnitten (Angaben, Wünsche, Prüfen, Plan), Zurück und drei Punkte (Stand neu laden, Einrichtung abbrechen). Ablauf: Begrüßung mit zwei Wegen, „Über dich“ auf einer Karte (Alter, Größe und Gewicht direkt eintippen, leer erlaubt, Dezimalkomma, Geschlecht und Bereiche aufklappbar, alles freiwillig), vier Fragen (Ziel mit Mehrfachauswahl, Erfahrung, wie oft und wie lange auf einer Karte mit freier Minutenzahl, Ort), dann die Wünsche als eigener, freiwilliger Schritt mit aufklappbaren Bereichen und einem Freitext, dann „So wird dein Plan“ mit einem Satz in Alltagssprache und Stift je Zeile. Feste Wochentage gibt es nur in der gewählten Anzahl. Nach der Bestätigung zeigt die Karte die nächste Einheit und das Startgewicht mit Weg zu den Zielen.
-- **Konto löschen:** Aufruf aus dem Chat. Die Karte nennt alles, was gelöscht wird, auch die Trainingsdaten. Das Bestätigungstoken bleibt ausschließlich im App-Zustand, kommt aus `_meta` und verlässt die Karte nur durch den ausdrücklichen Löschklick. Abgelaufene Tokens werden neu angefordert.
+**Ink / On Ink** bilden die kontrastreiche Hauptaktion, ausgewählte Chips und Fortschrittsfüllungen. „Primary“ bezeichnet die Aktionshierarchie, keinen Buntton.
 
-## Zustände und Rückmeldung
+### Neutral
 
-Alle sechs `recovery`-Werte besitzen gemeinsame, verständliche Texte. Technische Fehlercodes, interne IDs und Revisionen bleiben aus sichtbaren Fehlermeldungen heraus. Ein fachlicher Fehler nennt zusätzlich die verständliche Serverbegründung. Beispielsweise bleibt bei einer ungültigen Wiederholungsspanne der Einstellungsdialog mit beiden Werten geöffnet.
+- **Background / Card:** Host-Hintergrund beziehungsweise deckende Kartenfläche. Die eingebettete Dokumentfläche bleibt transparent, damit der Chat seine Umgebung zeichnet.
+- **Text / Muted:** Hauptinhalt beziehungsweise ergänzende Informationen, Labels und Einheiten.
+- **Soft / Hover:** zurückhaltende Kontrollflächen und ihre Reaktion auf Zeigerkontakt.
+- **Border / Bar Muted:** Konturen, Trennlinien und ergänzende Diagrammmarken.
+- `--surface-strong` entspricht der Kartenfläche; `--focus` und `--chart` folgen Ink. `--ac-good` und `--ac-bad` folgen Text. Die vorhandenen Accent-Aliasse bleiben neutral: Soft für Abzeichen, Ink für Füllungen.
 
-Ein Druck wird direkt sichtbar. „Training gespeichert“ folgt ausschließlich einem bestätigten Schreibvorgang und verschwindet anschließend. Bleibt eine Antwort aus, bleiben dieselbe `request_id` und die ursprünglichen Eingaben erhalten; „Erneut versuchen“ sendet genau diesen Vorgang noch einmal, ohne etwas doppelt zu speichern. Das gilt für Training, Plan und Einrichtung, auch nach einem Neuladen.
+**The Monochrome Rule.** Erfolg, Warnung, Auswahl und Fortschritt bleiben achromatisch. Text, Symbol, Kontur und Füllung vermitteln den Zustand gemeinsam.
 
-Ungewöhnliche Werte (über 500 kg oder 100 Wiederholungen) werden erst nach „Stimmt das?“ mit `confirm_unusual_values: true` gesendet. Ein zukünftiges Datum führt zu einem verständlichen Hinweis. Ein Training wird erst nach einem zweiten ausdrücklichen Klick zurückgenommen.
+Hell/Dunkel kommen aus dem Host; die eigenständige Vorschau beginnt mit dem System-Theme. Kein Theme-Schalter in der Karte, keine externen Schriften oder Bildassets.
 
-## Barrierefreiheit und Bewegung
+## Typography
 
-Beschriftete native Inputs, sichtbarer Fokus, `aria-pressed` für Chips und `role="switch"` mit `aria-checked` für Schalter bilden dieselben Zustände visuell und für Screenreader ab. Fehlermeldungen werden angekündigt. Die Diagrammwerte sind zusätzlich für Screenreader erreichbar. Dialoge halten den Tastaturfokus, schließen mit Escape und geben den Fokus zurück.
+**Display Font / Body Font:** dieselbe native Systemschrift mit den Fallbacks aus dem Frontmatter.
 
-Bewegung begleitet eine Aktion. Wiederöffnen spielt keine Karten-Eintrittsanimation ab. `prefers-reduced-motion` entfernt Bewegung, erhält Auswahl- und Statusrückmeldungen. Reduzierte Transparenz und höherer Kontrast haben passende Darstellungen. Es gibt keine künstlichen Wartezeiten, wiederholten Erfolgsanimationen oder vorgetäuschten haptischen Effekte.
+**Character:** zurückhaltend und gut lesbar. Titel und Kontrollen verwenden überwiegend mittleres Gewicht; große Trainings- und Rekordzahlen bleiben leichter. Kein durchgehend fettes Dashboard.
 
-## Chat-Brücke
+### Hierarchy
 
-Jede Ansicht meldet den relevanten Zustand still über `ui/update-model-context`: Übung und Vergleich, ausgewähltes Training samt Satzreferenzen, Planversion oder Einrichtungsfrage. Eine sichtbare Nachricht entsteht nur bei einem tatsächlichen Übergang wie Planerstellung oder Trainingsabschluss. Keine Chat-Nachricht pro Satz oder Feld. Private Bestätigungstokens gelangen nie in den Modellkontext.
+- **Display:** große Rekordzahl, mobil auf (2.75rem) reduziert.
+- **Headline:** Name des nächsten oder gespeicherten Trainings im breiten Widget.
+- **Title:** fokussierte Aufgabenkarte; der Übersichtstitel verwendet (1.6875rem), Gewicht (500), Zeilenhöhe (1.15) und Laufweite (-0.035em).
+- **Body:** Grundtext innerhalb der Karten. Erläuterungen verwenden häufig (0.875rem), Widget-Zeilen (0.8125rem).
+- **Label / Caption:** kleine Orientierung und Nebeninformationen. Widget-Metadaten dürfen (0.6875rem) verwenden; entscheidende Eingaben bleiben größer.
 
-## Sprache
+Zahlen verwenden tabellarische Ziffern. Lange Übungsnamen, Einheiten und Fehlermeldungen brechen um. Unbekannte Werte werden nicht als Null dargestellt. Dezimalkomma und deutsche Datumsformate bleiben erhalten: kompakt „7. Apr.“, vollständig „7. April 2026“. Lastdefinition steht unmittelbar bei der Zahl, etwa „20 kg pro Hantel“.
 
-Du-Form, kurze Sätze, konkrete Aktionen. Einheitliche Begriffe: **Training**, **Trainingstag**, **Satz**, **Arbeitssatz**, **Aufwärmsatz**, **Übung**, **Plan**, **Entwurf**. „Trainingstag“ meint einen Kalendertag, „Training“ eine Einheit. Singular und Plural richten sich nach dem gelieferten Wert.
+## Layout
 
-Datumsformat im kompakten Kontext: „7. Apr.“; im vollständigen Kontext „7. April 2026“. Deutsches Dezimalkomma. Gewichte tragen ihre Bedeutung direkt an der Zahl, etwa „20 kg pro Hantel“. Unbekannte Werte bleiben unbekannt und werden nicht als Null dargestellt.
+Die Chat-Karte hat eine maximale Breite von (44rem); die vorhandenen Vollbildeditoren (64rem). Eine Aufgabenkarte beantwortet eine Frage. Die Übersicht gibt der nächsten Handlung den meisten Raum; Detailkarten konzentrieren sich auf eine Aufgabe mit erkennbarem Rückweg. Lange Inhalte laufen im Dokumentfluss; keine neuen inneren Scrollflächen oder App-Shell-Navigation einführen.
 
-## Abnahme
+Die implementierte Übersicht nutzt sechs gleiche Rasterspalten mit dem im Frontmatter dokumentierten Widget-Abstand. Training belegt vier Spalten und zwei Zeilen, rechts stehen Woche und Demo-Scores mit je zwei Spalten. Darunter belegen Ziele vier und Rekorde zwei Spalten. Die normalen Widget-Innenabstände sind vertikal (1.1875rem) und horizontal (1.25rem), die Score-Karte (1.0625rem 1rem).
 
-Playwright prüft Chromium und WebKit mit Mobil- und Desktop-Ansichten. Die Layout-Gegenproben aus S001 wurden auf die Karten übertragen: begrenzte Aufrufzahl, kein Überlauf, präzise Trainingsauswahl, unveränderte Startansicht beim Filtern und sichtbare Vergleichsklasse. axe prüft die Karten und Einrichtung. Bildschirmfotos liegen in `docs/beta/screens/` und verwenden ausschließlich synthetische Daten.
+Bis (36rem) wird das Raster zweispaltig: Training und Scores über die volle Breite, danach Woche und Rekorde nebeneinander, anschließend Ziele. Karten erhalten (1rem) Innenabstand. Bis (21rem) stehen auch Woche und Rekorde einzeln. Flexible Zeilen und umbrechende Aktionen erhalten die Bedienbarkeit bei längeren Texten und vergrößerter Grundschrift. Die vorhandenen Detailansichten haben zusätzliche lokale Breakpoints; die Sidecar listet diese getrennt auf.
 
-Browseremulation und der lokale AppBridge-Host ersetzen keine Abnahme auf einem physischen iPhone in der ChatGPT-App. Diese letzte Geräte- und Host-Abnahme gehört zur Integration mit Worker C.
+Die Übersicht enthält keinen zusätzlichen Block „Letzte Trainings“. Der Wochen-Link führt zu allen Einheiten. „Trainingsentwicklung ansehen“ bleibt eine ruhige Aktion unter dem Raster. Neue Oberflächen übernehmen die räumliche Hierarchie; die konkrete Fünf-Widget-Komposition gilt für diese Übersicht.
+
+## Elevation & Depth
+
+Karten haben keinen Flächenschatten und keinen Blur. Deckende Flächen, feine Konturen und klare Abstände trennen Inhalte. Der Host darf durch die transparente Umgebung sichtbar bleiben; die Karten selbst bleiben opak.
+
+**The Flat Surface Rule.** Karten bleiben deckend und flach. Hierarchie entsteht durch Raster, Kontur, Abstand und Typografie.
+
+Fokus- und Statuskonturen sind funktionale Markierungen, keine erhöhte Fläche. Die heutige untrainierte Tagesmarke verwendet eine innere Kontur. Der bestehende Plan-Dialog besitzt einen eigenen modalen Schatten (`0 12px 50px rgb(0 0 0 / 0.2)`); diese begrenzte Ausnahme ist kein Kartenstil.
+
+Bewegung bestätigt eine konkrete Aktion: Knöpfe reagieren auf Druck, Balken auf geänderte Werte. Bestehende Übergänge und `prefers-reduced-motion` erhalten. Wiederöffnen spielt keine Eintrittsanimation; keine künstlichen Wartezeiten, wiederholten Erfolgsanimationen oder vorgetäuschten haptischen Effekte.
+
+## Shapes
+
+Karten verwenden den gemeinsamen äußeren Radius, innere Gruppen den kleineren Radius aus dem Frontmatter. Dünne Konturen (1px) rahmen Flächen. Felder haben einen eigenen mittleren Radius; Hauptknöpfe und Chips sind pillenförmig, Icon-Knöpfe kreisförmig. Wochen- und Score-Ringe sind Informationsgrafiken mit einer schmalen Kontur, keine Schmuckelemente.
+
+Interaktive Kontrollen bleiben mindestens (2.75rem) hoch; reine Icon-Knöpfe ebenso breit. Das entspricht bei Standardschrift (44px). Der Fokus ist sichtbar: Kontur (2px), Abstand (3px). Gesonderte Eingabe- und Editorzustände behalten ihre bestehenden Fokusregeln.
+
+## Components
+
+### Buttons
+
+Ruhige, eindeutige Aktionen mit höchstens einer Hauptaktion und einer zweiten Aktion pro fokussierter Karte; weitere Wege bleiben leise Textaktionen.
+
+- **Primary:** Ink auf On Ink, pillenförmig; Maße und Padding im Frontmatter. Destruktive Hauptaktionen nutzen dieselbe neutrale Palette und eine eindeutige Beschriftung.
+- **Secondary:** Soft mit Text; Hover wechselt zu Hover.
+- **Text / Back:** unterstrichene, gedämpfte Links beziehungsweise ein beschrifteter Zurück-Knopf. Detailkarten zeigen „Zur Übersicht“.
+- **States:** unmittelbare Druckrückmeldung; deaktivierte Kontrollen mit reduzierter Deckkraft. „Training gespeichert“ erscheint erst nach bestätigtem Schreiben.
+
+### Chips
+
+Kontur und neutrale Fläche im Normalzustand; ausgewählt Ink / On Ink. `aria-pressed` oder beschriftete native Auswahlfelder transportieren denselben Zustand für assistive Technik. Chips dürfen umbrechen.
+
+### Cards / Containers
+
+`ArnoldCard`, `CardActions`, `ChipGroup`, `Stepper`, `Rows`, `CardNote` und `CardSkeleton` bleiben die gemeinsamen Bausteine. Karten und Vollbildeditoren teilen Tokens und Kontrollmaße. Kopfzeile, Titel, Inhalt und Aktionen bilden eine klare Folge. Bearbeitungsgruppen bleiben aufklappbar; die Übersicht selbst weicht der fokussierten Aufgabenkarte.
+
+### Inputs / Fields
+
+Beschriftete native Inputs, Selects und Textareas mit deckender Kartenfläche, Kontur und sichtbarem Fokus. Direkte Eingabe bleibt für Gewicht, Wiederholungen und andere Zahlen möglich; bestehende Plus/Minus-Regler ergänzen sie. Dezimalkomma, freiwillige leere Profilfelder und unbekannte Gewichte bleiben unterstützt. Fehlertexte nennen das Problem in Alltagssprache und erhalten die Eingaben.
+
+### Navigation
+
+Widget-Titel, Zeilen und Aktionen öffnen die jeweilige Detailkarte. Der Rückweg zur Übersicht bleibt sichtbar; keine zusätzlichen globalen Tabs. Woche öffnet den Verlauf aller Einheiten. Ein Rekord öffnet exakt das zugeordnete Training über seine `workout_id`; ein Ziel öffnet sein konkretes Detail über `goal_id`. Anfrage und angezeigte Einheit dürfen niemals auseinanderfallen.
+
+### Dashboard-Widgets
+
+- **Training:** nächstes Training mit vorhandenen Vorschlägen und bis zu vier Übungszeilen, sonst ehrlicher Leerzustand. Nach einem heutigen Abschluss zeigt es die gespeicherte Einheit. Aktionen öffnen Training oder Plan; „Noch ein Training“ startet bewusst frisch. Schreibrechte bestimmen Beschriftung und angebotene Aktionen.
+- **Woche:** echte Trainingsdaten, Tagesmarken und Wochenziel. Zwei Einheiten an einem Tag zählen als ein Trainingstag. Aufklappen erklärt den Stand, „Alle Einheiten“ öffnet den Verlauf.
+- **Demo-Scores:** feste illustrative Werte Konstanz (92), Recovery (72), Progress (77). Titel, jedes einzelne Label und zugängliche Beschreibung nennen Demo. Der Info-Text erklärt die freie Wahl, die spätere Berechnung und die fehlende Health-Geräteanbindung. Keine Berechnung oder Geräteintegration im Backend behaupten oder ergänzen.
+- **Ziele:** erste vier Ziele mit geliefertem Fortschritt, aktuellem Wert und Zielwert; danach „Ziel hinzufügen“ bei Schreibrechten und gegebenenfalls Link zu allen Zielen. Null-Fortschritt und unbekannter Fortschritt bleiben verschieden.
+- **Rekorde:** Karussell der drei neuesten Rekorde, eine Hauptzahl, Lastdefinition, Datum und Position. Vor/Zurück ist beschriftet; Wechsel wird angekündigt. Wert, Metrik, Wiederholungen und zugehörige Trainingsidentität stammen aus den vorhandenen Backend-Daten.
+
+### Training, Ziele, Fortschritt und Plan
+
+Die visuelle Vereinheitlichung ändert keine Daten- oder Schreibsemantik:
+
+- **Training:** `proposals` aus `get_workout` liefern Empfehlung beziehungsweise letzten Stand und Planwerte. „Arnolds Vorschlag · Wie letztes Mal“ stellt die angezeigten Werte um; „So gemacht“ speichert genau diese Werte über `log_workout`. Fehlendes Gewicht wird nicht geraten. Bestehende Anpassungen, Übungstausch nur für heute, Weglassen mit Zurückholen und Hinzufügen bleiben erhalten. Der gesamte Entwurf wird gemeinsam gespeichert. Laufende Satz-für-Satz-Trainings behalten Abschluss und Verwerfen; Timer und RIR-Abfrage werden nicht ergänzt.
+- **Gespeichert:** dieselbe Karte zeigt den bestätigten Stand; Bearbeiten ersetzt in einem Schritt. Rückgängig erfordert den zweiten ausdrücklichen Klick. Ein weiteres Training ist ein eigener Vorgang.
+- **Ziele:** gelieferter Fortschritt, Kurve und Prognose bleiben maßgeblich. Ziel ändern, Messwert eintragen und die vorhandene Erstellung bleiben zugänglich; Ziel beenden braucht den zweiten Tipp.
+- **Fortschritt:** eine Übung, eine Hauptzahl und `selected_comparison`. Lastdefinition, Ausführung und Seite bleiben sichtbar. Kurven enthalten nur gelieferte Messpunkte in echten Zeitabständen. Die UI berechnet keine Vergleichsdifferenz.
+- **Verlauf / Rekorde:** vorhandene Filter, Detailaufklappung und „mehr laden“ bleiben erhalten. Sätze zeigen Lastdefinition, Seite und Satztyp. Zeitraum, Plan und Status werden serverseitig gefiltert; Vollbild hat den vorhandenen Fallback im Dokumentfluss.
+- **Plan:** Überblick und aufklappbarer Editor bleiben erhalten. Änderungen am aktiven Plan gehen über einen neuen Entwurf. Aktivierung bestätigt ausdrücklich die gezeigte Version und Revision.
+- **Einrichtung:** die bestehenden Phasen Angaben, Wünsche, Prüfen und Plan mit Zurück, Neuladen und Abbrechen erhalten. Persönliche Angaben bleiben freiwillig; Erfahrung, Häufigkeit, Dauer, Ort und Wünsche behalten ihre vorhandenen Eingaben. Feste Wochentage nur in gewählter Anzahl. Nach Bestätigung führen nächste Einheit und Startgewicht zu den passenden Aktionen.
+
+### Zustände, Rückmeldung und Datenschutz
+
+Alle sechs `recovery`-Werte verwenden gemeinsame verständliche Texte. Technische Fehlercodes, IDs und Revisionen bleiben aus Fehlermeldungen heraus; fachliche Fehler nennen zusätzlich die verständliche Serverbegründung. Ein ungültiger Wertebereich lässt den Dialog mit beiden Eingaben geöffnet.
+
+Bleibt eine Antwort aus, bleiben dieselbe `request_id` und die ursprünglichen Eingaben erhalten. „Erneut versuchen“ sendet genau diesen Vorgang erneut und erzeugt keinen zweiten Schreibvorgang. Das gilt auch nach Neuladen für Training, Plan und Einrichtung. Ungewöhnliche Werte über (500kg) oder (100 Wiederholungen) benötigen „Stimmt das?“ und `confirm_unusual_values: true`; zukünftige Daten erhalten den bestehenden verständlichen Hinweis.
+
+„Konto löschen“ nennt den Umfang einschließlich Trainingsdaten. Das Bestätigungstoken kommt ausschließlich aus `_meta`, bleibt im App-Zustand und verlässt die Karte nur beim ausdrücklichen Löschklick. Abgelaufene Tokens werden neu angefordert. Private Bestätigungstokens gelangen nie in den Modellkontext.
+
+Jede Ansicht meldet den relevanten Zustand still über `ui/update-model-context`: Übung und Vergleich, Training mit Satzreferenzen, Planversion oder Einrichtungsfrage. Sichtbare Chat-Nachrichten entstehen bei echten Übergängen wie Planerstellung und Trainingsabschluss, nicht pro Feld oder Satz.
+
+### Accessibility und Sprache
+
+Native Beschriftungen, sichtbarer Fokus, `aria-pressed` und `role="switch"` mit `aria-checked` bilden Zustände gleichwertig ab. Fehler und relevante Statuswechsel werden angekündigt. Diagrammwerte bleiben für Screenreader zugänglich. Dialoge halten den Fokus, schließen mit Escape und geben ihn zurück. Reduzierte Bewegung, reduzierte Transparenz und höherer Kontrast erhalten ihre bestehenden Anpassungen.
+
+Du-Form, kurze Sätze und konkrete Aktionen. Begriffe: Training, Trainingstag, Satz, Arbeitssatz, Aufwärmsatz, Übung, Plan und Entwurf. Trainingstag meint einen Kalendertag, Training eine Einheit. Singular und Plural folgen dem gelieferten Wert. Keine technischen Implementierungsdetails im normalen Bedienfluss.
+
+Aktuelle visuelle Referenzen liegen in `.impeccable/review/` für Desktop, Mobile, 720px, Hellmodus und die fokussierten Ansichten. Browser- und AppBridge-Prüfungen ersetzen keine Abnahme auf einem physischen iPhone in der ChatGPT-App.
+
+## Do's and Don'ts
+
+### Do:
+
+- Do verwende die bestehenden semantischen Tokens und dieselben flachen Karten in Übersicht, Einrichtung und Editoren.
+- Do halte interaktive Ziele mindestens 2.75rem hoch und reine Icon-Knöpfe ebenso breit.
+- Do zeige Einheiten, Lastdefinition und unbekannte Werte ehrlich an.
+- Do erhalte die genaue Trainings-, Ziel- und Rekordidentität bei jeder Navigation.
+- Do prüfe Hell/Dunkel, schmale Ansichten, 720px, Tastatur und reduzierte Bewegung am gerenderten Ergebnis.
+
+### Don't:
+
+- Don't ergänze farbige Akzente, Glasflächen, dekorative Flammen oder Trophäen.
+- Don't stelle Demo-Scores als berechnete Trainings- oder Gesundheitswerte dar.
+- Don't ändere Backend-Vergleiche, Vorschläge oder Schreibsemantik für eine visuelle Vereinfachung.
+- Don't zeige technische IDs, Revisionen oder private Bestätigungstokens als Bedienoberfläche.
+- Don't bestätige einen Schreibvorgang vor der Serverantwort oder erzeuge einen neuen Vorgang für einen Retry.

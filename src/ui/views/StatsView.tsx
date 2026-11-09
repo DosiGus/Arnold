@@ -3,7 +3,6 @@ import type { ArnoldDashboardView } from "../../shared/arnold-view";
 import { ArnoldCard, CardActions, ChipGroup } from "../components/cards";
 import {
   DetailHead,
-  FlameBadge,
   StreakDot,
   dayDot,
   monthName,
@@ -85,7 +84,6 @@ export function StatsView({
 
       <div className="ac-streak">
         <div className="ac-streak-top">
-          <FlameBadge />
           <span className="ac-streak-count">
             <strong>{streak.current ?? 0}</strong>
             <span>{streak.current === 1 ? "Woche" : "Wochen"}</span>

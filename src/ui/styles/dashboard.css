@@ -1,0 +1,560 @@
+/* Approved monochrome widget system. The chat remains the application shell. */
+.ac-dashboard {
+  display: grid;
+  gap: 0.875rem;
+  min-width: 0;
+}
+.ac-dashboard-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  padding: 0.5rem 0.125rem 0.375rem;
+}
+.ac-dashboard-head h2 {
+  font-size: 1.6875rem;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.035em;
+}
+.ac-dashboard-head p {
+  margin-top: 0.4375rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.ac-widget-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.75rem;
+  align-items: stretch;
+}
+.ac.ac-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.1875rem 1.25rem;
+  border-radius: 1rem;
+}
+.ac-widget-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+  min-height: 1.75rem;
+}
+.ac-widget-head h3 {
+  min-width: 0;
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.ac-widget-head .ac-caption {
+  font-size: 0.6875rem;
+}
+.arnold-cards .ac-widget-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: var(--ac-tap);
+  min-height: var(--ac-tap);
+  border-radius: 50%;
+  background: var(--soft);
+  color: var(--muted);
+  padding: 0.375rem;
+}
+.arnold-cards .ac-widget-icon:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.ac-widget-icon[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+.arnold-cards .ac-widget-heading-link {
+  min-width: var(--ac-tap);
+  padding: 0.25rem 0;
+  text-align: start;
+  min-height: var(--ac-tap);
+  font: inherit;
+}
+.ac-widget-heading-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.25rem;
+}
+.ac-widget-training {
+  grid-column: span 4;
+  grid-row: span 2;
+}
+.ac-widget-training .ac-widget-head {
+  align-items: start;
+}
+.ac-widget-training .ac-widget-head h3 {
+  font-size: 1.75rem;
+  font-weight: 400;
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+}
+.ac-widget-training > .ac-text {
+  font-size: 0.75rem;
+  margin-top: -0.3125rem;
+}
+.ac-widget-exercises {
+  display: grid;
+  margin: 0.25rem 0 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+.ac-widget-exercises li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  padding: 0.6875rem 0;
+  border-top: 1px solid var(--border);
+  min-width: 0;
+  font-size: 0.8125rem;
+}
+.ac-widget-exercises li:first-child {
+  border-top: 0;
+}
+.ac-widget-exercises li > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ac-widget-exercises li > span:last-child {
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-align: end;
+}
+.ac-widget-training-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: auto;
+}
+.ac-widget-training-actions .ac-btn {
+  flex: 1 1 10rem;
+  justify-content: space-between;
+}
+.ac-widget-training-actions .ac-link {
+  flex: 0 1 auto;
+}
+.ac-widget-saved {
+  display: flex;
+  gap: 0.625rem;
+  align-items: center;
+  padding: 1rem 0;
+  font-size: 0.875rem;
+}
+.ac-widget-empty {
+  padding: 0.5rem 0;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+.ac-widget-week {
+  grid-column: span 2;
+}
+.ac-widget-week-total {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+}
+.ac-widget-week-total > .ac-caption {
+  font-size: 0.6875rem;
+}
+.ac-widget-ring {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.6875rem;
+  height: 3.6875rem;
+  flex: none;
+  font-size: 1.25rem;
+  letter-spacing: -0.035em;
+  font-weight: 500;
+}
+.ac-widget-ring::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(var(--ink) var(--ring-angle), var(--border) 0);
+  mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - 3px),
+    #000 calc(100% - 2px)
+  );
+}
+.ac-widget-ring.no-goal::before {
+  display: none;
+}
+.ac-widget-ring > span {
+  white-space: pre;
+}
+.ac-widget-week-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.1875rem;
+}
+.ac-widget-week-days > span {
+  display: grid;
+  justify-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.6875rem;
+}
+.ac-widget-week-days i {
+  display: grid;
+  place-items: center;
+  font-style: normal;
+  width: min(100%, 1.5625rem);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--soft);
+}
+.ac-widget-week-days .done i {
+  background: var(--ink);
+  color: var(--on-ink);
+}
+.ac-widget-week-days .today {
+  color: var(--text);
+  font-weight: 500;
+}
+.ac-widget-week-days .today:not(.done) i {
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+.arnold-cards .ac-widget-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.625rem 0 0;
+  border-top: 1px solid var(--border);
+  font-size: 0.75rem;
+  text-align: start;
+  margin-top: auto;
+}
+.ac.ac-widget-scores {
+  grid-column: span 2;
+  padding: 1.0625rem 1rem;
+}
+.ac-demo-scores {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 3.25rem), 1fr));
+  gap: 0.4375rem;
+}
+.ac-demo-score {
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 0.4375rem;
+  min-width: 0;
+  font-size: 0.6875rem;
+}
+.ac-demo-score .ac-widget-ring {
+  width: 100%;
+  max-width: 3.625rem;
+  height: auto;
+  aspect-ratio: 1;
+}
+.ac-demo-score small {
+  color: var(--muted);
+  font-size: 0.6875rem;
+}
+.ac-widget-scores > .ac-caption {
+  font-size: 0.6875rem;
+}
+.ac-widget-goals {
+  grid-column: span 4;
+}
+.ac-widget-goal-list {
+  display: grid;
+}
+.arnold-cards .ac-widget-goal {
+  display: grid;
+  gap: 0.5625rem;
+  min-height: 3.625rem;
+  width: 100%;
+  padding: 0.6875rem 0 0.25rem;
+  text-align: start;
+}
+.ac-widget-goal:hover strong {
+  text-decoration: underline;
+  text-underline-offset: 0.2rem;
+}
+.ac-widget-goal-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 0.625rem;
+  flex-wrap: wrap;
+  font-size: 0.8125rem;
+}
+.ac-widget-goal-head strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 500;
+}
+.ac-widget-goal-head > span {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.ac-widget-goal .ac-bar {
+  height: 0.25rem;
+  background: var(--border);
+}
+.arnold-cards .ac-widget-add {
+  display: inline-flex;
+  align-items: center;
+  align-self: start;
+  gap: 0.4375rem;
+  min-height: var(--ac-tap);
+  padding: 0.5rem 0 0;
+  margin-top: auto;
+  font-size: 0.75rem;
+  text-align: start;
+}
+.ac-widget-record {
+  grid-column: span 2;
+}
+.ac-widget-record-body {
+  display: grid;
+  gap: 0.625rem;
+  min-width: 0;
+}
+.ac-widget-record-name {
+  font-size: 0.875rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.ac-widget-record-number {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3125rem;
+  min-width: 0;
+}
+.ac-widget-record-number strong {
+  font-size: 3.5rem;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+.ac-widget-record-number span {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.ac-widget-record-body .ac-caption {
+  font-size: 0.6875rem;
+}
+.ac-widget-record-body .ac-caption:last-child {
+  margin-top: 0.375rem;
+}
+.ac-widget-record-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: auto;
+}
+.ac-widget-record-actions .ac-link {
+  font-size: 0.6875rem;
+}
+.ac-widget-record-nav {
+  display: flex;
+  gap: 0.25rem;
+}
+.arnold-cards .ac-dashboard-progress,
+.arnold-cards .ac-page-back {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 0.5rem;
+}
+.arnold-cards .ac-page-back {
+  color: var(--text);
+  text-decoration: none;
+}
+.ac-detail-head {
+  flex-wrap: wrap;
+}
+.arnold-cards .ac-icon-btn.ac-back {
+  min-width: var(--ac-tap);
+  display: inline-flex;
+  gap: 0.5rem;
+  width: auto;
+  min-height: var(--ac-tap);
+  height: auto;
+  padding: 0.25rem 0;
+  background: transparent;
+  font-size: 0.8125rem;
+  border-radius: 0.25rem;
+  text-align: start;
+}
+.ac-back-label {
+  min-width: 0;
+}
+
+/* Every detail view uses the same quiet typography and flat surfaces. */
+.ac-title {
+  font-size: 1.75rem;
+  font-weight: 500;
+}
+.ac-record-detail {
+  margin-inline-start: 0;
+}
+.ac-big,
+.ac-goal-number strong,
+.ac-streak-count strong,
+.ac-stat-tiles strong {
+  font-weight: 400;
+}
+.ac-record-group h3,
+.ac-tile-head {
+  letter-spacing: 0;
+  text-transform: none;
+}
+.ac-goal-row {
+  background: transparent !important;
+  border-radius: 0 !important;
+  border-top: 1px solid var(--border) !important;
+  padding-inline: 0 !important;
+}
+.ac-goal-row:first-child {
+  border-top: 0 !important;
+}
+.ac-goal-row-head strong {
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+.ac-goal-row .ac-bar {
+  height: 0.25rem;
+}
+.ac-goal-list {
+  gap: 0;
+}
+.ac-history-date {
+  background: transparent;
+  border-radius: 0;
+}
+.ac-history-exercises {
+  background: transparent;
+  border-radius: 0;
+  padding-inline: 0;
+}
+.ac-flash {
+  background: var(--soft);
+  color: var(--text);
+  font-weight: 500;
+}
+.ac-note.error {
+  border: 1px solid var(--border);
+  background: var(--soft);
+}
+.ac-segment {
+  border-radius: 0.625rem;
+}
+.arnold-cards .ac-segment button {
+  border-radius: 0.4375rem;
+  font-weight: 500;
+}
+.ac-streak,
+.ac-stat-tiles > div,
+.ac-edit-box,
+.ac-plan-hero {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--ac-radius-inner);
+}
+.ac-history-trophy,
+.ac-flame {
+  color: var(--text);
+}
+.ac-mark,
+.ac-medal.fresh,
+.ac-highlight .ac-medal {
+  background: var(--soft);
+  color: var(--text);
+}
+
+@media (max-width: 36rem) {
+  :root {
+    --ac-pad: 1rem;
+  }
+  .ac-widget-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ac.ac-widget {
+    padding: 1rem;
+  }
+  .ac-widget-training {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    order: 0;
+  }
+  .ac.ac-widget-scores {
+    grid-column: 1 / -1;
+    order: 1;
+  }
+  .ac-widget-week {
+    grid-column: span 1;
+    order: 2;
+  }
+  .ac-widget-record {
+    grid-column: span 1;
+    order: 3;
+  }
+  .ac-widget-goals {
+    grid-column: 1 / -1;
+    order: 4;
+  }
+  .ac-demo-score .ac-widget-ring {
+    max-width: 4.5rem;
+    font-size: 1.5rem;
+  }
+  .ac-widget-record-number strong {
+    font-size: 2.75rem;
+  }
+  .ac-widget-record-actions {
+    align-items: start;
+    flex-direction: column;
+  }
+  .ac-widget-record-nav {
+    justify-content: space-between;
+    width: 100%;
+  }
+}
+@media (max-width: 21rem) {
+  .ac-widget-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ac-widget-week,
+  .ac-widget-record {
+    grid-column: 1 / -1;
+  }
+  .ac-widget-record-actions {
+    flex-direction: row;
+    align-items: center;
+  }
+  .ac-widget-record-nav {
+    width: auto;
+  }
+}
+@media (pointer: coarse) {
+  .arnold-cards .ac-widget-icon {
+    width: var(--ac-tap);
+    min-height: var(--ac-tap);
+    background: transparent;
+  }
+}
