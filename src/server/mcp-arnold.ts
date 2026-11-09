@@ -264,6 +264,8 @@ export const ARNOLD_INSTRUCTIONS = [
   "Gewichte: Bei Kurzhanteln („die 12er“) gilt das Gewicht je Hantel; ist das nicht eindeutig, nachfragen und die Annahme in der Antwort nennen. Ungewöhnliche Werte (über 500 kg oder über 100 Wiederholungen) erst bestätigen lassen. Anstrengung als RIR („noch 0 / 1–2 / 3+ Wiederholungen im Tank“) speichern, nicht als RPE; RPE 8 entspricht etwa RIR 1–2.",
   "Korrekturen eines gespeicherten Satzes mit update_set, nicht verwerfen und neu anlegen. Bei mehreren möglichen Sätzen, Trainings oder Entwürfen zuerst fragen, welcher gemeint ist.",
   "Das Wochenziel sind die Trainingstage pro Woche aus dem aktiven Plan (days_per_week); zwei Einheiten an einem Tag zählen als ein Tag. Ein anderes Ziel heißt: eine neue Planversion entwerfen und erst nach Rückfrage aktivieren.",
+  // GAR-B5-03: the Garmin watch.
+  "Garmin-Uhr: Nennt der Nutzer einen Code von seiner Uhr (z. B. K7Q4-M2XP), pair_garmin_watch mit user_code und seiner IANA-Zeitzone aufrufen; verbunden wird erst durch den Klick in der Karte, nie selbst bestätigen. list_garmin_watches zeigt Uhren und Einwilligung für Messwerte; Trennen (unpair_garmin_watch) und Einwilligung (set_garmin_health_consent) nur auf ausdrücklichen Wunsch. Trainings von der Uhr sind normale Trainings. Messwerte der Uhr nur nennen, wenn vorhanden, nie medizinisch deuten.",
 ].join(" ");
 
 /**

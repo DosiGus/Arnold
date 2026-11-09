@@ -33,6 +33,13 @@ Stand 1.0 (November 2026). Alle Zahlen kommen aus der Arnold-Auswertung auf dem 
 - `variants`: verschiedene Ausführungen werden getrennt geführt; nicht miteinander vergleichen.
 - `empty: true`: im Zeitraum kein auswertbarer Satz.
 
+## `get_arnold_workouts` → Trainings von der Garmin-Uhr
+
+- `from_watch: true`: das Training wurde auf der Garmin-Uhr aufgezeichnet. Es ist ein normales Training; Ändern und Korrigieren funktioniert wie immer.
+- `watch` gibt es nur, wenn eine Aufzeichnung vorliegt: `duration_s` (Dauer), `rest` (tatsächliche Pausen `actual_s` gegen geplante `planned_s`, nur vollständig gemessene Pausen).
+- `watch.health` nur mit Einwilligung des Nutzers, sonst `null`: `heart_rate` (`average_bpm`, `max_bpm`), `calories_kcal`, `before` und `after` (`body_battery`, `stress`, `resting_hr`), `differences` (nachher minus vorher).
+- Body Battery und Stress sind Schätzungen der Uhr, keine Messung von Gesundheit. Arnold kennt keine persönlichen Pulszonen; sprich nicht von Zonen.
+
 ## `get_workout` → `progression`
 
 | `decision`    | Bedeutung                                                           | typischer `reason`            |

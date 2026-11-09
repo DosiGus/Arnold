@@ -94,7 +94,7 @@ Gehe jeden Punkt durch und korrigiere, bevor du speicherst:
 - Wochensätze pro Muskelgruppe im Rahmen der Referenz.
 - Keine Übung doppelt in einer Einheit; dieselbe Hauptübung höchstens an zwei Tagen.
 - Pro Einheit höchstens zwei Stoßzeit-Stationen (Langhantel-Bank, Rack, Beinpresse, Latzug, Brustpresse).
-- Jeder Wiederholungsbereich hat `rep_min` und `rep_max`, jede Übung `target_sets` und `rest_seconds`.
+- Jeder Wiederholungsbereich hat `rep_min` und `rep_max`, jede Übung `target_sets` und `rest_seconds` (die Garmin-Uhr zählt diese Pause herunter).
 - Keine gemiedene Übung, keine Übung mit fehlendem Gerät.
 - Namen nach den Regeln oben, alle verschieden.
 - Kein `target_load_kg` ohne Angabe des Nutzers.

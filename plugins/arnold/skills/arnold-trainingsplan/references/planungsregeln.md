@@ -65,7 +65,7 @@ Gezählt werden **Arbeitssätze pro Muskelgruppe und Woche**. Ein Satz zählt vo
 - Nebenziele (`goal.secondary`) mit berücksichtigen, aber dem Hauptziel unterordnen.
 - **Wiederholungsbereich immer mit `rep_min` und `rep_max`, Breite 2–5 Wiederholungen** (z. B. 4–6, 6–10, 8–12, 12–15). Arnolds doppelte Progression braucht diesen Raum: erst Wiederholungen aufbauen, bei allen Sätzen an der Obergrenze eine Gewichtsstufe mehr. Breiter als 10 meldet der Server als Empfehlung.
 - Körpergewichtsübungen (Liegestütze, Klimmzüge, Dips) steigen nur über Wiederholungen. Bereich so wählen, dass Luft nach oben bleibt (z. B. 6–12).
-- `rest_seconds` immer setzen.
+- `rest_seconds` immer setzen, je Übung nach der Tabelle oben. Die Garmin-Uhr zählt genau diese Pause nach jedem Satz herunter; fehlt sie, nimmt die Uhr pauschal 120 s.
 
 ## 5. Zeitbudget
 
