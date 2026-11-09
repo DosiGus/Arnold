@@ -315,7 +315,7 @@ function exerciseBests(input: PreparedInput): HomeExerciseBest[] {
     .sort((a, b) => (a.exercise_id < b.exercise_id ? -1 : 1));
 }
 
-function nextSession(input: PreparedInput): HomeNextSession | null {
+export function nextSession(input: PreparedInput): HomeNextSession | null {
   const plan = input.dataset.plans.find((p) => p.status === "active");
   if (!plan) return null;
   const sessions = new Map<
