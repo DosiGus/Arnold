@@ -337,3 +337,22 @@ export const UnpairGarminWatchResponseSchema = z.strictObject({
   device_id: id,
   unpaired: z.boolean(),
 });
+export const SetGarminHealthConsentInputSchema = z.strictObject({
+  granted: z
+    .boolean()
+    .describe("true erteilt die Einwilligung, false widerruft sie."),
+  text_version: z
+    .string()
+    .min(1)
+    .max(40)
+    .optional()
+    .describe(
+      "Version des Einwilligungstexts, den der Nutzer gesehen hat; zum Erteilen Pflicht und muss die aktuelle sein, beim Widerruf ohne Bedeutung.",
+    ),
+});
+export const SetGarminHealthConsentResponseSchema = z.strictObject({
+  granted: z.boolean(),
+  text_version: z.string().min(1).max(40),
+  /** Health records deleted by a revocation; 0 when granting. */
+  deleted_health_records: z.number().int().nonnegative(),
+});

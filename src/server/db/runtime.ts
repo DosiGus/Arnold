@@ -123,6 +123,12 @@ export class DatabaseArnoldRuntime {
         operations: await span("operations", "recorded_at"),
         audit: await span("audit_events", "recorded_at"),
         workouts: await span("workouts", "(created_at_utc::timestamptz)"),
+        watches: await span("watch_devices", "created_at"),
+        recordings: await span(
+          "workout_recordings",
+          "(started_at_utc::timestamptz)",
+        ),
+        health: await span("workout_health", "received_at"),
       };
     });
     const items: StoredDataItem[] = [];
@@ -176,6 +182,36 @@ export class DatabaseArnoldRuntime {
         oldest_at: iso(counts.audit.oldest),
         newest_at: iso(counts.audit.newest),
         kept: `${days} Tage`,
+      },
+      {
+        key: "garmin_watches",
+        label: "Gekoppelte Uhren",
+        contains:
+          "Modell, Kopplungszeitpunkt, letzter Kontakt und der Hash des Uhr-Zugangs; getrennte Uhren bleiben als widerrufen vermerkt.",
+        count: counts.watches.count,
+        oldest_at: iso(counts.watches.oldest),
+        newest_at: iso(counts.watches.newest),
+        kept: "Bis du dein Konto löschst.",
+      },
+      {
+        key: "watch_recordings",
+        label: "Uhr-Aufzeichnungen",
+        contains:
+          "Beginn, Ende und Satzzeiten der Trainings, die von der Uhr kamen.",
+        count: counts.recordings.count,
+        oldest_at: iso(counts.recordings.oldest),
+        newest_at: iso(counts.recordings.newest),
+        kept: "Bis du dein Konto löschst.",
+      },
+      {
+        key: "watch_health",
+        label: "Messwerte von der Uhr",
+        contains:
+          "Puls und weitere Messwerte zu Trainings, nur mit deiner Einwilligung.",
+        count: counts.health.count,
+        oldest_at: iso(counts.health.oldest),
+        newest_at: iso(counts.health.newest),
+        kept: "Bis du die Einwilligung widerrufst oder dein Konto löschst.",
       },
     );
     return { items, retention_days: days };

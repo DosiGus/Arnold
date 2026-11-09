@@ -30,6 +30,7 @@ import {
 } from "../auth/watch-token.js";
 import { withArnoldContext } from "../auth/guarded-server.js";
 import type { DatabaseArnoldRuntime } from "../db/runtime.js";
+import { healthRoutes } from "./health.js";
 import { pairingRoutes } from "./pairing.js";
 import { planRoutes } from "./plan.js";
 import { workoutRoutes } from "./workouts.js";
@@ -167,6 +168,12 @@ export class MemoryRateLimiter {
         };
   }
 
+  /** True while `key` is still within `limit` in its current window. */
+  peek(key: string, limit: number): boolean {
+    const window = this.windows.get(key);
+    return !window || window.resetAt <= this.now() || window.count < limit;
+  }
+
   private prune(now: number) {
     for (const [key, window] of this.windows)
       if (window.resetAt <= now) this.windows.delete(key);
@@ -179,6 +186,8 @@ export const WATCH_RATE_LIMITS = {
   /** One poll per 5 s per address and hour; slow_down is the database's. */
   pairTokenPerIpHour: 720,
   perDeviceMinute: 120,
+  /** Failed token checks per address (M037): random tokens never flood the database. */
+  failedAuthPerIpMinute: 60,
 } as const;
 
 export interface WatchCall {
@@ -218,6 +227,7 @@ export function watchRoutes(runtime: DatabaseArnoldRuntime): WatchRoute[] {
     ...pairingRoutes(runtime),
     ...planRoutes(runtime),
     ...workoutRoutes(runtime),
+    ...healthRoutes(runtime),
   ];
 }
 
@@ -348,13 +358,21 @@ export function createWatchRouter(options: WatchApiOptions): Router {
           const hit = limiter.hit(`${name} ${ip}`, limit, 3_600_000);
           if (!hit.allowed) throw rateLimited(hit.retryAfterS);
         } else {
+          const failedKey = `authfail ${ip}`;
+          if (!limiter.peek(failedKey, WATCH_RATE_LIMITS.failedAuthPerIpMinute))
+            throw rateLimited(60);
           try {
             principal = await verifier.verify(req.get("authorization"));
           } catch (error) {
-            if (error instanceof WatchAuthError)
-              throw error.reason === "unavailable"
-                ? unavailable()
-                : unauthenticated();
+            if (error instanceof WatchAuthError) {
+              if (error.reason === "unavailable") throw unavailable();
+              limiter.hit(
+                failedKey,
+                WATCH_RATE_LIMITS.failedAuthPerIpMinute,
+                60_000,
+              );
+              throw unauthenticated();
+            }
             throw error;
           }
           const hit = limiter.hit(

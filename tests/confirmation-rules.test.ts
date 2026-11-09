@@ -47,6 +47,10 @@ describe("D10 confirmation rules", () => {
     expect(rule("list_garmin_watches")).toBe("direct");
   });
 
+  it("asks before granting or revoking the health consent (GAR-B2-07)", () => {
+    expect(rule("set_garmin_health_consent")).toBe("ask_in_chat");
+  });
+
   it("logs and reads directly", () => {
     for (const tool of [
       "start_workout",

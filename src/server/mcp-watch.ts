@@ -20,13 +20,18 @@ import {
   PairGarminWatchInputSchema,
   PairGarminWatchPairedSchema,
   PairGarminWatchResponseSchema,
+  SetGarminHealthConsentInputSchema,
+  SetGarminHealthConsentResponseSchema,
   UnpairGarminWatchInputSchema,
   UnpairGarminWatchResponseSchema,
   normalizeWatchUserCode,
 } from "../shared/watch-contract.js";
 import { formatUserCode, sha256 } from "./watch/pairing.js";
+import { HEALTH_SCOPE } from "./watch/health.js";
 
 export const PAIRING_CONFIRMATION_TTL_MS = 5 * 60 * 1000;
+/** Version of the health consent text; GAR-B7-01 raises it with the final text. */
+export const HEALTH_CONSENT_TEXT_VERSION = "2026-11-entwurf-1";
 export const PAIRING_FAILURES_PER_HOUR = 5;
 
 class WatchToolError extends Error {
@@ -358,6 +363,82 @@ export function registerWatchTools(
               text: data.unpaired
                 ? "Die Uhr ist getrennt."
                 : "Zu dieser Kennung gibt es keine verbundene Uhr.",
+            },
+          ],
+        };
+      } catch (error) {
+        return watchToolFailure(error);
+      }
+    },
+  );
+  server.registerTool(
+    "set_garmin_health_consent",
+    {
+      title: "Einwilligung für Messwerte der Garmin-Uhr",
+      inputSchema: SetGarminHealthConsentInputSchema,
+      outputSchema: SetGarminHealthConsentResponseSchema,
+      description: `Erteilt oder widerruft die Einwilligung, dass Arnold Messwerte der Garmin-Uhr (Puls, Kalorien, Body Battery, Stress und Ähnliches) zu Trainings speichert. Nur auf ausdrücklichen Wunsch des Nutzers. Ein Widerruf löscht alle gespeicherten Messwerte sofort; die Trainings selbst bleiben. Ohne Einwilligung speichert Arnold keine Messwerte. Aktuelle Textversion: ${HEALTH_CONSENT_TEXT_VERSION}.`,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ granted, text_version }) => {
+      try {
+        const caller = context();
+        await runtime.options.auth.assertActive(caller);
+        // Consent only to the text that is current now (fail closed);
+        // revoking is always possible.
+        if (granted && text_version !== HEALTH_CONSENT_TEXT_VERSION)
+          throw new WatchToolError(
+            "VALIDATION_ERROR",
+            `Der Einwilligungstext hat die Version ${HEALTH_CONSENT_TEXT_VERSION}. Bitte dem Nutzer den aktuellen Text zeigen und mit dieser Version erneut bestätigen. Es wurde nichts geändert.`,
+          );
+        const deleted = await runtime.options.db.asUser(
+          caller.userId,
+          async (c) => {
+            if (granted) {
+              await c.query(
+                `insert into arnold.health_consents (user_id, scope, text_version, granted_at, revoked_at)
+                 values ($1, $2, $3, now(), null)
+                 on conflict (user_id, scope) do update set
+                   text_version = excluded.text_version, granted_at = now(), revoked_at = null`,
+                [caller.userId, HEALTH_SCOPE, HEALTH_CONSENT_TEXT_VERSION],
+              );
+              return 0;
+            }
+            // Waits for an upload holding the consent row, then nothing
+            // more can be stored; the stored values go in the same step.
+            await c.query(
+              `update arnold.health_consents set revoked_at = now()
+                where user_id = $1 and scope = $2 and revoked_at is null`,
+              [caller.userId, HEALTH_SCOPE],
+            );
+            return (
+              (
+                await c.query(
+                  "delete from arnold.workout_health where user_id = $1",
+                  [caller.userId],
+                )
+              ).rowCount ?? 0
+            );
+          },
+        );
+        const data = SetGarminHealthConsentResponseSchema.parse({
+          granted,
+          text_version: HEALTH_CONSENT_TEXT_VERSION,
+          deleted_health_records: deleted,
+        });
+        return {
+          structuredContent: data,
+          content: [
+            {
+              type: "text" as const,
+              text: granted
+                ? "Einwilligung erteilt: Arnold speichert ab jetzt Messwerte der Uhr zu den Trainings."
+                : `Einwilligung widerrufen: ${deleted} gespeicherte Messwert-Datensätze sind gelöscht, neue werden nicht gespeichert.`,
             },
           ],
         };

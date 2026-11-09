@@ -67,6 +67,7 @@ export function deletionSummary(): { stored_items: string[] } {
       "Deine Ziele und Körpergewichtseinträge",
       "Dein Einrichtungsstand mit Profilangaben",
       "Das Protokoll deiner Speichervorgänge und das Änderungsprotokoll",
+      "Deine gekoppelten Garmin-Uhren, ihre Trainingsaufzeichnungen und Messwerte",
     ],
   };
 }

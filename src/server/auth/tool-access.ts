@@ -41,6 +41,7 @@ export const TOOL_ACCESS: Readonly<Record<string, ToolAccessClass>> = {
   pair_garmin_watch: "ACCOUNT_MANAGEMENT",
   list_garmin_watches: "ACCOUNT_MANAGEMENT",
   unpair_garmin_watch: "ACCOUNT_MANAGEMENT",
+  set_garmin_health_consent: "ACCOUNT_MANAGEMENT",
 
   // ── mcp-arnold.ts — the v2 analytics surface ──
   get_arnold_dashboard: "AUTHENTICATED_READ",

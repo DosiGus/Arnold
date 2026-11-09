@@ -63,6 +63,7 @@ describe("tool safety hints (default profile)", () => {
       "pair_garmin_watch",
       "list_garmin_watches",
       "unpair_garmin_watch",
+      "set_garmin_health_consent",
     ];
     expect(
       Object.keys(TOOL_ACCESS).filter(

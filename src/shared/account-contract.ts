@@ -66,6 +66,9 @@ export const STORED_DATA_KEYS = [
   "training_data",
   "write_journal",
   "audit_log",
+  "garmin_watches",
+  "watch_recordings",
+  "watch_health",
 ] as const;
 
 /** One kind of data Arnold keeps on its own server about the user. */

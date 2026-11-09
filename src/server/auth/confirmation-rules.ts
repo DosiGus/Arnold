@@ -55,6 +55,11 @@ export const CONFIRMATION_RULES: Readonly<Record<string, ConfirmationEntry>> = {
     rule: "ask_in_chat",
     reason: "Trennt die Uhr; sie muss danach neu gekoppelt werden.",
   },
+  set_garmin_health_consent: {
+    rule: "ask_in_chat",
+    reason:
+      "Erteilt oder widerruft die Einwilligung für Messwerte; ein Widerruf löscht gespeicherte Messwerte.",
+  },
 
   // Dashboard and analytics
   show_arnold_dashboard: read,
