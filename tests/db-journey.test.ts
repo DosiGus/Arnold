@@ -14,7 +14,11 @@ import {
   vi,
 } from "vitest";
 import { createServer, type Server } from "node:http";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  hashWatchToken,
+  newWatchToken,
+} from "../src/server/auth/watch-token.js";
 import {
   Client,
   StreamableHTTPClientTransport,
@@ -475,6 +479,87 @@ describe("signed-in users with the database", () => {
       (await call(alice, "get_arnold_workouts", {})).structuredContent,
     );
     expect(history).toContain(first.result!.workout!.workout_id);
+  });
+
+  it("pairs a watch, loads the plan and uploads a training that ChatGPT then shows (GAR-B2-06)", async () => {
+    await setup(alice);
+    await setup(bob);
+    // Pairing through the 003 functions; the pairing endpoints and the
+    // confirmation tool follow with GAR-B2-03.
+    const identities = new PostgresIdentityRepository(db);
+    const userId = (await identities.find(issuer, alice))!.user.user_id;
+    const sha = (v: string) => createHash("sha256").update(v).digest();
+    const device = sha(randomUUID()),
+      code = sha(randomUUID()),
+      token = newWatchToken();
+    await db.query("select * from arnold.start_watch_pairing($1,$2,$3,600)", [
+      device,
+      code,
+      "Forerunner 255",
+    ]);
+    await db.asUser(userId, (c) =>
+      c.query("select * from arnold.approve_watch_pairing($1,$2)", [
+        code,
+        "Europe/Berlin",
+      ]),
+    );
+    await db.query("select * from arnold.redeem_watch_pairing($1,$2,$3)", [
+      device,
+      hashWatchToken(token),
+      `wdv_${randomUUID()}`,
+    ]);
+    const watch = (path: string, init: RequestInit = {}) =>
+      fetch(`${base}/api/watch/v1${path}`, {
+        ...init,
+        headers: {
+          authorization: `Bearer ${token}`,
+          "accept-language": "de",
+          ...(init.body ? { "content-type": "application/json" } : {}),
+        },
+      });
+    const directory = await (await watch("/plan")).json();
+    const day = await (await watch(`/plan/sessions/${directory.next}`)).json();
+    expect(day.items.length).toBeGreaterThan(0);
+    const date = "2026-11-03";
+    const t0 = Date.parse(`${date}T17:00:00Z`) / 1000;
+    const uploaded = await watch("/workouts", {
+      method: "POST",
+      body: JSON.stringify({
+        request_id: `gw_${randomUUID()}`,
+        session_uuid: randomUUID(),
+        plan_version_id: directory.p,
+        session_id: directory.next,
+        workout_date_local: date,
+        utc_offset_min: 60,
+        started_at_utc: `${date}T17:00:00Z`,
+        ended_at_utc: `${date}T17:40:00Z`,
+        exercises: day.items.map((item: { id: string; c: number }) => ({
+          plan_item_id: item.id,
+          exercise_id: day.cat[item.c].id,
+          sets: [
+            {
+              reps: 10,
+              load_g: 60000,
+              side: "both",
+              t0: t0 + 60,
+              t1: t0 + 100,
+            },
+          ],
+        })),
+      }),
+    });
+    expect(uploaded.status, await uploaded.clone().text()).toBe(201);
+    const { workout_id } = await uploaded.json();
+    const history = JSON.stringify(
+      (await call(alice, "get_arnold_workouts", {})).structuredContent,
+    );
+    expect(history).toContain(workout_id);
+    // Bob's ChatGPT does not see it.
+    expect(
+      JSON.stringify(
+        (await call(bob, "get_arnold_workouts", {})).structuredContent,
+      ),
+    ).not.toContain(workout_id);
   });
 
   it("refuses training writes without the write scope", async () => {
