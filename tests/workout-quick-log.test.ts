@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
+import { createHash, randomUUID } from "node:crypto";
+import { WriteInputs } from "../src/shared/workout-contract";
+import type { WatchUpload } from "../src/server/workout/service";
+import { appDatabase, asOwner, newAccount } from "./fixtures/arnold-db";
 import { createFixtureLogging } from "../src/server/workout/fixture";
 import { proposeActivePlan } from "../src/server/workout/proposal";
 import { buildArnoldDashboardAnalytics } from "../src/analytics";
@@ -448,3 +452,230 @@ describe("void_workout: taking a saved workout back", () => {
     );
   });
 });
+
+describe("log_workout for watch uploads (GAR-B2-05)", () => {
+  const db = appDatabase();
+  afterAll(() => db.close());
+  const sha = (v: string) => createHash("sha256").update(v).digest();
+  const day = "2026-11-02";
+  const times = {
+    started_at_utc: "2026-11-02T17:00:00Z",
+    ended_at_utc: "2026-11-02T17:50:00Z",
+  };
+  const watchInput = (extra: Record<string, unknown> = {}) => ({
+    request_id: randomUUID(),
+    workout_date_local: day,
+    timezone: "Europe/Berlin",
+    session_name: "Uhr-Test",
+    exercises: [
+      { exercise_id: "bench-press", sets: [{ reps: 8, load_kg: 60 }] },
+    ],
+    ...times,
+    ...extra,
+  });
+  /** An account with one paired watch, through the 003 functions. */
+  async function pairedAccount() {
+    const account = await newAccount(db);
+    const device = sha(randomUUID()),
+      code = sha(randomUUID()),
+      deviceId = `wdv_${randomUUID()}`;
+    await db.query("select * from arnold.start_watch_pairing($1,$2,$3,600)", [
+      device,
+      code,
+      "Forerunner 255",
+    ]);
+    await db.asUser(account.userId, (c) =>
+      c.query("select * from arnold.approve_watch_pairing($1,$2)", [
+        code,
+        "Europe/Berlin",
+      ]),
+    );
+    await db.query("select * from arnold.redeem_watch_pairing($1,$2,$3)", [
+      device,
+      sha(randomUUID()),
+      deviceId,
+    ]);
+    return { ...account, deviceId };
+  }
+  const upload = (deviceId: string, clientSessionId = randomUUID()) =>
+    ({
+      client_session_id: clientSessionId,
+      device_id: deviceId,
+      app_version: "1.0.0",
+      set_timings: [
+        {
+          exercise_order: 1,
+          set_number: 1,
+          side: "both",
+          started_at_utc: "2026-11-02T17:01:00Z",
+          ended_at_utc: "2026-11-02T17:01:40Z",
+          rest_before_s: null,
+        },
+      ],
+    }) satisfies WatchUpload;
+  const recordings = (userId: string, clientSessionId: string) =>
+    db.asUser(
+      userId,
+      async (c) =>
+        (
+          await c.query(
+            "select device_id, started_at_utc, ended_at_utc, set_timings, app_version from arnold.workout_recordings where client_session_id = $1",
+            [clientSessionId],
+          )
+        ).rows,
+    );
+
+  it("checks start and end like start_workout and complete_workout", async () => {
+    const r = createFixtureLogging();
+    const at = (extra: Record<string, unknown>) =>
+      r.service.execute("log_workout", firstTime(extra));
+    code(
+      await at({ started_at_utc: "2026-10-19T21:00:00Z" }),
+      "VALIDATION_ERROR",
+    );
+    code(
+      await at({ ended_at_utc: "2026-10-19T20:00:00Z" }),
+      "VALIDATION_ERROR",
+    );
+    code(
+      await at({
+        started_at_utc: "2026-10-20T17:00:00Z",
+        ended_at_utc: "2026-10-20T16:00:00Z",
+      }),
+      "VALIDATION_ERROR",
+    );
+    expect((await r.store.read()).workouts).toHaveLength(0);
+    const saved = ok(
+      await at({
+        started_at_utc: "2026-10-20T16:00:00Z",
+        ended_at_utc: "2026-10-20T17:05:00Z",
+      }),
+    );
+    expect(saved.workout).toMatchObject({
+      started_at_utc: "2026-10-20T16:00:00Z",
+      ended_at_utc: "2026-10-20T17:05:00Z",
+      source: "ui",
+    });
+    expect(saved.workout).not.toHaveProperty("client_session_id");
+  });
+
+  it("never lets /mcp set source sync or a client session", () => {
+    expect(() =>
+      WriteInputs.log_workout.parse(watchInput({ source: "sync" })),
+    ).toThrow();
+    expect(() =>
+      WriteInputs.log_workout.parse(
+        watchInput({ client_session_id: randomUUID() }),
+      ),
+    ).toThrow();
+  });
+
+  it("fails closed on a store without recordings and stores nothing", async () => {
+    const r = createFixtureLogging();
+    const refused = await r.service.logWatchWorkout(
+      firstTime(times_on("2026-10-20")),
+      upload("wdv_00000000-0000-0000-0000-000000000000"),
+    );
+    code(refused, "PERMISSION_DENIED");
+    expect((await r.store.read()).workouts).toHaveLength(0);
+  });
+
+  it("stores workout, sets and recording in one write with source sync, and replays", async () => {
+    const a = await pairedAccount();
+    const input = watchInput(),
+      watch = upload(a.deviceId);
+    const saved = ok(await a.logging.logWatchWorkout(input, watch));
+    expect(saved.workout).toMatchObject({
+      source: "sync",
+      client_session_id: watch.client_session_id,
+      ...times,
+    });
+    expect(saved.sets.every((set) => set.source === "sync")).toBe(true);
+    expect(await recordings(a.userId, watch.client_session_id)).toEqual([
+      {
+        device_id: a.deviceId,
+        ...times,
+        set_timings: watch.set_timings,
+        app_version: "1.0.0",
+      },
+    ]);
+    const again = await a.logging.logWatchWorkout(input, watch);
+    expect(again.replayed).toBe(true);
+    expect(again.result?.workout?.workout_id).toBe(saved.workout!.workout_id);
+    expect(await recordings(a.userId, watch.client_session_id)).toHaveLength(1);
+    // Same request id, other recording: a different operation.
+    code(
+      await a.logging.logWatchWorkout(input, {
+        ...watch,
+        app_version: "1.0.1",
+      }),
+      "DUPLICATE_OPERATION",
+    );
+    const audit = await asOwner(
+      async (c) =>
+        (
+          await c.query(
+            "select event_type from arnold.audit_events where user_id = $1 and operation_id = $2",
+            [a.userId, input.request_id],
+          )
+        ).rows,
+    );
+    expect(audit.map((e) => e.event_type).sort()).toEqual([
+      "SET_CREATED",
+      "WORKOUT_LOGGED",
+    ]);
+  });
+
+  it("rolls the workout back when the recording cannot be stored", async () => {
+    const a = await pairedAccount(),
+      other = await pairedAccount();
+    // Another user's watch: the foreign key (user_id, device_id) refuses it.
+    const refused = await a.logging.logWatchWorkout(
+      watchInput(),
+      upload(other.deviceId),
+    );
+    expect(refused.ok).toBe(false);
+    expect((await a.store.read()).workouts).toHaveLength(0);
+  });
+
+  it("Ersetzen nimmt Aufzeichnung mit: a replacement in ChatGPT keeps the client session", async () => {
+    const a = await pairedAccount();
+    const watch = upload(a.deviceId);
+    const saved = ok(await a.logging.logWatchWorkout(watchInput(), watch));
+    const replaced = ok(
+      await a.logging.execute("log_workout", {
+        request_id: randomUUID(),
+        workout_date_local: day,
+        timezone: "Europe/Berlin",
+        session_name: "Uhr-Test",
+        exercises: [
+          { exercise_id: "bench-press", sets: [{ reps: 10, load_kg: 60 }] },
+        ],
+        replaces_workout_id: saved.workout!.workout_id,
+        expected_row_revision: 1,
+        source: "chat",
+      }),
+    );
+    expect(replaced.workout).toMatchObject({
+      client_session_id: watch.client_session_id,
+      source: "chat",
+    });
+    const workouts = (await a.store.read()).workouts;
+    expect(workouts.map((w) => [w.status, w.client_session_id]).sort()).toEqual(
+      [
+        ["completed", watch.client_session_id],
+        ["voided", watch.client_session_id],
+      ],
+    );
+    // The recording is keyed by the client session and follows untouched.
+    expect(await recordings(a.userId, watch.client_session_id)).toHaveLength(1);
+  });
+});
+
+/** start/end inside the fixture day. */
+function times_on(date: string) {
+  return {
+    started_at_utc: `${date}T16:00:00Z`,
+    ended_at_utc: `${date}T17:00:00Z`,
+  };
+}
