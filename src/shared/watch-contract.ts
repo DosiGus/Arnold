@@ -309,9 +309,11 @@ export const PairGarminWatchConfirmSchema = z.strictObject({
   requested_at: ArnoldUtcTimestampSchema,
   expires_at: ArnoldUtcTimestampSchema,
 });
+/** The card sends the time zone back with the token, which is bound to it. */
 export const PairGarminWatchConfirmMetaSchema =
   PairGarminWatchConfirmSchema.extend({
     confirmation_token: z.string().min(1),
+    timezone: z.string().min(1).max(64),
   });
 export const PairGarminWatchPairedSchema = z.strictObject({
   stage: z.literal("paired"),
@@ -327,8 +329,18 @@ export const GarminWatchSchema = z.strictObject({
   paired_at: ArnoldUtcTimestampSchema,
   last_used_at: ArnoldUtcTimestampSchema.nullable(),
 });
+/** Consent for watch health data; text_version is null without a consent. */
+export const GarminHealthConsentStatusSchema = z.strictObject({
+  granted: z.boolean(),
+  text_version: z.string().min(1).max(40).nullable(),
+  /** The text a new consent must refer to (set_garmin_health_consent). */
+  current_text_version: z.string().min(1).max(40),
+});
 export const ListGarminWatchesSchema = z.strictObject({
+  /** "Arnold · xxxx", the same short label the watch shows (07 D-26). */
+  account_label: z.string().max(40),
   watches: z.array(GarminWatchSchema),
+  health_consent: GarminHealthConsentStatusSchema,
 });
 export const UnpairGarminWatchInputSchema = z.strictObject({
   device_id: id.describe("Kennung der Uhr aus list_garmin_watches."),
@@ -356,3 +368,10 @@ export const SetGarminHealthConsentResponseSchema = z.strictObject({
   /** Health records deleted by a revocation; 0 when granting. */
   deleted_health_records: z.number().int().nonnegative(),
 });
+export type PairGarminWatchConfirmMeta = z.infer<
+  typeof PairGarminWatchConfirmMetaSchema
+>;
+export type PairGarminWatchResponse = z.infer<
+  typeof PairGarminWatchResponseSchema
+>;
+export type ListGarminWatches = z.infer<typeof ListGarminWatchesSchema>;

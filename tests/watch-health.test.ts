@@ -489,6 +489,27 @@ describe("health data from the watch (GAR-B2-07)", () => {
     expect((await deviceStatus(bob)).health_consent).toBe(false);
   });
 
+  it("shows the consent in the watch list for the account card (GAR-B5-01)", async () => {
+    const alice = await athlete("alice");
+    const listed = async () =>
+      ListGarminWatchesSchema.parse(
+        (await alice.tool("list_garmin_watches")).structuredContent,
+      ).health_consent;
+    expect(await listed()).toEqual({
+      granted: false,
+      text_version: null,
+      current_text_version: HEALTH_CONSENT_TEXT_VERSION,
+    });
+    await consent(alice, true);
+    expect(await listed()).toEqual({
+      granted: true,
+      text_version: HEALTH_CONSENT_TEXT_VERSION,
+      current_text_version: HEALTH_CONSENT_TEXT_VERSION,
+    });
+    await consent(alice, false);
+    expect((await listed()).granted).toBe(false);
+  });
+
   it("lets the watch sign itself out with DELETE /device", async () => {
     const alice = await athlete("alice");
     const removed = await watch("DELETE", "/device", alice.token);

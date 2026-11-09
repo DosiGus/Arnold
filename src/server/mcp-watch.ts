@@ -26,7 +26,7 @@ import {
   UnpairGarminWatchResponseSchema,
   normalizeWatchUserCode,
 } from "../shared/watch-contract.js";
-import { formatUserCode, sha256 } from "./watch/pairing.js";
+import { accountLabel, formatUserCode, sha256 } from "./watch/pairing.js";
 import { HEALTH_SCOPE } from "./watch/health.js";
 
 export const PAIRING_CONFIRMATION_TTL_MS = 5 * 60 * 1000;
@@ -217,8 +217,13 @@ export function registerWatchTools(
               timezone,
               preview.expires_at.getTime(),
             ),
+            timezone,
           });
-          const { confirmation_token: _token, ...visible } = confirm;
+          const {
+            confirmation_token: _token,
+            timezone: _zone,
+            ...visible
+          } = confirm;
           return {
             structuredContent: visible,
             content: [
@@ -270,22 +275,23 @@ export function registerWatchTools(
       inputSchema: z.strictObject({}),
       outputSchema: ListGarminWatchesSchema,
       description:
-        "Zeigt die mit dem Arnold-Konto verbundenen Garmin-Uhren mit Verbindungsdatum und letztem Kontakt.",
+        "Zeigt die Karte mit den verbundenen Garmin-Uhren (Verbindungsdatum, letzter Kontakt), der Kurzkennung des Kontos und dem Stand der Einwilligung für Messwerte. In der Karte kann der Nutzer eine Uhr trennen und die Einwilligung erteilen oder widerrufen.",
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
         idempotentHint: true,
         openWorldHint: false,
       },
+      _meta: { ui: { resourceUri } },
     },
     async () => {
       try {
         const caller = context();
         await runtime.options.auth.assertActive(caller);
-        const rows = await runtime.options.db.asUser(
+        const { rows, consent } = await runtime.options.db.asUser(
           caller.userId,
-          async (c) =>
-            (
+          async (c) => ({
+            rows: (
               await c.query<{
                 device_id: string;
                 label: string;
@@ -297,9 +303,23 @@ export function registerWatchTools(
                 [caller.userId],
               )
             ).rows,
+            consent: (
+              await c.query<{ text_version: string }>(
+                `select text_version from arnold.health_consents
+                  where user_id = $1 and scope = $2 and revoked_at is null`,
+                [caller.userId, HEALTH_SCOPE],
+              )
+            ).rows[0],
+          }),
         );
         const iso = (d: Date) => d.toISOString().replace(/\.\d{3}Z$/, "Z");
         const data = ListGarminWatchesSchema.parse({
+          account_label: accountLabel(caller.userId),
+          health_consent: {
+            granted: consent !== undefined,
+            text_version: consent?.text_version ?? null,
+            current_text_version: HEALTH_CONSENT_TEXT_VERSION,
+          },
           watches: rows.map((r) => ({
             device_id: r.device_id,
             label: r.label,
@@ -312,7 +332,7 @@ export function registerWatchTools(
           content: [
             {
               type: "text" as const,
-              text: `${data.watches.length} Garmin-Uhr(en) verbunden.`,
+              text: `${data.watches.length} Garmin-Uhr(en) verbunden; Messwerte ${data.health_consent.granted ? "mit" : "ohne"} Einwilligung. Die Karte zeigt die Uhren; Trennen und Einwilligung nur auf ausdrücklichen Wunsch des Nutzers.`,
             },
           ],
         };

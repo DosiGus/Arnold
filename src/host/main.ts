@@ -25,11 +25,13 @@ async function start() {
   );
   const { tools } = await client.listTools();
   // `?tool=show_arnold_onboarding` opens the setup wizard instead; only the
-  // two UI entry tools are accepted.
+  // UI entry tools are accepted (pair_garmin_watch takes `code` and `tz`).
   const requested = new URLSearchParams(location.search).get("tool");
   const name =
     requested === "show_arnold_onboarding" ||
-    requested === "delete_arnold_account"
+    requested === "delete_arnold_account" ||
+    requested === "list_garmin_watches" ||
+    requested === "pair_garmin_watch"
       ? requested
       : "show_arnold_dashboard";
   const tool = tools.find((t) => t.name === name);
@@ -45,19 +47,25 @@ async function start() {
     throw new Error("Ungültige MCP Apps UI-Ressource.");
   // `?card=week` opens that card, the way the model passes `card`.
   const card = new URLSearchParams(location.search).get("card");
+  const garmin = new URLSearchParams(location.search);
   const args =
-    card && name === "show_arnold_dashboard"
+    name === "pair_garmin_watch"
       ? {
-          card,
-          ...Object.fromEntries(
-            ["exercise_id", "metric", "workout_id"].flatMap((key) =>
-              new URLSearchParams(location.search).get(key)
-                ? [[key, new URLSearchParams(location.search).get(key)]]
-                : [],
-            ),
-          ),
+          user_code: garmin.get("code") ?? "",
+          timezone: garmin.get("tz") ?? "Europe/Berlin",
         }
-      : {};
+      : card && name === "show_arnold_dashboard"
+        ? {
+            card,
+            ...Object.fromEntries(
+              ["exercise_id", "metric", "workout_id"].flatMap((key) =>
+                new URLSearchParams(location.search).get(key)
+                  ? [[key, new URLSearchParams(location.search).get(key)]]
+                  : [],
+              ),
+            ),
+          }
+        : {};
   const initial = (await client.callTool({
     name: tool!.name,
     arguments: args,

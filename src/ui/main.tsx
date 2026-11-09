@@ -6,6 +6,7 @@ import { ArnoldMcpClient } from "./client/ArnoldMcpClient";
 import { OnboardingView } from "./views/OnboardingView";
 import "./style.css";
 import { AccountCard } from "./views/AccountCard";
+import { GarminCard } from "./views/GarminCard";
 import { CardSkeleton } from "./components/cards";
 import { RecoveryCard } from "./components/recovery";
 import { asFailure, type UiFailure } from "./recovery";
@@ -81,6 +82,8 @@ function Boot() {
     </main>
   ) : payload.contract === "account" ? (
     <AccountCard client={mcp} initial={payload.account} />
+  ) : payload.contract === "garmin" ? (
+    <GarminCard client={mcp} initial={payload.garmin} />
   ) : payload.contract === "onboarding" ? (
     <OnboardingView
       client={mcp}

@@ -293,6 +293,40 @@ describe("pairing a watch (GAR-B2-03)", () => {
     ).toBe(401);
   });
 
+  it("gives the card its time zone only in _meta and the account card the watch's label (GAR-B5-01)", async () => {
+    const alice = await chat(`alice-${randomUUID()}`);
+    const started = await startPairing();
+    const first = await alice("pair_garmin_watch", {
+      user_code: started.user_code,
+      timezone: "America/New_York",
+    });
+    expect(JSON.stringify(first.structuredContent)).not.toContain(
+      "America/New_York",
+    );
+    const meta = PairGarminWatchConfirmMetaSchema.parse(
+      (first._meta as { arnold: { pair_garmin_watch: unknown } }).arnold
+        .pair_garmin_watch,
+    );
+    expect(meta.timezone).toBe("America/New_York");
+    // The card sends back exactly what it was given, and that pairs.
+    const paired = await alice("pair_garmin_watch", {
+      user_code: meta.user_code,
+      timezone: meta.timezone,
+      confirmation_token: meta.confirmation_token,
+    });
+    expect(paired.structuredContent).toMatchObject({ stage: "paired" });
+    await waitPoll(started.device_code);
+    const issued = (await poll(started.device_code)) as {
+      account_label: string;
+    };
+    const listed = ListGarminWatchesSchema.parse(
+      (await alice("list_garmin_watches")).structuredContent,
+    );
+    expect(listed.account_label).toBe(issued.account_label);
+    expect(listed.account_label).toMatch(/^Arnold · .{4}$/);
+    expect(listed.watches).toHaveLength(1);
+  });
+
   it("never lets another account use the confirmation or see the watch", async () => {
     const alice = await chat(`alice-${randomUUID()}`);
     const bob = await chat(`bob-${randomUUID()}`);
