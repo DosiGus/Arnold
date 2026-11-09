@@ -1,6 +1,7 @@
 import Toybox.Lang;
 
 // Static facts about this build. The version is sent to the server later (X-Arnold-Watch).
+(:background)
 module AppInfo {
     const VERSION as String = "0.1.0";
 
