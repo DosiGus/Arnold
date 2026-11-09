@@ -30,6 +30,7 @@ import {
 } from "../auth/watch-token.js";
 import { withArnoldContext } from "../auth/guarded-server.js";
 import type { DatabaseArnoldRuntime } from "../db/runtime.js";
+import { pairingRoutes } from "./pairing.js";
 import { planRoutes } from "./plan.js";
 import { workoutRoutes } from "./workouts.js";
 import { safeCode, toolLogEnabled } from "../tool-log.js";
@@ -213,7 +214,11 @@ export interface WatchApiOptions {
 
 /** The product routes. Each task wires its own handlers here. */
 export function watchRoutes(runtime: DatabaseArnoldRuntime): WatchRoute[] {
-  return [...planRoutes(runtime), ...workoutRoutes(runtime)];
+  return [
+    ...pairingRoutes(runtime),
+    ...planRoutes(runtime),
+    ...workoutRoutes(runtime),
+  ];
 }
 
 const REQUIRED_SCOPES: Record<WatchRouteAccess, readonly string[]> = {

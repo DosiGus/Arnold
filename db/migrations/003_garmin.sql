@@ -21,7 +21,7 @@ create table arnold.watch_pairings (
   status text not null default 'pending' check (status in ('pending', 'approved', 'consumed', 'expired')),
   user_id text references arnold.users (user_id) on delete cascade,
   device_label text not null, timezone text,
-  expires_at timestamptz not null, attempts integer not null default 0 check (attempts >= 0),
+  expires_at timestamptz not null,
   last_polled_at timestamptz,
   check (status not in ('approved', 'consumed') or (user_id is not null and timezone is not null))
 );
@@ -99,6 +99,15 @@ begin
   end if;
 end $$;
 
+-- What the confirmation card shows before the click: model and expiry of an
+-- open pairing. No user, no write (D-26).
+create function arnold.preview_watch_pairing(p_user_code_hash bytea)
+returns table (device_label text, expires_at timestamptz)
+language sql stable security definer set search_path = '' as $$
+  select p.device_label, p.expires_at from arnold.watch_pairings p
+   where p.user_code_hash = p_user_code_hash and p.status = 'pending' and p.expires_at > now()
+$$;
+
 create function arnold.redeem_watch_pairing(p_device_code_hash bytea, p_token_hash bytea, p_device_id text)
 returns table (result text, user_id text, device_id text)
 language plpgsql security definer set search_path = '' as $$
@@ -108,7 +117,8 @@ begin
   if not found or v_pair.expires_at <= now() or v_pair.status in ('expired', 'consumed') then
     return query select 'expired'::text, null::text, null::text; return;
   end if;
-  if v_pair.last_polled_at > now() - interval '5 seconds' then
+  -- The watch polls every 5 s; radio jitter must not count as too fast (D-26).
+  if v_pair.last_polled_at > now() - interval '4 seconds' then
     return query select 'slow_down'::text, null::text, null::text; return;
   end if;
   update arnold.watch_pairings set last_polled_at = now() where pairing_id = v_pair.pairing_id;
@@ -149,8 +159,8 @@ begin
   delete from arnold.onboarding_sessions s where s.status <> 'COMPLETED' and s.expires_at < v_cutoff; get diagnostics v_sessions = row_count;
   return query select v_ops, v_audit, v_sessions;
 end $$;
-revoke all on function arnold.start_watch_pairing(bytea, bytea, text, integer), arnold.approve_watch_pairing(bytea, text), arnold.redeem_watch_pairing(bytea, bytea, text), arnold.resolve_watch_token(bytea) from public;
-grant execute on function arnold.start_watch_pairing(bytea, bytea, text, integer), arnold.approve_watch_pairing(bytea, text), arnold.redeem_watch_pairing(bytea, bytea, text), arnold.resolve_watch_token(bytea) to arnold_app;
+revoke all on function arnold.start_watch_pairing(bytea, bytea, text, integer), arnold.approve_watch_pairing(bytea, text), arnold.preview_watch_pairing(bytea), arnold.redeem_watch_pairing(bytea, bytea, text), arnold.resolve_watch_token(bytea) from public;
+grant execute on function arnold.start_watch_pairing(bytea, bytea, text, integer), arnold.approve_watch_pairing(bytea, text), arnold.preview_watch_pairing(bytea), arnold.redeem_watch_pairing(bytea, bytea, text), arnold.resolve_watch_token(bytea) to arnold_app;
 -- Private tables/functions are never reachable through Supabase's API roles.
 do $$
 declare r text;
@@ -158,7 +168,7 @@ begin
   foreach r in array array['anon', 'authenticated'] loop
     if exists (select 1 from pg_roles where rolname = r) then
       execute format('revoke all on arnold.watch_devices, arnold.watch_pairings, arnold.health_consents, arnold.workout_recordings, arnold.workout_health from %I', r);
-      execute format('revoke all on function arnold.start_watch_pairing(bytea,bytea,text,integer), arnold.approve_watch_pairing(bytea,text), arnold.redeem_watch_pairing(bytea,bytea,text), arnold.resolve_watch_token(bytea) from %I', r);
+      execute format('revoke all on function arnold.start_watch_pairing(bytea,bytea,text,integer), arnold.approve_watch_pairing(bytea,text), arnold.preview_watch_pairing(bytea), arnold.redeem_watch_pairing(bytea,bytea,text), arnold.resolve_watch_token(bytea) from %I', r);
     end if;
   end loop;
 end $$;

@@ -166,6 +166,53 @@ describe("Garmin migration 003 (GAR-B1-02)", () => {
     );
     expect(await resolve(a.token)).toEqual([]);
   });
+  it("previews only open pairings and allows a poll after 4 s despite jitter (D-26)", async () => {
+    const p = await start();
+    const preview = async () =>
+      (
+        await db.query("select * from arnold.preview_watch_pairing($1)", [
+          p.user,
+        ])
+      ).rows;
+    expect(await preview()).toEqual([
+      { device_label: "Forerunner 255", expires_at: expect.any(Date) },
+    ]);
+    expect(
+      (
+        await db.query("select * from arnold.preview_watch_pairing($1)", [
+          hash(randomUUID()),
+        ])
+      ).rows,
+    ).toEqual([]);
+    const poll = async () =>
+      (
+        await db.query("select * from arnold.redeem_watch_pairing($1,$2,$3)", [
+          p.device,
+          hash(randomUUID()),
+          `wdv_${randomUUID()}`,
+        ])
+      ).rows[0].result;
+    expect(await poll()).toBe("pending");
+    // 4.5 s later, a 5 s poll that arrived early, is no longer too fast.
+    await asOwner((c) =>
+      c.query(
+        "update arnold.watch_pairings set last_polled_at = now() - interval '4.5 seconds' where pairing_id = $1",
+        [p.id],
+      ),
+    );
+    expect(await poll()).toBe("pending");
+    const account = await newAccount(db);
+    await approve(account.userId, p.user);
+    expect(await preview()).toEqual([]);
+    const columns = await asOwner(async (c) =>
+      (
+        await c.query(
+          "select column_name from information_schema.columns where table_schema='arnold' and table_name='watch_pairings'",
+        )
+      ).rows.map((r) => r.column_name),
+    );
+    expect(columns).not.toContain("attempts");
+  });
   it("gives no direct pairing rights and no public function EXECUTE", async () => {
     for (const t of ["watch_pairings"])
       for (const sql of [
@@ -178,10 +225,10 @@ describe("Garmin migration 003 (GAR-B1-02)", () => {
         (
           await c.query(`select p.proname, p.proconfig, p.prosecdef,
       exists (select 1 from aclexplode(p.proacl) a where a.grantee=0 and a.privilege_type='EXECUTE') as public_execute
-      from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='arnold' and p.proname in ('start_watch_pairing','approve_watch_pairing','redeem_watch_pairing','resolve_watch_token')`)
+      from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='arnold' and p.proname in ('start_watch_pairing','approve_watch_pairing','preview_watch_pairing','redeem_watch_pairing','resolve_watch_token')`)
         ).rows,
     );
-    expect(functions).toHaveLength(4);
+    expect(functions).toHaveLength(5);
     functions.forEach((f) => {
       expect(f.prosecdef).toBe(true);
       expect(f.public_execute).toBe(false);

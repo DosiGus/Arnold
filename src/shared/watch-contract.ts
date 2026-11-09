@@ -270,3 +270,70 @@ export type WatchPlanSession = z.infer<typeof WatchPlanSessionSchema>;
 export type WatchCatalogEntry = z.infer<typeof WatchCatalogEntrySchema>;
 export type WatchWorkoutRequest = z.infer<typeof WatchWorkoutRequestSchema>;
 export type WatchHealthRequest = z.infer<typeof WatchHealthRequestSchema>;
+
+/* ── MCP tools for the watch (07 D-26). The watch API above is unchanged. ── */
+
+export const WATCH_USER_CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+/** "abcd-2345" → "ABCD2345", or null when it cannot be a watch code. */
+export function normalizeWatchUserCode(value: string): string | null {
+  const code = value.trim().toUpperCase().replace(/[\s-]/g, "");
+  return new RegExp(`^[${WATCH_USER_CODE_ALPHABET}]{8}$`).test(code)
+    ? code
+    : null;
+}
+export const PairGarminWatchInputSchema = z.strictObject({
+  user_code: z
+    .string()
+    .min(8)
+    .max(12)
+    .describe("Der achtstellige Code, den die Uhr anzeigt (z. B. ABCD-2345)."),
+  timezone: z
+    .string()
+    .min(1)
+    .max(64)
+    .describe("IANA-Zeitzone des Nutzers, z. B. Europe/Berlin."),
+  confirmation_token: z
+    .string()
+    .min(1)
+    .max(200)
+    .optional()
+    .describe(
+      "Nur von der Karte gesendet, nach dem Klick des Nutzers. Nie selbst senden oder raten.",
+    ),
+});
+/** First stage: what the card shows. The token is in _meta only. */
+export const PairGarminWatchConfirmSchema = z.strictObject({
+  stage: z.literal("confirm"),
+  device_label: z.string().min(1).max(100),
+  user_code: z.string().regex(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/),
+  requested_at: ArnoldUtcTimestampSchema,
+  expires_at: ArnoldUtcTimestampSchema,
+});
+export const PairGarminWatchConfirmMetaSchema =
+  PairGarminWatchConfirmSchema.extend({
+    confirmation_token: z.string().min(1),
+  });
+export const PairGarminWatchPairedSchema = z.strictObject({
+  stage: z.literal("paired"),
+  device_label: z.string().min(1).max(100),
+});
+export const PairGarminWatchResponseSchema = z.discriminatedUnion("stage", [
+  PairGarminWatchConfirmSchema,
+  PairGarminWatchPairedSchema,
+]);
+export const GarminWatchSchema = z.strictObject({
+  device_id: id,
+  label: z.string().min(1).max(100),
+  paired_at: ArnoldUtcTimestampSchema,
+  last_used_at: ArnoldUtcTimestampSchema.nullable(),
+});
+export const ListGarminWatchesSchema = z.strictObject({
+  watches: z.array(GarminWatchSchema),
+});
+export const UnpairGarminWatchInputSchema = z.strictObject({
+  device_id: id.describe("Kennung der Uhr aus list_garmin_watches."),
+});
+export const UnpairGarminWatchResponseSchema = z.strictObject({
+  device_id: id,
+  unpaired: z.boolean(),
+});

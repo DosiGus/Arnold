@@ -57,7 +57,13 @@ describe("tool safety hints (default profile)", () => {
     const { tools } = await client.listTools();
     const listed = new Set(tools.map((tool) => tool.name));
     // The account tools exist only in the database profile.
-    const connectedOnly = ["delete_arnold_account", "get_arnold_stored_data"];
+    const connectedOnly = [
+      "delete_arnold_account",
+      "get_arnold_stored_data",
+      "pair_garmin_watch",
+      "list_garmin_watches",
+      "unpair_garmin_watch",
+    ];
     expect(
       Object.keys(TOOL_ACCESS).filter(
         (name) => !listed.has(name) && !connectedOnly.includes(name),

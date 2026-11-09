@@ -42,6 +42,7 @@ import { InMemoryIdentityRepository } from "../src/server/identity/repository.js
 import { ARNOLD_SCOPES } from "../src/server/auth/scopes.js";
 import { isAuthError } from "../src/server/auth/errors.js";
 import { TEST_AUDIENCE, TEST_ISSUER } from "./fixtures/arnold-auth.js";
+import { registerWatchTools } from "../src/server/mcp-watch";
 import { registerAccountTools } from "../src/server/account/mcp-account.js";
 import type { DatabaseArnoldRuntime } from "../src/server/db/runtime.js";
 
@@ -150,6 +151,11 @@ describe("every published tool is classified", () => {
       {} as DatabaseArnoldRuntime,
       "ui://arnold/dashboard-v2-test.html",
     );
+    registerWatchTools(
+      accountServer,
+      {} as DatabaseArnoldRuntime,
+      "ui://arnold/dashboard-v2-test.html",
+    );
     const account = new Set(await publishedTools(accountServer));
     const orphans = Object.keys(TOOL_ACCESS).filter(
       (tool) => !widest.has(tool) && !account.has(tool),
@@ -159,6 +165,15 @@ describe("every published tool is classified", () => {
 });
 
 describe("the classification table", () => {
+  it("classifies the Garmin watch tools as account management (GAR-B2-03)", () => {
+    for (const tool of [
+      "pair_garmin_watch",
+      "list_garmin_watches",
+      "unpair_garmin_watch",
+    ])
+      expect(TOOL_ACCESS[tool], tool).toBe("ACCOUNT_MANAGEMENT");
+  });
+
   it("puts every write behind its own scope", () => {
     expect(toolsWithAccess("AUTHENTICATED_WRITE")).toContain(
       "log_workout_sets",

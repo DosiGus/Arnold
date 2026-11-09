@@ -36,6 +36,12 @@ export const TOOL_ACCESS: Readonly<Record<string, ToolAccessClass>> = {
   get_arnold_stored_data: "ACCOUNT_MANAGEMENT",
   show_arnold_dashboard: "AUTHENTICATED_READ",
 
+  // ── mcp-watch.ts — Garmin watch (UMSETZUNG §5) ──
+  // Pairing, listing and unpairing change what may act for the account.
+  pair_garmin_watch: "ACCOUNT_MANAGEMENT",
+  list_garmin_watches: "ACCOUNT_MANAGEMENT",
+  unpair_garmin_watch: "ACCOUNT_MANAGEMENT",
+
   // ── mcp-arnold.ts — the v2 analytics surface ──
   get_arnold_dashboard: "AUTHENTICATED_READ",
   get_arnold_workouts: "AUTHENTICATED_READ",
