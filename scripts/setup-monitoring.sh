@@ -16,8 +16,8 @@
 #   3. any tool log line with outcome "thrown" (log-based alert, at most one
 #      e-mail per 5 minutes),
 #   4. any tool log line with code STORAGE_UNAVAILABLE: the database could not
-#      be reached or refused the write. /health does not touch the database,
-#      and tools catch these errors, so neither 1 nor 3 would notice.
+#      be reached or refused the write. /health now also checks the database;
+#      this tool-error alarm additionally covers rejected writes.
 #
 # The e-mail address is ARNOLD_ALERT_EMAIL, or else the signed-in gcloud
 # account. It is never written into the repository.

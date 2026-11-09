@@ -234,9 +234,17 @@ export function createHttpApp(options: ServerOptions = {}) {
   // Discovery first: an unauthenticated client must be able to read the
   // protected-resource document in order to learn how to authenticate.
   if (auth.metadataRouter) app.use(auth.metadataRouter);
-  app.get("/health", (_req, res) =>
-    res.json({
-      status: "ok",
+  app.get("/health", async (_req, res) => {
+    const healthy = options.database
+      ? await options.database.options.db.ping()
+      : true;
+    res.status(healthy ? 200 : 503).json({
+      status: healthy ? "ok" : "error",
+      database: options.database
+        ? healthy
+          ? "ok"
+          : "unavailable"
+        : "not_configured",
       app: "arnold",
       auth: auth.summary.mode,
       // Whether this instance serves made-up data. That is the source's own
@@ -249,8 +257,8 @@ export function createHttpApp(options: ServerOptions = {}) {
       version: "0.5.0",
       // The deployed commit, set by the deploy (ARNOLD_RELEASE); null locally.
       release,
-    }),
-  );
+    });
+  });
   // Privacy notice, terms and support for the beta. Content comes from
   // public/legal/ (owned by operations); a missing file is a 404, never a
   // placeholder. Static HTML only: no scripts, no external resources.

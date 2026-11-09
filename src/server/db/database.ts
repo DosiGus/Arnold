@@ -69,6 +69,8 @@ const USER_ID =
 
 export class Database {
   readonly pool: pg.Pool;
+  private healthValue?: { ok: boolean; checkedAt: number };
+  private healthCheck?: Promise<boolean>;
 
   constructor(options: DatabaseOptions) {
     this.pool = new pg.Pool({
@@ -84,6 +86,41 @@ export class Database {
     });
     // An idle connection that breaks must not crash the process.
     this.pool.on("error", () => {});
+  }
+
+  /** Readiness only: no user context, one in-flight query, at most 10 s cache.
+   * The 2 s deadline includes waiting for a pool connection. A timed-out query
+   * keeps the single-flight slot until it settles, so repeated health checks
+   * cannot accumulate queries behind a stalled connection. */
+  ping(): Promise<boolean> {
+    if (this.healthValue && Date.now() - this.healthValue.checkedAt < 10_000)
+      return Promise.resolve(this.healthValue.ok);
+    if (this.healthCheck) return this.healthCheck;
+    // pg supports a per-query client timeout; its installed typings expose
+    // only the shared QueryConfig fields. Structural assignment keeps both.
+    const query = { text: "select 1", query_timeout: 2_000 };
+    const operation = this.pool.query(query);
+    this.healthCheck = new Promise<boolean>((resolve) => {
+      let settled = false;
+      const finish = (ok: boolean) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(deadline);
+        this.healthValue = { ok, checkedAt: Date.now() };
+        resolve(ok);
+      };
+      const deadline = setTimeout(() => finish(false), 2_000);
+      operation.then(
+        () => finish(true),
+        () => finish(false),
+      );
+    });
+    void operation
+      .finally(() => {
+        this.healthCheck = undefined;
+      })
+      .catch(() => {});
+    return this.healthCheck;
   }
 
   /** One statement outside any user context (account lookup functions). */
