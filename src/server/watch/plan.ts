@@ -35,6 +35,7 @@ import { prepareAnalyticsInput } from "../../analytics/eligibility.js";
 import { nextSession } from "../../analytics/home.js";
 import { similarExercises } from "../../analytics/alternatives.js";
 import { weightStep } from "../../analytics/progression.js";
+import { estimateSessionMinutes } from "../../analytics/session-duration.js";
 import {
   pastSessions,
   proposeActivePlan,
@@ -216,8 +217,16 @@ export function buildDirectory(
     id: proposal.session_id,
     n: proposal.session_name,
     c: proposal.exercises.length,
-    // No duration estimate exists in src/analytics yet; unknown, not guessed.
-    m: null,
+    // 07 D-27; unknown set counts make it null, never a guess.
+    m: estimateSessionMinutes(
+      proposal.exercises.map((exercise) => ({
+        sets: exercise.missing.includes("sets") ? null : exercise.sets.length,
+        rest_seconds:
+          dataset.planItems.find(
+            (i) => i.plan_item_id === exercise.plan_item_id,
+          )?.rest_seconds ?? null,
+      })),
+    ),
     tag: etagOf(sessionBody(dataset, proposal, lang)),
   }));
   return WatchPlanDirectorySchema.parse({

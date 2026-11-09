@@ -18,6 +18,7 @@ import { WATCH_PLAN_BUDGET_BYTES } from "../src/shared/watch-contract.js";
 import { demoHistoryDataset } from "../src/server/plan/demo-history.js";
 import { proposeActivePlan } from "../src/server/workout/proposal.js";
 import { weightStep } from "../src/analytics/progression.js";
+import { estimateSessionMinutes } from "../src/analytics/session-duration.js";
 import { nextSession } from "../src/analytics/home.js";
 import { prepareAnalyticsInput } from "../src/analytics/eligibility.js";
 import {
@@ -312,7 +313,20 @@ describe("watch plan builders (GAR-B2-04)", () => {
     expect(directory.next).toBe(next!.session_id);
     for (const day of directory.days) {
       expect(day.tag).toBe(etagOf(buildSession(data, day.id, "de")));
-      expect(day.m).toBeNull();
+      const proposal = proposeActivePlan(data).find(
+        (p) => p.session_id === day.id,
+      )!;
+      expect(day.m).toBe(
+        estimateSessionMinutes(
+          proposal.exercises.map((e) => ({
+            sets: e.missing.includes("sets") ? null : e.sets.length,
+            rest_seconds:
+              data.planItems.find((i) => i.plan_item_id === e.plan_item_id)
+                ?.rest_seconds ?? null,
+          })),
+        ),
+      );
+      expect(day.m).toBeGreaterThan(0);
     }
   });
 
