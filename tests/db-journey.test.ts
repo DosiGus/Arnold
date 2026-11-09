@@ -39,7 +39,11 @@ import {
   WriteResponseSchema,
   WorkoutContextSchema,
 } from "../src/shared/workout-contract.js";
-import { ArnoldDashboardViewSchema } from "../src/shared/arnold-view.js";
+import {
+  ArnoldDashboardViewSchema,
+  ArnoldWorkoutHistoryViewSchema,
+} from "../src/shared/arnold-view.js";
+import { HEALTH_CONSENT_TEXT_VERSION } from "../src/server/mcp-watch.js";
 import {
   DeleteAccountConfirmSchema,
   StoredDataSchema,
@@ -560,6 +564,131 @@ describe("signed-in users with the database", () => {
         (await call(bob, "get_arnold_workouts", {})).structuredContent,
       ),
     ).not.toContain(workout_id);
+  });
+
+  it("shows a watch training with its recording and health data only to its owner (GAR-B5-02)", async () => {
+    await setup(alice);
+    await setup(bob);
+    const identities = new PostgresIdentityRepository(db);
+    const userId = (await identities.find(issuer, alice))!.user.user_id;
+    const sha = (v: string) => createHash("sha256").update(v).digest();
+    const device = sha(randomUUID()),
+      code = sha(randomUUID()),
+      token = newWatchToken();
+    await db.query("select * from arnold.start_watch_pairing($1,$2,$3,600)", [
+      device,
+      code,
+      "Forerunner 255",
+    ]);
+    await db.asUser(userId, (c) =>
+      c.query("select * from arnold.approve_watch_pairing($1,$2)", [
+        code,
+        "Europe/Berlin",
+      ]),
+    );
+    await db.query("select * from arnold.redeem_watch_pairing($1,$2,$3)", [
+      device,
+      hashWatchToken(token),
+      `wdv_${randomUUID()}`,
+    ]);
+    const watch = (path: string, init: RequestInit = {}) =>
+      fetch(`${base}/api/watch/v1${path}`, {
+        ...init,
+        headers: {
+          authorization: `Bearer ${token}`,
+          "accept-language": "de",
+          ...(init.body ? { "content-type": "application/json" } : {}),
+        },
+      });
+    const consent = await call(alice, "set_garmin_health_consent", {
+      granted: true,
+      text_version: HEALTH_CONSENT_TEXT_VERSION,
+    });
+    expect(consent.isError, JSON.stringify(consent.content)).toBeFalsy();
+    const directory = await (await watch("/plan")).json();
+    const day = await (await watch(`/plan/sessions/${directory.next}`)).json();
+    const date = "2026-11-04";
+    const t0 = Date.parse(`${date}T17:00:00Z`) / 1000;
+    const session = randomUUID();
+    // Two sets of the first plan position, 150 s apart.
+    const item = day.items[0] as { id: string; c: number };
+    const uploaded = await watch("/workouts", {
+      method: "POST",
+      body: JSON.stringify({
+        request_id: `gw_${randomUUID()}`,
+        session_uuid: session,
+        plan_version_id: directory.p,
+        session_id: directory.next,
+        workout_date_local: date,
+        utc_offset_min: 60,
+        started_at_utc: `${date}T17:00:00Z`,
+        ended_at_utc: `${date}T17:45:00Z`,
+        exercises: [
+          {
+            plan_item_id: item.id,
+            exercise_id: day.cat[item.c].id,
+            sets: [
+              { reps: 10, load_g: 60000, side: "both", t0, t1: t0 + 40 },
+              {
+                reps: 10,
+                load_g: 60000,
+                side: "both",
+                t0: t0 + 190,
+                t1: t0 + 230,
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    expect(uploaded.status, await uploaded.clone().text()).toBe(201);
+    const { workout_id } = await uploaded.json();
+    const stored = await watch(`/workouts/${session}/health`, {
+      method: "PUT",
+      body: JSON.stringify({
+        hr: {
+          interval_s: 5,
+          start_utc: `${date}T17:00:00Z`,
+          values: [90, 0, 120, 150],
+        },
+        calories_kcal: 280,
+        before: { at_utc: `${date}T16:58:00Z`, body_battery: 64, stress: 31 },
+        after: { at_utc: `${date}T17:47:00Z`, body_battery: 48 },
+      }),
+    });
+    expect(stored.status, await stored.clone().text()).toBe(200);
+
+    const history = ArnoldWorkoutHistoryViewSchema.parse(
+      (await call(alice, "get_arnold_workouts", {})).structuredContent,
+    );
+    const shown = history.workouts.find((w) => w.workout_id === workout_id)!;
+    expect(shown.from_watch).toBe(true);
+    expect(shown.watch).toMatchObject({
+      duration_s: 2700,
+      rest: { measured_pauses: 1, actual_s: 150 },
+      health: {
+        heart_rate: { average_bpm: 120, max_bpm: 150, missing_seconds: 5 },
+        heart_rate_curve: [90, null, 120, 150],
+        calories_kcal: 280,
+        before: { body_battery: 64, stress: 31, resting_hr: null },
+        after: { body_battery: 48, stress: null, resting_hr: null },
+        differences: { body_battery: -16, stress: null, resting_hr: null },
+      },
+    });
+    // The planned rest is the plan position's, else the watch's 120 s.
+    expect(shown.watch!.rest.planned_s).toBeGreaterThan(0);
+    // A chat workout carries no watch block.
+    expect(
+      history.workouts
+        .filter((w) => w.workout_id !== workout_id)
+        .every((w) => w.watch === null && !w.from_watch),
+    ).toBe(true);
+    // Bob's ChatGPT does not see it, nor its health data.
+    const bobs = ArnoldWorkoutHistoryViewSchema.parse(
+      (await call(bob, "get_arnold_workouts", {})).structuredContent,
+    );
+    expect(JSON.stringify(bobs)).not.toContain(workout_id);
+    expect(bobs.workouts.every((w) => w.watch === null)).toBe(true);
   });
 
   it("refuses training writes without the write scope", async () => {

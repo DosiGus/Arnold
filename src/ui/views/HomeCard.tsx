@@ -130,7 +130,13 @@ export function HomeCard({
           title={doneToday?.title ?? next?.session_name ?? "Dein Training"}
           aside={
             <span className="ac-pill muted">
-              {doneToday ? "Gespeichert" : next ? "Als Nächstes" : "Ohne Plan"}
+              {doneToday
+                ? doneToday.from_watch
+                  ? "Von der Uhr"
+                  : "Gespeichert"
+                : next
+                  ? "Als Nächstes"
+                  : "Ohne Plan"}
             </span>
           }
         >

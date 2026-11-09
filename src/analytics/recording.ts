@@ -108,12 +108,29 @@ export function healthSnapshotDifferences(
     resting_hr: difference("resting_hr"),
   };
 }
+/** Whole seconds from start to end of a recording; null when a time is
+ * missing, unreadable or the end precedes the start. */
+export function recordingDurationSeconds(
+  started_at_utc: string | null | undefined,
+  ended_at_utc: string | null | undefined,
+): number | null {
+  const start = started_at_utc ? Date.parse(started_at_utc) : NaN;
+  const end = ended_at_utc ? Date.parse(ended_at_utc) : NaN;
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start)
+    return null;
+  return Math.round((end - start) / 1000);
+}
+
 export function recordingMetrics(
   health: RecordingHealth,
   pauses: readonly RecordingPause[] = [],
   zoneUpperBounds?: readonly number[],
+  span?: { started_at_utc: string | null; ended_at_utc: string | null },
 ) {
   return {
+    duration_s: span
+      ? recordingDurationSeconds(span.started_at_utc, span.ended_at_utc)
+      : null,
     heart_rate: heartRateMetrics(health.hr, zoneUpperBounds),
     rest: pauseMetrics(pauses),
     differences: healthSnapshotDifferences(health.before, health.after),

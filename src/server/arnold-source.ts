@@ -59,6 +59,44 @@ export interface ArnoldDataSource {
   readonly synthetic: boolean;
   /** Validated dataset; throws `ArnoldSourceError` on any failure. */
   load(): Promise<DatasetSnapshot>;
+  /**
+   * Watch recordings and stored health data for these client sessions, only
+   * the caller's own. Only a database source has them; without one a watch
+   * workout shows no recording.
+   */
+  watchRecordings?(
+    clientSessionIds: readonly string[],
+  ): Promise<readonly WatchRecordingData[]>;
+}
+
+/** One watch recording as stored (UMSETZUNG §3.3, §3.4); gaps stay null. */
+export interface WatchRecordingData {
+  client_session_id: string;
+  started_at_utc: string;
+  ended_at_utc: string;
+  set_timings: readonly {
+    exercise_order: number;
+    set_number: number;
+    side: string;
+    rest_before_s: number | null;
+  }[];
+  /** Null without stored health data (no consent, or not sent yet). */
+  health: {
+    hr: {
+      interval_s: number;
+      start_utc: string;
+      values: readonly (number | null)[];
+    } | null;
+    calories_kcal: number | null;
+    before: WatchSnapshotData | null;
+    after: WatchSnapshotData | null;
+  } | null;
+}
+export interface WatchSnapshotData {
+  at_utc: string;
+  body_battery?: number | null;
+  stress?: number | null;
+  resting_hr?: number | null;
 }
 
 /** The dashboard's view of a store: every read is fresh. */

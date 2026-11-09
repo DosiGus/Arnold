@@ -11,10 +11,14 @@ import {
   type ArnoldDataset,
   type ArnoldExercise,
   type ArnoldLoadBasis,
+  type ArnoldPlanItem,
   type ArnoldPlanVersion,
   type ArnoldSet,
   type ArnoldWorkout,
 } from "../shared/arnold-schema-v1.js";
+import { recordingMetrics } from "../analytics/recording.js";
+import { DEFAULT_REST_SECONDS } from "../analytics/session-duration.js";
+import type { WatchRecordingData, WatchSnapshotData } from "./arnold-source.js";
 import {
   buildArnoldDashboardAnalytics,
   buildHomeAnalytics,
@@ -47,6 +51,7 @@ import {
   type ViewNotice,
   type ViewRecord,
   type ViewSource,
+  type ViewWatchRecording,
   type ViewWorkoutDetail,
   type ViewWorkoutSummary,
 } from "../shared/arnold-view.js";
@@ -290,6 +295,7 @@ function summarize(
     working_set_count: active.filter((s) => s.set_type === "working").length,
     nominal_volume: perWorkout?.nominal_volume.value ?? null,
     nominal_volume_status: perWorkout?.nominal_volume.status ?? "not_available",
+    from_watch: !!workout.client_session_id,
   };
 }
 
@@ -361,7 +367,132 @@ function detail(
     notes: workout.notes,
     source: workout.source,
     exercises,
+    watch: null,
   };
+}
+
+/** Points of the small heart-rate curve; raw samples, never averaged. */
+export const HEART_RATE_CURVE_POINTS = 120;
+
+/**
+ * What the watch recorded for one workout. The metrics come from
+ * `src/analytics/recording.ts`; this only matches each pause with the rest the
+ * watch counted down before it: the plan position of the previous set, else
+ * the default the watch uses (DEFAULT_REST_SECONDS).
+ */
+export function watchRecordingView(
+  sets: readonly ArnoldSet[],
+  planItems: ReadonlyMap<string, ArnoldPlanItem>,
+  recording: WatchRecordingData,
+): ViewWatchRecording {
+  const restAt = (exerciseOrder: number) => {
+    const set = sets.find(
+      (s) => s.status === "active" && s.exercise_order === exerciseOrder,
+    );
+    const item = set?.plan_item_id ? planItems.get(set.plan_item_id) : null;
+    return item?.rest_seconds ?? DEFAULT_REST_SECONDS;
+  };
+  const pauses = recording.set_timings.slice(1).map((timing, i) => ({
+    planned_s: restAt(recording.set_timings[i].exercise_order),
+    actual_s: timing.rest_before_s,
+  }));
+  const health = recording.health;
+  // 0 is a gap for the analytics, like on the watch.
+  const hr = health?.hr
+    ? { ...health.hr, values: health.hr.values.map((v) => v ?? 0) }
+    : null;
+  const metrics = recordingMetrics(
+    { hr, before: health?.before ?? null, after: health?.after ?? null },
+    pauses,
+    // No personal zone bounds are known: no zones, never invented ones.
+    undefined,
+    recording,
+  );
+  const values = health?.hr?.values ?? [];
+  const step = Math.max(1, values.length / HEART_RATE_CURVE_POINTS);
+  const curve = Array.from(
+    { length: Math.min(values.length, HEART_RATE_CURVE_POINTS) },
+    (_, i) => values[Math.floor(i * step)] || null,
+  );
+  const snapshot = (value: WatchSnapshotData | null) =>
+    value
+      ? {
+          body_battery: value.body_battery ?? null,
+          stress: value.stress ?? null,
+          resting_hr: value.resting_hr ?? null,
+        }
+      : null;
+  const heart = metrics.heart_rate;
+  return {
+    started_at_utc: recording.started_at_utc,
+    ended_at_utc: recording.ended_at_utc,
+    duration_s: metrics.duration_s,
+    rest: {
+      measured_pauses: metrics.rest.measured_pauses,
+      planned_s: metrics.rest.planned_s,
+      actual_s: metrics.rest.actual_s,
+      delta_s: metrics.rest.delta_s,
+      ratio_pct: metrics.rest.ratio_pct,
+    },
+    health: health
+      ? {
+          heart_rate: heart
+            ? {
+                average_bpm: heart.average_bpm,
+                max_bpm: heart.max_bpm,
+                measured_seconds: heart.measured_seconds,
+                missing_seconds: heart.missing_seconds,
+              }
+            : null,
+          heart_rate_curve: curve,
+          calories_kcal: health.calories_kcal,
+          before: snapshot(health.before),
+          after: snapshot(health.after),
+          differences: metrics.differences,
+        }
+      : null,
+  };
+}
+
+/**
+ * Adds what the watch recorded to a page of history. Separate from
+ * buildWorkoutHistoryView so only the page's own recordings are read.
+ */
+export function withWatchRecordings(
+  view: ArnoldWorkoutHistoryView,
+  dataset: ArnoldDataset,
+  recordings: readonly WatchRecordingData[],
+): ArnoldWorkoutHistoryView {
+  if (!recordings.length) return view;
+  const bySession = new Map(recordings.map((r) => [r.client_session_id, r]));
+  const workouts = new Map(dataset.workouts.map((w) => [w.workout_id, w]));
+  const planItems = new Map(dataset.planItems.map((i) => [i.plan_item_id, i]));
+  return ArnoldWorkoutHistoryViewSchema.parse({
+    ...view,
+    workouts: view.workouts.map((detail) => {
+      const session = workouts.get(detail.workout_id)?.client_session_id;
+      const recording = session ? bySession.get(session) : undefined;
+      if (!recording) return detail;
+      const sets = dataset.sets.filter(
+        (s) => s.workout_id === detail.workout_id,
+      );
+      return {
+        ...detail,
+        watch: watchRecordingView(sets, planItems, recording),
+      };
+    }),
+  });
+}
+
+/** Client sessions of the workouts on a history page, for the recordings. */
+export function watchSessionsOf(
+  view: ArnoldWorkoutHistoryView,
+  dataset: ArnoldDataset,
+): string[] {
+  const ids = new Set(view.workouts.map((w) => w.workout_id));
+  return dataset.workouts.flatMap((w) =>
+    ids.has(w.workout_id) && w.client_session_id ? [w.client_session_id] : [],
+  );
 }
 
 function qualityNotes(analytics: ArnoldDashboardAnalytics): string[] {

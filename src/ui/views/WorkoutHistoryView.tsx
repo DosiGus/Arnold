@@ -11,6 +11,7 @@ import { ArnoldCard, CardSkeleton } from "../components/cards";
 import { DetailHead } from "../components/home";
 import { RecoveryCard } from "../components/recovery";
 import { exerciseSummary } from "../workout-draft";
+import { WatchBadge, WatchRecording } from "../components/watch-recording";
 
 const PAGE = 12;
 const WEEKDAY = new Intl.DateTimeFormat("de-DE", {
@@ -147,7 +148,7 @@ export function WorkoutHistoryView({
   useModelContext(
     client,
     selected
-      ? `Arnold zeigt im Verlauf das Training „${selected.title}“ am ${selected.date}, workout_id ${selected.workout_id}. Gespeicherte Sätze: ${JSON.stringify(selected.exercises.map((block) => ({ exercise: block.name, sets: block.sets })))}. Die Karte zeigt diese Werte bereits. Für Korrekturen aktuelle Revision mit get_workout lesen.`
+      ? `Arnold zeigt im Verlauf das Training „${selected.title}“ am ${selected.date}, workout_id ${selected.workout_id}. Gespeicherte Sätze: ${JSON.stringify(selected.exercises.map((block) => ({ exercise: block.name, sets: block.sets })))}.${selected.watch ? ` Von der Uhr aufgezeichnet: ${JSON.stringify({ duration_s: selected.watch.duration_s, rest: selected.watch.rest, heart_rate: selected.watch.health?.heart_rate ?? null, calories_kcal: selected.watch.health?.calories_kcal ?? null, before: selected.watch.health?.before ?? null, after: selected.watch.health?.after ?? null })}. Messwerte nur nennen, nie medizinisch deuten.` : ""} Die Karte zeigt diese Werte bereits. Für Korrekturen aktuelle Revision mit get_workout lesen.`
       : `Arnold zeigt alle Einheiten nach Wochen${history.data ? `, ${history.data.total} insgesamt` : ""}. Der Nutzer kann eine Einheit aufklappen oder im Chat nach einem Datum fragen.`,
   );
 
@@ -231,6 +232,7 @@ export function WorkoutHistoryView({
                       <strong>
                         {workout.title}
                         {record && <span className="ac-pill">Rekord</span>}
+                        {workout.from_watch && <WatchBadge />}
                       </strong>
                       <small>
                         <span className="visually-hidden">
@@ -250,6 +252,9 @@ export function WorkoutHistoryView({
                       className="ac-history-chev"
                     />
                   </button>
+                  {expanded && workout.watch && (
+                    <WatchRecording watch={workout.watch} />
+                  )}
                   {expanded && (
                     <ul
                       className="ac-history-exercises"

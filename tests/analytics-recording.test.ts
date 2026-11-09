@@ -3,6 +3,7 @@ import {
   heartRateMetrics,
   pauseMetrics,
   healthSnapshotDifferences,
+  recordingDurationSeconds,
   recordingMetrics,
 } from "../src/analytics/recording.js";
 const at = "2026-11-09T10:00:00Z";
@@ -86,5 +87,24 @@ describe("watch recording metrics (GAR-B2-01)", () => {
       stress: null,
       resting_hr: null,
     });
+  });
+  it("measures the duration of a recording and keeps unknown or reversed times unknown (GAR-B5-02)", () => {
+    expect(
+      recordingDurationSeconds("2026-11-08T17:00:00Z", "2026-11-08T17:52:30Z"),
+    ).toBe(3150);
+    expect(recordingDurationSeconds("2026-11-08T17:00:00Z", null)).toBeNull();
+    expect(
+      recordingDurationSeconds("kaputt", "2026-11-08T17:00:00Z"),
+    ).toBeNull();
+    expect(
+      recordingDurationSeconds("2026-11-08T18:00:00Z", "2026-11-08T17:00:00Z"),
+    ).toBeNull();
+    expect(
+      recordingMetrics({}, [], undefined, {
+        started_at_utc: "2026-11-08T17:00:00Z",
+        ended_at_utc: "2026-11-08T17:00:00Z",
+      }).duration_s,
+    ).toBe(0);
+    expect(recordingMetrics({}).duration_s).toBeNull();
   });
 });

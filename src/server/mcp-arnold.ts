@@ -35,6 +35,8 @@ import {
   buildDashboardView,
   buildExerciseProgressView,
   buildWorkoutHistoryView,
+  watchSessionsOf,
+  withWatchRecordings,
 } from "./arnold-presenter.js";
 import {
   ArnoldSourceError,
@@ -464,7 +466,7 @@ export function createArnoldMcpServer(
     async (input) => {
       try {
         const snapshot = await load();
-        const view = buildWorkoutHistoryView(
+        const page = buildWorkoutHistoryView(
           snapshot.dataset,
           context(snapshot),
           {
@@ -481,6 +483,16 @@ export function createArnoldMcpServer(
             offset: input.offset,
           },
         );
+        // Watch recordings only for this page, and only from a database.
+        const sessions = watchSessionsOf(page, snapshot.dataset);
+        const view =
+          sessions.length && source.watchRecordings
+            ? withWatchRecordings(
+                page,
+                snapshot.dataset,
+                await source.watchRecordings(sessions),
+              )
+            : page;
         return result(
           view,
           `${view.total} Trainingseinheiten gefunden (${sourceLabel}); ${view.workouts.length} geliefert.`,

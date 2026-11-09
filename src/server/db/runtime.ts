@@ -6,7 +6,11 @@
  * lock behind it: row level security only shows rows of the user the
  * transaction runs as (see db/migrations/001_arnold.sql).
  */
-import { storeSource, type ArnoldDataSource } from "../arnold-source.js";
+import {
+  storeSource,
+  type ArnoldDataSource,
+  type WatchRecordingData,
+} from "../arnold-source.js";
 import {
   currentArnoldContext,
   withArnoldContext,
@@ -277,11 +281,15 @@ export class DatabaseUserRuntime {
     private readonly auth: AuthSurface,
   ) {
     this.store = new PostgresArnoldStore(db, userId, trackerId);
-    this.source = storeSource(this.store, {
-      synthetic: false,
-      label: "Arnold · Mein Training",
-      description: "Deine Trainingsdaten, gespeichert in deinem Arnold-Konto.",
-    });
+    this.source = {
+      ...storeSource(this.store, {
+        synthetic: false,
+        label: "Arnold · Mein Training",
+        description:
+          "Deine Trainingsdaten, gespeichert in deinem Arnold-Konto.",
+      }),
+      watchRecordings: (ids) => watchRecordings(db, userId, ids),
+    };
     const authorization: AuthorizationGuard = {
       authorize: async (tracker, _permission, context): Promise<Actor> => {
         const caller = await this.caller(context);
@@ -387,5 +395,50 @@ export async function ensureStarterCatalog(
       audit: [],
       result: { workout: null, sets: [], exercise: null, warnings: [] },
     });
+  });
+}
+
+/** Recordings and health data of the caller's own watch workouts (GAR-B5-02). */
+async function watchRecordings(
+  db: Database,
+  userId: string,
+  clientSessionIds: readonly string[],
+): Promise<readonly WatchRecordingData[]> {
+  if (!clientSessionIds.length) return [];
+  return db.asUser(userId, async (c) => {
+    const rows = await c.query<{
+      client_session_id: string;
+      started_at_utc: string;
+      ended_at_utc: string;
+      set_timings: WatchRecordingData["set_timings"];
+      has_health: boolean;
+      hr: NonNullable<WatchRecordingData["health"]>["hr"];
+      calories_kcal: number | null;
+      before: NonNullable<WatchRecordingData["health"]>["before"];
+      after: NonNullable<WatchRecordingData["health"]>["after"];
+    }>(
+      `select r.client_session_id, r.started_at_utc, r.ended_at_utc, r.set_timings,
+              h.client_session_id is not null as has_health,
+              h.hr, h.calories_kcal, h.before, h.after
+         from arnold.workout_recordings r
+         left join arnold.workout_health h
+           on h.user_id = r.user_id and h.client_session_id = r.client_session_id
+        where r.user_id = $1 and r.client_session_id = any($2::text[])`,
+      [userId, [...clientSessionIds]],
+    );
+    return rows.rows.map((row) => ({
+      client_session_id: row.client_session_id,
+      started_at_utc: row.started_at_utc,
+      ended_at_utc: row.ended_at_utc,
+      set_timings: row.set_timings,
+      health: row.has_health
+        ? {
+            hr: row.hr,
+            calories_kcal: row.calories_kcal,
+            before: row.before,
+            after: row.after,
+          }
+        : null,
+    }));
   });
 }
