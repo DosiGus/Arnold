@@ -23,7 +23,8 @@
     "check": "npm run build && npm test && npm run test:e2e",
     "inspector": "npx @modelcontextprotocol/inspector@latest",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "garmin:check": "bash apps/garmin/scripts/build.sh && bash apps/garmin/scripts/test.sh"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "2.4.0",
