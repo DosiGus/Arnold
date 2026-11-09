@@ -126,3 +126,46 @@ export function toolsWithAccess(access: ToolAccessClass): string[] {
     .map(([tool]) => tool)
     .sort();
 }
+
+/**
+ * The watch API's routes (`/api/watch/v1`, UMSETZUNG §5), classified like the
+ * tools above. The watch router registers a route only through
+ * `requireWatchRouteAccess`, so an unclassified route stops the start.
+ *
+ * - `WATCH_PAIRING`: no credential yet; rate-limited, and the pairing secret
+ *   itself is checked by the database functions.
+ * - `WATCH_READ` / `WATCH_WRITE`: an `arn_w_` watch token with the scope.
+ */
+export type WatchRouteAccess = "WATCH_PAIRING" | "WATCH_READ" | "WATCH_WRITE";
+
+export const WATCH_ROUTE_ACCESS: Readonly<Record<string, WatchRouteAccess>> = {
+  "POST /pair/start": "WATCH_PAIRING",
+  "POST /pair/token": "WATCH_PAIRING",
+  "GET /device": "WATCH_READ",
+  "DELETE /device": "WATCH_WRITE",
+  "GET /plan": "WATCH_READ",
+  "GET /plan/sessions/:session_id": "WATCH_READ",
+  "GET /plan/recent": "WATCH_READ",
+  "POST /workouts": "WATCH_WRITE",
+  "PUT /workouts/:session_uuid/health": "WATCH_WRITE",
+};
+
+export class UnclassifiedWatchRouteError extends Error {
+  constructor(readonly route: string) {
+    super(
+      `Die Uhr-Route "${route}" hat keine Zugriffsklasse in WATCH_ROUTE_ACCESS. Ergänze sie in src/server/auth/tool-access.ts.`,
+    );
+    this.name = "UnclassifiedWatchRouteError";
+  }
+}
+
+/** The class for `METHOD path`, or a throw. Used when the router is built. */
+export function requireWatchRouteAccess(
+  method: string,
+  path: string,
+): WatchRouteAccess {
+  const route = `${method.toUpperCase()} ${path}`;
+  if (!Object.hasOwn(WATCH_ROUTE_ACCESS, route))
+    throw new UnclassifiedWatchRouteError(route);
+  return WATCH_ROUTE_ACCESS[route]!;
+}
