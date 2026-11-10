@@ -85,6 +85,10 @@ class TrainingSession {
         if (id == null) {
             return null;
         }
+        if (journal.isSaved(id as String)) {
+            journal.forgetActive();   // saved for sending, nothing left to continue
+            return null;
+        }
         var head = journal.readHead(id as String);
         var day = journal.readPlan(id as String);
         if (head == null || day == null) {
@@ -135,6 +139,48 @@ class TrainingSession {
 
     function sessionStart() as Number {
         return _head["a"] as Number;
+    }
+
+    // Offset of the watch to UTC in minutes when the workout started (kept with the workout).
+    function utcOffsetMinutes() as Number {
+        return _head["o"] as Number;
+    }
+
+    // Seconds from the start of the workout to now.
+    function elapsedSeconds() as Number {
+        var seconds = _clock.nowSeconds() - sessionStart();
+        return seconds > 0 ? seconds : 0;
+    }
+
+    // Number of exercises with at least one confirmed set.
+    function exercisesTrained() as Number {
+        var seen = [] as Array<Number>;
+        for (var i = 0; i < events.size(); i++) {
+            var index = events[i]["e"] as Number;
+            if ((events[i]["k"] as Number) == Journal.EVENT_SET && seen.indexOf(index) < 0) {
+                seen.add(index);
+            }
+        }
+        return seen.size();
+    }
+
+    // The finished workout goes to the outbox as one frozen request and stops being "in progress".
+    // False when there is nothing to send (no set confirmed) or the workout is not finished.
+    // Safe to call twice: a workout that is in the outbox already is not built again.
+    function save(outbox as Outbox) as Boolean {
+        if (state != STATE_FINISHED || setsDone() == 0) {
+            return false;
+        }
+        if (!outbox.contains(uuid)) {
+            outbox.add(uuid, WorkoutUpload.build(self, _clock.nowSeconds()), _clock.nowSeconds());
+        }
+        _journal.forgetActive();
+        return true;
+    }
+
+    // The workout is thrown away (discard in the summary).
+    function discard() as Void {
+        _journal.discard(uuid);
     }
 
     // What comes after the rest on screen: the set (true) or the next exercise (false).

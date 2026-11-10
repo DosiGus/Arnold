@@ -9,6 +9,7 @@ module StoreKeys {
     const PLAN_RECENT as String = "plan:recent";
     const SETTINGS as String = "settings";   // vibration, sound, warning
     const ACTIVE_SESSION as String = "sess:active";   // uuid of the workout in progress, if any
+    const OUTBOX_INDEX as String = "out:index";       // ids of the frozen upload requests, oldest first
 
     // One training day of the plan, stored on its own (07 D-22).
     function planDay(sessionId as String) as String {

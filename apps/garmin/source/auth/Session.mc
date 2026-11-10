@@ -48,7 +48,10 @@ module Session {
     function launcher() as TrainingLauncher {
         if (_launcher == null) {
             var store = new KeyValueStore();
-            _launcher = new TrainingLauncher(new Journal(store), new PairingClock(), new Signals(store));
+            var journal = new Journal(store);
+            var clock = new PairingClock();
+            var sender = new OutboxSender(client(), new Outbox(store), journal, clock, pairing().method(:onAuthRejected));
+            _launcher = new TrainingLauncher(journal, clock, new Signals(store), sender);
         }
         return _launcher as TrainingLauncher;
     }

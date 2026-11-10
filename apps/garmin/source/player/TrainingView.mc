@@ -7,11 +7,13 @@ import Toybox.WatchUi;
 // workout. A timer every second moves the countdown, the rest signals and the heart rate.
 class TrainingView extends WatchUi.View {
     private var _session as TrainingSession;
+    private var _sender as OutboxSender;
     private var _timer as Timer.Timer or Null;
 
-    function initialize(session as TrainingSession) {
+    function initialize(session as TrainingSession, sender as OutboxSender) {
         View.initialize();
         _session = session;
+        _sender = sender;
         _timer = null;
     }
 
@@ -21,9 +23,17 @@ class TrainingView extends WatchUi.View {
         timer.start(method(:onTick), 1000, true);
         _timer = timer;
         _session.tick();
+        _sender.setObserver(method(:onSendChanged));
+    }
+
+    // The sending moved on: redraw, and ask what needs an answer.
+    function onSendChanged() as Void {
+        WatchUi.requestUpdate();
+        SyncPrompts.check(_sender);
     }
 
     function onHide() as Void {
+        _sender.setObserver(null);
         LiveHeart.disable();
         if (_timer != null) {
             (_timer as Timer.Timer).stop();
@@ -37,14 +47,14 @@ class TrainingView extends WatchUi.View {
     }
 
     function onUpdate(dc as Dc) as Void {
-        PairingLayout.draw(dc, TrainingScreen.lines(dc, _session, LiveHeart.current()));
+        PairingLayout.draw(dc, TrainingScreen.lines(dc, _session, LiveHeart.current(), _sender));
     }
 }
 
 // Which screen belongs to which state.
 module TrainingScreen {
 
-    function lines(dc as Dc, session as TrainingSession, heartRate as Number or Null) as Array<PairingLine> {
+    function lines(dc as Dc, session as TrainingSession, heartRate as Number or Null, sender as OutboxSender or Null) as Array<PairingLine> {
         if (session.state == TrainingSession.STATE_PREVIEW) {
             return PreviewScreen.lines(dc, session);
         }
@@ -54,10 +64,6 @@ module TrainingScreen {
         if (session.state == TrainingSession.STATE_REST) {
             return RestScreen.lines(dc, session, heartRate);
         }
-        var out = [] as Array<PairingLine>;
-        out.add(new PairingLine(TrainingText.text(Rez.Strings.TrFinished), Graphics.FONT_MEDIUM, Graphics.COLOR_WHITE));
-        out.add(new PairingLine(Lang.format(TrainingText.text(Rez.Strings.TrSetsDone), [session.setsDone()]), Graphics.FONT_SMALL, Graphics.COLOR_LT_GRAY));
-        out.add(new PairingLine(TrainingText.text(Rez.Strings.TrSummaryFollows), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY));
-        return out;
+        return SummaryScreen.lines(dc, session, sender);
     }
 }

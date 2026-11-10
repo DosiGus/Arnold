@@ -64,4 +64,25 @@
     <string id="HomeResume">Training läuft</string>
     <string id="HomeResumeHint">START: fortsetzen</string>
     <string id="HomeStartHint">START: Training</string>
+    <string id="SumSets">$1$ von $2$ Sätzen</string>
+    <string id="SumSave">START: speichern</string>
+    <string id="SumNothing">Nichts zu speichern</string>
+    <string id="SumDiscardHint">HOCH halten: verwerfen</string>
+    <string id="SumSaved">Auf der Uhr gespeichert</string>
+    <string id="SumSending">Wird gesendet …</string>
+    <string id="SumWaiting">Wird gesendet, sobald das Handy da ist</string>
+    <string id="SumSent">Alles gesendet</string>
+    <string id="SumRecords">Neue Rekorde</string>
+    <string id="SumNext">Nächstes Mal</string>
+    <string id="SumRejected">Nicht gesendet</string>
+    <string id="SumRetryHint">Startmenü: Jetzt senden</string>
+    <string id="SumAsking">Bitte antworten</string>
+    <string id="PromptDuplicate">Schon im Verlauf. Trotzdem speichern?</string>
+    <string id="PromptUnusual">Ungewöhnliche Werte. Stimmt das?</string>
+    <string id="PromptStale">Ein Training wurde nie gesendet. Verwerfen?</string>
+    <string id="PromptDiscard">Training verwerfen?</string>
+    <string id="PromptDiscard2">Wirklich? Das geht nicht rückgängig.</string>
+    <string id="MenuSendNow">Jetzt senden</string>
+    <string id="HomePending">$1$ Training wartet</string>
+    <string id="HomePendingMany">$1$ Trainings warten</string>
 </strings>

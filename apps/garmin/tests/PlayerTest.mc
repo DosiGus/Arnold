@@ -27,8 +27,8 @@ class RecordingSignals extends Signals {
 class TestLauncher extends TrainingLauncher {
     var shown as Array<TrainingSession>;
 
-    function initialize(journal as Journal, clock as PairingClock, signals as Signals) {
-        TrainingLauncher.initialize(journal, clock, signals);
+    function initialize(journal as Journal, clock as PairingClock, signals as Signals, sender as OutboxSender) {
+        TrainingLauncher.initialize(journal, clock, signals, sender);
         shown = [] as Array<TrainingSession>;
     }
 
@@ -46,6 +46,12 @@ class PlayerRig {
     var signals as RecordingSignals;
     var day as Dictionary;
     var session as TrainingSession;
+    var transport as FakeTransport;
+    var clientTimer as FakeScheduler;
+    var client as ApiClient;
+    var outbox as Outbox;
+    var sender as OutboxSender;
+    var rejected as CallCounter;
 
     // Day: A 3 sets 8 x 60 kg, rest 120 s; B left and right 10 x 20 kg, rest 60 s (per side);
     // C without sets; D one set 5 x 10 kg, rest 0 s. withUnknown adds E with unknown reps and weight.
@@ -54,6 +60,12 @@ class PlayerRig {
         journal = new Journal(store);
         clock = new FakeClock();
         signals = new RecordingSignals();
+        transport = new FakeTransport();
+        clientTimer = new FakeScheduler();
+        client = new ApiClient("http://mock/api/watch/v1", transport, clientTimer);
+        outbox = new Outbox(store);
+        rejected = new CallCounter();
+        sender = new OutboxSender(client, outbox, journal, clock, rejected.method(:onCall));
         day = PlayerRig.dayBody(withUnknown);
         session = TrainingSession.start(day, journal, clock, signals);
     }
@@ -83,6 +95,34 @@ class PlayerRig {
             items.add({ "id" => "it_e", "c" => 4, "r" => 60, "rr" => null });
         }
         return { "api_version" => 1, "min_app_version" => "1.0.0", "p" => "plv_1", "id" => "d1", "n" => "Oberkörper A", "cat" => cat, "items" => items };
+    }
+
+    // The whole day: A three sets, B left and right, C skipped, D one set; finished.
+    function finishDay() as Void {
+        toFirstSet();
+        for (var i = 0; i < 3; i++) {
+            setAndRest();
+        }
+        session.confirmPreview();
+        setAndRest();
+        session.confirmSet();
+        session.endRest();
+        session.confirmPreview();
+        session.confirmSet();
+    }
+
+    // A finished workout, saved and ready to send.
+    static function saved() as PlayerRig {
+        var rig = new PlayerRig(false);
+        rig.finishDay();
+        rig.session.save(rig.outbox);
+        return rig;
+    }
+
+    // A sender with its own fake network, for tests that only need a launcher.
+    static function senderFor(store as MemoryStore, clock as PairingClock) as OutboxSender {
+        var client = new ApiClient("http://mock/api/watch/v1", new FakeTransport(), new FakeScheduler());
+        return new OutboxSender(client, new Outbox(store), new Journal(store), clock, new CallCounter().method(:onCall));
     }
 
     // The app was closed and opened again: the workout is read from the journal.
@@ -571,20 +611,20 @@ function trainingTextWritesWeightsAsTheServerSentThem(logger as Logger) as Boole
 function trainingScreensShowWhatTheWorkoutNeeds(logger as Logger) as Boolean {
     var dc = PairingScreens.deviceDc();
     var rig = new PlayerRig(true);
-    var preview = PlanScreens.joined(TrainingScreen.lines(dc, rig.session, null));
+    var preview = PlanScreens.joined(TrainingScreen.lines(dc, rig.session, null, null));
     Test.assertMessage(preview.find("Bankdrücken") != null, preview);
     Test.assertMessage(preview.find("3") != null, preview);
     Test.assertMessage(preview.find("Heute +2,5 kg") != null, preview);    // the server's hint, unchanged
     rig.toFirstSet();
-    var set = PlanScreens.joined(TrainingScreen.lines(dc, rig.session, 132));
+    var set = PlanScreens.joined(TrainingScreen.lines(dc, rig.session, 132, null));
     Test.assertMessage(set.find("8 x 60") != null, set);
     Test.assertMessage(set.find("132") != null, set);
     Test.assertMessage(set.find("Letztes Mal 8 · 8 · 7") != null, set);
-    var noPulse = PlanScreens.joined(TrainingScreen.lines(dc, rig.session, null));
+    var noPulse = PlanScreens.joined(TrainingScreen.lines(dc, rig.session, null, null));
     Test.assertMessage(noPulse.find("--") != null, noPulse);
     Test.assertMessage(noPulse.find(" 0 ") == null, noPulse);
     rig.session.confirmSet();
-    var rest = PlanScreens.joined(TrainingScreen.lines(dc, rig.session, 90));
+    var rest = PlanScreens.joined(TrainingScreen.lines(dc, rig.session, 90, null));
     Test.assertMessage(rest.find("2:00") != null, rest);
     Test.assertMessage(rest.find("2") != null, rest);
     return true;
@@ -597,16 +637,16 @@ function trainingScreensShowSidesAndOpenValues(logger as Logger) as Boolean {
     rig.toFirstSet();
     for (var i = 0; i < 3; i++) { rig.setAndRest(); }
     rig.session.confirmPreview();
-    var left = PlanScreens.joined(TrainingScreen.lines(dc, rig.session, null));
+    var left = PlanScreens.joined(TrainingScreen.lines(dc, rig.session, null, null));
     Test.assertMessage(left.find(TrainingText.text(Rez.Strings.TrLeft)) != null, left);
     rig.setAndRest();
-    var right = PlanScreens.joined(TrainingScreen.lines(dc, rig.session, null));
+    var right = PlanScreens.joined(TrainingScreen.lines(dc, rig.session, null, null));
     Test.assertMessage(right.find(TrainingText.text(Rez.Strings.TrRight)) != null, right);
     rig.setAndRest();
     rig.session.confirmPreview();
     rig.session.confirmSet();
     rig.session.confirmPreview();
-    var open = PlanScreens.joined(TrainingScreen.lines(dc, rig.session, null));
+    var open = PlanScreens.joined(TrainingScreen.lines(dc, rig.session, null, null));
     Test.assertMessage(open.find(TrainingText.text(Rez.Strings.TrRepsOpen)) != null, open);
     return true;
 }
@@ -615,18 +655,18 @@ function trainingScreensShowSidesAndOpenValues(logger as Logger) as Boolean {
 function trainingViewDrawsEveryState(logger as Logger) as Boolean {
     var dc = PairingScreens.deviceDc();
     var rig = new PlayerRig(false);
-    PairingLayout.draw(dc, TrainingScreen.lines(dc, rig.session, null));    // preview
+    PairingLayout.draw(dc, TrainingScreen.lines(dc, rig.session, null, null));    // preview
     rig.toFirstSet();
-    PairingLayout.draw(dc, TrainingScreen.lines(dc, rig.session, 140));     // set
+    PairingLayout.draw(dc, TrainingScreen.lines(dc, rig.session, 140, null));     // set
     rig.session.confirmSet();
-    PairingLayout.draw(dc, TrainingScreen.lines(dc, rig.session, null));    // rest
+    PairingLayout.draw(dc, TrainingScreen.lines(dc, rig.session, null, null));    // rest
     rig.clock.now += 112;
-    PairingLayout.draw(dc, TrainingScreen.lines(dc, rig.session, 99));      // rest, warning colour
+    PairingLayout.draw(dc, TrainingScreen.lines(dc, rig.session, 99, null));      // rest, warning colour
     var long = PlayerRig.dayBody(false);
     PlayerRig.change(long, "cat", 0, "n", "Kurzhantel-Schrägbankdrücken eng mit Pause unten");
     var rig2 = new PlayerRig(false);
     rig2.session = TrainingSession.start(long, rig2.journal, rig2.clock, rig2.signals);
-    PairingLayout.draw(dc, TrainingScreen.lines(dc, rig2.session, null));
+    PairingLayout.draw(dc, TrainingScreen.lines(dc, rig2.session, null, null));
     var done = new PlayerRig(false);
     done.toFirstSet();
     for (var i = 0; i < 3; i++) { done.setAndRest(); }
@@ -636,14 +676,14 @@ function trainingViewDrawsEveryState(logger as Logger) as Boolean {
     done.session.endRest();
     done.session.confirmPreview();
     done.session.confirmSet();
-    PairingLayout.draw(dc, TrainingScreen.lines(dc, done.session, null));  // finished
+    PairingLayout.draw(dc, TrainingScreen.lines(dc, done.session, null, null));  // finished
     return true;
 }
 
 (:test)
 function trainingDelegateFollowsTheKeys(logger as Logger) as Boolean {
     var rig = new PlayerRig(false);
-    var delegate = new TrainingDelegate(rig.session);
+    var delegate = new TrainingDelegate(rig.session, rig.sender);
     Test.assert(delegate.onSelect());                    // preview -> set
     Expect.equal(rig.session.state, TrainingSession.STATE_SET);
     Test.assert(delegate.onSelect());                    // set -> rest
@@ -665,14 +705,14 @@ function trainingDelegateFollowsTheKeys(logger as Logger) as Boolean {
 function trainingLauncherStartsContinuesAndNeverDuplicates(logger as Logger) as Boolean {
     var store = new MemoryStore();
     var journal = new Journal(store);
-    var launcher = new TestLauncher(journal, new FakeClock(), new RecordingSignals());
+    var launcher = new TestLauncher(journal, new FakeClock(), new RecordingSignals(), PlayerRig.senderFor(store, new FakeClock()));
     Test.assert(launcher.activeName() == null);
     Test.assert(!launcher.begin(null));                  // nothing to start or continue
     Test.assert(launcher.begin(PlayerRig.dayBody(false)));
     Expect.equal(launcher.shown.size(), 1);
     Expect.equal(launcher.activeName(), "Oberkörper A");
     // the app starts again: the workout in progress is continued, another day does not start a second one
-    var again = new TestLauncher(journal, new FakeClock(), new RecordingSignals());
+    var again = new TestLauncher(journal, new FakeClock(), new RecordingSignals(), PlayerRig.senderFor(store, new FakeClock()));
     var other = PlayerRig.dayBody(false);
     other["id"] = "d2";
     other["n"] = "Beine";

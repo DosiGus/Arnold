@@ -64,4 +64,25 @@
     <string id="HomeResume">Workout running</string>
     <string id="HomeResumeHint">START: continue</string>
     <string id="HomeStartHint">START: workout</string>
+    <string id="SumSets">$1$ of $2$ sets</string>
+    <string id="SumSave">START: save</string>
+    <string id="SumNothing">Nothing to save</string>
+    <string id="SumDiscardHint">Hold UP: discard</string>
+    <string id="SumSaved">Saved on the watch</string>
+    <string id="SumSending">Sending …</string>
+    <string id="SumWaiting">Will be sent when the phone is back</string>
+    <string id="SumSent">All sent</string>
+    <string id="SumRecords">New records</string>
+    <string id="SumNext">Next time</string>
+    <string id="SumRejected">Not sent</string>
+    <string id="SumRetryHint">Start screen menu: Send now</string>
+    <string id="SumAsking">Please answer</string>
+    <string id="PromptDuplicate">Already in your history. Save anyway?</string>
+    <string id="PromptUnusual">Unusual values. Are they right?</string>
+    <string id="PromptStale">A workout was never sent. Discard it?</string>
+    <string id="PromptDiscard">Discard workout?</string>
+    <string id="PromptDiscard2">Really? This cannot be undone.</string>
+    <string id="MenuSendNow">Send now</string>
+    <string id="HomePending">$1$ workout waiting</string>
+    <string id="HomePendingMany">$1$ workouts waiting</string>
 </strings>

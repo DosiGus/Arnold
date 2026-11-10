@@ -31,6 +31,11 @@ class Journal {
         return id instanceof String && Uuid.isV4(id as String) ? id as String : null;
     }
 
+    // True once the workout was saved for sending (its outbox entry exists).
+    function isSaved(uuid as String) as Boolean {
+        return _store.getValue(StoreKeys.outbox(uuid)) != null;
+    }
+
     // Creates a workout: plan copy and head first, the active marker last, so a
     // start that was interrupted never looks like a running workout.
     function begin(uuid as String, head as Dictionary, planDay as Dictionary) as Void {
@@ -99,9 +104,15 @@ class Journal {
         }
     }
 
-    // Marker only (used when the head or the plan copy cannot be read).
+    // Marker only (used when the head or the plan copy cannot be read, and once
+    // a finished workout is saved for sending).
     function forgetActive() as Void {
         _store.deleteValue(StoreKeys.ACTIVE_SESSION);
+    }
+
+    // Makes a workout the one in progress again (back from the "send?" question to the summary).
+    function setActive(uuid as String) as Void {
+        _store.setValue(StoreKeys.ACTIVE_SESSION, uuid);
     }
 
     hidden function readEvent(uuid as String, n as Number) as Dictionary or Null {

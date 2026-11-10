@@ -25,12 +25,24 @@ class HomeView extends WatchUi.View {
     function onShow() as Void {
         _controller.setObserver(method(:onChanged));
         _sync.setObserver(method(:onChanged));
+        _launcher.sender().setObserver(method(:onSendChanged));
         syncIfNeeded();
+        if (_controller.isPaired()) {
+            _launcher.sender().sendAll();   // workouts that are still waiting go out when the app opens
+            SyncPrompts.check(_launcher.sender());
+            SyncPrompts.checkStale(_launcher.sender(), _clock.nowSeconds());
+        }
+    }
+
+    function onSendChanged() as Void {
+        WatchUi.requestUpdate();
+        SyncPrompts.check(_launcher.sender());
     }
 
     function onHide() as Void {
         _controller.setObserver(null);
         _sync.setObserver(null);
+        _launcher.sender().setObserver(null);
     }
 
     function onChanged() as Void {
@@ -40,10 +52,11 @@ class HomeView extends WatchUi.View {
 
     function onUpdate(dc as Dc) as Void {
         var running = _launcher.activeName();
+        var pending = _launcher.sender().pendingCount();
         if (_controller.isPaired() && running != null) {
-            PairingLayout.draw(dc, HomeScreen.resumeLines(running as String));
+            PairingLayout.draw(dc, HomeScreen.withPending(HomeScreen.resumeLines(running as String), pending));
         } else if (_controller.isPaired()) {
-            PairingLayout.draw(dc, HomeScreen.lines(dc, _sync, _picker, _clock.nowSeconds()));
+            PairingLayout.draw(dc, HomeScreen.withPending(HomeScreen.lines(dc, _sync, _picker, _clock.nowSeconds()), pending));
         } else {
             PairingLayout.draw(dc, PairingScreen.lines(dc, _controller));
         }
@@ -107,6 +120,14 @@ module HomeScreen {
             out.add(new PairingLine(text(Rez.Strings.HomeStartHint), Graphics.FONT_XTINY, gray));
         }
         return out;
+    }
+
+    // "1 workout waiting": workouts saved on the watch that the server has not confirmed yet (PRD S-05).
+    function withPending(lines as Array<PairingLine>, pending as Number) as Array<PairingLine> {
+        if (pending > 0) {
+            lines.add(new PairingLine(Lang.format(text(pending == 1 ? Rez.Strings.HomePending : Rez.Strings.HomePendingMany), [pending]), Graphics.FONT_XTINY, Graphics.COLOR_YELLOW));
+        }
+        return lines;
     }
 
     // A workout is running (or was interrupted): offer to continue it.

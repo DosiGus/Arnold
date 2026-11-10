@@ -622,7 +622,7 @@ function homeDelegateMovesTheDayAndLoadsAMissingPlan(logger as Logger) as Boolea
     var rig = new PlanRig();
     rig.loadAll();
     var picker = new SessionPicker();
-    var launcher = new TestLauncher(new Journal(rig.pairing.store), rig.pairing.clock, new RecordingSignals());
+    var launcher = new TestLauncher(new Journal(rig.pairing.store), rig.pairing.clock, new RecordingSignals(), PlayerRig.senderFor(rig.pairing.store, rig.pairing.clock));
     var delegate = new HomeDelegate(rig.pairing.controller, rig.sync, picker, launcher);
     Expect.equal(picker.selectedIndex(rig.cache.directory()), 1);
     Test.assert(delegate.onNextPage());
@@ -651,7 +651,7 @@ function homeDelegateMovesTheDayAndLoadsAMissingPlan(logger as Logger) as Boolea
 (:test)
 function homeDelegateStartsPairingWhenNotConnected(logger as Logger) as Boolean {
     var rig = new PlanRig();
-    var launcher = new TestLauncher(new Journal(rig.pairing.store), rig.pairing.clock, new RecordingSignals());
+    var launcher = new TestLauncher(new Journal(rig.pairing.store), rig.pairing.clock, new RecordingSignals(), PlayerRig.senderFor(rig.pairing.store, rig.pairing.clock));
     var delegate = new HomeDelegate(rig.pairing.controller, rig.sync, new SessionPicker(), launcher);
     Test.assert(!delegate.onNextPage());     // no day to choose yet
     Test.assert(delegate.onSelect());

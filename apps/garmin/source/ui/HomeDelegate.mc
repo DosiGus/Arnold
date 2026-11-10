@@ -36,6 +36,10 @@ class HomeDelegate extends PairingDelegate {
         return true;
     }
 
+    function outboxSender() as OutboxSender or Null {
+        return _launcher.sender();
+    }
+
     function onNextPage() as Boolean {
         return move(1);
     }
