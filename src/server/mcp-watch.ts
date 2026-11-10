@@ -30,8 +30,11 @@ import { accountLabel, formatUserCode, sha256 } from "./watch/pairing.js";
 import { HEALTH_SCOPE } from "./watch/health.js";
 
 export const PAIRING_CONFIRMATION_TTL_MS = 5 * 60 * 1000;
-/** Version of the health consent text; GAR-B7-01 raises it with the final text. */
-export const HEALTH_CONSENT_TEXT_VERSION = "2026-11-entwurf-1";
+/**
+ * Version of the health consent text (card hint and /datenschutz, approved
+ * in 03 M077). A new consent must name it; an earlier consent stays valid.
+ */
+export const HEALTH_CONSENT_TEXT_VERSION = "2026-11-10";
 export const PAIRING_FAILURES_PER_HOUR = 5;
 
 class WatchToolError extends Error {

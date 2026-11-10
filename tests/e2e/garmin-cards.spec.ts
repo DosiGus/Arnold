@@ -9,7 +9,7 @@ import { resolve } from "node:path";
 const BASE = "http://127.0.0.1:8792";
 const TOKEN = "synthetic-watch-confirmation-token-only";
 const ZONE = "America/New_York";
-const VERSION = "2026-11-entwurf-1";
+const VERSION = "2026-11-10";
 
 const result = (route: Route, value: unknown, meta?: object, isError = false) =>
   route.fulfill({
@@ -231,7 +231,12 @@ test("the account card shows the watch, grants consent with the text version and
   await page
     .getByRole("button", { name: "Messwerte speichern", exact: true })
     .click();
-  await expect(page.getByText("Das sind Gesundheitsdaten.")).toBeVisible();
+  await expect(page.getByText(/Das sind Gesundheitsdaten\./)).toBeVisible();
+  await expect(
+    page.getByText(
+      /Die Einwilligung ist freiwillig, Arnold funktioniert auch ohne sie\./,
+    ),
+  ).toBeVisible();
   expect(sent.some((s) => s.name === "set_garmin_health_consent")).toBe(false);
   await page.getByRole("button", { name: "Einwilligen", exact: true }).click();
   await expect(page.getByText("Erteilt", { exact: true })).toBeVisible();
@@ -271,4 +276,26 @@ test("the account card shows the watch, grants consent with the text version and
       args: { device_id: "wdv_0b7c3c1e-6f0a-4d7e-9f51-6a3e2d1c0b9a" },
     },
   ]);
+});
+
+test("the privacy page explains the watch's health data in German and English (GAR-B7-01)", async ({
+  page,
+}) => {
+  await page.goto(`${BASE}/datenschutz`);
+  const german = page.locator("#garmin-uhr");
+  await expect(german).toHaveText("10. Garmin-Uhr");
+  await expect(page.locator("main")).toContainText(
+    "Diese Messwerte sind Gesundheitsdaten nach Artikel 9 der DSGVO.",
+  );
+  await expect(page.locator("main")).toContainText("nicht im Klartext");
+  const english = page.locator('section[lang="en"]');
+  await expect(
+    english.getByRole("heading", { name: "Garmin watch" }),
+  ).toBeVisible();
+  await expect(english).toContainText("health data under Article 9 GDPR");
+  await expect(english).toContainText("never in plain text");
+  // The controller and contact stay the owner's placeholders.
+  await expect(page.locator("main")).toContainText(
+    "[PLATZHALTER: Name und Anschrift des Verantwortlichen]",
+  );
 });

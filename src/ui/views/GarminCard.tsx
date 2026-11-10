@@ -22,11 +22,13 @@ const TIME = new Intl.DateTimeFormat("de-DE", {
 const timeLabel = (iso: string) => TIME.format(new Date(iso));
 
 /**
- * Short consent hint until the final privacy text (GAR-B7-01) replaces it.
- * Shown before the user grants, so the click refers to this text.
+ * The consent text approved by the owner (GAR-B7-01, 03 M077), version
+ * HEALTH_CONSENT_TEXT_VERSION. Shown before the user grants, so the click
+ * refers to this text. The cards are German; the English text is on the
+ * privacy page (/datenschutz#garmin-watch).
  */
 export const HEALTH_CONSENT_HINT =
-  "Mit deiner Einwilligung speichert Arnold zu jedem Uhr-Training Messwerte wie Puls, Kalorien, Body Battery und Stress. Das sind Gesundheitsdaten. Du kannst die Einwilligung jederzeit widerrufen; Arnold löscht dann alle gespeicherten Messwerte.";
+  "Mit deiner Einwilligung speichert Arnold zu jedem Training von der Uhr deine Messwerte: Puls, Kalorien, Body Battery, Stress und Ruhepuls. Das sind Gesundheitsdaten. Arnold nutzt sie nur, um sie dir zu deinen Trainings zu zeigen. Die Einwilligung ist freiwillig, Arnold funktioniert auch ohne sie. Du kannst sie jederzeit hier widerrufen; Arnold löscht dann sofort alle gespeicherten Messwerte.";
 
 /** Pairing confirmation or the watches of the account, by payload. */
 export function GarminCard({
