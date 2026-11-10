@@ -23,7 +23,7 @@ class ArnoldApp extends Application.AppBase {
 
     (:garminProduct, :typecheck(disableBackgroundCheck))
     function getInitialView() as [WatchUi.Views] or [WatchUi.Views, WatchUi.InputDelegates] {
-        return [new PairingView(Session.pairing()), new PairingDelegate(Session.pairing())];
+        return HomeFlow.views();
     }
 
     (:garminGate, :typecheck(disableBackgroundCheck))

@@ -211,7 +211,7 @@ module DebugMenu {
         menu.addItem(new WatchUi.MenuItem("3 Vorbereiten", "Test-Training speichern", :freeze, null));
         menu.addItem(new WatchUi.MenuItem("4 Senden", "Gleiche Anfrage wiederholen", :send, null));
         menu.addItem(new WatchUi.MenuItem("5 Status", "Speicher kontrollieren", :status, null));
-        menu.addItem(new WatchUi.MenuItem("6 Arnold-App", "Echte Kopplung", :app, null));
+        menu.addItem(new WatchUi.MenuItem("6 Arnold-App", "Echte App", :app, null));
         return menu;
     }
 }
@@ -222,7 +222,8 @@ class DebugDelegate extends WatchUi.Menu2InputDelegate {
         var runner = DebugState.get();
         var id = item.getId();
         if (id == :app) {
-            WatchUi.pushView(new PairingView(Session.pairing()), new PairingDelegate(Session.pairing()), WatchUi.SLIDE_LEFT);
+            var views = HomeFlow.views();
+            WatchUi.pushView(views[0], views[1], WatchUi.SLIDE_LEFT);
             return;
         }
         if (id == :pair) { runner.pair(); }

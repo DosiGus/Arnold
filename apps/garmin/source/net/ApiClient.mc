@@ -13,6 +13,10 @@ class ApiClient {
         WAITING
     }
 
+    // Code of the last answer (HTTP status or negative Connect IQ error); -104 means
+    // no connection to the phone. 0 before the first answer.
+    var lastCode as Number = 0;
+
     private var _baseUrl as String;
     private var _transport as Transport;
     private var _scheduler as Scheduler;
@@ -135,6 +139,7 @@ class ApiClient {
 
     hidden function finish(request as ApiRequest, code as Number, data as Dictionary or String or Null) as Void {
         _inFlight = null;
+        lastCode = code;
         if (request.dropped) {
             _queue.remove(request);
             pump();

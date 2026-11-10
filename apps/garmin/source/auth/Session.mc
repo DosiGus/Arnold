@@ -6,6 +6,7 @@ import Toybox.Lang;
 module Session {
     var _client as ApiClient or Null = null;
     var _controller as PairingController or Null = null;
+    var _plan as PlanSync or Null = null;
 
     function client() as ApiClient {
         if (_client == null) {
@@ -28,5 +29,16 @@ module Session {
             );
         }
         return _controller as PairingController;
+    }
+
+    // The plan on the watch and its loader. Signing out (or connecting again)
+    // wipes the stored plan, so no plan outlives the account it belongs to.
+    function planSync() as PlanSync {
+        if (_plan == null) {
+            var cache = new PlanCache(new KeyValueStore());
+            _plan = new PlanSync(client(), cache, new PairingClock(), pairing().method(:onAuthRejected));
+            pairing().setWipeHook(cache.method(:clear));
+        }
+        return _plan as PlanSync;
     }
 }

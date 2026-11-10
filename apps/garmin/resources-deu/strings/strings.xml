@@ -1,6 +1,5 @@
 <strings>
     <string id="AppName">Arnold</string>
-    <string id="HomeGreeting">Hallo</string>
     <string id="PairIntro">Mit ChatGPT verbinden</string>
     <string id="PairStart">START drücken</string>
     <string id="PairGetting">Code wird geholt …</string>
@@ -23,4 +22,24 @@
     <string id="PairSignOutFailed">Nicht abgemeldet. Verbindung prüfen.</string>
     <string id="MenuSignOut">Abmelden</string>
     <string id="SignOutConfirm">Diese Uhr trennen?</string>
+    <string id="HomeLoading">Plan wird geladen …</string>
+    <string id="HomeUpdating">Aktualisiere …</string>
+    <string id="HomeNoPhone">Handy nicht verbunden</string>
+    <string id="HomePlanAge">Plan $1$</string>
+    <string id="HomePlanAgeOffline">Offline · Plan $1$</string>
+    <string id="HomeDayNotLoaded">Noch nicht geladen</string>
+    <string id="HomeNext">Als Nächstes</string>
+    <string id="HomeDayOf">Tag $1$ von $2$</string>
+    <string id="HomeNoPlan">Kein aktiver Plan</string>
+    <string id="HomeNoPlanHint">Lege ihn in ChatGPT an</string>
+    <string id="HomeSetup">Einrichtung offen</string>
+    <string id="HomeSetupHint">Schließe sie in ChatGPT ab</string>
+    <string id="HomeNoPlanLoaded">Kein Plan geladen</string>
+    <string id="HomeExerciseOne">$1$ Übung</string>
+    <string id="HomeExercises">$1$ Übungen</string>
+    <string id="HomeMinutes">$1$ Min.</string>
+    <string id="AgeNow">gerade eben</string>
+    <string id="AgeMinutes">vor $1$ Min.</string>
+    <string id="AgeHours">vor $1$ Std.</string>
+    <string id="AgeDays">vor $1$ Tagen</string>
 </strings>

@@ -52,6 +52,7 @@ class PairingController {
     private var _partNumber as String;
     private var _blocked as Boolean;
     private var _observer as (Method() as Void) or Null;
+    private var _wipeHook as (Method() as Void) or Null;
 
     private var _generation as Number;   // answers of an older attempt are ignored
     private var _tickArmed as Boolean;
@@ -84,6 +85,7 @@ class PairingController {
         _partNumber = partNumber;
         _blocked = blocked;
         _observer = null;
+        _wipeHook = null;
         _generation = 0;
         _tickArmed = false;
         _startedAt = 0;
@@ -115,6 +117,12 @@ class PairingController {
     // The screen in front redraws when this is called. One observer at a time.
     function setObserver(observer as (Method() as Void) or Null) as Void {
         _observer = observer;
+    }
+
+    // Called when the watch signs out or connects (again): data of the old
+    // connection, such as the stored plan, must not stay.
+    function setWipeHook(hook as (Method() as Void) or Null) as Void {
+        _wipeHook = hook;
     }
 
     function isPaired() as Boolean {
@@ -292,6 +300,7 @@ class PairingController {
         // 401 means the server no longer knows this token: the watch is disconnected either way.
         if (outcome == ApiClient.DONE_OK || code == 401) {
             _signOutRequest = null;
+            wipe();
             forgetToken();
             notice = NOTICE_NONE;
             changed();
@@ -336,6 +345,7 @@ class PairingController {
             return;
         }
         var credentials = new Credentials(token, deviceId as String, label instanceof String ? label as String : "");
+        wipe();
         _auth.save(credentials);
         _client.setToken(token);
         accountLabel = credentials.accountLabel;
@@ -369,6 +379,12 @@ class PairingController {
         phase = PHASE_REQUESTING;
         _ticker.cancel();
         _tickArmed = false;
+    }
+
+    hidden function wipe() as Void {
+        if (_wipeHook != null) {
+            (_wipeHook as Method() as Void).invoke();
+        }
     }
 
     hidden function forgetToken() as Void {

@@ -11,7 +11,10 @@ function homeViewDrawsOnDeviceDisplay(logger as Logger) as Boolean {
         :width => settings.screenWidth,
         :height => settings.screenHeight
     }).get() as BufferedBitmap;
-    var view = new HomeView();
+    var rig = new PlanRig();
+    rig.pairing.restartPaired();
+    rig.loadAll();
+    var view = new HomeView(rig.pairing.controller, rig.sync, new SessionPicker());
     view.onUpdate(bitmap.getDc());
     logger.debug("display " + settings.screenWidth + "x" + settings.screenHeight);
     return true;
