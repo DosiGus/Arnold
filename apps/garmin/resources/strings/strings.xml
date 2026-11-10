@@ -60,6 +60,9 @@
     <string id="TrFinished">Workout done</string>
     <string id="TrSetsDone">$1$ sets done</string>
     <string id="TrSummaryFollows">Summary follows</string>
+    <string id="RecActivityName">Arnold</string>
+    <string id="RecFieldReps">Reps</string>
+    <string id="RecFieldLoad">Weight</string>
     <string id="TrPausePrompt">Pause workout?</string>
     <string id="HomeResume">Workout running</string>
     <string id="HomeResumeHint">START: continue</string>

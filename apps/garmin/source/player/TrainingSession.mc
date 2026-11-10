@@ -10,7 +10,9 @@ import Toybox.Lang;
 // T-09). The rest timer runs on timestamps, so it is right after any hang.
 // Changes during the workout (GAR-B3-05) are journal events too: the plan copy is
 // never rewritten, the events are replayed on it when the workout is resumed.
-// Not in this class: the summary and upload (GAR-B3-06), the recording (GAR-B4-01).
+// The recording (GAR-B4-01) follows the workout from outside: running while it runs, stopped
+// in a pause and on the summary, saved and discarded with it. Not in this class: the summary
+// and upload (GAR-B3-06).
 class TrainingSession {
     enum State {
         STATE_PREVIEW,
@@ -37,6 +39,7 @@ class TrainingSession {
     private var _signals as Signals;
     private var _head as Dictionary;
     private var _warned as Boolean;
+    private var _recorder as Recorder or Null;
 
     // `head` and `events` come from the journal when a workout is resumed.
     function initialize(
@@ -60,6 +63,7 @@ class TrainingSession {
         setIdx = head["s"] as Number;
         paused = false;
         _warned = false;
+        _recorder = null;
         for (var i = 0; i < events.size(); i++) {
             applyPlanEvent(events[i]);
         }
@@ -108,6 +112,12 @@ class TrainingSession {
         }
         session.continueWorkout();
         return session;
+    }
+
+    // The recording that follows this workout (null: none). It is brought in step at once.
+    function attachRecorder(recorder as Recorder or Null) as Void {
+        _recorder = recorder;
+        syncRecorder();
     }
 
     function dayName() as String {
@@ -190,12 +200,18 @@ class TrainingSession {
             outbox.add(uuid, WorkoutUpload.build(self, _clock.nowSeconds()), _clock.nowSeconds());
         }
         _journal.forgetActive();
+        if (_recorder != null) {
+            (_recorder as Recorder).save();
+        }
         return true;
     }
 
     // The workout is thrown away (discard in the summary).
     function discard() as Void {
         _journal.discard(uuid);
+        if (_recorder != null) {
+            (_recorder as Recorder).discard();
+        }
     }
 
     // What comes after the rest on screen: the set (true) or the next exercise (false).
@@ -448,6 +464,9 @@ class TrainingSession {
             event["g"] = planned.loadG;
         }
         record(event);
+        if (_recorder != null) {
+            (_recorder as Recorder).lap(planned.reps as Number, planned.loadG);   // before afterSet: it may end the workout
+        }
         afterSet(now);
         return true;
     }
@@ -519,6 +538,7 @@ class TrainingSession {
         paused = true;
         _head["pz"] = 1;
         _journal.saveHead(uuid, _head);
+        syncRecorder();
     }
 
     // Back into the workout after a pause, a restart or a forced exit.
@@ -559,6 +579,7 @@ class TrainingSession {
             _head["n"] = events.size();   // an event is damaged: continue with what is readable
         }
         _journal.saveHead(uuid, _head);
+        syncRecorder();
         if (state == STATE_REST && restRemaining() <= 0) {
             advanceFromRest();   // the rest ended while the app was closed
         }
@@ -680,5 +701,18 @@ class TrainingSession {
         _head["rm"] = 0;
         paused = false;
         _journal.saveHead(uuid, _head);
+        syncRecorder();
+    }
+
+    // The recording runs while the workout runs; in a pause and on the summary it stands still.
+    hidden function syncRecorder() as Void {
+        if (_recorder == null) {
+            return;
+        }
+        if (paused || state == STATE_FINISHED) {
+            (_recorder as Recorder).pause();
+        } else {
+            (_recorder as Recorder).resume();
+        }
     }
 }

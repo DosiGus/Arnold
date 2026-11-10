@@ -42,6 +42,9 @@
     <string id="AgeMinutes">vor $1$ Min.</string>
     <string id="AgeHours">vor $1$ Std.</string>
     <string id="AgeDays">vor $1$ Tagen</string>
+    <string id="RecActivityName">Arnold</string>
+    <string id="RecFieldReps">Wiederholungen</string>
+    <string id="RecFieldLoad">Gewicht</string>
     <string id="TrExerciseOf">Übung $1$ von $2$</string>
     <string id="TrRestOf">Pause $1$</string>
     <string id="TrSets">$1$ Sätze</string>

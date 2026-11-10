@@ -32,7 +32,12 @@ class TestLauncher extends TrainingLauncher {
         shown = [] as Array<TrainingSession>;
     }
 
+    function newRecorder(workoutUuid as String) as Recorder {
+        return new Recorder(workoutUuid, new FakeBackend());
+    }
+
     function show(session as TrainingSession) as Void {
+        session.attachRecorder(recorderFor(session.uuid));
         shown.add(session);
     }
 }

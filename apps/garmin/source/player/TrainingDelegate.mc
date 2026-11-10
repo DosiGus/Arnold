@@ -155,12 +155,14 @@ class TrainingLauncher {
     private var _clock as PairingClock;
     private var _signals as Signals;
     private var _sender as OutboxSender;
+    private var _recorder as Recorder or Null;   // the recording of the workout last shown
 
     function initialize(journal as Journal, clock as PairingClock, signals as Signals, sender as OutboxSender) {
         _journal = journal;
         _clock = clock;
         _signals = signals;
         _sender = sender;
+        _recorder = null;
     }
 
     function sender() as OutboxSender {
@@ -194,7 +196,24 @@ class TrainingLauncher {
         return true;
     }
 
+    // The recording of this workout: the same one when the workout is shown again in this run
+    // of the app (after a pause), otherwise a new one (first time, or after a crash, 07 D-31).
+    function recorderFor(workoutUuid as String) as Recorder {
+        var current = _recorder;
+        if (current != null && (current as Recorder).uuid.equals(workoutUuid) && !(current as Recorder).isClosed()) {
+            return current as Recorder;
+        }
+        var fresh = newRecorder(workoutUuid);
+        _recorder = fresh;
+        return fresh;
+    }
+
+    function newRecorder(workoutUuid as String) as Recorder {
+        return new Recorder(workoutUuid, new FitBackend());
+    }
+
     function show(session as TrainingSession) as Void {
+        session.attachRecorder(recorderFor(session.uuid));
         WatchUi.pushView(new TrainingView(session, _sender), new TrainingDelegate(session, _sender), WatchUi.SLIDE_LEFT);
     }
 }
