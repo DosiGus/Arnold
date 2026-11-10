@@ -59,6 +59,40 @@ module PairingLayout {
         return lines;
     }
 
+    // Width for the exercise name at the top of the display (the round edge is narrow there).
+    function nameWidth(dc as Dc) as Number {
+        return dc.getWidth() * 68 / 100;
+    }
+
+    // The text cut to fit maxWidth on one line: the end becomes "..." (plain dots, every font has them).
+    // Counts characters, not bytes, so umlauts are never cut in half.
+    function ellipsize(dc as Dc, text as String, font as Graphics.FontType, maxWidth as Number) as String {
+        if (dc.getTextWidthInPixels(text, font) <= maxWidth) {
+            return text;
+        }
+        var n = text.length();
+        while (n > 1) {
+            n--;
+            var cut = (text.substring(0, n) as String) + "...";
+            if (dc.getTextWidthInPixels(cut, font) <= maxWidth) {
+                return cut;
+            }
+        }
+        return "...";
+    }
+
+    // A line with an exercise name (or text with one in it): one line, long names cut with "...".
+    function nameLine(dc as Dc, text as String, color as Graphics.ColorType) as PairingLine {
+        var font = Graphics.FONT_TINY;
+        return new PairingLine(ellipsize(dc, text, font, nameWidth(dc)), font, color);
+    }
+
+    // The same further down the display, where the round edge leaves more width.
+    function lowerNameLine(dc as Dc, text as String, color as Graphics.ColorType) as PairingLine {
+        var font = Graphics.FONT_TINY;
+        return new PairingLine(ellipsize(dc, text, font, textWidth(dc)), font, color);
+    }
+
     // The first font (largest first) in which the text fits on one line; the last one otherwise.
     function fitFont(dc as Dc, text as String, maxWidth as Number, fonts as Array<Graphics.FontType>) as Graphics.FontType {
         for (var i = 0; i < fonts.size(); i++) {

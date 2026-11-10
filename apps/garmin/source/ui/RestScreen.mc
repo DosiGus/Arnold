@@ -9,6 +9,7 @@ module RestScreen {
         var out = [] as Array<PairingLine>;
         var left = session.restRemaining();
         var ex = session.exercise();
+        out.add(PairingLayout.nameLine(dc, ex.name, Graphics.COLOR_WHITE));
         out.add(new PairingLine(TrainingText.text(Rez.Strings.TrRest), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY));
         var color = left <= WARN_COLOR_S ? Graphics.COLOR_YELLOW : Graphics.COLOR_WHITE;
         out.add(PairingLayout.bigLine(dc, TrainingText.clock(left), color));
@@ -18,7 +19,7 @@ module RestScreen {
         } else {
             var next = session.nextExerciseIndex();
             if (next >= 0) {
-                out.add(new PairingLine(Lang.format(TrainingText.text(Rez.Strings.TrNextExercise), [session.plan.exercises[next].name]), Graphics.FONT_XTINY, Graphics.COLOR_WHITE));
+                out.add(PairingLayout.lowerNameLine(dc, Lang.format(TrainingText.text(Rez.Strings.TrNextExercise), [session.plan.exercises[next].name]), Graphics.COLOR_LT_GRAY));
             }
         }
         out.add(new PairingLine(SetScreen.heartText(heartRate), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY).skippable());

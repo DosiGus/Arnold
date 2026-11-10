@@ -7,7 +7,7 @@ module SetList {
 
     function build(session as TrainingSession) as WatchUi.Menu2 {
         var ex = session.exercise();
-        var menu = new WatchUi.Menu2({ :title => ex.name });
+        var menu = new WatchUi.Menu2({ :title => TrainingText.shortName(ex.name, 20) });
         for (var i = 0; i < ex.sets.size(); i++) {
             var done = session.doneSet(i);
             var label = (i + 1).toString() + "  ";

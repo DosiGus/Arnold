@@ -486,3 +486,61 @@ function oldHealthEntriesExpireAfterFourteenDays(logger as Logger) as Boolean {
     Test.assertEqual(0, h.health.count());
     return true;
 }
+
+// Heart rate for display and capture (GAR-B3-09): activity data first, the sensor as a fallback, never 0.
+(:test)
+function liveHeartPrefersTheActivityAndNeverReturnsZero(logger as Logger) as Boolean {
+    Test.assert(LiveHeart.pick(131, 120) == 131);
+    Test.assert(LiveHeart.pick(null, 120) == 120);
+    Test.assert(LiveHeart.pick(0, 120) == 120);
+    Test.assert(LiveHeart.pick(131, null) == 131);
+    Test.assert(LiveHeart.pick(null, null) == null);
+    Test.assert(LiveHeart.pick(0, 0) == null);
+    Test.assert(LiveHeart.pick(null, 0) == null);
+    Test.assert(LiveHeart.pick(-5, null) == null);
+    Test.assert(LiveHeart.pick("x", null) == null);
+    Test.assert(!LiveHeart.valid(null));
+    Test.assert(!LiveHeart.valid(0));
+    Test.assert(LiveHeart.valid(55));
+    return true;
+}
+
+(:test)
+function liveHeartIsOnePathForDisplayAndCapture(logger as Logger) as Boolean {
+    // The real source asks LiveHeart; in the simulator without a sensor both say the same: a positive number or null.
+    var viaSource = new WatchHealthSource().heartRate();
+    var viaLive = LiveHeart.current();
+    Test.assert(viaSource == null || (viaSource instanceof Number && (viaSource as Number) > 0));
+    Test.assert(viaLive == null || (viaLive instanceof Number && (viaLive as Number) > 0));
+    Test.assert((viaSource == null) == (viaLive == null));
+    // the sensor is only switched on by the fallback and off again afterwards
+    LiveHeart.disable();
+    Test.assert(!LiveHeart.sensorOn);
+    // "-- bpm" without a reading
+    Test.assert(SetScreen.heartText(null).find("--") != null);
+    return true;
+}
+
+(:test)
+function captureKeepsGoingWhenTheHeartRateIsMissing(logger as Logger) as Boolean {
+    var h = new HealthRig(true);
+    h.capture.resume();
+    h.run(3);
+    h.source.hr = null;
+    h.run(3);
+    h.source.hr = 120;
+    h.run(3);
+    h.capture.finish();
+    Test.assert(h.capture.isDone());
+    var values = h.values();
+    var zeros = 0;
+    for (var k = 0; k < values.size(); k++) {
+        Test.assert((values[k] as Number) >= 0);
+        if ((values[k] as Number) == 0) {
+            zeros++;
+        }
+    }
+    Test.assert(zeros >= 2);   // the gap is 0 (no measurement), never a made-up value
+    Test.assert((values[values.size() - 1] as Number) == 120);   // the readings after the gap are kept
+    return true;
+}

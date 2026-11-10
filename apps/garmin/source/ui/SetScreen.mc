@@ -9,6 +9,7 @@ module SetScreen {
         var out = [] as Array<PairingLine>;
         var ex = session.exercise();
         var set = session.currentSet() as PlannedSet;
+        out.add(PairingLayout.nameLine(dc, ex.name, Graphics.COLOR_WHITE));
         var title = Lang.format(TrainingText.text(Rez.Strings.TrSetOf), [session.setIdx + 1, ex.sets.size()]);
         var side = TrainingText.sideText(set.side);
         if (side != null) {
@@ -33,9 +34,9 @@ module SetScreen {
         } else if (set.loadG == null) {
             out.add(new PairingLine(TrainingText.text(Rez.Strings.TrWeightOpen), Graphics.FONT_XTINY, Graphics.COLOR_YELLOW));
         } else if (ex.perSide && set.side == PlannedSet.SIDE_BOTH) {
-            out.add(new PairingLine(TrainingText.text(Rez.Strings.TrPerSide), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY));
+            out.add(new PairingLine(TrainingText.text(Rez.Strings.TrPerSide), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY).skippable());
         } else if (ex.loadSuffix != null) {
-            out.add(new PairingLine(ex.loadSuffix as String, Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY));
+            out.add(new PairingLine(ex.loadSuffix as String, Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY).skippable());
         }
         out.add(new PairingLine(heartText(heartRate), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY).skippable());
         if (ex.lastTime != null) {

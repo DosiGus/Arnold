@@ -18,7 +18,6 @@ class TrainingView extends WatchUi.View {
     }
 
     function onShow() as Void {
-        LiveHeart.enable();
         var timer = new Timer.Timer();
         timer.start(method(:onTick), 1000, true);
         _timer = timer;

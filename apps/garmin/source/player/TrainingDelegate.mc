@@ -38,7 +38,7 @@ class TrainingDelegate extends WatchUi.BehaviorDelegate {
             return true;
         }
         WatchUi.pushView(
-            new WatchUi.Confirmation(TrainingText.text(Rez.Strings.TrPausePrompt)),
+            new WatchUi.Confirmation(TrainingText.asking(_session, Rez.Strings.TrPausePrompt)),
             new PauseConfirmDelegate(_session),
             WatchUi.SLIDE_UP
         );
@@ -117,7 +117,7 @@ class DiscardConfirmDelegate extends WatchUi.ConfirmationDelegate {
         }
         if (_step == 1) {
             WatchUi.pushView(
-                new WatchUi.Confirmation(TrainingText.text(Rez.Strings.PromptDiscard2)),
+                new WatchUi.Confirmation(TrainingText.asking(_session, Rez.Strings.PromptDiscard2)),
                 new DiscardConfirmDelegate(_session, 2, _extraPops),
                 WatchUi.SLIDE_UP
             );

@@ -63,6 +63,25 @@ module TrainingText {
         return null;
     }
 
+    // A name cut to at most maxChars characters, the end "..." (system views have no text measuring).
+    // Counts characters, so an umlaut is never cut in half.
+    function shortName(name as String, maxChars as Number) as String {
+        if (name.length() <= maxChars) {
+            return name;
+        }
+        return (name.substring(0, maxChars - 3) as String) + "...";
+    }
+
+    // The question of a dialog during the workout with the exercise it is about on top:
+    // "Bankdrücken" newline "End workout?". Without an exercise on screen (preview, summary) the question alone.
+    function asking(session as TrainingSession, question as ResourceId) as String {
+        var prompt = text(question);
+        if (session.state != TrainingSession.STATE_SET && session.state != TrainingSession.STATE_REST) {
+            return prompt;
+        }
+        return shortName(session.exercise().name, 26) + "\n" + prompt;
+    }
+
     // "2:05"
     function clock(seconds as Number) as String {
         var s = seconds > 0 ? seconds : 0;

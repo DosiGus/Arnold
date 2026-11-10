@@ -129,3 +129,146 @@ function screensAreDarkWithoutLitAreas(logger as Logger) as Boolean {
     }
     return true;
 }
+
+// The exercise name on every training screen (GAR-B3-09). Long names are cut with "...", umlauts survive,
+// the main number stays at least a third of the display and the screen still fits.
+(:test)
+module NameRig {
+    const LONG as String = "Überzüge am Kabelzug mit breitem Griff, schräg sitzend, Äußere Variante";
+
+    // A day whose first exercise has the given name and the second one the other name.
+    function rig(first as String, second as String) as PlayerRig {
+        var day = PlayerRig.dayBody(true);
+        PlayerRig.change(day, "cat", 0, "n", first);
+        PlayerRig.change(day, "cat", 1, "n", second);
+        var rig = new PlayerRig(true);
+        rig.session = TrainingSession.start(day, rig.journal, rig.clock, rig.signals);
+        return rig;
+    }
+
+    function firstText(lines as Array<PairingLine>) as String {
+        return lines[0].text;
+    }
+
+    // The exercise name is the first line drawn (never dropped), at most as wide as the name area.
+    function nameOnTop(dc as Dc, lines as Array<PairingLine>, expectCut as Boolean, shortPart as String) as Boolean {
+        var drawn = PairingLayout.arrange(dc, lines);
+        var top = drawn[0].text;
+        if (dc.getTextWidthInPixels(top, drawn[0].font) > PairingLayout.nameWidth(dc)) {
+            return false;
+        }
+        if (expectCut) {
+            return top.length() >= 4 && (top.substring(top.length() - 3, top.length()) as String).equals("...") && top.find(shortPart) == 0;
+        }
+        return top.find(shortPart) == 0 && top.find("...") == null;
+    }
+}
+
+(:test)
+function exerciseNameIsOnTopOfSetRestAndEditScreens(logger as Logger) as Boolean {
+    var dc = LayoutRig.dc();
+    var names = ["Dips", "Bankdrücken", NameRig.LONG];
+    var next = ["Rudern", "Klimmzüge", NameRig.LONG];
+    for (var i = 0; i < names.size(); i++) {
+        var rig = NameRig.rig(names[i], next[i]);
+        var cut = names[i].length() > 20 && dc.getTextWidthInPixels(names[i], Graphics.FONT_TINY) > PairingLayout.nameWidth(dc);
+        var prefix = names[i].substring(0, 3) as String;
+        var tag = names[i] + " on " + dc.getWidth() + " px";
+        rig.session.confirmPreview();
+        var set = SetScreen.lines(dc, rig.session, 132);
+        Test.assertMessage(NameRig.nameOnTop(dc, set, cut, prefix), "set " + tag);
+        Test.assertMessage(LayoutRig.mainNumbersAreBig(dc, set) && LayoutRig.fits(dc, set), "set big+fits " + tag);
+        // heart rate unknown: the name is still there
+        var noHeart = SetScreen.lines(dc, rig.session, null);
+        Test.assertMessage(NameRig.nameOnTop(dc, noHeart, cut, prefix), "set no heart " + tag);
+        // edit
+        var adjust = new SetAdjust(rig.session.currentSet() as PlannedSet, rig.session.exercise(), SetAdjust.FIELD_REPS);
+        var edit = EditScreen.lines(dc, rig.session, adjust);
+        Test.assertMessage(NameRig.nameOnTop(dc, edit, cut, prefix), "edit " + tag);
+        Test.assertMessage(LayoutRig.mainNumbersAreBig(dc, edit) && LayoutRig.fits(dc, edit), "edit big+fits " + tag);
+        // rest after a set of the same exercise: the name of the exercise the rest belongs to
+        rig.session.confirmSet();
+        var rest = RestScreen.lines(dc, rig.session, null);
+        Test.assertMessage(NameRig.nameOnTop(dc, rest, cut, prefix), "rest " + tag);
+        Test.assertMessage(LayoutRig.mainNumbersAreBig(dc, rest) && LayoutRig.fits(dc, rest), "rest big+fits " + tag);
+        logger.debug(tag + ": ok");
+    }
+    return true;
+}
+
+(:test)
+function restBeforeTheNextExerciseShowsBothNames(logger as Logger) as Boolean {
+    var dc = LayoutRig.dc();
+    var rig = NameRig.rig("Bankdrücken", NameRig.LONG);
+    rig.toFirstSet();
+    rig.setAndRest();
+    rig.setAndRest();
+    rig.session.confirmSet();   // last set of the first exercise: the rest belongs to it, the next exercise comes after
+    Test.assert(rig.session.state == TrainingSession.STATE_REST);
+    Test.assert(!rig.session.nextIsSameExercise());
+    var lines = RestScreen.lines(dc, rig.session, 120);
+    Test.assertMessage(NameRig.nameOnTop(dc, lines, false, "Bankdrücken"), "own name");
+    var drawn = PairingLayout.arrange(dc, lines);
+    var found = false;
+    for (var i = 0; i < drawn.size(); i++) {
+        logger.debug(dc.getWidth() + " px line " + i + ": " + drawn[i].text);
+        if (drawn[i].text.find("Überz") != null) {
+            found = true;
+            Test.assertMessage(dc.getTextWidthInPixels(drawn[i].text, drawn[i].font) <= PairingLayout.textWidth(dc), "next name width");
+        }
+    }
+    Test.assertMessage(found, "next exercise name on the rest screen");
+    Test.assertMessage(LayoutRig.mainNumbersAreBig(dc, lines) && LayoutRig.fits(dc, lines), "rest next big+fits");
+    return true;
+}
+
+(:test)
+function swappedExerciseShowsTheNewName(logger as Logger) as Boolean {
+    var dc = LayoutRig.dc();
+    var rig = NameRig.rig("Bankdrücken", "Rudern");
+    rig.toFirstSet();
+    var before = SetScreen.lines(dc, rig.session, null);
+    Test.assert(NameRig.firstText(before).find("Bankdrücken") == 0);
+    var swapped = rig.session.exercise();
+    swapped.name = "Fliegende";
+    var after = SetScreen.lines(dc, rig.session, null);
+    Test.assert(NameRig.firstText(after).find("Fliegende") == 0);
+    return true;
+}
+
+(:test)
+function ellipsizeKeepsUmlautsWholeAndFits(logger as Logger) as Boolean {
+    var dc = LayoutRig.dc();
+    var font = Graphics.FONT_TINY;
+    var width = PairingLayout.nameWidth(dc);
+    Test.assert(PairingLayout.ellipsize(dc, "Dips", font, width).equals("Dips"));
+    var cut = PairingLayout.ellipsize(dc, NameRig.LONG, font, width);
+    Test.assert(dc.getTextWidthInPixels(cut, font) <= width);
+    Test.assert((cut.substring(cut.length() - 3, cut.length()) as String).equals("..."));
+    Test.assert(cut.find("Überzüge") == 0);
+    Test.assert(PairingLayout.ellipsize(dc, "Überzüge", font, 5).equals("..."));
+    // the short form for system views (dialogs, list title)
+    Test.assert(TrainingText.shortName("Dips", 20).equals("Dips"));
+    var system = TrainingText.shortName(NameRig.LONG, 20);
+    Test.assert(system.length() == 20 && (system.substring(17, 20) as String).equals("..."));
+    return true;
+}
+
+(:test)
+function dialogsDuringTheWorkoutNameTheExercise(logger as Logger) as Boolean {
+    var rig = NameRig.rig("Bankdrücken", "Rudern");
+    // preview and summary: the question alone
+    var preview = TrainingText.asking(rig.session, Rez.Strings.PromptEnd);
+    Test.assert(preview.find("Bankdrücken") == null);
+    rig.toFirstSet();
+    var set = TrainingText.asking(rig.session, Rez.Strings.PromptEnd);
+    Test.assert(set.find("Bankdrücken\n") == 0);
+    Test.assert(set.length() > "Bankdrücken\n".length());
+    rig.session.confirmSet();
+    Test.assert(TrainingText.asking(rig.session, Rez.Strings.TrPausePrompt).find("Bankdrücken\n") == 0);
+    var longNamed = NameRig.rig(NameRig.LONG, "Rudern");
+    longNamed.toFirstSet();
+    var asked = TrainingText.asking(longNamed.session, Rez.Strings.PromptDiscard);
+    Test.assert((asked.substring(0, asked.find("\n") as Number) as String).length() <= 26);
+    return true;
+}

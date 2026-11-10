@@ -124,7 +124,7 @@ class TrainingMenuDelegate extends WatchUi.Menu2InputDelegate {
                 discard();
             } else {
                 WatchUi.pushView(
-                    new WatchUi.Confirmation(TrainingText.text(Rez.Strings.PromptEnd)),
+                    new WatchUi.Confirmation(TrainingText.asking(_session, Rez.Strings.PromptEnd)),
                     new EndConfirmDelegate(_session),
                     WatchUi.SLIDE_UP
                 );
@@ -136,7 +136,7 @@ class TrainingMenuDelegate extends WatchUi.Menu2InputDelegate {
 
     hidden function discard() as Void {
         WatchUi.pushView(
-            new WatchUi.Confirmation(TrainingText.text(Rez.Strings.PromptDiscard)),
+            new WatchUi.Confirmation(TrainingText.asking(_session, Rez.Strings.PromptDiscard)),
             new DiscardConfirmDelegate(_session, 1, 1),
             WatchUi.SLIDE_UP
         );
