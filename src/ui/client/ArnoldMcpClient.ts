@@ -3,6 +3,11 @@ import { OnboardingProfileBuffer } from "./OnboardingProfileBuffer";
 import { ArnoldToolError } from "../recovery";
 import { DeleteAccountResponseSchema } from "../../shared/account-contract";
 import {
+  SetGarminHealthConsentResponseSchema,
+  UnpairGarminWatchResponseSchema,
+} from "../../shared/watch-contract";
+import type { GarminPayload } from "../client";
+import {
   WorkoutContextSchema,
   WriteResponseSchema,
   type WriteOperation,
@@ -150,6 +155,53 @@ export class ArnoldMcpClient {
         { publish: false },
       ),
     );
+  }
+  /** Without a token: the confirmation card. With it: the user's click pairs. */
+  async pairGarminWatch(args: {
+    user_code: string;
+    timezone: string;
+    confirmation_token?: string;
+  }) {
+    return this.garmin(
+      await this.client.call("pair_garmin_watch", args, { publish: false }),
+    );
+  }
+  async listGarminWatches() {
+    const payload = this.garmin(
+      await this.client.call("list_garmin_watches", {}, { publish: false }),
+    );
+    if (payload.kind !== "watches")
+      throw new Error("Unerwartete Antwort von list_garmin_watches.");
+    return payload.watches;
+  }
+  /** Switches the app to the watches of the account. */
+  async openGarminWatches() {
+    await this.client.call("list_garmin_watches");
+  }
+  async unpairGarminWatch(device_id: string) {
+    return UnpairGarminWatchResponseSchema.parse(
+      await this.client.call(
+        "unpair_garmin_watch",
+        { device_id },
+        { publish: false },
+      ),
+    );
+  }
+  /** Granting refers to the text version the card showed; revoking needs none. */
+  async setGarminHealthConsent(granted: boolean, text_version?: string) {
+    return SetGarminHealthConsentResponseSchema.parse(
+      await this.client.call(
+        "set_garmin_health_consent",
+        granted ? { granted, text_version } : { granted },
+        { publish: false },
+      ),
+    );
+  }
+  private garmin(value: unknown): GarminPayload {
+    const payload = value as GarminPayload | undefined;
+    if (payload?.kind !== "pair" && payload?.kind !== "watches")
+      throw new Error("Unerwartete Antwort der Garmin-Tools.");
+    return payload;
   }
   async openLink(url: string) {
     await this.client.openExternal(url);

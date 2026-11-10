@@ -3,9 +3,13 @@ import {
   buildDashboardView,
   buildExerciseProgressView,
   buildWorkoutHistoryView,
+  HEART_RATE_CURVE_POINTS,
   REASON_TEXT,
   reasonNote,
+  watchSessionsOf,
+  withWatchRecordings,
 } from "../src/server/arnold-presenter";
+import type { WatchRecordingData } from "../src/server/arnold-source";
 import { AnalyticsReasonSchema, METRICS_VERSION } from "../src/analytics/types";
 import { ARNOLD_UI_CONTRACT } from "../src/shared/arnold-view";
 import {
@@ -441,5 +445,167 @@ describe("plans across history", () => {
     expect(view(data).notices.map((n) => n.code)).toContain(
       "no_plan_configured",
     );
+  });
+});
+
+describe("watch workouts in the history (GAR-B5-02)", () => {
+  const SESSION = "9b2f6a1e-3c4d-4e5f-8a7b-1c2d3e4f5a6b";
+  const watchData = () =>
+    dataset({
+      exercises: [
+        exercise(),
+        exercise({ exercise_id: "ex-row", name_de: "Rudern" }),
+      ],
+      plans: [plan()],
+      planItems: [
+        planItem({ rest_seconds: 90 }),
+        planItem({
+          plan_item_id: "item-2",
+          exercise_id: "ex-row",
+          exercise_order: 2,
+          rest_seconds: null,
+        }),
+      ],
+      workouts: [
+        workout({
+          workout_id: "w-watch",
+          workout_date_local: "2026-01-06",
+          client_session_id: SESSION,
+          source: "sync",
+          plan_version_id: "plan-v1",
+          session_id: "session-a",
+        }),
+        workout({ workout_id: "w-chat", workout_date_local: "2026-01-05" }),
+      ],
+      sets: [
+        set({ set_id: "s-1", workout_id: "w-watch", plan_item_id: "item-1" }),
+        set({
+          set_id: "s-2",
+          workout_id: "w-watch",
+          plan_item_id: "item-1",
+          set_number: 2,
+        }),
+        set({
+          set_id: "s-3",
+          workout_id: "w-watch",
+          plan_item_id: "item-2",
+          exercise_id: "ex-row",
+          exercise_name_snapshot: "Rudern",
+          exercise_order: 2,
+        }),
+        set({
+          set_id: "s-4",
+          workout_id: "w-watch",
+          plan_item_id: "item-2",
+          exercise_id: "ex-row",
+          exercise_name_snapshot: "Rudern",
+          exercise_order: 2,
+          set_number: 2,
+        }),
+        set({ set_id: "s-5", workout_id: "w-chat" }),
+      ],
+    });
+  const timing = (
+    exercise_order: number,
+    set_number: number,
+    rest: number | null,
+  ) => ({
+    exercise_order,
+    set_number,
+    side: "both",
+    rest_before_s: rest,
+  });
+  const recording = (
+    health: WatchRecordingData["health"],
+  ): WatchRecordingData => ({
+    client_session_id: SESSION,
+    started_at_utc: "2026-01-06T17:00:00Z",
+    ended_at_utc: "2026-01-06T17:40:00Z",
+    set_timings: [
+      timing(1, 1, null),
+      timing(1, 2, 100),
+      timing(2, 1, 150),
+      timing(2, 2, null),
+    ],
+    health,
+  });
+
+  it("marks watch workouts and reads only the page's own recordings", () => {
+    const data = watchData();
+    const page = buildWorkoutHistoryView(data, CONTEXT);
+    expect(
+      page.workouts.map((w) => [w.workout_id, w.from_watch, w.watch]),
+    ).toEqual([
+      ["w-watch", true, null],
+      ["w-chat", false, null],
+    ]);
+    expect(watchSessionsOf(page, data)).toEqual([SESSION]);
+    expect(withWatchRecordings(page, data, [])).toBe(page);
+  });
+
+  it("compares each pause with the rest the watch counted down, never zero for unknown", () => {
+    const data = watchData();
+    const view = withWatchRecordings(
+      buildWorkoutHistoryView(data, CONTEXT),
+      data,
+      [recording(null)],
+    );
+    const watch = view.workouts[0].watch!;
+    expect(watch.duration_s).toBe(2400);
+    // 100 s after a 90 s plan rest, 150 s into the next exercise after the
+    // same 90 s; the last pause is unknown and left out.
+    expect(watch.rest).toEqual({
+      measured_pauses: 2,
+      planned_s: 180,
+      actual_s: 250,
+      delta_s: 70,
+      ratio_pct: (250 / 180) * 100,
+    });
+    expect(watch.health).toBeNull();
+    expect(view.workouts[1].watch).toBeNull();
+  });
+
+  it("uses the watch default rest without a plan rest, keeps gaps and caps the curve", () => {
+    const data = watchData();
+    const values = Array.from({ length: 1440 }, (_, i) =>
+      i % 10 === 0 ? null : 100 + (i % 50),
+    );
+    const view = withWatchRecordings(
+      buildWorkoutHistoryView(data, CONTEXT),
+      data,
+      [
+        {
+          ...recording({
+            hr: { interval_s: 5, start_utc: "2026-01-06T17:00:00Z", values },
+            calories_kcal: null,
+            before: { at_utc: "2026-01-06T16:59:00Z", body_battery: 0 },
+            after: null,
+          }),
+          set_timings: [timing(2, 1, null), timing(2, 2, 130)],
+        },
+      ],
+    );
+    const watch = view.workouts[0].watch!;
+    expect(watch.rest.planned_s).toBe(120);
+    const health = watch.health!;
+    expect(health.heart_rate_curve).toHaveLength(HEART_RATE_CURVE_POINTS);
+    expect(health.heart_rate_curve[0]).toBeNull();
+    expect(
+      health.heart_rate_curve.every((v) => v === null || values.includes(v)),
+    ).toBe(true);
+    expect(health.heart_rate!.missing_seconds).toBe(144 * 5);
+    expect(health.calories_kcal).toBeNull();
+    // Body Battery 0 is a value; no after snapshot means no difference.
+    expect(health.before).toEqual({
+      body_battery: 0,
+      stress: null,
+      resting_hr: null,
+    });
+    expect(health.after).toBeNull();
+    expect(health.differences).toEqual({
+      body_battery: null,
+      stress: null,
+      resting_hr: null,
+    });
   });
 });

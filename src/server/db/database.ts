@@ -13,7 +13,7 @@
 import pg from "pg";
 
 /** The schema version this build expects. Bump together with a migration. */
-export const EXPECTED_SCHEMA_VERSION = 2;
+export const EXPECTED_SCHEMA_VERSION = 3;
 
 export type Queryable = Pick<pg.PoolClient, "query">;
 

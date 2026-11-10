@@ -79,7 +79,7 @@ Spaltennamen entsprechen exakt den Feldern des Zod-Schemas. Zeitstempel und Kale
 Zwei Schlösser hintereinander:
 
 1. **Server:** Die Nutzerkennung kommt ausschließlich aus dem geprüften Token, nie aus Tool-Argumenten. Jeder Datenbankzugriff läuft in `Database.asUser`: eine Transaktion, in der `arnold.user_id` gesetzt ist.
-2. **Datenbank:** Jede Nutzertabelle hat Row Level Security; die Richtlinie lässt nur Zeilen mit `user_id = arnold.current_user_id()` durch. Der Server verbindet sich als `arnold_app` (kein Superuser, kein `BYPASSRLS`, kein Tabelleneigentümer, kein `DELETE`/`TRUNCATE`/DDL). Ohne gesetzten Nutzer sieht er nichts. Alle Bezüge zwischen Tabellen enthalten `user_id`, ein Satz kann also nie auf das Training eines anderen zeigen. Der Start bricht ab, wenn die Rolle die Richtlinien umgehen könnte (`Database.assertReady`).
+2. **Datenbank:** Jede Nutzertabelle hat Row Level Security; die Richtlinie lässt nur Zeilen mit `user_id = arnold.current_user_id()` durch. Der Server verbindet sich als `arnold_app` (kein Superuser, kein `BYPASSRLS`, kein Tabelleneigentümer, kein `DELETE`/`TRUNCATE`/DDL; einzige Ausnahme: `DELETE` auf Messwerte der Uhr, weil ein Widerruf der Einwilligung sie löscht). Ohne gesetzten Nutzer sieht er nichts. Alle Bezüge zwischen Tabellen enthalten `user_id`, ein Satz kann also nie auf das Training eines anderen zeigen. Der Start bricht ab, wenn die Rolle die Richtlinien umgehen könnte (`Database.assertReady`).
 
 Das Schema `arnold` ist nicht über die Supabase-Data-API erreichbar, und die API-Rollen `anon`/`authenticated` haben keine Rechte darauf. Die Konto-Suche per Login läuft über die Funktion `arnold.resolve_identity` (legt beim ersten Kontakt genau ein Konto an, schreibt `last_seen_at` höchstens stündlich). Belegt durch `tests/db-security.test.ts` und `tests/db-journey.test.ts`.
 
@@ -172,7 +172,7 @@ Weitere Regeln:
 
 ## Authentifizierung und Zugriff
 
-Arnold ist **Resource Server**, kein Authorization Server: Es prüft Tokens, stellt keine aus. Login-Anbieter ist WorkOS AuthKit.
+Arnold ist **Resource Server**, kein Authorization Server: Es prüft Tokens von WorkOS AuthKit. Einzige Ausnahme sind eigene, eng begrenzte **Gerätetoken für die Garmin-Uhr** (`arn_w_…`, nur als SHA-256 gespeichert, nur die Scopes `arnold.watch.read`/`arnold.watch.write`, sofort widerrufbar). Grund: Eine Uhr kann keinen Browser-Login durchlaufen, und stündlich zu erneuernde WorkOS-Token über das Handy wären unzuverlässig; die Kopplung bestätigt deshalb der angemeldete Nutzer in ChatGPT.
 
 - Bearer-JWT: Signatur über JWKS, Issuer, Audience (= MCP-Resource-URL, RFC 8707), Ablauf. Algorithmen sind fest; Fehlerantworten verraten keine Details.
 - Identität ist ein dauerhafter interner Nutzer, gekoppelt an das stabile Subject des Anmeldeanbieters, nie an eine E-Mail. Nutzer-IDs sind nie Tool-Argumente.
@@ -195,7 +195,7 @@ Hinter einem Login verlangen die Einrichtungs-Tools zusätzlich `arnold.plan`. S
 
 ## Tools
 
-Rund 40 Tools in fünf Bereichen; die vollständige, verbindliche Liste ist die Zugriffsklassentabelle in `src/server/auth/tool-access.ts`.
+Rund 50 Tools in sechs Bereichen; die vollständige, verbindliche Liste ist die Zugriffsklassentabelle in `src/server/auth/tool-access.ts`.
 
 | Bereich       | Tools (Auswahl)                                                                                                                                                                                                                                                                        |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -205,6 +205,18 @@ Rund 40 Tools in fünf Bereichen; die vollständige, verbindliche Liste ist die 
 | Trainingsplan | `get_training_plan`, `list_training_plans`, `get_plan_history`, `validate_training_plan`, `compare_plan_versions`, `get_plan_editor_context`, `create_training_plan`, `create_plan_version`, `clone_plan_version`, `update_plan_draft`, `activate_training_plan`, `archive_plan_draft` |
 | Einrichtung   | `show_arnold_onboarding`, `start_arnold_onboarding`, `update_onboarding_profile`, `request_onboarding_plan`, `submit_onboarding_plan_proposal`, `confirm_onboarding_plan`, `finish_arnold_setup`, …                                                                                    |
 | Konto         | `get_arnold_stored_data`, `delete_arnold_account`                                                                                                                                                                                                                                      |
+| Garmin-Uhr    | `pair_garmin_watch`, `list_garmin_watches`, `unpair_garmin_watch`, `set_garmin_health_consent`                                                                                                                                                                                         |
+
+## Uhr-Schnittstelle (`src/server/watch`, `/api/watch/v1`)
+
+Die Garmin-Uhr spricht über das Handy direkt mit Arnold, ohne Garmin-Server. Vertrag: `src/shared/watch-contract.ts`; Tabellen und Kopplungsfunktionen: `db/migrations/003_garmin.sql`.
+
+- Der Router hängt nur mit Datenbank und `AUTH_MODE=oidc`. Jede Route hat eine Klasse in `WATCH_ROUTE_ACCESS` (`tool-access.ts`), sonst bricht der Start ab. Uhr-Token gelten nie auf `/mcp`, WorkOS-Token nie hier.
+- **Kopplung:** `POST /pair/start` liefert den Code für die Uhr, `pair_garmin_watch` bestätigt ihn in ChatGPT erst nach dem Klick in der Karte, `POST /pair/token` gibt das Token genau einmal aus.
+- **Plan:** `GET /plan` ist nur ein Verzeichnis, jeder Tag kommt einzeln über `/plan/sessions/:id` (kompakt, mit ETag), dazu `/plan/recent`. Vorschläge, Gewichtsstufen und Dauer rechnet der Server.
+- **Training:** `POST /workouts` läuft über `log_workout` und `commitWrite` (`source = sync` und `client_session_id` nur intern); die Aufzeichnung wird im selben Schreibvorgang gespeichert.
+- **Messwerte:** `PUT /workouts/:session_uuid/health` nur mit Einwilligung (`set_garmin_health_consent`), sonst 403 und nichts gespeichert; Puls 0 wird als Lücke gespeichert. Ein Widerruf löscht alle Messwerte.
+- **Grenzen** im Speicher (eine Instanz): 10 Kopplungsstarts je Adresse und Stunde, 5 falsche Codes je Konto und Stunde, 120 Aufrufe je Uhr und Minute, 60 fehlgeschlagene Token-Prüfungen je Adresse und Minute. Logs enthalten nie Token, Codes oder Inhalte.
 
 ## ChatGPT-Plugin und Skills (`plugins/arnold`)
 

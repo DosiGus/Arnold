@@ -17,7 +17,12 @@ import {
   type WriteResponse,
   type WriteResult,
 } from "../../shared/workout-contract.js";
-import { STORAGE_RETRY_MESSAGE, commitWrite } from "../plan/commit.js";
+import {
+  STORAGE_RETRY_MESSAGE,
+  commitWrite,
+  type WatchRecordingRow,
+  type WatchSetTiming,
+} from "../plan/commit.js";
 import {
   WriteError,
   canonical,
@@ -59,6 +64,22 @@ function assertUsualValues(
         (set) => `load_kg=${set.load_kg ?? "–"}, reps=${set.reps ?? "–"}`,
       ),
     );
+}
+
+/**
+ * What only the watch route sets (07 D-08, D-09). It is a separate argument,
+ * never part of the tool input, so /mcp can neither claim `source: sync` nor
+ * pick a client session.
+ */
+export interface WatchUpload {
+  client_session_id: string;
+  device_id: string;
+  app_version: string;
+  set_timings: readonly WatchSetTiming[];
+}
+interface InternalWrite {
+  source: "sync";
+  watch: WatchUpload;
 }
 
 export interface LoggingOptions {
@@ -224,6 +245,7 @@ export class WorkoutLoggingService {
     operation: WriteOperation,
     raw: unknown,
     context?: unknown,
+    internal?: InternalWrite,
   ): Promise<WriteResponse> {
     const requestId =
       raw &&
@@ -235,7 +257,16 @@ export class WorkoutLoggingService {
     try {
       const actor = await this.actor(context);
       const input = WriteInputs[operation].parse(raw);
-      const hash = fingerprint({ operation, input });
+      if (internal && operation !== "log_workout")
+        throw new WriteError(
+          "PERMISSION_DENIED",
+          "Uhr-Uploads gibt es nur als log_workout.",
+        );
+      // The watch part belongs to the operation: the same request_id with
+      // another recording is a different write.
+      const hash = fingerprint(
+        internal ? { operation, input, internal } : { operation, input },
+      );
       const outcome = await commitWrite<WriteResult>({
         trackerId: this.options.trackerId,
         store: this.options.store,
@@ -251,6 +282,7 @@ export class WorkoutLoggingService {
             actor,
             context,
             now,
+            internal,
           );
           return {
             ...built,
@@ -451,10 +483,16 @@ export class WorkoutLoggingService {
     _actor: Actor,
     context: unknown,
     now: string,
-  ): Promise<{ changes: EntityChange[]; result: WriteResult }> {
+    internal?: InternalWrite,
+  ): Promise<{
+    changes: EntityChange[];
+    result: WriteResult;
+    watchRecording?: WatchRecordingRow;
+  }> {
     if (isGoalOperation(operation))
       return buildGoalChange(operation, raw, data, now, () => this.id());
     const changes: EntityChange[] = [];
+    let watchRecording: WatchRecordingRow | undefined;
     const result: WriteResult = {
       workout: null,
       sets: [],
@@ -751,6 +789,42 @@ export class WorkoutLoggingService {
             "DATE_IN_FUTURE",
             `Das Trainingsdatum ${input.workout_date_local} liegt in der Zukunft (heute ist ${today}). Es wurde nichts gespeichert. Den Nutzer nach dem richtigen Datum fragen.`,
           );
+        // Start and end are checked like start_workout and complete_workout.
+        const localDay = (iso: string) =>
+          new Intl.DateTimeFormat("en-CA", { timeZone: input.timezone }).format(
+            new Date(iso),
+          );
+        if (
+          input.started_at_utc &&
+          localDay(input.started_at_utc) !== input.workout_date_local
+        )
+          throw new WriteError(
+            "VALIDATION_ERROR",
+            "Startzeit passt nicht zum angegebenen lokalen Trainingsdatum.",
+          );
+        if (
+          input.ended_at_utc &&
+          localDay(input.ended_at_utc) < input.workout_date_local
+        )
+          throw new WriteError(
+            "VALIDATION_ERROR",
+            "Workout-Ende liegt vor dem lokalen Trainingstag.",
+          );
+        if (
+          input.started_at_utc &&
+          input.ended_at_utc &&
+          Date.parse(input.ended_at_utc) < Date.parse(input.started_at_utc)
+        )
+          throw new WriteError(
+            "VALIDATION_ERROR",
+            "Workout-Ende liegt vor dem Beginn.",
+          );
+        if (internal && (!input.started_at_utc || !input.ended_at_utc))
+          throw new WriteError(
+            "VALIDATION_ERROR",
+            "Ein Uhr-Upload braucht Beginn und Ende.",
+          );
+        const source = internal?.source ?? input.source ?? "chat";
         // Editing a saved workout replaces it: the old one is voided in the
         // same transaction, so there is never a moment with both or neither.
         let replaced: ArnoldWorkout | undefined;
@@ -850,18 +924,23 @@ export class WorkoutLoggingService {
             false,
             twins.map((w) => `workout_id=${w.workout_id}`),
           );
+        // A replacement keeps the recording's client session (07 D-09), so
+        // the watch's recording and health data follow without a second write.
+        const clientSessionId =
+          internal?.watch.client_session_id ?? replaced?.client_session_id;
         const workout = ArnoldWorkoutSchema.parse({
           ...technical,
           workout_id: this.id(),
+          ...(clientSessionId ? { client_session_id: clientSessionId } : {}),
           workout_date_local: input.workout_date_local,
           timezone: input.timezone,
-          started_at_utc: null,
-          ended_at_utc: null,
+          started_at_utc: input.started_at_utc ?? null,
+          ended_at_utc: input.ended_at_utc ?? null,
           plan_version_id: plan,
           session_id: session,
           session_name_snapshot: name,
           status: "completed",
-          source: input.source ?? "chat",
+          source,
           notes: input.notes ?? null,
         });
         if (replaced) this.voidWorkout(data, replaced, now, changes);
@@ -895,7 +974,7 @@ export class WorkoutLoggingService {
                 rpe: null,
                 rir: null,
                 notes: null,
-                source: input.source ?? "chat",
+                source,
                 status: "active",
               },
               workout.workout_date_local,
@@ -909,6 +988,15 @@ export class WorkoutLoggingService {
             `Für diesen Tag sind jetzt ${twins.length + 1} Trainings „${name}“ gespeichert.`,
           );
         result.workout = workout;
+        if (internal)
+          watchRecording = {
+            client_session_id: internal.watch.client_session_id,
+            device_id: internal.watch.device_id,
+            started_at_utc: input.started_at_utc!,
+            ended_at_utc: input.ended_at_utc!,
+            set_timings: internal.watch.set_timings,
+            app_version: internal.watch.app_version,
+          };
         break;
       }
       case "void_workout": {
@@ -975,7 +1063,14 @@ export class WorkoutLoggingService {
         break;
       }
     }
-    return { changes, result };
+    return { changes, result, ...(watchRecording ? { watchRecording } : {}) };
+  }
+  /** log_workout from the watch route: source sync, recording in the same write. */
+  logWatchWorkout(input: unknown, watch: WatchUpload, context?: unknown) {
+    return this.execute("log_workout", input, context, {
+      source: "sync",
+      watch,
+    });
   }
   startWorkout(input: unknown, context?: unknown) {
     return this.execute("start_workout", input, context);

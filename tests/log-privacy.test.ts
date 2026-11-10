@@ -14,6 +14,7 @@ import {
   logToolCall,
   safeCode,
 } from "../src/server/tool-log";
+import { logWatchRequest } from "../src/server/watch/router";
 
 const MARKER = "ZEBRA";
 
@@ -121,6 +122,20 @@ describe("server log privacy", () => {
       code: `boom ${MARKER}`,
     });
     expect(lines.slice(before).join("\n")).not.toContain(MARKER);
+  });
+
+  it("refuses free text as a watch log code (GAR-B2-02)", () => {
+    const before = lines.length;
+    logWatchRequest({
+      route: "POST /workouts",
+      status: 503,
+      outcome: "thrown",
+      ms: 1,
+      code: `boom ${MARKER}`,
+    });
+    const written = lines.slice(before).join("\n");
+    expect(written).toContain('"code":"unlabelled"');
+    expect(written).not.toContain(MARKER);
   });
 });
 

@@ -19,8 +19,30 @@ import {
   DeleteAccountResponseSchema,
   type DeleteAccountResponse,
 } from "../shared/account-contract";
+import {
+  ListGarminWatchesSchema,
+  PairGarminWatchConfirmMetaSchema,
+  PairGarminWatchResponseSchema,
+  type ListGarminWatches,
+  type PairGarminWatchResponse,
+} from "../shared/watch-contract";
 import { ArnoldToolError, asFailure, type UiFailure } from "./recovery";
 import { readStoredClaim } from "./client/onboarding-claim";
+
+/**
+ * A Garmin card: the pairing confirmation or the watches of the account. The
+ * confirmation token and its time zone come only from `_meta`; a replayed
+ * result without them can be shown, but not confirmed.
+ */
+export type GarminPayload =
+  | {
+      kind: "pair";
+      pair: PairGarminWatchResponse & {
+        confirmation_token?: string;
+        timezone?: string;
+      };
+    }
+  | { kind: "watches"; watches: ListGarminWatches };
 
 /**
  * What the app is currently showing. The contracts are kept apart so a
@@ -29,6 +51,7 @@ import { readStoredClaim } from "./client/onboarding-claim";
 export type ArnoldPayload =
   | { contract: "dashboard"; dashboard: ArnoldDashboardView }
   | { contract: "account"; account: DeleteAccountResponse }
+  | { contract: "garmin"; garmin: GarminPayload }
   /** The setup wizard. Its own contract, so it never renders dashboard data. */
   | { contract: "onboarding"; onboarding: OnboardingView };
 
@@ -63,6 +86,23 @@ export class ArnoldClient {
       arnold?.delete_account ?? content,
     );
     if (account.success) return { contract: "account", account: account.data };
+    const confirm = PairGarminWatchConfirmMetaSchema.safeParse(
+      arnold?.pair_garmin_watch,
+    );
+    if (confirm.success)
+      return {
+        contract: "garmin",
+        garmin: { kind: "pair", pair: confirm.data },
+      };
+    const pair = PairGarminWatchResponseSchema.safeParse(content);
+    if (pair.success)
+      return { contract: "garmin", garmin: { kind: "pair", pair: pair.data } };
+    const watches = ListGarminWatchesSchema.safeParse(content);
+    if (watches.success)
+      return {
+        contract: "garmin",
+        garmin: { kind: "watches", watches: watches.data },
+      };
     if (!content || typeof content !== "object") return null;
     // Checked first and by its own contract field: an onboarding payload must
     // never be mistaken for a dashboard, and vice versa.
@@ -120,7 +160,11 @@ export class ArnoldClient {
       this.onPayload?.(payload);
       this.onStale?.(stale);
     }
-    return payload?.contract === "account" ? payload.account : content;
+    return payload?.contract === "account"
+      ? payload.account
+      : payload?.contract === "garmin"
+        ? payload.garmin
+        : content;
   }
 
   /**
@@ -133,6 +177,10 @@ export class ArnoldClient {
   private refreshTool(payload: ArnoldPayload | null) {
     if (payload?.contract === "onboarding") return null;
     if (payload?.contract === "account") return "delete_arnold_account";
+    // A pairing cannot be asked again without counting as an attempt, and a
+    // replayed one is usually used up; it is shown as it was.
+    if (payload?.contract === "garmin")
+      return payload.garmin.kind === "watches" ? "list_garmin_watches" : null;
     return "get_arnold_dashboard";
   }
 
@@ -230,6 +278,20 @@ export class ArnoldClient {
       );
       if (new URLSearchParams(location.search).get("account") === "delete") {
         await this.call("delete_arnold_account");
+        return;
+      }
+      // `?garmin=watches` opens the watches of the account; `?garmin=pair`
+      // with `code` and `tz` the pairing confirmation.
+      const garmin = new URLSearchParams(location.search);
+      if (garmin.get("garmin") === "watches") {
+        await this.call("list_garmin_watches");
+        return;
+      }
+      if (garmin.get("garmin") === "pair") {
+        await this.call("pair_garmin_watch", {
+          user_code: garmin.get("code") ?? "",
+          timezone: garmin.get("tz") ?? "Europe/Berlin",
+        });
         return;
       }
       if (!wantsOnboarding) {

@@ -63,6 +63,10 @@ describe("row level security", () => {
       "operations",
       "audit_events",
       "onboarding_sessions",
+      "watch_devices",
+      "health_consents",
+      "workout_recordings",
+      "workout_health",
     ])
       expect(await count(null, table), table).toBe(0);
   });

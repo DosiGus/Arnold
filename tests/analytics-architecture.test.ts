@@ -15,6 +15,7 @@ describe("analytics engine boundaries", () => {
   test("every module of the layer is present", () => {
     expect(files).toEqual([
       "activity.ts",
+      "alternatives.ts",
       "dashboard.ts",
       "eligibility.ts",
       "goals.ts",
@@ -26,7 +27,9 @@ describe("analytics engine boundaries", () => {
       "progress.ts",
       "progression.ts",
       "quality.ts",
+      "recording.ts",
       "records.ts",
+      "session-duration.ts",
       "start-load.ts",
       "trends.ts",
       "types.ts",

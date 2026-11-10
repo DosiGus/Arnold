@@ -342,6 +342,7 @@ export const ArnoldPlanItemSchema = z
 export const ArnoldWorkoutSchema = z
   .strictObject({
     workout_id: ArnoldIdSchema,
+    client_session_id: ArnoldIdSchema.nullable().optional(),
     workout_date_local: z.iso.date(),
     timezone: text.refine((value) => {
       try {

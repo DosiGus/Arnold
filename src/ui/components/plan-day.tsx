@@ -1,3 +1,4 @@
+import { similarExercises } from "../../analytics/alternatives.js";
 import { useId, useState } from "react";
 import {
   ArrowDown,
@@ -23,7 +24,6 @@ import {
   rounds,
   setRound,
   setUniform,
-  similarExercises,
   swapExercise,
   type Draft,
   type DraftExercise,

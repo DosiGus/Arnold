@@ -44,6 +44,23 @@ export const CONFIRMATION_RULES: Readonly<Record<string, ConfirmationEntry>> = {
   },
   get_arnold_stored_data: read,
 
+  // Garmin watch (GAR-B2-03)
+  pair_garmin_watch: {
+    rule: "ask_and_card_click",
+    reason:
+      "Gibt einer Uhr Zugriff auf das Konto; erst der Klick in der Karte koppelt.",
+  },
+  list_garmin_watches: read,
+  unpair_garmin_watch: {
+    rule: "ask_in_chat",
+    reason: "Trennt die Uhr; sie muss danach neu gekoppelt werden.",
+  },
+  set_garmin_health_consent: {
+    rule: "ask_in_chat",
+    reason:
+      "Erteilt oder widerruft die Einwilligung für Messwerte; ein Widerruf löscht gespeicherte Messwerte.",
+  },
+
   // Dashboard and analytics
   show_arnold_dashboard: read,
   get_arnold_dashboard: read,

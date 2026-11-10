@@ -177,8 +177,58 @@ export const ViewWorkoutSummarySchema = z.object({
   working_set_count: count,
   nominal_volume: z.number().finite().nullable(),
   nominal_volume_status: MetricStatusSchema,
+  /** Recorded on the Garmin watch (it keeps its client session id). */
+  from_watch: z.boolean().default(false),
 });
 export type ViewWorkoutSummary = z.infer<typeof ViewWorkoutSummarySchema>;
+
+const nullableNumber = z.number().finite().nullable();
+const ViewWatchSnapshotSchema = z.object({
+  body_battery: nullableNumber,
+  stress: nullableNumber,
+  resting_hr: nullableNumber,
+});
+
+/**
+ * What the watch recorded for one workout, with the metrics from
+ * `src/analytics/recording.ts`. The card shows these values and computes
+ * nothing. `health` is null without stored health data (no consent).
+ */
+export const ViewWatchRecordingSchema = z.object({
+  started_at_utc: z.string().min(1),
+  ended_at_utc: z.string().min(1),
+  duration_s: z.number().int().nonnegative().nullable(),
+  rest: z.object({
+    measured_pauses: count,
+    planned_s: nullableNumber,
+    actual_s: nullableNumber,
+    delta_s: nullableNumber,
+    ratio_pct: nullableNumber,
+  }),
+  health: z
+    .object({
+      heart_rate: z
+        .object({
+          average_bpm: nullableNumber,
+          max_bpm: nullableNumber,
+          measured_seconds: count,
+          missing_seconds: count,
+        })
+        .nullable(),
+      /**
+       * Raw samples for the small curve, at most 120 evenly picked from the
+       * recording; a gap stays null.
+       */
+      heart_rate_curve: z.array(z.number().int().positive().nullable()),
+      calories_kcal: nullableNumber,
+      before: ViewWatchSnapshotSchema.nullable(),
+      after: ViewWatchSnapshotSchema.nullable(),
+      /** After minus before; null unless both are known. */
+      differences: ViewWatchSnapshotSchema,
+    })
+    .nullable(),
+});
+export type ViewWatchRecording = z.infer<typeof ViewWatchRecordingSchema>;
 
 /**
  * One set, exactly as stored. Nothing is merged, converted or rounded here, so
@@ -223,6 +273,8 @@ export const ViewWorkoutDetailSchema = ViewWorkoutSummarySchema.extend({
   notes: z.string().nullable(),
   source: z.enum(["chat", "ui", "manual_import", "sync"]),
   exercises: z.array(ViewExerciseBlockSchema),
+  /** Only with a database and a recording from the watch. */
+  watch: ViewWatchRecordingSchema.nullable().default(null),
 });
 export type ViewWorkoutDetail = z.infer<typeof ViewWorkoutDetailSchema>;
 

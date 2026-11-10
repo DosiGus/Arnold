@@ -41,6 +41,16 @@ describe("D10 confirmation rules", () => {
     expect(rule("delete_arnold_account")).toBe("ask_and_card_click");
   });
 
+  it("pairs a watch only after the card's click and asks before unpairing (GAR-B2-03)", () => {
+    expect(rule("pair_garmin_watch")).toBe("ask_and_card_click");
+    expect(rule("unpair_garmin_watch")).toBe("ask_in_chat");
+    expect(rule("list_garmin_watches")).toBe("direct");
+  });
+
+  it("asks before granting or revoking the health consent (GAR-B2-07)", () => {
+    expect(rule("set_garmin_health_consent")).toBe("ask_in_chat");
+  });
+
   it("logs and reads directly", () => {
     for (const tool of [
       "start_workout",

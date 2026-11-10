@@ -17,9 +17,11 @@ import { loadAuthConfig } from "./auth/config.js";
 import { buildAuthSurface, type AuthSurface } from "./auth/router.js";
 import type { DatabaseArnoldRuntime } from "./db/runtime.js";
 import { registerAccountTools } from "./account/mcp-account.js";
+import { registerWatchTools } from "./mcp-watch.js";
 import { dashboardResourceUri } from "./ui-resource.js";
 import { withArnoldContext } from "./auth/guarded-server.js";
 import { FixtureSandboxes } from "./fixture-sandboxes.js";
+import { mountWatchApi } from "./watch/router.js";
 
 export interface ServerOptions {
   env?: NodeJS.ProcessEnv;
@@ -323,12 +325,13 @@ export function createHttpApp(options: ServerOptions = {}) {
         userRuntime?.onboarding,
         auth.guard,
       );
-      if (options.database)
-        registerAccountTools(
-          server,
-          options.database,
-          dashboardResourceUri(resolve(root, "dist/ui/dashboard.html")),
+      if (options.database) {
+        const uri = dashboardResourceUri(
+          resolve(root, "dist/ui/dashboard.html"),
         );
+        registerAccountTools(server, options.database, uri);
+        registerWatchTools(server, options.database, uri);
+      }
       const transport = new NodeStreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
         enableJsonResponse: true,
@@ -357,6 +360,9 @@ export function createHttpApp(options: ServerOptions = {}) {
       else await withArnoldContext(context, handle);
     } else await handle();
   });
+  // The watch API exists only for signed-in users with a database (07 D-07).
+  if (options.database && auth.summary.mode === "oidc")
+    mountWatchApi(app, { runtime: options.database });
   app.use((_req, res) => res.status(404).json({ error: "Nicht gefunden." }));
   app.use((error: Error, _req: Request, res: Response, _next: NextFunction) => {
     // Type and status only: a body-parser message quotes the request body.

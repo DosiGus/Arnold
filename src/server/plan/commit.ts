@@ -34,7 +34,34 @@ export type CommitPlan<R> = {
   changes: EntityChange[];
   result: R;
   audit: readonly AuditEvent[];
+  /** A watch upload's raw recording (UMSETZUNG §4.2), stored in the same transaction. */
+  watchRecording?: WatchRecordingRow;
 };
+
+/** One confirmed set on the watch: positions in the saved workout, and times. */
+export interface WatchSetTiming {
+  exercise_order: number;
+  set_number: number;
+  side: string;
+  started_at_utc: string;
+  ended_at_utc: string;
+  /** Rest before this set; null for the first set or when unknown. */
+  rest_before_s: number | null;
+}
+
+export interface WatchRecordingRow {
+  client_session_id: string;
+  device_id: string;
+  started_at_utc: string;
+  ended_at_utc: string;
+  set_timings: readonly WatchSetTiming[];
+  app_version: string;
+}
+
+/** A store transaction that can also keep watch recordings (Postgres only). */
+export interface WatchRecordingTransaction {
+  recordWatchWorkout(row: WatchRecordingRow): Promise<void>;
+}
 
 export type CommitOptions<R> = {
   trackerId: string;
@@ -130,6 +157,16 @@ export async function commitWrite<R>(
       audit: [...built.audit],
       result: built.result as StoredOperation["result"],
     });
+    if (built.watchRecording) {
+      const recorder = tx as Partial<WatchRecordingTransaction>;
+      // Fails closed: a store without recordings stores no watch upload.
+      if (!recorder.recordWatchWorkout)
+        throw new WriteError(
+          "PERMISSION_DENIED",
+          "Dieser Speicher nimmt keine Uhr-Aufzeichnungen an.",
+        );
+      await recorder.recordWatchWorkout(built.watchRecording);
+    }
     return { result: built.result, replayed: false };
   });
 }

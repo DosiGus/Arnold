@@ -12,6 +12,10 @@ import {
   type ArnoldDataset,
 } from "../../shared/arnold-schema-v1.js";
 import { trackerConfig } from "../account/catalog.js";
+import type {
+  WatchRecordingRow,
+  WatchRecordingTransaction,
+} from "../plan/commit.js";
 import {
   StoredOperationSchema,
   WriteError,
@@ -30,7 +34,11 @@ const TABLES = {
   exercises: { table: "exercises", columns: ARNOLD_TABLE_HEADERS.EXERCISES },
   plans: { table: "plan_versions", columns: ARNOLD_TABLE_HEADERS.PLANS },
   planItems: { table: "plan_items", columns: ARNOLD_TABLE_HEADERS.PLAN_ITEMS },
-  workouts: { table: "workouts", columns: ARNOLD_TABLE_HEADERS.WORKOUTS },
+  // client_session_id ties a watch upload to its recording (07 D-09).
+  workouts: {
+    table: "workouts",
+    columns: [...ARNOLD_TABLE_HEADERS.WORKOUTS, "client_session_id"],
+  },
   sets: { table: "sets", columns: ARNOLD_TABLE_HEADERS.SETS },
   goals: { table: "goals", columns: ARNOLD_TABLE_HEADERS.GOALS },
   bodyWeights: {
@@ -91,7 +99,12 @@ async function readDataset(
     exercises: rows.exercises,
     plans: rows.plans,
     planItems: rows.planItems,
-    workouts: rows.workouts,
+    // Absent rather than null without a watch, so rows and receipts written
+    // before the column existed still compare equal.
+    workouts: (rows.workouts as Record<string, unknown>[]).map(
+      ({ client_session_id, ...row }) =>
+        client_session_id == null ? row : { ...row, client_session_id },
+    ),
     sets: rows.sets,
     goals: rows.goals,
     bodyWeights: rows.bodyWeights,
@@ -215,7 +228,7 @@ export class PostgresArnoldStore implements ArnoldStore {
           [userId],
         );
         let committed = false;
-        const tx: ArnoldTransaction = {
+        const tx: ArnoldTransaction & WatchRecordingTransaction = {
           read: () => readDataset(client, userId, trackerId),
           operation: async (requestId) => {
             const found = await client.query<{
@@ -268,6 +281,26 @@ export class PostgresArnoldStore implements ArnoldStore {
                 "Operations-ID wurde gleichzeitig schon verwendet; dieselbe Anfrage erneut senden.",
                 true,
               );
+          },
+          // Only after the workout in the same transaction; the device must
+          // be one of this user's (foreign key with user_id).
+          recordWatchWorkout: async (row: WatchRecordingRow) => {
+            if (!committed)
+              throw new Error("Aufzeichnung nur zusammen mit dem Training.");
+            await client.query(
+              `insert into arnold.workout_recordings
+                 (user_id, client_session_id, device_id, started_at_utc, ended_at_utc, set_timings, app_version)
+               values ($1, $2, $3, $4, $5, $6, $7)`,
+              [
+                userId,
+                row.client_session_id,
+                row.device_id,
+                row.started_at_utc,
+                row.ended_at_utc,
+                JSON.stringify(row.set_timings),
+                row.app_version,
+              ],
+            );
           },
         };
         return work(tx);

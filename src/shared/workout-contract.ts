@@ -241,6 +241,18 @@ export const WriteInputs = {
       .optional()
       .describe("Revision des ersetzten Trainings."),
     notes: text.optional(),
+    started_at_utc: z.iso
+      .datetime()
+      .refine((v) => v.endsWith("Z"))
+      .optional()
+      .describe(
+        "Beginn in UTC, nur wenn bekannt; muss am Trainingstag liegen.",
+      ),
+    ended_at_utc: z.iso
+      .datetime()
+      .refine((v) => v.endsWith("Z"))
+      .optional()
+      .describe("Ende in UTC, nur wenn bekannt; nicht vor dem Beginn."),
     confirm_duplicate: z
       .literal(true)
       .optional()

@@ -37,7 +37,7 @@ Dieser Skill liest nur. Er speichert, ändert und löscht nichts. Soll etwas ges
 
 - Überblick, Regelmäßigkeit, Muskelgruppen, Serie, Ziele: `get_arnold_dashboard`.
 - Eine bestimmte Übung: `get_arnold_exercise_progress` mit der `exercise_id` aus `get_arnold_dashboard` (`exercises`); die ID nie raten.
-- Einzelne Einheiten und Sätze: `get_arnold_workouts`, bei Bedarf mit Zeitraum oder Übung gefiltert.
+- Einzelne Einheiten und Sätze: `get_arnold_workouts`, bei Bedarf mit Zeitraum oder Übung gefiltert. Trainings von der Garmin-Uhr haben dort zusätzlich `watch` (Dauer, Pausen, Puls, Body Battery und Stress vor und nach).
 - Warum Arnold fürs nächste Mal ein bestimmtes Gewicht vorschlägt: `get_workout`, Feld `progression` der Übung.
 - Aufbau des Plans: `get_training_plan`.
 - Will der Nutzer den Verlauf sehen: `show_arnold_dashboard` mit `card: "progress"` und `exercise_id`. Die Karte zeigt die Zahlen; im Chat nur einordnen, nichts wiederholen.
@@ -66,6 +66,8 @@ Wie die Felder zu lesen sind und ab wann eine Aussage trägt, steht in `referenc
 **„Warum dieses Gewicht?“** `get_workout` → `progression`: `decision`, `reason`, `last_sets`, `change_kg`, `stalled_sessions`. In zwei, drei Sätzen erklären, was Arnold aus dem letzten Mal macht und warum. Will der Nutzer anders trainieren: Er trägt einfach ein, was er macht; Arnold rechnet vom tatsächlich Geschafften weiter.
 
 **„Warum ist der Plan so aufgebaut?“** `get_training_plan` laden und mit den Regeln aus arnold-trainingsplan erklären: Aufteilung nach Tagen, Schwerpunkt, Zeitbudget, Wiederholungsbereiche für die Progression.
+
+**Messwerte der Garmin-Uhr.** Nur nennen, was `watch` wirklich enthält; fehlt ein Wert, gibt es ihn nicht. Höchstens ein Wert, und nur, wenn er die Frage beantwortet („Deine Body Battery war vor dem Training bei 28; das passt dazu, dass die letzten Sätze schwer waren.“). Nie medizinisch deuten: keine Aussagen über Herz, Gesundheit, Erholung oder Überlastung aus Puls, Stress oder Body Battery, keine Pulszonen. Bei Warnzeichen gilt „Sicherheit“ unten.
 
 **Motivation, lange Pause.** Echte Fakten aus `home.streak` und `home.records` anerkennen, ohne Schuldgefühle. Einen kleinen nächsten Schritt nennen, meist die nächste Einheit (`home.next_session`). Nach langer Pause ruhig etwas leichter einsteigen und eintragen, was geht; keine konkreten Kilo nennen.
 
