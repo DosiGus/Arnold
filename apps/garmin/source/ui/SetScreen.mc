@@ -15,9 +15,19 @@ module SetScreen {
             title = title + " · " + (side as String);
         }
         out.add(new PairingLine(title, Graphics.FONT_XTINY, side != null ? Graphics.COLOR_YELLOW : Graphics.COLOR_LT_GRAY));
-        var values = TrainingText.repsAndLoad(set);
-        var fonts = [Graphics.FONT_LARGE, Graphics.FONT_MEDIUM, Graphics.FONT_SMALL] as Array<Graphics.FontType>;
-        out.add(new PairingLine(values, PairingLayout.fitFont(dc, values, PairingLayout.textWidth(dc), fonts), Graphics.COLOR_WHITE));
+        // The main number: the weight; without a weight the repetitions (PRD 7: at least a third of the display).
+        var smallFonts = [Graphics.FONT_LARGE, Graphics.FONT_MEDIUM, Graphics.FONT_SMALL] as Array<Graphics.FontType>;
+        var second;
+        if (set.loadG != null) {
+            out.add(PairingLayout.bigLine(dc, TrainingText.kg(set.loadG as Number, TrainingText.separator()), Graphics.COLOR_WHITE));
+            second = Lang.format(TrainingText.text(Rez.Strings.TrKgAndReps), [TrainingText.repsText(set.reps)]);
+        } else if (set.reps != null) {
+            out.add(PairingLayout.bigLine(dc, (set.reps as Number).toString(), Graphics.COLOR_WHITE));
+            second = TrainingText.text(Rez.Strings.TrRepsUnit);
+        } else {
+            second = TrainingText.text(Rez.Strings.TrUnknownValue);
+        }
+        out.add(new PairingLine(second, PairingLayout.fitFont(dc, second, PairingLayout.textWidth(dc), smallFonts), Graphics.COLOR_WHITE));
         if (set.reps == null) {
             out.add(new PairingLine(TrainingText.text(Rez.Strings.TrRepsOpen), Graphics.FONT_XTINY, Graphics.COLOR_YELLOW));
         } else if (set.loadG == null) {
@@ -27,16 +37,16 @@ module SetScreen {
         } else if (ex.loadSuffix != null) {
             out.add(new PairingLine(ex.loadSuffix as String, Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY));
         }
-        out.add(new PairingLine(heartText(heartRate), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY));
+        out.add(new PairingLine(heartText(heartRate), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY).skippable());
         if (ex.lastTime != null) {
-            out.add(new PairingLine(ex.lastTime as String, Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY));
+            out.add(new PairingLine(ex.lastTime as String, Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY).skippable());
         }
         return out;
     }
 
     // "132 bpm", or "-- bpm" without a reading (never 0).
     function heartText(heartRate as Number or Null) as String {
-        var value = heartRate == null ? "--" : (heartRate as Number).toString();
+        var value = heartRate == null ? TrainingText.text(Rez.Strings.TrNoReading) : (heartRate as Number).toString();
         return Lang.format(TrainingText.text(Rez.Strings.TrHeartRate), [value]);
     }
 }

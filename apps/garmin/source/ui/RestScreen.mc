@@ -11,7 +11,7 @@ module RestScreen {
         var ex = session.exercise();
         out.add(new PairingLine(TrainingText.text(Rez.Strings.TrRest), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY));
         var color = left <= WARN_COLOR_S ? Graphics.COLOR_YELLOW : Graphics.COLOR_WHITE;
-        out.add(new PairingLine(TrainingText.clock(left), Graphics.FONT_NUMBER_HOT, color));
+        out.add(PairingLayout.bigLine(dc, TrainingText.clock(left), color));
         if (session.nextIsSameExercise()) {
             var total = ex.sets.size();
             out.add(new PairingLine(Lang.format(TrainingText.text(Rez.Strings.TrNextSet), [session.setIdx + 2, total]), Graphics.FONT_XTINY, Graphics.COLOR_WHITE));
@@ -21,7 +21,7 @@ module RestScreen {
                 out.add(new PairingLine(Lang.format(TrainingText.text(Rez.Strings.TrNextExercise), [session.plan.exercises[next].name]), Graphics.FONT_XTINY, Graphics.COLOR_WHITE));
             }
         }
-        out.add(new PairingLine(SetScreen.heartText(heartRate), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY));
+        out.add(new PairingLine(SetScreen.heartText(heartRate), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY).skippable());
         return out;
     }
 }

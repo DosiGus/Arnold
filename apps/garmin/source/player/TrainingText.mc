@@ -32,14 +32,21 @@ module TrainingText {
         if (set.loadG == null) {
             return null;
         }
-        return kg(set.loadG as Number, separator()) + " kg";
+        return Lang.format(text(Rez.Strings.TrUnitKg), [kg(set.loadG as Number, separator())]);
     }
 
     // "8 x 60 kg", "8 x" when the weight is not known, "? x 60 kg" when the repetitions are not known.
     function repsAndLoad(set as PlannedSet) as String {
-        var reps = set.reps == null ? "?" : (set.reps as Number).toString();
-        var load = loadText(set);
-        return load == null ? reps + " x" : reps + " x " + (load as String);
+        var reps = repsText(set.reps);
+        if (set.loadG == null) {
+            return Lang.format(text(Rez.Strings.TrRepsOnly), [reps]);
+        }
+        return Lang.format(text(Rez.Strings.TrRepsAndLoad), [reps, kg(set.loadG as Number, separator())]);
+    }
+
+    // "8", or "?" when the repetitions are not known (never invented).
+    function repsText(reps as Number or Null) as String {
+        return reps == null ? text(Rez.Strings.TrUnknownValue) : (reps as Number).toString();
     }
 
     // "Left", "Right", "Alternating"; null for both sides.

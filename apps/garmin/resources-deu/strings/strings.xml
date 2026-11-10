@@ -56,6 +56,14 @@
     <string id="TrAlternating">Wechselnd</string>
     <string id="TrRepsOpen">Wdh. nicht gesetzt</string>
     <string id="TrWeightOpen">Gewicht nicht gesetzt</string>
+    <string id="TrKg">kg</string>
+    <string id="TrUnitKg">$1$ kg</string>
+    <string id="TrUnknownValue">?</string>
+    <string id="TrNoReading">--</string>
+    <string id="TrRepsAndLoad">$1$ x $2$ kg</string>
+    <string id="TrRepsOnly">$1$ x</string>
+    <string id="TrKgAndReps">kg x $1$</string>
+    <string id="TrRepsUnit">Wdh.</string>
     <string id="TrHeartRate">$1$ bpm</string>
     <string id="TrRest">Pause</string>
     <string id="TrNextSet">Danach: Satz $1$ von $2$</string>

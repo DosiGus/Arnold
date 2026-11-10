@@ -7,6 +7,8 @@ source "$(dirname "$0")/env.sh"
 targets=("$@")
 [[ ${#targets[@]} -eq 0 ]] && targets=("${DEVICES[@]}")
 
+bash "$(dirname "$0")/check-texts.sh"
+
 for device in "${targets[@]}"; do
   compile "$device" "$BIN_DIR/$device.prg"
   echo "ok  $device"

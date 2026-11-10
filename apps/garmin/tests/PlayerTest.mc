@@ -622,7 +622,7 @@ function trainingScreensShowWhatTheWorkoutNeeds(logger as Logger) as Boolean {
     Test.assertMessage(preview.find("Heute +2,5 kg") != null, preview);    // the server's hint, unchanged
     rig.toFirstSet();
     var set = PlanScreens.joined(TrainingScreen.lines(dc, rig.session, 132, null));
-    Test.assertMessage(set.find("8 x 60") != null, set);
+    Test.assertMessage(set.find("|60|kg x 8|") != null, set);    // the weight is the main number
     Test.assertMessage(set.find("132") != null, set);
     Test.assertMessage(set.find("Letztes Mal 8 · 8 · 7") != null, set);
     var noPulse = PlanScreens.joined(TrainingScreen.lines(dc, rig.session, null, null));
