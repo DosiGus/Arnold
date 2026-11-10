@@ -18,7 +18,11 @@ class TrainingDelegate extends WatchUi.BehaviorDelegate {
         if (_session.state == TrainingSession.STATE_PREVIEW) {
             _session.confirmPreview();
         } else if (_session.state == TrainingSession.STATE_SET) {
-            _session.confirmSet();
+            if (_session.setNeedsInput()) {
+                EditLauncher.open(_session);   // unknown reps or weight are chosen, never saved on their own
+            } else {
+                _session.confirmSet();
+            }
         } else if (_session.state == TrainingSession.STATE_REST) {
             _session.endRest();
         } else if (_session.isFinished()) {
@@ -42,6 +46,10 @@ class TrainingDelegate extends WatchUi.BehaviorDelegate {
     }
 
     function onNextPage() as Boolean {
+        if (_session.state == TrainingSession.STATE_SET) {
+            EditLauncher.open(_session);
+            return true;
+        }
         return adjustRest(-_session.REST_STEP_S);
     }
 
@@ -49,14 +57,18 @@ class TrainingDelegate extends WatchUi.BehaviorDelegate {
         return adjustRest(_session.REST_STEP_S);
     }
 
-    // UP held: on the summary of an unsaved workout it discards (asked twice); during the workout the menu follows with GAR-B3-05.
+    // UP held: on the summary of an unsaved workout it discards (asked twice); during the workout it opens the menu.
     function onMenu() as Boolean {
-        if (_session.isFinished() && _sender.phaseOf(_session.uuid) == OutboxSender.PHASE_NONE) {
-            WatchUi.pushView(
-                new WatchUi.Confirmation(TrainingText.text(Rez.Strings.PromptDiscard)),
-                new DiscardConfirmDelegate(_session, 1),
-                WatchUi.SLIDE_UP
-            );
+        if (_session.isFinished()) {
+            if (_sender.phaseOf(_session.uuid) == OutboxSender.PHASE_NONE) {
+                WatchUi.pushView(
+                    new WatchUi.Confirmation(TrainingText.text(Rez.Strings.PromptDiscard)),
+                    new DiscardConfirmDelegate(_session, 1, 0),
+                    WatchUi.SLIDE_UP
+                );
+            }
+        } else {
+            TrainingMenu.open(_session);
         }
         return true;
     }
@@ -86,11 +98,13 @@ class TrainingDelegate extends WatchUi.BehaviorDelegate {
 class DiscardConfirmDelegate extends WatchUi.ConfirmationDelegate {
     private var _session as TrainingSession;
     private var _step as Number;
+    private var _extraPops as Number;   // screens above the training screen (the menu)
 
-    function initialize(session as TrainingSession, step as Number) {
+    function initialize(session as TrainingSession, step as Number, extraPops as Number) {
         ConfirmationDelegate.initialize();
         _session = session;
         _step = step;
+        _extraPops = extraPops;
     }
 
     function onResponse(response as WatchUi.Confirm) as Boolean {
@@ -100,12 +114,14 @@ class DiscardConfirmDelegate extends WatchUi.ConfirmationDelegate {
         if (_step == 1) {
             WatchUi.pushView(
                 new WatchUi.Confirmation(TrainingText.text(Rez.Strings.PromptDiscard2)),
-                new DiscardConfirmDelegate(_session, 2),
+                new DiscardConfirmDelegate(_session, 2, _extraPops),
                 WatchUi.SLIDE_UP
             );
         } else {
             _session.discard();
-            WatchUi.popView(WatchUi.SLIDE_IMMEDIATE);
+            for (var i = 0; i <= _extraPops; i++) {
+                WatchUi.popView(WatchUi.SLIDE_IMMEDIATE);
+            }
         }
         return true;
     }

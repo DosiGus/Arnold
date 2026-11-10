@@ -7,7 +7,7 @@ import Toybox.Lang;
 //   sess:active       uuid of the running workout
 //   sess:<uuid>:head  small state entry (where the workout is, how many events)
 //   sess:<uuid>:plan  the training day the workout runs on (copied at the start)
-//   sess:<uuid>:<n>   one event per set, appended and never rewritten
+//   sess:<uuid>:<n>   one event per set or change, appended and never rewritten
 //
 // Writing order: the event first, then the head. A crash in between leaves an
 // event the head does not count yet; reading finds it by its number and its
@@ -16,7 +16,8 @@ import Toybox.Lang;
 class Journal {
     enum Kind {
         EVENT_SET = 1,      // a set confirmed (or later corrected)
-        EVENT_SKIP = 2      // an exercise without sets was passed over
+        EVENT_SKIP = 2,     // an exercise was passed over (without sets, or by the user)
+        EVENT_ADJUST = 3    // planned values of a set changed: r, g; d = 1 also for the sets after it
     }
 
     private var _store as KeyValueStore;

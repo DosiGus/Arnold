@@ -85,4 +85,16 @@
     <string id="MenuSendNow">Send now</string>
     <string id="HomePending">$1$ workout waiting</string>
     <string id="HomePendingMany">$1$ workouts waiting</string>
+    <string id="MenuTitle">Workout</string>
+    <string id="MenuSkip">Skip exercise</string>
+    <string id="MenuEnd">End workout</string>
+    <string id="MenuDiscard">Discard workout</string>
+    <string id="PromptEnd">End workout?</string>
+    <string id="PromptApplyRest">Apply to remaining sets?</string>
+    <string id="EditReps">Reps</string>
+    <string id="EditRepsPick">Choose reps</string>
+    <string id="EditLoad">Weight</string>
+    <string id="EditLoadPick">Choose weight</string>
+    <string id="EditNextHint">START: next</string>
+    <string id="EditDoneHint">START: done</string>
 </strings>

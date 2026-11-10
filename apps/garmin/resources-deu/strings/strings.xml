@@ -85,4 +85,16 @@
     <string id="MenuSendNow">Jetzt senden</string>
     <string id="HomePending">$1$ Training wartet</string>
     <string id="HomePendingMany">$1$ Trainings warten</string>
+    <string id="MenuTitle">Training</string>
+    <string id="MenuSkip">Übung überspringen</string>
+    <string id="MenuEnd">Training beenden</string>
+    <string id="MenuDiscard">Training verwerfen</string>
+    <string id="PromptEnd">Training beenden?</string>
+    <string id="PromptApplyRest">Für restliche Sätze übernehmen?</string>
+    <string id="EditReps">Wiederholungen</string>
+    <string id="EditRepsPick">Wdh. wählen</string>
+    <string id="EditLoad">Gewicht</string>
+    <string id="EditLoadPick">Gewicht wählen</string>
+    <string id="EditNextHint">START: weiter</string>
+    <string id="EditDoneHint">START: fertig</string>
 </strings>

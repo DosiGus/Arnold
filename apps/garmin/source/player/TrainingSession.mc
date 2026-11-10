@@ -8,8 +8,9 @@ import Toybox.Lang;
 // Every confirmed set is written to the journal (event first, then the head)
 // before the state changes, so a crash or a forced exit loses nothing (PRD S-01,
 // T-09). The rest timer runs on timestamps, so it is right after any hang.
-// Not in this class: adjusting values, the workout menu (GAR-B3-05), the summary
-// and upload (GAR-B3-06), the recording (GAR-B4-01).
+// Changes during the workout (GAR-B3-05) are journal events too: the plan copy is
+// never rewritten, the events are replayed on it when the workout is resumed.
+// Not in this class: the summary and upload (GAR-B3-06), the recording (GAR-B4-01).
 class TrainingSession {
     enum State {
         STATE_PREVIEW,
@@ -59,6 +60,11 @@ class TrainingSession {
         setIdx = head["s"] as Number;
         paused = false;
         _warned = false;
+        for (var i = 0; i < events.size(); i++) {
+            if ((events[i]["k"] as Number) == Journal.EVENT_ADJUST) {
+                applyAdjust(events[i]);
+            }
+        }
     }
 
     // Starts a new workout on a copy of the given day and writes it to the journal.
@@ -206,6 +212,59 @@ class TrainingSession {
         place(STATE_SET, exIdx, 0, _clock.nowSeconds(), 0);
     }
 
+    // True when the set on screen cannot be confirmed as it is: unknown repetitions or an
+    // unknown weight have to be chosen first (PRD P-03); nothing is saved silently.
+    function setNeedsInput() as Boolean {
+        var planned = currentSet();
+        return state == STATE_SET && planned != null && ((planned as PlannedSet).reps == null || (planned as PlannedSet).loadG == null);
+    }
+
+    // True when sets of the exercise on screen follow the current one.
+    function hasLaterSets() as Boolean {
+        return (state == STATE_SET || state == STATE_REST) && setIdx + 1 < plan.exercises[exIdx].sets.size();
+    }
+
+    // The values chosen on the adjust screen for the set on screen; `forLater` also
+    // changes the sets after it in this exercise. The change is journaled first.
+    function adjustSet(reps as Number, loadG as Number, forLater as Boolean) as Boolean {
+        if (state != STATE_SET || paused) {
+            return false;
+        }
+        var event = {
+            "k" => Journal.EVENT_ADJUST, "e" => exIdx, "s" => setIdx, "r" => reps, "g" => loadG,
+            "d" => forLater ? 1 : 0, "a" => _clock.nowSeconds(), "b" => _clock.nowSeconds()
+        };
+        record(event);
+        applyAdjust(event);
+        _journal.saveHead(uuid, _head);
+        return true;
+    }
+
+    // Skips the exercise on screen (preview or set): the sets already confirmed stay,
+    // the rest is not trained. Moves on to the next exercise or the end.
+    function canSkipExercise() as Boolean {
+        return (state == STATE_PREVIEW || state == STATE_SET) && !paused;
+    }
+
+    function skipExercise() as Boolean {
+        if (!canSkipExercise()) {
+            return false;
+        }
+        var now = _clock.nowSeconds();
+        record({ "k" => Journal.EVENT_SKIP, "e" => exIdx, "s" => setIdx, "d" => 0, "a" => now, "b" => now });
+        beginExercise(exIdx + 1);
+        return true;
+    }
+
+    // "End workout": what was done so far is the workout; the rest is not trained.
+    function finishEarly() as Boolean {
+        if (state == STATE_FINISHED || paused) {
+            return false;
+        }
+        place(STATE_FINISHED, plan.exercises.size(), 0, _clock.nowSeconds(), 0);
+        return true;
+    }
+
     // START on a set: the set counts as shown. False if it cannot be confirmed yet
     // (unknown repetitions cannot be saved as a number; the user has to enter them).
     function confirmSet() as Boolean {
@@ -314,6 +373,10 @@ class TrainingSession {
         if (events.size() > counted) {
             _head["n"] = events.size();
             var last = events[events.size() - 1];
+            if ((last["k"] as Number) == Journal.EVENT_SKIP && (state == STATE_PREVIEW || state == STATE_SET) && (last["e"] as Number) == exIdx) {
+                beginExercise(exIdx + 1);   // the skip was written, the head not yet
+                return;
+            }
             if ((last["k"] as Number) == Journal.EVENT_SET && state == STATE_SET && (last["e"] as Number) == exIdx && (last["s"] as Number) == setIdx) {
                 afterSet(last["b"] as Number);
                 return;
@@ -380,6 +443,21 @@ class TrainingSession {
             place(STATE_SET, exIdx, setIdx + 1, _clock.nowSeconds(), 0);
         } else {
             beginExercise(exIdx + 1);
+        }
+    }
+
+    // Changes the planned values of the set the event names (and the later ones of the exercise).
+    hidden function applyAdjust(event as Dictionary) as Void {
+        var index = event["e"] as Number;
+        var first = event["s"] as Number;
+        if (index < 0 || index >= plan.exercises.size()) {
+            return;
+        }
+        var sets = plan.exercises[index].sets;
+        var last = (event["d"] as Number) == 1 ? sets.size() - 1 : first;
+        for (var i = first; i <= last && i < sets.size(); i++) {
+            sets[i].reps = event["r"] as Number;
+            sets[i].loadG = event["g"] as Number;
         }
     }
 

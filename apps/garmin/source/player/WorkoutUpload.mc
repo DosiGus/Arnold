@@ -14,7 +14,7 @@ module WorkoutUpload {
         var seen = [] as Array<Number>;
         for (var i = 0; i < session.events.size(); i++) {
             var index = session.events[i]["e"] as Number;
-            if (seen.indexOf(index) < 0) {
+            if ((session.events[i]["k"] as Number) != Journal.EVENT_ADJUST && seen.indexOf(index) < 0) {
                 seen.add(index);
             }
         }
