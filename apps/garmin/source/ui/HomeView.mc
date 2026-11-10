@@ -11,12 +11,14 @@ class HomeView extends WatchUi.View {
     private var _sync as PlanSync;
     private var _picker as SessionPicker;
     private var _clock as PairingClock;
+    private var _launcher as TrainingLauncher;
 
-    function initialize(controller as PairingController, sync as PlanSync, picker as SessionPicker) {
+    function initialize(controller as PairingController, sync as PlanSync, picker as SessionPicker, launcher as TrainingLauncher) {
         View.initialize();
         _controller = controller;
         _sync = sync;
         _picker = picker;
+        _launcher = launcher;
         _clock = new PairingClock();
     }
 
@@ -37,7 +39,10 @@ class HomeView extends WatchUi.View {
     }
 
     function onUpdate(dc as Dc) as Void {
-        if (_controller.isPaired()) {
+        var running = _launcher.activeName();
+        if (_controller.isPaired() && running != null) {
+            PairingLayout.draw(dc, HomeScreen.resumeLines(running as String));
+        } else if (_controller.isPaired()) {
             PairingLayout.draw(dc, HomeScreen.lines(dc, _sync, _picker, _clock.nowSeconds()));
         } else {
             PairingLayout.draw(dc, PairingScreen.lines(dc, _controller));
@@ -96,9 +101,20 @@ module HomeScreen {
             out.add(new PairingLine(text(Rez.Strings.HomeDayNotLoaded), Graphics.FONT_XTINY, alert));
         } else if (picker.isNextDay(dir)) {
             out.add(new PairingLine(text(Rez.Strings.HomeNext), Graphics.FONT_XTINY, white));
+            out.add(new PairingLine(text(Rez.Strings.HomeStartHint), Graphics.FONT_XTINY, gray));
         } else {
             out.add(new PairingLine(Lang.format(text(Rez.Strings.HomeDayOf), [index + 1, count]), Graphics.FONT_XTINY, gray));
+            out.add(new PairingLine(text(Rez.Strings.HomeStartHint), Graphics.FONT_XTINY, gray));
         }
+        return out;
+    }
+
+    // A workout is running (or was interrupted): offer to continue it.
+    function resumeLines(name as String) as Array<PairingLine> {
+        var out = [] as Array<PairingLine>;
+        out.add(new PairingLine(text(Rez.Strings.HomeResume), Graphics.FONT_XTINY, Graphics.COLOR_YELLOW));
+        out.add(new PairingLine(name, Graphics.FONT_MEDIUM, Graphics.COLOR_WHITE));
+        out.add(new PairingLine(text(Rez.Strings.HomeResumeHint), Graphics.FONT_SMALL, Graphics.COLOR_WHITE));
         return out;
     }
 
@@ -165,6 +181,7 @@ module HomeFlow {
     function views() as [WatchUi.Views, WatchUi.InputDelegates] {
         var picker = new SessionPicker();
         var sync = Session.planSync();
-        return [new HomeView(Session.pairing(), sync, picker), new HomeDelegate(Session.pairing(), sync, picker)];
+        var launcher = Session.launcher();
+        return [new HomeView(Session.pairing(), sync, picker, launcher), new HomeDelegate(Session.pairing(), sync, picker, launcher)];
     }
 }

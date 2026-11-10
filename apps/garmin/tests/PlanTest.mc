@@ -622,29 +622,37 @@ function homeDelegateMovesTheDayAndLoadsAMissingPlan(logger as Logger) as Boolea
     var rig = new PlanRig();
     rig.loadAll();
     var picker = new SessionPicker();
-    var delegate = new HomeDelegate(rig.pairing.controller, rig.sync, picker);
+    var launcher = new TestLauncher(new Journal(rig.pairing.store), rig.pairing.clock, new RecordingSignals());
+    var delegate = new HomeDelegate(rig.pairing.controller, rig.sync, picker, launcher);
     Expect.equal(picker.selectedIndex(rig.cache.directory()), 1);
     Test.assert(delegate.onNextPage());
     Expect.equal(picker.selectedIndex(rig.cache.directory()), 2);
     Test.assert(delegate.onPreviousPage());
     Test.assert(delegate.onPreviousPage());
     Expect.equal(picker.selectedIndex(rig.cache.directory()), 0);
-    // START with everything loaded does not touch the network
+    // START with everything loaded starts the day from the stored copy and does not touch the network
     var sent = rig.pairing.transport.sentCount();
     Test.assert(delegate.onSelect());
     Expect.equal(rig.pairing.transport.sentCount(), sent);
-    // after a failure START loads again
+    Expect.equal(launcher.shown.size(), 1);
+    Expect.equal(launcher.shown[0].dayName(), "Day d1");
+    rig.pairing.store.deleteValue(StoreKeys.ACTIVE_SESSION);   // (the workout is not part of this test)
+    // without a stored plan START loads it again
+    rig.pairing.store.deleteValue(StoreKeys.ACTIVE_SESSION);
     rig.sync.start();
     rig.exhaustRetries();
+    rig.cache.clear();
     Test.assert(delegate.onSelect());
     Expect.equal(rig.sync.state, PlanSync.SYNC_LOADING);
+    Expect.equal(launcher.shown.size(), 1);   // nothing was started without a plan
     return true;
 }
 
 (:test)
 function homeDelegateStartsPairingWhenNotConnected(logger as Logger) as Boolean {
     var rig = new PlanRig();
-    var delegate = new HomeDelegate(rig.pairing.controller, rig.sync, new SessionPicker());
+    var launcher = new TestLauncher(new Journal(rig.pairing.store), rig.pairing.clock, new RecordingSignals());
+    var delegate = new HomeDelegate(rig.pairing.controller, rig.sync, new SessionPicker(), launcher);
     Test.assert(!delegate.onNextPage());     // no day to choose yet
     Test.assert(delegate.onSelect());
     Expect.equal(rig.pairing.controller.state, PairingController.STATE_PAIRING);

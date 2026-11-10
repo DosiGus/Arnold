@@ -42,4 +42,26 @@
     <string id="AgeMinutes">vor $1$ Min.</string>
     <string id="AgeHours">vor $1$ Std.</string>
     <string id="AgeDays">vor $1$ Tagen</string>
+    <string id="TrExerciseOf">Übung $1$ von $2$</string>
+    <string id="TrRestOf">Pause $1$</string>
+    <string id="TrSets">$1$ Sätze</string>
+    <string id="TrSetOne">$1$ Satz</string>
+    <string id="TrPerSide">je Seite</string>
+    <string id="TrSetOf">Satz $1$ von $2$</string>
+    <string id="TrLeft">Links</string>
+    <string id="TrRight">Rechts</string>
+    <string id="TrAlternating">Wechselnd</string>
+    <string id="TrRepsOpen">Wdh. nicht gesetzt</string>
+    <string id="TrWeightOpen">Gewicht nicht gesetzt</string>
+    <string id="TrHeartRate">$1$ bpm</string>
+    <string id="TrRest">Pause</string>
+    <string id="TrNextSet">Danach: Satz $1$ von $2$</string>
+    <string id="TrNextExercise">Danach: $1$</string>
+    <string id="TrFinished">Training fertig</string>
+    <string id="TrSetsDone">$1$ Sätze erledigt</string>
+    <string id="TrSummaryFollows">Zusammenfassung folgt</string>
+    <string id="TrPausePrompt">Training pausieren?</string>
+    <string id="HomeResume">Training läuft</string>
+    <string id="HomeResumeHint">START: fortsetzen</string>
+    <string id="HomeStartHint">START: Training</string>
 </strings>

@@ -8,6 +8,7 @@ module StoreKeys {
     const PLAN as String = "plan";           // plan directory with ETag and fetch time
     const PLAN_RECENT as String = "plan:recent";
     const SETTINGS as String = "settings";   // vibration, sound, warning
+    const ACTIVE_SESSION as String = "sess:active";   // uuid of the workout in progress, if any
 
     // One training day of the plan, stored on its own (07 D-22).
     function planDay(sessionId as String) as String {
@@ -17,6 +18,11 @@ module StoreKeys {
     // State of a running or saved workout.
     function sessionHead(sessionUuid as String) as String {
         return "sess:" + sessionUuid + ":head";
+    }
+
+    // The copy of the training day a workout runs on (a plan change later does not touch it).
+    function sessionPlan(sessionUuid as String) as String {
+        return "sess:" + sessionUuid + ":plan";
     }
 
     // One set event of the journal: confirmed, corrected or removed.

@@ -161,4 +161,13 @@ module Expect {
         var same = actual == null ? expected == null : (expected != null && actual.equals(expected));
         Test.assertMessage(same, "expected " + expected + ", got " + actual);
     }
+
+    // The value of a dictionary field, typed so it can be compared.
+    function valueOf(dict as Dictionary, key as String) as Object or Null {
+        return dict[key] as Object or Null;
+    }
+
+    function field(dict as Dictionary, key as String, expected as Object or Null) as Void {
+        equal(valueOf(dict, key), expected);
+    }
 }

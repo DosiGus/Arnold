@@ -41,4 +41,15 @@ module Session {
         }
         return _plan as PlanSync;
     }
+
+    var _launcher as TrainingLauncher or Null = null;
+
+    // Starts and continues workouts.
+    function launcher() as TrainingLauncher {
+        if (_launcher == null) {
+            var store = new KeyValueStore();
+            _launcher = new TrainingLauncher(new Journal(store), new PairingClock(), new Signals(store));
+        }
+        return _launcher as TrainingLauncher;
+    }
 }
