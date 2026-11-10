@@ -19,6 +19,7 @@ class SetAdjust {
     var field as Number;
     var repsUnknown as Boolean;
     var loadUnknown as Boolean;
+    var setIndex as Number = 0;   // the set of the exercise that is being changed
 
     private var _stepG as Number;
     private var _startReps as Number or Null;

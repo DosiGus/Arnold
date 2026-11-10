@@ -17,7 +17,9 @@ class Journal {
     enum Kind {
         EVENT_SET = 1,      // a set confirmed (or later corrected)
         EVENT_SKIP = 2,     // an exercise was passed over (without sets, or by the user)
-        EVENT_ADJUST = 3    // planned values of a set changed: r, g; d = 1 also for the sets after it
+        EVENT_ADJUST = 3,   // planned values of a set changed: r, g; d = 1 also for the sets after it
+        EVENT_CORRECT = 4,  // values of a confirmed set changed: e, s, r, g
+        EVENT_UNDO = 5      // a confirmed set was taken back: e, s
     }
 
     private var _store as KeyValueStore;

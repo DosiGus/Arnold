@@ -6,6 +6,12 @@ module TrainingMenu {
 
     function build(session as TrainingSession) as WatchUi.Menu2 {
         var menu = new WatchUi.Menu2({ :title => WatchUi.loadResource(Rez.Strings.MenuTitle) as String });
+        if (session.state == TrainingSession.STATE_SET || session.state == TrainingSession.STATE_REST) {
+            menu.addItem(new WatchUi.MenuItem(TrainingText.text(Rez.Strings.MenuSets), null, :sets, null));
+        }
+        if (session.canUndo()) {
+            menu.addItem(new WatchUi.MenuItem(TrainingText.text(Rez.Strings.MenuUndo), null, :undo, null));
+        }
         if (session.canSkipExercise()) {
             menu.addItem(new WatchUi.MenuItem(TrainingText.text(Rez.Strings.MenuSkip), null, :skip, null));
         }
@@ -29,7 +35,12 @@ class TrainingMenuDelegate extends WatchUi.Menu2InputDelegate {
 
     function onSelect(item as WatchUi.MenuItem) as Void {
         var id = item.getId();
-        if (id == :skip) {
+        if (id == :sets) {
+            WatchUi.switchToView(SetList.build(_session), new SetListDelegate(_session), WatchUi.SLIDE_IMMEDIATE);
+        } else if (id == :undo) {
+            _session.undoLastSet();
+            WatchUi.popView(WatchUi.SLIDE_IMMEDIATE);
+        } else if (id == :skip) {
             _session.skipExercise();
             WatchUi.popView(WatchUi.SLIDE_IMMEDIATE);
         } else if (id == :end) {

@@ -132,15 +132,25 @@ class TrainingSession {
         return plan.exercises[exIdx].sets[setIdx];
     }
 
+    // The confirmed sets that count (corrections applied, undone sets left out).
+    function doneSets() as Array<Dictionary> {
+        return WorkoutEvents.sets(events);
+    }
+
     // Number of sets confirmed so far.
     function setsDone() as Number {
-        var count = 0;
-        for (var i = 0; i < events.size(); i++) {
-            if ((events[i]["k"] as Number) == Journal.EVENT_SET) {
-                count++;
+        return doneSets().size();
+    }
+
+    // The confirmed set `setIndex` of the exercise on screen, or null.
+    function doneSet(setIndex as Number) as Dictionary or Null {
+        var done = doneSets();
+        for (var i = 0; i < done.size(); i++) {
+            if ((done[i]["e"] as Number) == exIdx && (done[i]["s"] as Number) == setIndex) {
+                return done[i];
             }
         }
-        return count;
+        return null;
     }
 
     function sessionStart() as Number {
@@ -161,9 +171,10 @@ class TrainingSession {
     // Number of exercises with at least one confirmed set.
     function exercisesTrained() as Number {
         var seen = [] as Array<Number>;
-        for (var i = 0; i < events.size(); i++) {
-            var index = events[i]["e"] as Number;
-            if ((events[i]["k"] as Number) == Journal.EVENT_SET && seen.indexOf(index) < 0) {
+        var done = doneSets();
+        for (var i = 0; i < done.size(); i++) {
+            var index = done[i]["e"] as Number;
+            if (seen.indexOf(index) < 0) {
                 seen.add(index);
             }
         }
@@ -219,24 +230,71 @@ class TrainingSession {
         return state == STATE_SET && planned != null && ((planned as PlannedSet).reps == null || (planned as PlannedSet).loadG == null);
     }
 
-    // True when sets of the exercise on screen follow the current one.
+    // True when sets of the exercise on screen follow set `setIndex`.
+    function hasSetsAfter(setIndex as Number) as Boolean {
+        return (state == STATE_SET || state == STATE_REST) && setIndex + 1 < plan.exercises[exIdx].sets.size();
+    }
+
     function hasLaterSets() as Boolean {
-        return (state == STATE_SET || state == STATE_REST) && setIdx + 1 < plan.exercises[exIdx].sets.size();
+        return hasSetsAfter(setIdx);
     }
 
     // The values chosen on the adjust screen for the set on screen; `forLater` also
     // changes the sets after it in this exercise. The change is journaled first.
     function adjustSet(reps as Number, loadG as Number, forLater as Boolean) as Boolean {
-        if (state != STATE_SET || paused) {
+        if (state != STATE_SET) {
+            return false;
+        }
+        return editSet(setIdx, reps, loadG, forLater);
+    }
+
+    // New values for set `target` of the exercise on screen (the list of sets, UP on a set).
+    // A set that is confirmed already is corrected; an open set gets other planned values
+    // (`forLater`: and the sets after it).
+    function editSet(target as Number, reps as Number, loadG as Number, forLater as Boolean) as Boolean {
+        if ((state != STATE_SET && state != STATE_REST) || paused || target < 0 || target >= plan.exercises[exIdx].sets.size()) {
+            return false;
+        }
+        var now = _clock.nowSeconds();
+        if (doneSet(target) != null) {
+            record({ "k" => Journal.EVENT_CORRECT, "e" => exIdx, "s" => target, "r" => reps, "g" => loadG, "d" => 0, "a" => now, "b" => now });
+            _journal.saveHead(uuid, _head);
+            return true;
+        }
+        if (state == STATE_REST && target <= setIdx) {
             return false;
         }
         var event = {
-            "k" => Journal.EVENT_ADJUST, "e" => exIdx, "s" => setIdx, "r" => reps, "g" => loadG,
-            "d" => forLater ? 1 : 0, "a" => _clock.nowSeconds(), "b" => _clock.nowSeconds()
+            "k" => Journal.EVENT_ADJUST, "e" => exIdx, "s" => target, "r" => reps, "g" => loadG,
+            "d" => forLater ? 1 : 0, "a" => now, "b" => now
         };
         record(event);
         applyAdjust(event);
         _journal.saveHead(uuid, _head);
+        return true;
+    }
+
+    // The most recently confirmed set (the one "undo" takes back), or null.
+    function lastDoneSet() as Dictionary or Null {
+        var done = doneSets();
+        return done.size() == 0 ? null : done[done.size() - 1];
+    }
+
+    function canUndo() as Boolean {
+        return !paused && lastDoneSet() != null;
+    }
+
+    // Takes the last confirmed set back: the workout returns to that set, with the values it had.
+    function undoLastSet() as Boolean {
+        var last = lastDoneSet();
+        if (!canUndo() || last == null) {
+            return false;
+        }
+        var now = _clock.nowSeconds();
+        var ex = (last as Dictionary)["e"] as Number;
+        var index = (last as Dictionary)["s"] as Number;
+        record({ "k" => Journal.EVENT_UNDO, "e" => ex, "s" => index, "d" => 0, "a" => now, "b" => now });
+        place(STATE_SET, ex, index, now, 0);
         return true;
     }
 
@@ -373,6 +431,10 @@ class TrainingSession {
         if (events.size() > counted) {
             _head["n"] = events.size();
             var last = events[events.size() - 1];
+            if ((last["k"] as Number) == Journal.EVENT_UNDO) {
+                place(STATE_SET, last["e"] as Number, last["s"] as Number, now, 0);   // the undo was written, the head not yet
+                return;
+            }
             if ((last["k"] as Number) == Journal.EVENT_SKIP && (state == STATE_PREVIEW || state == STATE_SET) && (last["e"] as Number) == exIdx) {
                 beginExercise(exIdx + 1);   // the skip was written, the head not yet
                 return;

@@ -54,6 +54,10 @@ class TrainingDelegate extends WatchUi.BehaviorDelegate {
     }
 
     function onPreviousPage() as Boolean {
+        if (_session.state == TrainingSession.STATE_SET) {
+            SetList.open(_session);
+            return true;
+        }
         return adjustRest(_session.REST_STEP_S);
     }
 

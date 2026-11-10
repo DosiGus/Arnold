@@ -267,3 +267,129 @@ function skipWrittenButHeadNotYetSavedIsTakenOverAfterACrash(logger as Logger) a
     Expect.equal(resumed.events.size(), 2 - 1);
     return true;
 }
+
+// ---- list of sets, correction, undo ----
+
+(:test)
+function correctingAConfirmedSetReplacesItsValuesAndKeepsItsTimes(logger as Logger) as Boolean {
+    var rig = new PlayerRig(false);
+    rig.toFirstSet();
+    rig.clock.now += 40;
+    rig.session.confirmSet();                              // set 1: 8 x 60 kg
+    rig.session.endRest();
+    Test.assert(rig.session.doneSet(0) != null);
+    Test.assert(rig.session.editSet(0, 9, 62500, false));
+    var done = rig.session.doneSets();
+    Expect.equal(done.size(), 1);
+    Expect.field(done[0], "r", 9);
+    Expect.field(done[0], "g", 62500);
+    Expect.equal((done[0]["b"] as Number) - (done[0]["a"] as Number), 40);
+    var kinds = rig.journal.events(rig.session.uuid);
+    Expect.field(kinds[0], "k", Journal.EVENT_SET);        // the first event is not rewritten
+    Expect.field(kinds[0], "r", 8);
+    Expect.field(kinds[1], "k", Journal.EVENT_CORRECT);
+    return true;
+}
+
+(:test)
+function aCorrectionSurvivesACrashAndGoesIntoTheUpload(logger as Logger) as Boolean {
+    var rig = new PlayerRig(false);
+    rig.toFirstSet();
+    rig.setAndRest();
+    rig.session.editSet(0, 9, 62500, false);
+    var resumed = rig.restart() as TrainingSession;
+    Expect.equal(resumed.doneSets().size(), 1);
+    Expect.field(resumed.doneSets()[0], "r", 9);
+    resumed.finishEarly();
+    var request = WorkoutUpload.build(resumed, rig.clock.now + 10);
+    var sets = ((request["exercises"] as Array)[0] as Dictionary)["sets"] as Array;
+    Expect.equal(sets.size(), 1);
+    Expect.field(sets[0] as Dictionary, "reps", 9);
+    Expect.field(sets[0] as Dictionary, "load_g", 62500);
+    return true;
+}
+
+(:test)
+function openSetsOfTheListCanGetOtherValuesButNotWhileTheirRestRuns(logger as Logger) as Boolean {
+    var rig = new PlayerRig(false);
+    rig.toFirstSet();
+    rig.session.confirmSet();                              // rest of set 1
+    Test.assert(rig.session.editSet(2, 6, 50000, false));  // set 3 is open
+    Expect.equal(rig.session.exercise().sets[2].reps, 6);
+    Expect.equal(rig.session.exercise().sets[1].reps, 8);
+    Test.assert(!rig.session.editSet(5, 6, 50000, false)); // no such set
+    return true;
+}
+
+(:test)
+function undoTakesTheLastSetBackAndTheSetCanBeConfirmedAgain(logger as Logger) as Boolean {
+    var rig = new PlayerRig(false);
+    rig.toFirstSet();
+    rig.setAndRest();
+    rig.session.confirmSet();                              // set 2, now in the rest
+    Expect.equal(rig.session.setsDone(), 2);
+    Test.assert(rig.session.canUndo());
+    Test.assert(rig.session.undoLastSet());
+    Expect.equal(rig.session.setsDone(), 1);
+    Expect.equal(rig.session.state, TrainingSession.STATE_SET);
+    Expect.equal(rig.session.setIdx, 1);
+    Test.assert(rig.session.editSet(1, 5, 40000, false));
+    Test.assert(rig.session.confirmSet());                 // the same set again, with new values
+    Expect.equal(rig.session.setsDone(), 2);
+    var done = rig.session.doneSets();
+    Expect.field(done[1], "r", 5);
+    Expect.field(done[1], "g", 40000);
+    var request = WorkoutUpload.build(rig.session, rig.clock.now + 5);
+    var sets = ((request["exercises"] as Array)[0] as Dictionary)["sets"] as Array;
+    Expect.equal(sets.size(), 2);                          // the undone set is not in the upload twice
+    return true;
+}
+
+(:test)
+function undoCanGoBackIntoTheExerciseBefore(logger as Logger) as Boolean {
+    var rig = new PlayerRig(false);
+    rig.toFirstSet();
+    for (var i = 0; i < 3; i++) {
+        rig.setAndRest();
+    }
+    Expect.equal(rig.session.state, TrainingSession.STATE_PREVIEW);   // exercise B
+    Test.assert(rig.session.undoLastSet());
+    Expect.equal(rig.session.exercise().name, "Bankdrücken");
+    Expect.equal(rig.session.setIdx, 2);
+    Expect.equal(rig.session.setsDone(), 2);
+    return true;
+}
+
+(:test)
+function undoNeedsAConfirmedSet(logger as Logger) as Boolean {
+    var rig = new PlayerRig(false);
+    Test.assert(!rig.session.canUndo());
+    Test.assert(!rig.session.undoLastSet());
+    rig.toFirstSet();
+    Test.assert(!rig.session.canUndo());
+    return true;
+}
+
+(:test)
+function undoSurvivesACrashAndSoDoesAnUndoWrittenBeforeTheHead(logger as Logger) as Boolean {
+    var rig = new PlayerRig(false);
+    rig.toFirstSet();
+    rig.setAndRest();
+    rig.session.confirmSet();
+    rig.session.undoLastSet();
+    var resumed = rig.restart() as TrainingSession;
+    Expect.equal(resumed.setsDone(), 1);
+    Expect.equal(resumed.setIdx, 1);
+    Expect.equal(resumed.state, TrainingSession.STATE_SET);
+    // the undo event is written, but the head still shows the rest after set 2
+    var late = new PlayerRig(false);
+    late.toFirstSet();
+    late.setAndRest();
+    late.session.confirmSet();
+    late.journal.appendEvent(late.session.uuid, 2, { "k" => Journal.EVENT_UNDO, "e" => 0, "s" => 1, "d" => 0, "a" => late.clock.now, "b" => late.clock.now });
+    var recovered = late.restart() as TrainingSession;
+    Expect.equal(recovered.setsDone(), 1);
+    Expect.equal(recovered.state, TrainingSession.STATE_SET);
+    Expect.equal(recovered.setIdx, 1);
+    return true;
+}

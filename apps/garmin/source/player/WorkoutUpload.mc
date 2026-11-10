@@ -11,11 +11,17 @@ module WorkoutUpload {
         var started = session.sessionStart();
         var offset = session.utcOffsetMinutes();
         var exercises = [] as Array;
+        var done = session.doneSets();
         var seen = [] as Array<Number>;
-        for (var i = 0; i < session.events.size(); i++) {
-            var index = session.events[i]["e"] as Number;
-            if ((session.events[i]["k"] as Number) != Journal.EVENT_ADJUST && seen.indexOf(index) < 0) {
-                seen.add(index);
+        for (var i = 0; i < done.size(); i++) {
+            if (seen.indexOf(done[i]["e"] as Number) < 0) {
+                seen.add(done[i]["e"] as Number);
+            }
+        }
+        var skipped = WorkoutEvents.skipped(session.events);
+        for (var i = 0; i < skipped.size(); i++) {
+            if (seen.indexOf(skipped[i]) < 0) {
+                seen.add(skipped[i]);
             }
         }
         seen.sort(null);
@@ -23,19 +29,18 @@ module WorkoutUpload {
         for (var x = 0; x < seen.size(); x++) {
             var ex = session.plan.exercises[seen[x]];
             var sets = [] as Array;
-            for (var i = 0; i < session.events.size(); i++) {
-                var event = session.events[i];
-                if ((event["e"] as Number) != seen[x] || (event["k"] as Number) != Journal.EVENT_SET) {
+            for (var i = 0; i < done.size(); i++) {
+                var event = done[i];
+                if ((event["e"] as Number) != seen[x]) {
                     continue;
                 }
-                var entry = {
+                sets.add({
                     "reps" => event["r"],
                     "load_g" => event["g"],
                     "side" => PlannedSet.sideName(event["d"] as Number),
                     "t0" => event["a"],
                     "t1" => event["b"]
-                };
-                sets.add(entry);
+                });
                 if ((event["b"] as Number) > last) {
                     last = event["b"] as Number;
                 }

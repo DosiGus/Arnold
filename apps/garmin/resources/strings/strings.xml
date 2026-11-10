@@ -97,4 +97,9 @@
     <string id="EditLoadPick">Choose weight</string>
     <string id="EditNextHint">START: next</string>
     <string id="EditDoneHint">START: done</string>
+    <string id="MenuSets">Sets</string>
+    <string id="MenuUndo">Undo last set</string>
+    <string id="ListDone">done</string>
+    <string id="ListOpen">open</string>
+    <string id="ListNow">now</string>
 </strings>

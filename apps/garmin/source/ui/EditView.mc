@@ -25,7 +25,7 @@ module EditScreen {
         var out = [] as Array<PairingLine>;
         var ex = session.exercise();
         out.add(new PairingLine(ex.name, Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY));
-        out.add(new PairingLine(Lang.format(TrainingText.text(Rez.Strings.TrSetOf), [session.setIdx + 1, ex.sets.size()]), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY));
+        out.add(new PairingLine(Lang.format(TrainingText.text(Rez.Strings.TrSetOf), [adjust.setIndex + 1, ex.sets.size()]), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY));
         var onReps = adjust.field == SetAdjust.FIELD_REPS;
         var unknown = onReps ? adjust.repsUnknown : adjust.loadUnknown;
         var label = onReps
@@ -81,14 +81,14 @@ class EditDelegate extends WatchUi.BehaviorDelegate {
     function complete() as Void {
         if (!_adjust.changed()) {
             WatchUi.popView(WatchUi.SLIDE_RIGHT);
-        } else if (_session.hasLaterSets()) {
+        } else if (_session.doneSet(_adjust.setIndex) == null && _session.hasSetsAfter(_adjust.setIndex)) {
             WatchUi.pushView(
                 new WatchUi.Confirmation(TrainingText.text(Rez.Strings.PromptApplyRest)),
                 new ApplyRestDelegate(_session, _adjust),
                 WatchUi.SLIDE_UP
             );
         } else {
-            _session.adjustSet(_adjust.reps, _adjust.loadG, false);
+            _session.editSet(_adjust.setIndex, _adjust.reps, _adjust.loadG, false);
             WatchUi.popView(WatchUi.SLIDE_RIGHT);
         }
     }
@@ -106,21 +106,39 @@ class ApplyRestDelegate extends WatchUi.ConfirmationDelegate {
     }
 
     function onResponse(response as WatchUi.Confirm) as Boolean {
-        _session.adjustSet(_adjust.reps, _adjust.loadG, response == WatchUi.CONFIRM_YES);
+        _session.editSet(_adjust.setIndex, _adjust.reps, _adjust.loadG, response == WatchUi.CONFIRM_YES);
         // The confirmation closes itself; this closes the adjust screen below it.
         WatchUi.popView(WatchUi.SLIDE_IMMEDIATE);
         return true;
     }
 }
 
-// Opens the adjust screen on the set on screen.
+// Opens the adjust screen on a set of the exercise on screen: the set on screen (DOWN, START
+// on an open value) or one picked in the list of sets. A confirmed set is corrected.
 module EditLauncher {
     function open(session as TrainingSession) as Void {
-        var set = session.currentSet();
-        if (set == null || session.state != TrainingSession.STATE_SET) {
-            return;
+        if (session.state == TrainingSession.STATE_SET) {
+            var adjust = make(session, session.setIdx);
+            WatchUi.pushView(new EditView(session, adjust), new EditDelegate(session, adjust), WatchUi.SLIDE_LEFT);
         }
-        var adjust = new SetAdjust(set as PlannedSet, session.exercise(), SetAdjust.FIELD_REPS);
-        WatchUi.pushView(new EditView(session, adjust), new EditDelegate(session, adjust), WatchUi.SLIDE_LEFT);
+    }
+
+    // Replaces the screen on top (the list of sets) by the adjust screen of set `index`.
+    function switchTo(session as TrainingSession, index as Number) as Void {
+        var adjust = make(session, index);
+        WatchUi.switchToView(new EditView(session, adjust), new EditDelegate(session, adjust), WatchUi.SLIDE_LEFT);
+    }
+
+    function make(session as TrainingSession, index as Number) as SetAdjust {
+        var planned = session.exercise().sets[index];
+        var done = session.doneSet(index);
+        var shown = planned;
+        if (done != null) {
+            var d = done as Dictionary;
+            shown = new PlannedSet(d["r"] as Number, d["g"] instanceof Number ? d["g"] as Number : null, planned.side);
+        }
+        var adjust = new SetAdjust(shown, session.exercise(), SetAdjust.FIELD_REPS);
+        adjust.setIndex = index;
+        return adjust;
     }
 }
