@@ -192,6 +192,10 @@ class TrainingLauncher {
         if (session == null) {
             return false;
         }
+        var health = _sender.health();
+        if (health != null) {
+            (health as HealthSender).sendAll();   // asks for the consent; what waits is sent
+        }
         show(session as TrainingSession);
         return true;
     }
@@ -209,7 +213,16 @@ class TrainingLauncher {
     }
 
     function newRecorder(workoutUuid as String) as Recorder {
-        return new Recorder(workoutUuid, new FitBackend());
+        var recorder = new Recorder(workoutUuid, new FitBackend());
+        var health = _sender.health();
+        if (health != null) {
+            try {
+                recorder.attachHealth((health as HealthSender).newCapture(workoutUuid));
+            } catch (e) {
+                // no health values for this workout; the training goes on
+            }
+        }
+        return recorder;
     }
 
     function show(session as TrainingSession) as Void {

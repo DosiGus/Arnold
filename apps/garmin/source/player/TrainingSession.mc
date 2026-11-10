@@ -509,6 +509,9 @@ class TrainingSession {
 
     // Called every second while the workout is on screen. True when the state changed.
     function tick() as Boolean {
+        if (_recorder != null) {
+            (_recorder as Recorder).tick();
+        }
         if (state != STATE_REST || paused) {
             return false;
         }

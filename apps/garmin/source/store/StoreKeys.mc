@@ -36,6 +36,14 @@ module StoreKeys {
         return "out:" + id;
     }
 
+    const HEALTH_CONSENT as String = "health:consent";   // { "v": consent of the account, "t": asked at }
+    const HEALTH_INDEX as String = "hout:index";         // ids of the health requests waiting to be sent
+
+    // A frozen health request (GAR-B4-02).
+    function healthOutbox(id as String) as String {
+        return "hout:" + id;
+    }
+
     // One block of heart rate values.
     function heartRateBlock(sessionUuid as String, index as Number) as String {
         return "hr:" + sessionUuid + ":" + index.toString();

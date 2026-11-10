@@ -116,14 +116,27 @@ class Recorder {
     private var _running as Boolean;   // its timer runs
     private var _closed as Boolean;    // saved, discarded or given up
     private var _laps as Number;
+    private var _health as HealthCapture or Null;   // health values of this workout (GAR-B4-02), independent of the FIT recording
 
     function initialize(workoutUuid as String, backend as RecorderBackend) {
+        _health = null;
         uuid = workoutUuid;
         _backend = backend;
         _open = false;
         _running = false;
         _closed = false;
         _laps = 0;
+    }
+
+    function attachHealth(health as HealthCapture or Null) as Void {
+        _health = health;
+    }
+
+    // Every second while the workout is on screen: the health capture takes its heart rate samples.
+    function tick() as Void {
+        if (_health != null) {
+            (_health as HealthCapture).tick();
+        }
     }
 
     // Saved, thrown away or given up: this recorder cannot be used again.
@@ -141,6 +154,9 @@ class Recorder {
 
     // The timer runs: starts the recording the first time, then goes on after a pause.
     function resume() as Void {
+        if (_health != null) {
+            (_health as HealthCapture).resume();
+        }
         if (_closed || _running) {
             return;
         }
@@ -162,6 +178,9 @@ class Recorder {
 
     // Pause and summary: the timer stops, the recording stays open.
     function pause() as Void {
+        if (_health != null) {
+            (_health as HealthCapture).pause();
+        }
         if (_closed || !_running) {
             return;
         }
@@ -189,6 +208,9 @@ class Recorder {
 
     // The workout is saved: the activity goes to the watch history. True if it was saved.
     function save() as Boolean {
+        if (_health != null) {
+            (_health as HealthCapture).finish();   // before the recording ends: the watch still has the training effect
+        }
         if (_closed || !_open) {
             return false;
         }
@@ -209,6 +231,9 @@ class Recorder {
 
     // The workout is thrown away: so is the recording.
     function discard() as Void {
+        if (_health != null) {
+            (_health as HealthCapture).discard();
+        }
         if (_closed) {
             return;
         }

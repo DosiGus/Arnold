@@ -29,6 +29,7 @@ class OutboxSender {
     private var _observer as (Method() as Void) or Null;
     private var _current as ApiRequest or Null;
     private var _currentId as String or Null;
+    private var _health as HealthSender or Null;   // health values of the workouts (GAR-B4-02)
 
     function initialize(client as ApiClient, outbox as Outbox, journal as Journal, clock as PairingClock, authRejected as Method() as Void) {
         _client = client;
@@ -39,7 +40,16 @@ class OutboxSender {
         _observer = null;
         _current = null;
         _currentId = null;
+        _health = null;
         lastResult = null;
+    }
+
+    function setHealth(health as HealthSender or Null) as Void {
+        _health = health;
+    }
+
+    function health() as HealthSender or Null {
+        return _health;
     }
 
     function setObserver(observer as (Method() as Void) or Null) as Void {
@@ -140,6 +150,9 @@ class OutboxSender {
     function discard(uuid as String) as Void {
         _outbox.remove(uuid);
         _journal.discard(uuid);
+        if (_health != null) {
+            (_health as HealthSender).forget(uuid);
+        }
         changed();
     }
 
@@ -170,6 +183,7 @@ class OutboxSender {
             confirmed(uuid, data);
             changed();
             sendAll();
+            healthAfterConfirm();
             return;
         }
         e["n"] = (e["n"] as Number) + 1;
@@ -185,6 +199,7 @@ class OutboxSender {
                 confirmed(uuid, null);   // it arrived and was changed in ChatGPT since: counts as sent
                 changed();
                 sendAll();
+                healthAfterConfirm();
                 return;
             }
             if (code == 409 && errorCode != null && (errorCode as String).equals("DUPLICATE_WORKOUT")) {
@@ -211,6 +226,9 @@ class OutboxSender {
 
     hidden function send(uuid as String, entry as Dictionary) as Void {
         _currentId = uuid;
+        if (_health != null) {
+            (_health as HealthSender).cancel();   // the workout never waits for health values
+        }
         var handler = new OutboxSendHandler(self, uuid);
         var request = new ApiRequest(Communications.HTTP_REQUEST_METHOD_POST, "/workouts", entry["b"] as Dictionary, handler.method(:onDone));
         _current = request;
@@ -280,6 +298,13 @@ class OutboxSender {
         }
         var message = (error as Dictionary)["message"];
         return message instanceof String ? message as String : null;
+    }
+
+    // A workout arrived: when no other workout is on its way, its health values may follow.
+    hidden function healthAfterConfirm() as Void {
+        if (_health != null && _current == null) {
+            (_health as HealthSender).sendAll();
+        }
     }
 
     hidden function changed() as Void {

@@ -50,9 +50,34 @@ module Session {
             var store = new KeyValueStore();
             var journal = new Journal(store);
             var clock = new PairingClock();
-            var sender = new OutboxSender(client(), new Outbox(store), journal, clock, pairing().method(:onAuthRejected));
+            var outbox = new Outbox(store);
+            var sender = new OutboxSender(client(), outbox, journal, clock, pairing().method(:onAuthRejected));
+            var consent = new HealthConsent(store);
+            var healthOutbox = new HealthOutbox(store);
+            sender.setHealth(new HealthSender(client(), healthOutbox, outbox, consent, clock, pairing().method(:onAuthRejected)));
+            pairing().setWipeHook(new AccountWipe(planSync().cache, consent, healthOutbox).method(:wipe));
             _launcher = new TrainingLauncher(journal, clock, new Signals(store), sender);
         }
         return _launcher as TrainingLauncher;
+    }
+}
+
+// Signing out (or connecting again): the plan, the consent and the health values of
+// the old account do not stay on the watch.
+class AccountWipe {
+    private var _plan as PlanCache;
+    private var _consent as HealthConsent;
+    private var _health as HealthOutbox;
+
+    function initialize(plan as PlanCache, consent as HealthConsent, health as HealthOutbox) {
+        _plan = plan;
+        _consent = consent;
+        _health = health;
+    }
+
+    function wipe() as Void {
+        _plan.clear();
+        _consent.clear();
+        _health.clear();
     }
 }
