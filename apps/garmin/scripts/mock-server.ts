@@ -12,11 +12,12 @@
  *                        (default tests/fixtures/watch in this repository)
  *   MOCK_FAULT           fault active from the start, same syntax as below
  *
- * Faults (switch at run time, loopback only):
+ * Faults (switch at run time, loopback only; forwarded control requests are rejected):
  *   POST /__mock/fault {"fault":"<fault>","count":n,"route":"POST /workouts"}
  *     <fault> is an error code of the contract (e.g. STORAGE_UNAVAILABLE, AUTH_REQUIRED,
  *     WORKOUT_PENDING, RATE_LIMITED), "status:<http>", "hang" (never answers),
  *     "delay:<ms>" or "large:<bytes>" (a padded 200 answer of that size).
+ *     "plan:8192" returns a valid nested 8KiB plan fixture on a session route.
  *     count = how many requests it hits (default: until cleared); route = only that route.
  *   DELETE /__mock/fault   clear;  GET /__mock/log   request log;  POST /__mock/reset   all state
  */
@@ -84,6 +85,27 @@ function loadFixtures(dir: string) {
   };
 }
 
+// A valid nested D-22 fixture, calibrated in UTF-8 without padding fields.
+function sizedPlan(source: Json, bytes: number): Json {
+  const plan = JSON.parse(JSON.stringify(source)) as Json;
+  const size = () => Buffer.byteLength(JSON.stringify(plan), "utf8");
+  for (const item of plan.items as Json[]) {
+    for (const key of ["h", "l", "n"]) {
+      while (
+        size() > bytes &&
+        typeof item[key] === "string" &&
+        String(item[key]).length > 1
+      ) {
+        item[key] = String(item[key]).slice(0, -1);
+      }
+      if (size() < bytes)
+        item[key] = String(item[key]) + "a".repeat(bytes - size());
+      if (size() === bytes) return plan;
+    }
+  }
+  throw new Error("Plan fixture cannot meet requested byte size");
+}
+
 const etagOf = (body: unknown) =>
   `"${createHash("sha256").update(JSON.stringify(body)).digest("hex")}"`;
 const bodyHash = (body: unknown) =>
@@ -125,6 +147,7 @@ export function createMockState(fixtures: ReturnType<typeof loadFixtures>) {
   };
   return {
     directory,
+    gateTemplate: fixtures.extreme,
     sessions,
     recent,
     pairings: new Map<string, { polls: number; userCode: string }>(),
@@ -150,7 +173,8 @@ function parseFault(value: unknown, count?: unknown, route?: unknown): Fault {
     fault === "hang" ||
     /^status:\d{3}$/.test(fault) ||
     /^delay:\d+$/.test(fault) ||
-    /^large:\d+$/.test(fault);
+    /^large:\d+$/.test(fault) ||
+    fault === "plan:8192";
   if (!known) throw new Error(`Unbekannter Fehlerfall: ${fault}`);
   return {
     fault,
@@ -315,6 +339,7 @@ function routeName(method: string, path: string) {
 async function applyFault(
   state: State,
   name: string,
+  path: string,
 ): Promise<Reply | "hang" | null> {
   const fault = state.fault;
   if (!fault || (fault.route && fault.route !== name)) return null;
@@ -334,6 +359,17 @@ async function applyFault(
       status,
       body: errorBody("STORAGE_UNAVAILABLE", `Testfehler ${status}`),
     };
+  }
+  if (f === "plan:8192") {
+    const id = decodeURIComponent(path.replace(/^\/plan\/sessions\//, ""));
+    const original = state.sessions.get(id);
+    if (!original)
+      return fail("VALIDATION_ERROR", "Plan fixture route expected");
+    const fixture = sizedPlan(
+      { ...state.gateTemplate, id, p: original.p },
+      8192,
+    );
+    return { status: 200, body: fixture, headers: { ETag: etagOf(fixture) } };
   }
   if (f.startsWith("large:")) {
     const size = Number(f.slice(6));
@@ -408,7 +444,12 @@ export function startMockServer(options: {
     );
     try {
       if (url.pathname.startsWith("/__mock/")) {
-        if (!loopback)
+        const forwarded = [
+          "cf-connecting-ip",
+          "x-forwarded-for",
+          "forwarded",
+        ].some((name) => name in req.headers);
+        if (!loopback || forwarded)
           return send(res, { status: 404, body: { error: "not found" } });
         const raw = await readBody(req);
         const input =
@@ -449,7 +490,7 @@ export function startMockServer(options: {
       const path = url.pathname.slice(BASE.length);
       const name = routeName(method, path);
       const activeFault = state.fault?.fault;
-      const faulted = await applyFault(state, name);
+      const faulted = await applyFault(state, name, path);
       if (faulted === "hang") {
         log({
           at: new Date().toISOString(),
@@ -680,6 +721,46 @@ async function selfTest(port: number, fixturesDir: string) {
     ] === 3,
   );
   check("Log ohne Token", !JSON.stringify(state.log).includes(token));
+  await call("POST", "/__mock/fault", {
+    fault: "plan:8192",
+    count: 1,
+    route: "GET /plan/sessions/:session_id",
+  });
+  const gate = await call(
+    "GET",
+    `${BASE}/plan/sessions/${encodeURIComponent(String(days[0]!.id))}`,
+    undefined,
+    auth,
+  );
+  check(
+    "8KiB echter verschachtelter Plan",
+    gate.status === 200 &&
+      Buffer.byteLength(JSON.stringify(gate.body), "utf8") === 8192 &&
+      Array.isArray(gate.body?.cat) &&
+      Array.isArray(gate.body?.items) &&
+      !("pad" in gate.body!),
+  );
+
+  for (const header of ["Cf-Connecting-Ip", "X-Forwarded-For", "Forwarded"]) {
+    for (const [method, path, body] of [
+      ["GET", "/__mock/log", undefined],
+      ["POST", "/__mock/fault", { fault: "hang" }],
+      ["POST", "/__mock/reset", {}],
+    ] as const) {
+      check(
+        `Steuerpfad ${path} via ${header} gesperrt`,
+        (await call(method, path, body, { [header]: "203.0.113.10" }))
+          .status === 404,
+      );
+    }
+  }
+  check(
+    "abgewiesene Steueraufrufe aendern keinen Zustand",
+    state.token === token &&
+      state.fault === null &&
+      state.workouts.has("r-self-test"),
+  );
+
   server.close();
   for (const [name, ok] of checks)
     console.log(`${ok ? "ok  " : "FEHLER"} ${name}`);

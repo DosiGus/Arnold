@@ -21,9 +21,14 @@ class ArnoldApp extends Application.AppBase {
         return [new BackgroundService()];
     }
 
-    (:typecheck(disableBackgroundCheck))
+    (:garminProduct, :typecheck(disableBackgroundCheck))
     function getInitialView() as [WatchUi.Views] or [WatchUi.Views, WatchUi.InputDelegates] {
         return [new HomeView()];
+    }
+
+    (:garminGate, :typecheck(disableBackgroundCheck))
+    function getInitialView() as [WatchUi.Views] or [WatchUi.Views, WatchUi.InputDelegates] {
+        return [DebugMenu.build(), new DebugDelegate()];
     }
 }
 
