@@ -70,6 +70,17 @@ class ApiClient {
         pump();
     }
 
+    // Takes a request out of the queue (its caller no longer wants the answer).
+    // A request already on its way is left to finish and then discarded without
+    // calling its callback or trying again.
+    function drop(request as ApiRequest) as Void {
+        if (_inFlight == request) {
+            request.dropped = true;
+        } else {
+            _queue.remove(request);
+        }
+    }
+
     function pendingCount() as Number {
         return _queue.size();
     }
@@ -124,6 +135,11 @@ class ApiClient {
 
     hidden function finish(request as ApiRequest, code as Number, data as Dictionary or String or Null) as Void {
         _inFlight = null;
+        if (request.dropped) {
+            _queue.remove(request);
+            pump();
+            return;
+        }
         var outcome = RetryPolicy.classify(code, data);
         if (outcome == RetryPolicy.OUTCOME_OK || outcome == RetryPolicy.OUTCOME_FAIL) {
             _queue.remove(request);

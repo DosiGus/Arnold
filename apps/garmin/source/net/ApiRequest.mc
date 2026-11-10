@@ -15,6 +15,7 @@ class ApiRequest {
     var callback as ApiCallback;
     var failures as Number = 0;          // counted failures (not -104)
     var waiting as Boolean = false;      // gave up for now, sent at the next occasion
+    var dropped as Boolean = false;      // the caller no longer wants it (ApiClient.drop)
 
     function initialize(
         httpMethod as Communications.HttpRequestMethod,

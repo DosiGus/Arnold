@@ -30,7 +30,7 @@ PYCFG
   mkdir -p "$(dirname "$out")"
   log="$BIN_DIR/debug-build-$device.log"
   "$MONKEYC" -f "$APP_DIR/debug.jungle" -d "$device" -o "$out" -y "$GARMIN_DEVELOPER_KEY" -l 3 -w 2>&1 | tee "$log"
-  if rg -q WARNING "$log"; then exit 1; fi
+  if grep -q WARNING "$log"; then exit 1; fi
 else
   compile "$device" "$out"
 fi

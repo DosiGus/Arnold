@@ -1,4 +1,26 @@
 <strings>
     <string id="AppName">Arnold</string>
     <string id="HomeGreeting">Hello</string>
+    <string id="PairIntro">Connect with ChatGPT</string>
+    <string id="PairStart">Press START</string>
+    <string id="PairGetting">Getting code …</string>
+    <string id="PairPhone">Open Garmin Connect on your phone</string>
+    <string id="PairTellCode">Tell ChatGPT this code</string>
+    <string id="PairTimeLeft">$1$ left</string>
+    <string id="PairBackCancel">BACK: cancel</string>
+    <string id="PairExpired">Code expired</string>
+    <string id="PairNewCode">START: new code</string>
+    <string id="PairReconnect">Connect again</string>
+    <string id="PairReconnectHint">The watch was disconnected</string>
+    <string id="PairNoConnection">No connection</string>
+    <string id="PairRetry">START: try again</string>
+    <string id="PairUpgrade">Update the app</string>
+    <string id="PairUpgradeHint">Get the newest version in the Connect IQ Store</string>
+    <string id="PairStorage">Newer app data</string>
+    <string id="PairConnected">Connected</string>
+    <string id="PairMenuHint">START: menu</string>
+    <string id="PairSigningOut">Signing out …</string>
+    <string id="PairSignOutFailed">Not signed out. Check the connection.</string>
+    <string id="MenuSignOut">Sign out</string>
+    <string id="SignOutConfirm">Disconnect this watch?</string>
 </strings>

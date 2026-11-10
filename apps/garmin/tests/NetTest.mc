@@ -171,3 +171,37 @@ function apiPermanentErrorEndsRequest(logger as Logger) as Boolean {
     Expect.equal(scheduler.pendingDelayMs, 5000);
     return true;
 }
+
+(:test)
+function apiDropRemovesAQueuedRequest(logger as Logger) as Boolean {
+    var transport = new FakeTransport();
+    var client = new ApiClient("http://mock", transport, new FakeScheduler());
+    var calls = new CallRecorder();
+    var first = new ApiRequest(Communications.HTTP_REQUEST_METHOD_GET, "/a", null, calls.method(:onDone));
+    var second = new ApiRequest(Communications.HTTP_REQUEST_METHOD_GET, "/b", null, calls.method(:onDone));
+    client.enqueue(first);
+    client.enqueue(second);
+    client.drop(second);
+    Expect.equal(client.pendingCount(), 1);
+    transport.respond(200, null);
+    Expect.equal(calls.count(), 1);
+    Expect.equal(transport.sentCount(), 1);   // /b was never sent
+    return true;
+}
+
+(:test)
+function apiDropLetsARequestOnItsWayFinishQuietly(logger as Logger) as Boolean {
+    var transport = new FakeTransport();
+    var scheduler = new FakeScheduler();
+    var client = new ApiClient("http://mock", transport, scheduler);
+    var calls = new CallRecorder();
+    var request = new ApiRequest(Communications.HTTP_REQUEST_METHOD_GET, "/a", null, calls.method(:onDone));
+    client.enqueue(request);
+    client.drop(request);
+    transport.respond(503, null);             // would normally be tried again
+    Expect.equal(calls.count(), 0);
+    Expect.equal(client.pendingCount(), 0);
+    Expect.equal(transport.sentCount(), 1);
+    Test.assert(scheduler.pendingCallback == null);
+    return true;
+}

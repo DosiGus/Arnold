@@ -1,4 +1,26 @@
 <strings>
     <string id="AppName">Arnold</string>
     <string id="HomeGreeting">Hallo</string>
+    <string id="PairIntro">Mit ChatGPT verbinden</string>
+    <string id="PairStart">START drücken</string>
+    <string id="PairGetting">Code wird geholt …</string>
+    <string id="PairPhone">Garmin Connect am Handy öffnen</string>
+    <string id="PairTellCode">Nenne ChatGPT diesen Code</string>
+    <string id="PairTimeLeft">noch $1$</string>
+    <string id="PairBackCancel">ZURÜCK: abbrechen</string>
+    <string id="PairExpired">Code abgelaufen</string>
+    <string id="PairNewCode">START: neuer Code</string>
+    <string id="PairReconnect">Neu verbinden</string>
+    <string id="PairReconnectHint">Die Uhr wurde getrennt</string>
+    <string id="PairNoConnection">Keine Verbindung</string>
+    <string id="PairRetry">START: nochmal</string>
+    <string id="PairUpgrade">App aktualisieren</string>
+    <string id="PairUpgradeHint">Neueste Version im Connect IQ Store holen</string>
+    <string id="PairStorage">Daten einer neueren App</string>
+    <string id="PairConnected">Verbunden</string>
+    <string id="PairMenuHint">START: Menü</string>
+    <string id="PairSigningOut">Wird abgemeldet …</string>
+    <string id="PairSignOutFailed">Nicht abgemeldet. Verbindung prüfen.</string>
+    <string id="MenuSignOut">Abmelden</string>
+    <string id="SignOutConfirm">Diese Uhr trennen?</string>
 </strings>
