@@ -58,6 +58,7 @@ module PairingAccountMenu {
         if (pending > 0) {
             menu.addItem(new WatchUi.MenuItem(WatchUi.loadResource(Rez.Strings.MenuSendNow) as String, null, :sendNow, null));
         }
+        menu.addItem(new WatchUi.MenuItem(WatchUi.loadResource(Rez.Strings.MenuSettings) as String, null, :settings, null));
         menu.addItem(new WatchUi.MenuItem(WatchUi.loadResource(Rez.Strings.MenuSignOut) as String, null, :signOut, null));
         return menu;
     }
@@ -79,6 +80,8 @@ class PairingAccountDelegate extends WatchUi.Menu2InputDelegate {
                 (_sender as OutboxSender).sendNow();
             }
             WatchUi.popView(WatchUi.SLIDE_IMMEDIATE);
+        } else if (item.getId() == :settings) {
+            SettingsMenu.open(new Settings(new KeyValueStore()));
         } else if (item.getId() == :signOut) {
             WatchUi.pushView(
                 new WatchUi.Confirmation(WatchUi.loadResource(Rez.Strings.SignOutConfirm) as String),

@@ -85,6 +85,12 @@
     <string id="PromptStale">A workout was never sent. Discard it?</string>
     <string id="PromptDiscard">Discard workout?</string>
     <string id="PromptDiscard2">Really? This cannot be undone.</string>
+    <string id="MenuSettings">Settings</string>
+    <string id="SetVibration">Vibration</string>
+    <string id="SetTone">Tone</string>
+    <string id="SetWarning">Rest warning</string>
+    <string id="SetOn">On</string>
+    <string id="SetOff">Off</string>
     <string id="MenuSendNow">Send now</string>
     <string id="HomePending">$1$ workout waiting</string>
     <string id="HomePendingMany">$1$ workouts waiting</string>
