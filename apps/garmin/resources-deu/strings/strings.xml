@@ -102,4 +102,10 @@
     <string id="ListDone">erledigt</string>
     <string id="ListOpen">offen</string>
     <string id="ListNow">jetzt</string>
+    <string id="MenuAddSet">Satz hinzufügen</string>
+    <string id="MenuRemoveSet">Satz entfernen</string>
+    <string id="MenuSwap">Übung tauschen</string>
+    <string id="MenuHints">Hinweise</string>
+    <string id="MenuAddExercise">Übung hinzufügen</string>
+    <string id="HintNone">Keine Hinweise</string>
 </strings>

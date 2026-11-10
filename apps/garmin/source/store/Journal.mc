@@ -19,7 +19,11 @@ class Journal {
         EVENT_SKIP = 2,     // an exercise was passed over (without sets, or by the user)
         EVENT_ADJUST = 3,   // planned values of a set changed: r, g; d = 1 also for the sets after it
         EVENT_CORRECT = 4,  // values of a confirmed set changed: e, s, r, g
-        EVENT_UNDO = 5      // a confirmed set was taken back: e, s
+        EVENT_UNDO = 5,     // a confirmed set was taken back: e, s
+        EVENT_SWAP = 6,     // the exercise was swapped: e, s = catalog index of the new one
+        EVENT_ADD_EXERCISE = 7,   // an exercise was added at the end: e = its index, s = catalog index
+        EVENT_ADD_SET = 8,  // a set was added to exercise e (a copy of its last set)
+        EVENT_REMOVE_SET = 9      // the last set s of exercise e was removed
     }
 
     private var _store as KeyValueStore;
@@ -67,6 +71,19 @@ class Journal {
     function readPlan(uuid as String) as Dictionary or Null {
         var day = _store.getValue(StoreKeys.sessionPlan(uuid));
         return PlanCache.isDay(day as Object or Null) ? day as Dictionary : null;
+    }
+
+    // Adds an exercise to the catalog of the plan copy (for an added exercise) and returns its
+    // index, or -1 when the plan copy cannot be read. Written before the event that uses it.
+    function appendCatalog(uuid as String, entry as Dictionary) as Number {
+        var day = readPlan(uuid);
+        if (day == null) {
+            return -1;
+        }
+        var cat = (day as Dictionary)["cat"] as Array;
+        cat.add(entry);
+        _store.setValue(StoreKeys.sessionPlan(uuid), day as Application.Storage.ValueType);
+        return cat.size() - 1;
     }
 
     // Appends event number `n` (the head's count) with its checksum. The caller

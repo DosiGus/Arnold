@@ -102,4 +102,10 @@
     <string id="ListDone">done</string>
     <string id="ListOpen">open</string>
     <string id="ListNow">now</string>
+    <string id="MenuAddSet">Add set</string>
+    <string id="MenuRemoveSet">Remove set</string>
+    <string id="MenuSwap">Swap exercise</string>
+    <string id="MenuHints">Notes</string>
+    <string id="MenuAddExercise">Add exercise</string>
+    <string id="HintNone">No notes</string>
 </strings>

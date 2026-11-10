@@ -46,8 +46,13 @@ module WorkoutUpload {
                 }
             }
             if (sets.size() > 0) {
-                exercises.add({ "plan_item_id" => ex.planItemId, "exercise_id" => ex.exerciseId, "sets" => sets });
-            } else {
+                // A swapped exercise keeps its plan item (the server records the swap); an added one has none.
+                var entry = { "exercise_id" => ex.exerciseId, "sets" => sets };
+                if (ex.planItemId != null) {
+                    entry["plan_item_id"] = ex.planItemId;
+                }
+                exercises.add(entry);
+            } else if (ex.planItemId != null) {
                 exercises.add({ "plan_item_id" => ex.planItemId, "skip" => true });
             }
         }

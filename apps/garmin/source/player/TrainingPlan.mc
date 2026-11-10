@@ -53,7 +53,9 @@ class PlannedSet {
 
 // One exercise of the day with everything the screens and the upload need.
 class PlannedExercise {
-    var planItemId as String;
+    var planItemId as String or Null;    // null for an exercise added during the workout
+    var catIdx as Number;                // the catalog entry it shows (changes with a swap)
+    var options as Array<Number>;        // catalog entries it can be: the planned one and its alternatives
     var exerciseId as String;
     var name as String;
     var stepG as Number;                 // weight step in grams (from the server)
@@ -68,7 +70,9 @@ class PlannedExercise {
     var sets as Array<PlannedSet>;
 
     function initialize(item as Dictionary, entry as Dictionary, plannedSets as Array<PlannedSet>) {
-        planItemId = item["id"] as String;
+        planItemId = item["id"] instanceof String ? item["id"] as String : null;
+        catIdx = item["c"] instanceof Number ? item["c"] as Number : 0;
+        options = [] as Array<Number>;
         exerciseId = entry["id"] as String;
         name = entry["n"] as String;
         stepG = entry["g"] instanceof Number ? entry["g"] as Number : 2500;
@@ -105,6 +109,7 @@ class TrainingPlan {
     var dayName as String;
     var planVersion as String;
     var exercises as Array<PlannedExercise>;
+    var catalog as Array;   // the exercises of the day (and the ones added later), by index
 
     function initialize(day as Dictionary) {
         dayId = day["id"] as String;
@@ -112,6 +117,7 @@ class TrainingPlan {
         planVersion = day["p"] as String;
         exercises = [] as Array<PlannedExercise>;
         var cat = day["cat"] as Array;
+        catalog = cat.slice(null, null);
         var items = day["items"] as Array;
         for (var i = 0; i < items.size(); i++) {
             if (!(items[i] instanceof Dictionary)) {
@@ -126,7 +132,9 @@ class TrainingPlan {
             if (!(entry instanceof Dictionary) || !((entry as Dictionary)["id"] instanceof String) || !((entry as Dictionary)["n"] instanceof String)) {
                 continue;
             }
-            exercises.add(new PlannedExercise(item, entry as Dictionary, expand((entry as Dictionary)["s"] as Object or Null)));
+            var planned = new PlannedExercise(item, entry as Dictionary, expand((entry as Dictionary)["s"] as Object or Null));
+            planned.options = optionsOf(item, index as Number, cat.size());
+            exercises.add(planned);
         }
     }
 
@@ -142,8 +150,52 @@ class TrainingPlan {
         return total;
     }
 
+    // The catalog entries an item can show: the planned one first, then its alternatives.
+    hidden function optionsOf(item as Dictionary, planned as Number, size as Number) as Array<Number> {
+        var list = [planned] as Array<Number>;
+        var alternatives = item["a"];
+        if (alternatives instanceof Array) {
+            for (var i = 0; i < (alternatives as Array).size(); i++) {
+                var index = (alternatives as Array)[i];
+                if (index instanceof Number && (index as Number) >= 0 && (index as Number) < size && list.indexOf(index as Number) < 0) {
+                    list.add(index as Number);
+                }
+            }
+        }
+        return list;
+    }
+
+    // An exercise slot showing catalog entry `catIdx`. Its proposed sets are the entry's; an entry
+    // without any gets one set with unknown values, to be chosen on the adjust screen.
+    function slotFrom(catIdx as Number, item as Dictionary) as PlannedExercise {
+        var entry = catalog[catIdx] as Dictionary;
+        var sets = expand(entry["s"] as Object or Null);
+        if (sets.size() == 0) {
+            sets.add(new PlannedSet(null, null, PlannedSet.SIDE_BOTH));
+        }
+        var slot = new PlannedExercise(item, entry, sets);
+        slot.catIdx = catIdx;
+        return slot;
+    }
+
+    // Exercise `index` now shows another catalog entry; rest time and rep range stay.
+    function swap(index as Number, catIdx as Number) as Void {
+        var old = exercises[index];
+        var range = old.repMin != null && old.repMax != null ? [old.repMin, old.repMax] : null;
+        var slot = slotFrom(catIdx, { "id" => old.planItemId, "r" => old.restSeconds, "rr" => range });
+        slot.options = old.options;
+        exercises[index] = slot;
+    }
+
+    // An exercise added at the end of the day (it is not part of the plan: no plan item).
+    function append(catIdx as Number) as Void {
+        var slot = slotFrom(catIdx, { "r" => 120, "rr" => null });
+        slot.planItemId = null;
+        exercises.add(slot);
+    }
+
     // [[count, reps, load_g, side?], ...] to one entry per set.
-    hidden function expand(runs as Object or Null) as Array<PlannedSet> {
+    function expand(runs as Object or Null) as Array<PlannedSet> {
         var sets = [] as Array<PlannedSet>;
         if (!(runs instanceof Array)) {
             return sets;

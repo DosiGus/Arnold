@@ -393,3 +393,208 @@ function undoSurvivesACrashAndSoDoesAnUndoWrittenBeforeTheHead(logger as Logger)
     Expect.equal(recovered.setIdx, 1);
     return true;
 }
+
+// ---- swap, add and remove sets, add an exercise ----
+
+// The day with two alternatives for exercise A: ex_x proposes 3 x 10 x 40 kg, ex_y nothing.
+(:test)
+class SwapRig {
+    static function rig() as PlayerRig {
+        var rig = new PlayerRig(false);
+        var day = PlayerRig.dayBody(false);
+        (day["cat"] as Array).add({ "id" => "ex_x", "n" => "Kurzhantel-Bankdrücken", "g" => 1000, "l" => { "b" => "per_implement" }, "s" => [[3, 10, 40000]] });
+        (day["cat"] as Array).add({ "id" => "ex_y", "n" => "Liegestütze", "g" => 1000, "l" => { "b" => "added" }, "s" => [] });
+        PlayerRig.change(day, "items", 0, "a", [4, 5]);
+        rig.session = TrainingSession.start(day, rig.journal, rig.clock, rig.signals);
+        return rig;
+    }
+
+    static function recent() as Dictionary {
+        return { "id" => "ex_r", "n" => "Latziehen", "g" => 2500, "l" => { "b" => "total" }, "s" => [[2, 12, 45000]] };
+    }
+}
+
+(:test)
+function swapTakesAnAlternativeWithItsOwnProposalAndKeepsThePlanItem(logger as Logger) as Boolean {
+    var rig = SwapRig.rig();
+    Test.assert(rig.session.canSwap());
+    Expect.equal(rig.session.swapOptions().size(), 2);
+    Test.assert(rig.session.swapTo(4));
+    Expect.equal(rig.session.exercise().name, "Kurzhantel-Bankdrücken");
+    Expect.equal(rig.session.exercise().sets.size(), 3);
+    Expect.equal(rig.session.exercise().sets[0].loadG, 40000);
+    Expect.equal(rig.session.exercise().restSeconds, 120);       // rest and rep range stay
+    Expect.equal(rig.session.exercise().repMin, 6);
+    Expect.equal(rig.session.exercise().planItemId, "it_a");
+    Expect.field(rig.journal.events(rig.session.uuid)[0], "k", Journal.EVENT_SWAP);
+    rig.toFirstSet();
+    rig.setAndRest();
+    Test.assert(!rig.session.canSwap());                         // a set of it is confirmed
+    rig.session.finishEarly();
+    var request = WorkoutUpload.build(rig.session, rig.clock.now + 5);
+    var entry = (request["exercises"] as Array)[0] as Dictionary;
+    Expect.equal(entry["plan_item_id"] as String, "it_a");
+    Expect.equal(entry["exercise_id"] as String, "ex_x");
+    return true;
+}
+
+(:test)
+function swapOnTheFirstSetCanGoBackAndSurvivesACrash(logger as Logger) as Boolean {
+    var rig = SwapRig.rig();
+    rig.toFirstSet();
+    Test.assert(rig.session.canSwap());
+    rig.session.swapTo(4);
+    Expect.equal(rig.session.state, TrainingSession.STATE_SET);
+    var resumed = rig.restart() as TrainingSession;
+    Expect.equal(resumed.exercise().name, "Kurzhantel-Bankdrücken");
+    Test.assert(resumed.swapOptions().indexOf(0) >= 0);          // the planned exercise is an option again
+    Test.assert(resumed.swapTo(0));
+    Expect.equal(resumed.exercise().name, "Bankdrücken");
+    Expect.equal(resumed.exercise().sets[0].loadG, 60000);
+    Test.assert(!resumed.swapTo(9));                              // not an option
+    return true;
+}
+
+(:test)
+function swapToAnExerciseWithoutProposalGivesOneSetWithUnknownValues(logger as Logger) as Boolean {
+    var rig = SwapRig.rig();
+    rig.toFirstSet();
+    rig.session.swapTo(5);
+    Expect.equal(rig.session.exercise().sets.size(), 1);
+    Test.assert(rig.session.setNeedsInput());
+    Test.assert((rig.session.currentSet() as PlannedSet).reps == null);
+    Test.assert((rig.session.currentSet() as PlannedSet).loadG == null);
+    return true;
+}
+
+(:test)
+function noSwapWithoutAlternatives(logger as Logger) as Boolean {
+    var rig = new PlayerRig(false);
+    Test.assert(!rig.session.canSwap());
+    Test.assert(!rig.session.swapTo(1));
+    return true;
+}
+
+(:test)
+function addSetCopiesTheLastSetAndSurvivesACrash(logger as Logger) as Boolean {
+    var rig = new PlayerRig(false);
+    rig.toFirstSet();
+    Test.assert(rig.session.canAddSet());
+    rig.session.adjustSet(7, 57500, true);
+    Test.assert(rig.session.addSet());
+    Expect.equal(rig.session.exercise().sets.size(), 4);
+    Expect.equal(rig.session.exercise().sets[3].reps, 7);
+    var resumed = rig.restart() as TrainingSession;
+    Expect.equal(resumed.exercise().sets.size(), 4);
+    Expect.equal(resumed.exercise().sets[3].loadG, 57500);
+    for (var i = 0; i < 4; i++) {
+        resumed.confirmSet();
+        resumed.endRest();
+    }
+    Expect.equal(resumed.setsDone(), 4);
+    Expect.equal(resumed.exercise().name, "Bizeps einarmig");
+    return true;
+}
+
+(:test)
+function removeLastSetInTheRestOrOnTheLastSetMovesOnCorrectly(logger as Logger) as Boolean {
+    var rig = new PlayerRig(false);
+    rig.toFirstSet();
+    rig.session.confirmSet();                                     // rest of set 1, sets 2 and 3 follow
+    Test.assert(rig.session.canRemoveSet());
+    Test.assert(rig.session.removeLastSet());
+    Expect.equal(rig.session.exercise().sets.size(), 2);
+    Test.assert(rig.session.removeLastSet());
+    Expect.equal(rig.session.exercise().sets.size(), 1);
+    Test.assert(!rig.session.canRemoveSet());                     // set 1 is done, nothing after it
+    var resumed = rig.restart() as TrainingSession;
+    Expect.equal(resumed.exercise().sets.size(), 1);
+    resumed.endRest();
+    Expect.equal(resumed.exercise().name, "Bizeps einarmig");      // the rest leads on to the next exercise
+    var again = new PlayerRig(false);
+    again.toFirstSet();
+    again.setAndRest();
+    again.setAndRest();                                           // on the last set
+    Test.assert(again.session.canRemoveSet());
+    Test.assert(again.session.removeLastSet());                   // the set on screen goes
+    Expect.equal(again.session.state, TrainingSession.STATE_PREVIEW);
+    Expect.equal(again.session.exercise().name, "Bizeps einarmig");
+    Expect.equal(again.session.setsDone(), 2);
+    return true;
+}
+
+(:test)
+function oneSetCannotBeRemoved(logger as Logger) as Boolean {
+    var rig = new PlayerRig(false);
+    rig.session.skipExercise();
+    rig.session.skipExercise();                                   // B skipped; C has no sets and is passed
+    Expect.equal(rig.session.exercise().name, "Klimmzüge");
+    rig.session.confirmPreview();
+    Test.assert(!rig.session.canRemoveSet());                     // a single set
+    return true;
+}
+
+(:test)
+function removeWrittenButHeadNotYetSavedIsTakenOverAfterACrash(logger as Logger) as Boolean {
+    var rig = new PlayerRig(false);
+    rig.toFirstSet();
+    rig.setAndRest();
+    rig.setAndRest();                                             // on the last set (index 2)
+    rig.journal.appendEvent(rig.session.uuid, 2, { "k" => Journal.EVENT_REMOVE_SET, "e" => 0, "s" => 2, "d" => 0, "a" => rig.clock.now, "b" => rig.clock.now });
+    var resumed = rig.restart();
+    Test.assert(resumed != null);                                 // the workout is not thrown away
+    Expect.equal((resumed as TrainingSession).exercise().name, "Bizeps einarmig");
+    Expect.equal((resumed as TrainingSession).setsDone(), 2);
+    return true;
+}
+
+(:test)
+function addExerciseGoesToTheEndKeepsItsOwnSetsAndSurvivesACrash(logger as Logger) as Boolean {
+    var rig = new PlayerRig(false);
+    Test.assert(rig.session.addExercise(SwapRig.recent()));
+    Expect.equal(rig.session.plan.exerciseCount(), 5);
+    Expect.equal(rig.session.plan.exercises[4].name, "Latziehen");
+    Test.assert(rig.session.plan.exercises[4].planItemId == null);
+    var resumed = rig.restart() as TrainingSession;               // the plan copy carries the new catalog entry
+    Expect.equal(resumed.plan.exerciseCount(), 5);
+    Expect.equal(resumed.plan.exercises[4].sets.size(), 2);
+    resumed.skipExercise();
+    resumed.skipExercise();
+    resumed.skipExercise();                                       // A, B, D skipped (C has no sets)
+    Expect.equal(resumed.exercise().name, "Latziehen");
+    resumed.confirmPreview();
+    Test.assert(resumed.confirmSet());
+    resumed.endRest();
+    Test.assert(resumed.confirmSet());
+    Test.assert(resumed.isFinished());
+    var request = WorkoutUpload.build(resumed, rig.clock.now + 9);
+    var exercises = request["exercises"] as Array;
+    var added = exercises[exercises.size() - 1] as Dictionary;
+    Expect.equal(added["exercise_id"] as String, "ex_r");
+    Test.assert(!added.hasKey("plan_item_id"));
+    Expect.equal((added["sets"] as Array).size(), 2);
+    return true;
+}
+
+(:test)
+function addExerciseRefusesAnUnusableEntryAndAnAddedExerciseNeverUploadsAsSkipped(logger as Logger) as Boolean {
+    var rig = new PlayerRig(false);
+    Test.assert(!rig.session.addExercise({ "n" => "ohne Kennung" }));
+    Test.assert(!rig.session.addExercise({ "id" => "ex_q" }));
+    Expect.equal(rig.session.plan.exerciseCount(), 4);
+    Test.assert(rig.session.addExercise(SwapRig.recent()));
+    rig.toFirstSet();
+    rig.setAndRest();
+    rig.session.skipExercise();                                   // rest of A
+    rig.session.skipExercise();                                   // B skipped
+    rig.session.skipExercise();                                   // D skipped
+    rig.session.skipExercise();                                   // the added exercise is skipped as well
+    Test.assert(rig.session.isFinished());
+    var request = WorkoutUpload.build(rig.session, rig.clock.now + 9);
+    for (var i = 0; i < (request["exercises"] as Array).size(); i++) {
+        var entry = (request["exercises"] as Array)[i] as Dictionary;
+        Test.assert(!entry.hasKey("exercise_id") || !(entry["exercise_id"] as String).equals("ex_r"));
+        Test.assert(entry.hasKey("plan_item_id"));
+    }
+    return true;
+}

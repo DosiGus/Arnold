@@ -61,9 +61,7 @@ class TrainingSession {
         paused = false;
         _warned = false;
         for (var i = 0; i < events.size(); i++) {
-            if ((events[i]["k"] as Number) == Journal.EVENT_ADJUST) {
-                applyAdjust(events[i]);
-            }
+            applyPlanEvent(events[i]);
         }
     }
 
@@ -298,6 +296,114 @@ class TrainingSession {
         return true;
     }
 
+    // ---- swap, add and remove sets, add an exercise ----
+
+    // The catalog entries the exercise on screen could be swapped for (not the one it shows).
+    function swapOptions() as Array<Number> {
+        var list = [] as Array<Number>;
+        var ex = exercise();
+        for (var i = 0; i < ex.options.size(); i++) {
+            if (ex.options[i] != ex.catIdx) {
+                list.add(ex.options[i]);
+            }
+        }
+        return list;
+    }
+
+    // Only before the first set of the exercise was confirmed.
+    function canSwap() as Boolean {
+        if ((state != STATE_PREVIEW && state != STATE_SET) || paused || (state == STATE_SET && setIdx != 0)) {
+            return false;
+        }
+        var done = doneSets();
+        for (var i = 0; i < done.size(); i++) {
+            if ((done[i]["e"] as Number) == exIdx) {
+                return false;
+            }
+        }
+        return swapOptions().size() > 0;
+    }
+
+    // The exercise on screen becomes the catalog entry `catIdx` (one of its alternatives), with
+    // the sets that entry proposes. Swapping again, also back, is possible until a set is confirmed.
+    function swapTo(catIdx as Number) as Boolean {
+        if (!canSwap() || swapOptions().indexOf(catIdx) < 0) {
+            return false;
+        }
+        var now = _clock.nowSeconds();
+        var event = { "k" => Journal.EVENT_SWAP, "e" => exIdx, "s" => catIdx, "d" => 0, "a" => now, "b" => now };
+        record(event);
+        applyPlanEvent(event);
+        if (state == STATE_SET) {
+            place(STATE_SET, exIdx, 0, now, 0);
+        } else {
+            _journal.saveHead(uuid, _head);
+        }
+        return true;
+    }
+
+    function canAddSet() as Boolean {
+        return (state == STATE_SET || state == STATE_REST) && !paused && plan.exercises[exIdx].sets.size() < plan.MAX_SETS;
+    }
+
+    // One more set in the exercise on screen, with the values of its last set.
+    function addSet() as Boolean {
+        if (!canAddSet()) {
+            return false;
+        }
+        var now = _clock.nowSeconds();
+        var event = { "k" => Journal.EVENT_ADD_SET, "e" => exIdx, "s" => 0, "d" => 0, "a" => now, "b" => now };
+        record(event);
+        applyPlanEvent(event);
+        _journal.saveHead(uuid, _head);
+        return true;
+    }
+
+    // The last set can go when it is not confirmed (on a set, or in a rest that is followed by sets).
+    function canRemoveSet() as Boolean {
+        if ((state != STATE_SET && state != STATE_REST) || paused) {
+            return false;
+        }
+        var count = plan.exercises[exIdx].sets.size();
+        return count > 1 && (state == STATE_SET || count - 1 > setIdx);
+    }
+
+    function removeLastSet() as Boolean {
+        if (!canRemoveSet()) {
+            return false;
+        }
+        var now = _clock.nowSeconds();
+        var last = plan.exercises[exIdx].sets.size() - 1;
+        var event = { "k" => Journal.EVENT_REMOVE_SET, "e" => exIdx, "s" => last, "d" => 0, "a" => now, "b" => now };
+        record(event);
+        applyPlanEvent(event);
+        if (state == STATE_SET && setIdx > last - 1) {
+            beginExercise(exIdx + 1);   // the set on screen was the one removed
+        } else {
+            _journal.saveHead(uuid, _head);
+        }
+        return true;
+    }
+
+    // An exercise from the list of recent exercises (GET /plan/recent), added at the end of the day.
+    // False when the entry is not usable or the plan copy cannot be written.
+    function addExercise(entry as Dictionary) as Boolean {
+        if (!(entry["id"] instanceof String) || !(entry["n"] instanceof String) || state == STATE_FINISHED || paused) {
+            return false;
+        }
+        var catIdx = _journal.appendCatalog(uuid, entry);   // the plan copy first, then the event
+        if (catIdx < 0) {
+            return false;
+        }
+        plan.catalog.add(entry);
+        var now = _clock.nowSeconds();
+        var event = { "k" => Journal.EVENT_ADD_EXERCISE, "e" => plan.exercises.size(), "s" => catIdx, "d" => 0, "a" => now, "b" => now };
+        record(event);
+        applyPlanEvent(event);
+        _journal.saveHead(uuid, _head);
+        return true;
+    }
+
     // Skips the exercise on screen (preview or set): the sets already confirmed stay,
     // the rest is not trained. Moves on to the next exercise or the end.
     function canSkipExercise() as Boolean {
@@ -425,6 +531,12 @@ class TrainingSession {
         }
         paused = false;
         _head["pz"] = 0;
+        if ((state == STATE_SET || state == STATE_REST) && setIdx >= plan.exercises[exIdx].sets.size()) {
+            // the set on screen was removed and the head did not move on yet
+            _head["n"] = events.size();
+            beginExercise(exIdx + 1);
+            return;
+        }
         // A set that was confirmed just before a crash has an event the head does not
         // count yet: take it over and go on from there.
         var counted = _head["n"] as Number;
@@ -463,7 +575,7 @@ class TrainingSession {
             return false;
         }
         var count = plan.exercises[exIdx].sets.size();
-        return state == STATE_PREVIEW || (setIdx >= 0 && setIdx < count);
+        return state == STATE_PREVIEW || (setIdx >= 0 && setIdx <= count);   // == count: the last set was removed, see continueWorkout
     }
 
     // Moves to the first exercise with sets from `index` on, writing a skip event
@@ -505,6 +617,28 @@ class TrainingSession {
             place(STATE_SET, exIdx, setIdx + 1, _clock.nowSeconds(), 0);
         } else {
             beginExercise(exIdx + 1);
+        }
+    }
+
+    // Replays what a journal event did to the plan copy in memory.
+    hidden function applyPlanEvent(event as Dictionary) as Void {
+        var kind = event["k"] as Number;
+        var index = event["e"] as Number;
+        if (kind == Journal.EVENT_ADJUST) {
+            applyAdjust(event);
+        } else if (kind == Journal.EVENT_SWAP && index >= 0 && index < plan.exercises.size() && (event["s"] as Number) < plan.catalog.size()) {
+            plan.swap(index, event["s"] as Number);
+        } else if (kind == Journal.EVENT_ADD_EXERCISE && index == plan.exercises.size() && (event["s"] as Number) < plan.catalog.size()) {
+            plan.append(event["s"] as Number);
+        } else if (kind == Journal.EVENT_ADD_SET && index >= 0 && index < plan.exercises.size()) {
+            var sets = plan.exercises[index].sets;
+            var last = sets[sets.size() - 1];
+            sets.add(new PlannedSet(last.reps, last.loadG, last.side));
+        } else if (kind == Journal.EVENT_REMOVE_SET && index >= 0 && index < plan.exercises.size()) {
+            var sets = plan.exercises[index].sets;
+            if (sets.size() > 1 && (event["s"] as Number) == sets.size() - 1) {
+                sets.remove(sets[sets.size() - 1]);
+            }
         }
     }
 
