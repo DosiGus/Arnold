@@ -1,3 +1,4 @@
+import { strengthTrainingView } from "../shared/arnold-schema-v1.js";
 import type {
   ArnoldDataset,
   ArnoldExercise,
@@ -100,6 +101,8 @@ export function prepareAnalyticsInput(
   filter: AnalyticsFilter,
   referenceDateOption?: string | null,
 ): PreparedInput {
+  // Strength figures only: runs and planned workouts never count (RUN-003).
+  dataset = strengthTrainingView(dataset);
   const integrityDefects = new Map<AnalyticsReason, number>();
   const setExclusions = new Map<AnalyticsReason, number>();
   const setCaveats = new Map<AnalyticsReason, number>();

@@ -1,4 +1,5 @@
 import {
+  ARNOLD_SCHEMA_VERSION,
   ArnoldDatasetSchema,
   type ArnoldDataset,
 } from "../../shared/arnold-schema-v1.js";
@@ -11,7 +12,7 @@ import {
 export function trackerConfig(trackerId: string) {
   return {
     schema_id: "arnold.training_raw",
-    schema_version: "1.0.0",
+    schema_version: ARNOLD_SCHEMA_VERSION,
     template_version: "1.0.0",
     file_role: "USER_TRACKER",
     tracker_id: trackerId,

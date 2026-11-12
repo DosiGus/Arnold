@@ -8,6 +8,7 @@
  * the proposal at upload time. Grams become kilograms here and nowhere else.
  * The router runs this inside exclusive() for the user.
  */
+import { strengthTrainingView } from "../../shared/arnold-schema-v1.js";
 import type { ArnoldDataset } from "../../shared/arnold-schema-v1.js";
 import {
   WatchWorkoutRequestSchema,
@@ -296,7 +297,7 @@ async function upload(runtime: DatabaseArnoldRuntime, call: WatchCall) {
   );
   const { input, timings } = mapUpload(
     request,
-    await user.store.read(),
+    strengthTrainingView(await user.store.read()),
     timezone,
   );
   const response = await user.service.logWatchWorkout(
@@ -328,7 +329,11 @@ async function upload(runtime: DatabaseArnoldRuntime, call: WatchCall) {
       ...watchEnvelope(),
       workout_id: workoutId,
       replayed: response.replayed,
-      summary: summaryFor(await user.store.read(), workoutId, call.lang),
+      summary: summaryFor(
+        strengthTrainingView(await user.store.read()),
+        workoutId,
+        call.lang,
+      ),
     }),
   };
 }

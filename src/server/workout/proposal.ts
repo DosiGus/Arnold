@@ -1,3 +1,4 @@
+import { isStrengthWorkout } from "../../shared/arnold-schema-v1.js";
 import type {
   ArnoldDataset,
   ArnoldExercise,
@@ -77,6 +78,7 @@ function completedNewestFirst(data: Data, before?: string) {
     .filter(
       (w) =>
         w.status === "completed" &&
+        isStrengthWorkout(w) &&
         (before === undefined || w.workout_date_local <= before),
     )
     .sort(
