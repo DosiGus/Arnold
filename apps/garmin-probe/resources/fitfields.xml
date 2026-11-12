@@ -1,4 +1,0 @@
-<resources><fitContributions>
-    <fitField id="0" displayInActivityLaps="true" sortOrder="0" precision="0" dataLabel="@Strings.ProbeReps" unitLabel="@Strings.RepUnit"/>
-    <fitField id="1" displayInActivityLaps="true" sortOrder="1" precision="0" dataLabel="@Strings.ProbeLoad" unitLabel="@Strings.LoadUnit"/>
-</fitContributions></resources>
