@@ -45,6 +45,20 @@ const TABLES = {
     table: "body_weights",
     columns: ARNOLD_TABLE_HEADERS.BODY_WEIGHTS,
   },
+  // Running, schema 1.1.0 (migration 004).
+  runProfiles: {
+    table: "run_profiles",
+    columns: ARNOLD_TABLE_HEADERS.RUN_PROFILES,
+  },
+  planRunSessions: {
+    table: "plan_run_sessions",
+    columns: ARNOLD_TABLE_HEADERS.PLAN_RUN_SESSIONS,
+  },
+  runs: { table: "runs", columns: ARNOLD_TABLE_HEADERS.RUNS },
+  runSegments: {
+    table: "run_segments",
+    columns: ARNOLD_TABLE_HEADERS.RUN_SEGMENTS,
+  },
 } as const satisfies Record<
   EntityChange["table"],
   { table: string; columns: readonly string[] }
@@ -54,7 +68,7 @@ const TABLES = {
 // above, never from input, and are checked once here regardless.
 for (const { table, columns } of Object.values(TABLES))
   for (const name of [table, ...columns])
-    if (!/^[a-z_]+$/.test(name))
+    if (!/^[a-z][a-z0-9_]*$/.test(name))
       throw new Error(`Ungültiger Spaltenname im Schema: ${name}`);
 
 const ID_COLUMN = {
@@ -65,7 +79,31 @@ const ID_COLUMN = {
   sets: "set_id",
   goals: "goal_id",
   bodyWeights: "body_weight_id",
+  runProfiles: "run_profile_id",
+  planRunSessions: "plan_run_session_id",
+  runs: "workout_id",
+  runSegments: "run_segment_id",
 } as const satisfies Record<EntityChange["table"], string>;
+
+/**
+ * jsonb columns. node-postgres would send a JavaScript array as a Postgres
+ * array, so these are serialised explicitly.
+ */
+const JSON_COLUMNS: ReadonlySet<string> = new Set([
+  "alarm_settings",
+  "template",
+  "prescription",
+  "splits_100m",
+  "hr_zone_seconds",
+]);
+/**
+ * Columns whose absence in a row means the column default. A strength
+ * workout carries no activity_type (schema 1.1.0), so rows and receipts
+ * written before migration 004 compare equal to what is read back.
+ */
+const COLUMN_DEFAULTS: Readonly<Record<string, unknown>> = {
+  activity_type: "strength",
+};
 
 /** All training tables in one statement, each as a JSON array in insertion order. */
 const READ_DATASET = `select ${Object.entries(TABLES)
@@ -101,13 +139,21 @@ async function readDataset(
     planItems: rows.planItems,
     // Absent rather than null without a watch, so rows and receipts written
     // before the column existed still compare equal.
+    // Likewise a strength workout reads back without activity_type.
     workouts: (rows.workouts as Record<string, unknown>[]).map(
-      ({ client_session_id, ...row }) =>
-        client_session_id == null ? row : { ...row, client_session_id },
+      ({ client_session_id, activity_type, ...row }) => ({
+        ...row,
+        ...(client_session_id == null ? {} : { client_session_id }),
+        ...(activity_type === "strength" ? {} : { activity_type }),
+      }),
     ),
     sets: rows.sets,
     goals: rows.goals,
     bodyWeights: rows.bodyWeights,
+    runProfiles: rows.runProfiles,
+    planRunSessions: rows.planRunSessions,
+    runs: rows.runs,
+    runSegments: rows.runSegments,
   });
   if (!parsed.success)
     throw new WriteError(
@@ -128,7 +174,12 @@ async function applyChange(
 ) {
   const { table, columns } = TABLES[change.table];
   const row = change.after as unknown as Record<string, unknown>;
-  const values = columns.map((column) => row[column] ?? null);
+  const values = columns.map((column: string) => {
+    const value = row[column] ?? COLUMN_DEFAULTS[column] ?? null;
+    return value !== null && JSON_COLUMNS.has(column)
+      ? JSON.stringify(value)
+      : value;
+  });
   if (!change.before) {
     const result = await client.query(
       `insert into arnold.${table} (user_id, ${columns.join(", ")}) values ($1, ${columns

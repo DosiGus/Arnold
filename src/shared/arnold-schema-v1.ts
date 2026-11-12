@@ -1,7 +1,36 @@
 import { z } from "zod";
+import {
+  RUN_LIMITS,
+  RunAlarmSettingsSchema,
+  RunDistanceSourceSchema,
+  RunDurationTypeSchema,
+  RunEnvironmentSchema,
+  RunGoalSchema,
+  RunHrStatusSchema,
+  RunPrescriptionSchema,
+  RunReferenceSourceSchema,
+  RunResultSourceSchema,
+  RunSegmentKindSchema,
+  RunSegmentStatusSchema,
+  RunSessionTemplateSchema,
+  RunSplitsSchema,
+  RunTargetTypeSchema,
+  RunTypeSchema,
+  RunZoneSecondsSchema,
+} from "./run-contract.js";
 
 export const ARNOLD_SCHEMA_ID = "arnold.training_raw";
-export const ARNOLD_SCHEMA_VERSION = "1.0.0";
+/**
+ * 1.1.0 (migration 004) adds running: workouts.activity_type, run profile,
+ * run sessions of a plan version, runs and run segments. Additive: every
+ * 1.0.0 dataset is a valid 1.1.0 dataset.
+ */
+export const ARNOLD_SCHEMA_VERSION = "1.1.0";
+/** Versions whose stored results (write receipts) still read back. */
+export const ARNOLD_COMPATIBLE_SCHEMA_VERSIONS = ["1.0.0", "1.1.0"] as const;
+export const ArnoldSchemaVersionSchema = z.enum(
+  ARNOLD_COMPATIBLE_SCHEMA_VERSIONS,
+);
 export const ARNOLD_TABLES = [
   "CONFIG",
   "EXERCISES",
@@ -11,6 +40,10 @@ export const ARNOLD_TABLES = [
   "SETS",
   "GOALS",
   "BODY_WEIGHTS",
+  "RUN_PROFILES",
+  "PLAN_RUN_SESSIONS",
+  "RUNS",
+  "RUN_SEGMENTS",
 ] as const;
 export type ArnoldTable = (typeof ARNOLD_TABLES)[number];
 export const ARNOLD_TABLE_HEADERS = {
@@ -81,6 +114,7 @@ export const ARNOLD_TABLE_HEADERS = {
     "created_at_utc",
     "updated_at_utc",
     "row_revision",
+    "activity_type",
   ],
   SETS: [
     "set_id",
@@ -125,6 +159,88 @@ export const ARNOLD_TABLE_HEADERS = {
     "weight_kg",
     "status",
     "source",
+    "created_at_utc",
+    "updated_at_utc",
+    "row_revision",
+  ],
+  RUN_PROFILES: [
+    "run_profile_id",
+    "goal",
+    "race_date",
+    "target_time_s",
+    "reference_distance_m",
+    "reference_time_s",
+    "reference_date",
+    "reference_source",
+    "running_experience_months",
+    "runs_per_week",
+    "long_run_weekday",
+    "preferred_environment",
+    "base_minutes_per_week",
+    "longest_run_4w_min",
+    "alarm_settings",
+    "created_at_utc",
+    "updated_at_utc",
+    "row_revision",
+  ],
+  PLAN_RUN_SESSIONS: [
+    "plan_run_session_id",
+    "plan_version_id",
+    "session_id",
+    "session_order",
+    "session_name",
+    "run_type",
+    "template",
+    "preferred_weekday",
+    "status",
+    "row_revision",
+  ],
+  RUNS: [
+    "workout_id",
+    "run_type",
+    "environment",
+    "prescription",
+    "rationale",
+    "rules_version",
+    "timer_s",
+    "elapsed_s",
+    "distance_m",
+    "distance_source",
+    "ascent_m",
+    "descent_m",
+    "cadence_spm",
+    "calories_kcal",
+    "te_aerobic",
+    "te_anaerobic",
+    "rpe",
+    "splits_100m",
+    "pause_count",
+    "result_source",
+    "hr_status",
+    "hr_avg_bpm",
+    "hr_max_bpm",
+    "hr_zone_seconds",
+    "created_at_utc",
+    "updated_at_utc",
+    "row_revision",
+  ],
+  RUN_SEGMENTS: [
+    "run_segment_id",
+    "workout_id",
+    "segment_index",
+    "repetition",
+    "kind",
+    "planned_duration_type",
+    "planned_duration_value",
+    "target_type",
+    "target_low",
+    "target_high",
+    "timer_s",
+    "distance_m",
+    "time_in_target_s",
+    "status",
+    "hr_avg_bpm",
+    "hr_max_bpm",
     "created_at_utc",
     "updated_at_utc",
     "row_revision",
@@ -183,7 +299,8 @@ const chronological = (row: {
 export const ArnoldConfigSchema = z
   .strictObject({
     schema_id: z.literal(ARNOLD_SCHEMA_ID),
-    schema_version: z.literal(ARNOLD_SCHEMA_VERSION),
+    // A 1.0.0 dataset is a valid 1.1.0 dataset (the change is additive).
+    schema_version: ArnoldSchemaVersionSchema,
     template_version: z
       .string()
       .regex(/^\d+\.\d+\.\d+$/, "Template-Version muss x.y.z sein."),
@@ -339,6 +456,14 @@ export const ArnoldPlanItemSchema = z
       });
   })
   .readonly();
+/** What a workout is (1.1.0). */
+export const ArnoldActivityTypeSchema = z.enum(["strength", "run"]);
+export type ArnoldActivityType = z.infer<typeof ArnoldActivityTypeSchema>;
+/** True for strength workouts, including rows written before 1.1.0. */
+export const isStrengthWorkout = (workout: {
+  activity_type?: ArnoldActivityType;
+}) => (workout.activity_type ?? "strength") === "strength";
+
 export const ArnoldWorkoutSchema = z
   .strictObject({
     workout_id: ArnoldIdSchema,
@@ -367,12 +492,24 @@ export const ArnoldWorkoutSchema = z
     source: ArnoldSourceSchema,
     notes: optionalText,
     ...technical,
+    /**
+     * 1.1.0: strength or run. Absent means strength, so rows and receipts
+     * written before the column existed read back unchanged.
+     */
+    activity_type: ArnoldActivityTypeSchema.optional(),
   })
   .refine(chronological, {
     path: ["updated_at_utc"],
     message: "updated_at_utc liegt vor created_at_utc.",
   })
   .superRefine((row, ctx) => {
+    if (row.activity_type === "run" && row.status === "in_progress")
+      ctx.addIssue({
+        code: "custom",
+        path: ["status"],
+        message:
+          "Ein Lauf wird erst nach dem Ende gespeichert und ist nie in_progress.",
+      });
     if (
       row.started_at_utc &&
       row.ended_at_utc &&
@@ -527,6 +664,226 @@ export const ArnoldBodyWeightSchema = z
   })
   .readonly();
 
+/* ------------------------------------------------------- running (1.1.0) */
+
+const runSeconds = z.number().int().nonnegative().max(RUN_LIMITS.maxSeconds);
+const runMeters = z.number().int().nonnegative().max(RUN_LIMITS.maxMeters);
+const bpm = z.number().int().min(30).max(250);
+const weekday = z.number().int().min(1).max(7);
+
+/**
+ * The run profile: one row per user, changed with a revision. Holds what the
+ * user said (goal, reference, preferences); zones and paces are derived by
+ * the engine, never stored here.
+ */
+export const ArnoldRunProfileSchema = z
+  .strictObject({
+    run_profile_id: ArnoldIdSchema,
+    goal: RunGoalSchema,
+    race_date: z.iso.date().nullable(),
+    target_time_s: runSeconds.positive().nullable(),
+    /** Reference performance: all four fields or none. */
+    reference_distance_m: runMeters.positive().nullable(),
+    reference_time_s: runSeconds.positive().nullable(),
+    reference_date: z.iso.date().nullable(),
+    reference_source: RunReferenceSourceSchema.nullable(),
+    running_experience_months: z.number().int().min(0).max(1200).nullable(),
+    runs_per_week: z.number().int().min(1).max(7),
+    /** ISO weekday, 1 = Monday. */
+    long_run_weekday: weekday.nullable(),
+    preferred_environment: RunEnvironmentSchema,
+    base_minutes_per_week: z.number().int().min(0).max(3000).nullable(),
+    longest_run_4w_min: z.number().int().min(0).max(600).nullable(),
+    alarm_settings: RunAlarmSettingsSchema.nullable(),
+    ...technical,
+  })
+  .refine(chronological, {
+    path: ["updated_at_utc"],
+    message: "updated_at_utc liegt vor created_at_utc.",
+  })
+  .superRefine((row, ctx) => {
+    const reference = [
+      row.reference_distance_m,
+      row.reference_time_s,
+      row.reference_date,
+      row.reference_source,
+    ];
+    if (reference.some((v) => v === null) && reference.some((v) => v !== null))
+      ctx.addIssue({
+        code: "custom",
+        path: ["reference_distance_m"],
+        message:
+          "Eine Referenzleistung braucht Distanz, Zeit, Datum und Quelle.",
+      });
+    if (row.goal === "fitness" && row.race_date !== null)
+      ctx.addIssue({
+        code: "custom",
+        path: ["race_date"],
+        message: "Ein Wettkampfdatum gibt es nur für ein Streckenziel.",
+      });
+    if (row.target_time_s !== null && row.goal === "fitness")
+      ctx.addIssue({
+        code: "custom",
+        path: ["target_time_s"],
+        message: "Eine Zielzeit gibt es nur für ein Streckenziel.",
+      });
+  })
+  .readonly();
+
+/**
+ * A run session of a plan version ("Laufeinheit"). Shares the session_id
+ * space of the version with the strength sessions in PLAN_ITEMS.
+ */
+export const ArnoldPlanRunSessionSchema = z
+  .strictObject({
+    plan_run_session_id: ArnoldIdSchema,
+    plan_version_id: ArnoldIdSchema,
+    session_id: ArnoldIdSchema,
+    session_order: positiveInt,
+    session_name: text,
+    run_type: RunTypeSchema,
+    template: RunSessionTemplateSchema,
+    /** ISO weekday, 1 = Monday. */
+    preferred_weekday: weekday.nullable(),
+    status: z.enum(["active", "removed"]),
+    row_revision: positiveInt,
+  })
+  .readonly();
+
+/**
+ * One run: one-to-one with a workout of activity_type "run". A planned run
+ * (workout status "planned") carries only its prescription; the result
+ * fields are filled when it is done. Heart-rate values are only present with
+ * hr_status "recorded", which needs the health consent (D-RUN-07).
+ * Paces and kilometre times are derived (src/analytics), never stored.
+ */
+export const ArnoldRunSchema = z
+  .strictObject({
+    workout_id: ArnoldIdSchema,
+    run_type: RunTypeSchema,
+    environment: RunEnvironmentSchema,
+    /** Snapshot of what was prescribed; null for a free or logged run. */
+    prescription: RunPrescriptionSchema.nullable(),
+    rationale: optionalText,
+    rules_version: optionalText,
+    timer_s: runSeconds.nullable(),
+    elapsed_s: runSeconds.nullable(),
+    distance_m: runMeters.nullable(),
+    distance_source: RunDistanceSourceSchema.nullable(),
+    ascent_m: runMeters.nullable(),
+    descent_m: runMeters.nullable(),
+    cadence_spm: z.number().int().min(1).max(300).nullable(),
+    calories_kcal: z.number().int().min(0).max(20_000).nullable(),
+    te_aerobic: z.number().min(0).max(5).nullable(),
+    te_anaerobic: z.number().min(0).max(5).nullable(),
+    rpe: z.number().int().min(1).max(10).nullable(),
+    /** Cumulative timer seconds at each full 100 m. */
+    splits_100m: RunSplitsSchema.nullable(),
+    pause_count: z.number().int().min(0).max(1000).nullable(),
+    result_source: RunResultSourceSchema.nullable(),
+    /** Null until there is a result. */
+    hr_status: RunHrStatusSchema.nullable(),
+    hr_avg_bpm: bpm.nullable(),
+    hr_max_bpm: bpm.nullable(),
+    hr_zone_seconds: RunZoneSecondsSchema.nullable(),
+    ...technical,
+  })
+  .refine(chronological, {
+    path: ["updated_at_utc"],
+    message: "updated_at_utc liegt vor created_at_utc.",
+  })
+  .superRefine((row, ctx) => {
+    const issue = (path: string, message: string) =>
+      ctx.addIssue({ code: "custom", path: [path], message });
+    const recorded = row.hr_status === "recorded";
+    if (recorded !== (row.hr_avg_bpm !== null && row.hr_max_bpm !== null))
+      issue(
+        "hr_status",
+        "Pulswerte gibt es genau dann, wenn hr_status recorded ist.",
+      );
+    if (!recorded && row.hr_zone_seconds !== null)
+      issue("hr_zone_seconds", "Zonenzeiten nur mit erfassten Pulswerten.");
+    if (
+      row.hr_avg_bpm !== null &&
+      row.hr_max_bpm !== null &&
+      row.hr_avg_bpm > row.hr_max_bpm
+    )
+      issue("hr_avg_bpm", "Durchschnittspuls über dem Maximalpuls.");
+    if (
+      row.timer_s !== null &&
+      row.elapsed_s !== null &&
+      row.timer_s > row.elapsed_s
+    )
+      issue("timer_s", "Timerzeit länger als die Gesamtzeit.");
+    if ((row.distance_m === null) !== (row.distance_source === null))
+      issue("distance_source", "Eine Distanz braucht ihre Quelle.");
+  })
+  .readonly();
+
+/** One executed segment of a run, or one kilometre lap of a free run. */
+export const ArnoldRunSegmentSchema = z
+  .strictObject({
+    run_segment_id: ArnoldIdSchema,
+    workout_id: ArnoldIdSchema,
+    segment_index: z
+      .number()
+      .int()
+      .min(0)
+      .max(RUN_LIMITS.maxSegments - 1),
+    /** Repetition inside its block, null outside a repeat. */
+    repetition: z.number().int().min(1).max(50).nullable(),
+    kind: RunSegmentKindSchema,
+    /** What was prescribed for it; null for a lap of a free run. */
+    planned_duration_type: RunDurationTypeSchema.nullable(),
+    planned_duration_value: z.number().int().nonnegative().nullable(),
+    target_type: RunTargetTypeSchema.nullable(),
+    target_low: z.number().int().nonnegative().nullable(),
+    target_high: z.number().int().nonnegative().nullable(),
+    timer_s: runSeconds,
+    distance_m: runMeters,
+    time_in_target_s: runSeconds.nullable(),
+    status: RunSegmentStatusSchema,
+    hr_avg_bpm: bpm.nullable(),
+    hr_max_bpm: bpm.nullable(),
+    ...technical,
+  })
+  .refine(chronological, {
+    path: ["updated_at_utc"],
+    message: "updated_at_utc liegt vor created_at_utc.",
+  })
+  .superRefine((row, ctx) => {
+    const issue = (path: string, message: string) =>
+      ctx.addIssue({ code: "custom", path: [path], message });
+    const planned = [
+      row.planned_duration_type,
+      row.planned_duration_value,
+      row.target_type,
+      row.target_low,
+      row.target_high,
+    ];
+    if (planned.some((v) => v === null) && planned.some((v) => v !== null))
+      issue("planned_duration_type", "Vorgabe des Abschnitts unvollständig.");
+    if ((row.kind === "lap") !== (row.planned_duration_type === null))
+      issue("kind", "Nur Kilometerrunden freier Läufe haben keine Vorgabe.");
+    if (
+      row.target_low !== null &&
+      row.target_high !== null &&
+      row.target_low > row.target_high
+    )
+      issue("target_low", "Untere Grenze über der oberen.");
+    if (row.time_in_target_s !== null && row.time_in_target_s > row.timer_s)
+      issue("time_in_target_s", "Zeit im Zielband länger als der Abschnitt.");
+    if ((row.hr_avg_bpm === null) !== (row.hr_max_bpm === null))
+      issue("hr_avg_bpm", "Durchschnitts- und Maximalpuls nur zusammen.");
+    if (
+      row.hr_avg_bpm !== null &&
+      row.hr_max_bpm !== null &&
+      row.hr_avg_bpm > row.hr_max_bpm
+    )
+      issue("hr_avg_bpm", "Durchschnittspuls über dem Maximalpuls.");
+  })
+  .readonly();
+
 const datasetBase = z.strictObject({
   config: ArnoldConfigSchema,
   configEntries: z.array(ArnoldConfigEntrySchema).readonly(),
@@ -539,6 +896,11 @@ const datasetBase = z.strictObject({
   // goals existed simply has none.
   goals: z.array(ArnoldGoalSchema).readonly().default([]),
   bodyWeights: z.array(ArnoldBodyWeightSchema).readonly().default([]),
+  // 1.1.0, running. Absent in a 1.0.0 dataset.
+  runProfiles: z.array(ArnoldRunProfileSchema).readonly().default([]),
+  planRunSessions: z.array(ArnoldPlanRunSessionSchema).readonly().default([]),
+  runs: z.array(ArnoldRunSchema).readonly().default([]),
+  runSegments: z.array(ArnoldRunSegmentSchema).readonly().default([]),
 });
 export const ArnoldDatasetSchema = datasetBase
   .superRefine((data, ctx) => {
@@ -610,24 +972,101 @@ export const ArnoldDatasetSchema = datasetBase
       else
         sessions.set(key, { name: row.session_name, order: row.session_order });
     });
+    // Run sessions share the session_id space of their plan version.
+    const runSessions = new Set<string>();
+    index(data.planRunSessions, "plan_run_session_id", "planRunSessions");
+    data.planRunSessions.forEach((row, i) => {
+      if (!plans.has(row.plan_version_id))
+        issue(
+          ["planRunSessions", i, "plan_version_id"],
+          "Referenz auf PLANS fehlt.",
+        );
+      const key = JSON.stringify([row.plan_version_id, row.session_id]);
+      if (runSessions.has(key) || sessions.has(key))
+        issue(
+          ["planRunSessions", i, "session_id"],
+          "Session-ID innerhalb der Planversion doppelt.",
+        );
+      runSessions.add(key);
+    });
     data.workouts.forEach((row, i) => {
       if (row.plan_version_id !== null && !plans.has(row.plan_version_id))
         issue(["workouts", i, "plan_version_id"], "Referenz auf PLANS fehlt.");
+      const own = isStrengthWorkout(row) ? sessions : runSessions;
       if (
         row.session_id !== null &&
         (row.plan_version_id === null ||
-          !sessions.has(JSON.stringify([row.plan_version_id, row.session_id])))
+          !own.has(JSON.stringify([row.plan_version_id, row.session_id])))
       )
         issue(
           ["workouts", i, "session_id"],
           "Session existiert nicht in der referenzierten Planversion.",
         );
     });
+    const runs = index(data.runs, "workout_id", "runs");
+    data.workouts.forEach((row, i) => {
+      if (!isStrengthWorkout(row) && !runs.has(row.workout_id))
+        issue(["workouts", i, "activity_type"], "Zum Lauf fehlt RUNS.");
+    });
+    data.runs.forEach((row, i) => {
+      const workout = workouts.get(row.workout_id);
+      if (!workout || isStrengthWorkout(workout)) {
+        issue(
+          ["runs", i, "workout_id"],
+          "Referenz auf ein Training der Art run fehlt.",
+        );
+        return;
+      }
+      const result = [
+        row.timer_s,
+        row.elapsed_s,
+        row.distance_m,
+        row.result_source,
+        row.hr_status,
+      ];
+      if (workout.status === "planned" && result.some((v) => v !== null))
+        issue(["runs", i, "timer_s"], "Ein geplanter Lauf hat kein Ergebnis.");
+      if (workout.status === "planned" && row.rpe !== null)
+        issue(["runs", i, "rpe"], "Ein geplanter Lauf hat keine Anstrengung.");
+      if (workout.status === "completed" && result.some((v) => v === null))
+        issue(
+          ["runs", i, "timer_s"],
+          "Ein abgeschlossener Lauf braucht Zeiten, Distanz, Quelle und hr_status.",
+        );
+    });
+    index(data.runSegments, "run_segment_id", "runSegments");
+    const segmentSlots = new Set<string>();
+    data.runSegments.forEach((row, i) => {
+      const run = runs.get(row.workout_id);
+      if (!run) {
+        issue(["runSegments", i, "workout_id"], "Referenz auf RUNS fehlt.");
+        return;
+      }
+      if (workouts.get(row.workout_id)?.status === "planned")
+        issue(
+          ["runSegments", i, "workout_id"],
+          "Ein geplanter Lauf hat keine gelaufenen Abschnitte.",
+        );
+      const slot = JSON.stringify([row.workout_id, row.segment_index]);
+      if (segmentSlots.has(slot))
+        issue(["runSegments", i, "segment_index"], "Abschnitt doppelt.");
+      segmentSlots.add(slot);
+      if (row.hr_avg_bpm !== null && run.hr_status !== "recorded")
+        issue(
+          ["runSegments", i, "hr_avg_bpm"],
+          "Pulswerte eines Abschnitts nur bei erfassten Pulswerten des Laufs.",
+        );
+    });
+    if (data.runProfiles.length > 1)
+      issue(["runProfiles"], "Höchstens ein Laufprofil.");
+    index(data.runProfiles, "run_profile_id", "runProfiles");
     const activeSets = new Set<string>();
     data.sets.forEach((row, i) => {
       const workout = workouts.get(row.workout_id);
       if (!workout)
         issue(["sets", i, "workout_id"], "Referenz auf WORKOUTS fehlt.");
+      else if (!isStrengthWorkout(workout))
+        issue(["sets", i, "workout_id"], "Ein Lauf hat keine Sätze.");
       if (!exercises.has(row.exercise_id))
         issue(["sets", i, "exercise_id"], "Referenz auf EXERCISES fehlt.");
       if (row.plan_item_id !== null) {
@@ -689,11 +1128,16 @@ export const ArnoldDatasetSchema = datasetBase
     });
     if (
       data.config.file_role === "MASTER_TEMPLATE" &&
-      (data.goals.length || data.bodyWeights.length)
+      (data.goals.length ||
+        data.bodyWeights.length ||
+        data.runProfiles.length ||
+        data.planRunSessions.length ||
+        data.runs.length ||
+        data.runSegments.length)
     )
       issue(
         ["config", "file_role"],
-        "MASTER_TEMPLATE darf keine Ziele oder Körpergewichte enthalten.",
+        "MASTER_TEMPLATE darf keine Ziele, Körpergewichte oder Laufdaten enthalten.",
       );
     if (
       data.config.file_role === "MASTER_TEMPLATE" &&
@@ -720,6 +1164,42 @@ export type ArnoldDataset = z.infer<typeof ArnoldDatasetSchema>;
 export type ArnoldGoal = z.infer<typeof ArnoldGoalSchema>;
 export type ArnoldGoalKind = z.infer<typeof ArnoldGoalKindSchema>;
 export type ArnoldBodyWeight = z.infer<typeof ArnoldBodyWeightSchema>;
+export type ArnoldRunProfile = z.infer<typeof ArnoldRunProfileSchema>;
+export type ArnoldPlanRunSession = z.infer<typeof ArnoldPlanRunSessionSchema>;
+export type ArnoldRun = z.infer<typeof ArnoldRunSchema>;
+export type ArnoldRunSegment = z.infer<typeof ArnoldRunSegmentSchema>;
+
+/**
+ * The dataset as every strength reader sees it: strength workouts that took
+ * place or are taking place, their sets, and no running data. Planned
+ * workouts and runs are left out, so strength figures stay exactly what they
+ * were before running existed (ARN-RUN, RUN-003). Pure; the input is not
+ * changed.
+ */
+export function strengthTrainingView(data: ArnoldDataset): ArnoldDataset {
+  // The engine also reads unvalidated datasets (its own defect handling), in
+  // which the 1.1.0 arrays may be missing.
+  const hasRunning =
+    data.runProfiles?.length ||
+    data.planRunSessions?.length ||
+    data.runs?.length ||
+    data.runSegments?.length ||
+    data.workouts.some((w) => !isStrengthWorkout(w) || w.status === "planned");
+  if (!hasRunning) return data;
+  const workouts = data.workouts.filter(
+    (w) => isStrengthWorkout(w) && w.status !== "planned",
+  );
+  const kept = new Set(workouts.map((w) => w.workout_id));
+  return Object.freeze({
+    ...data,
+    workouts: Object.freeze(workouts),
+    sets: Object.freeze(data.sets.filter((s) => kept.has(s.workout_id))),
+    runProfiles: Object.freeze([]),
+    planRunSessions: Object.freeze([]),
+    runs: Object.freeze([]),
+    runSegments: Object.freeze([]),
+  });
+}
 
 /** ID-based indexes, scoped to one validated dataset; labels and physical row order are never keys. */
 export function indexArnoldDataset(data: ArnoldDataset) {

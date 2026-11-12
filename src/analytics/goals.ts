@@ -1,3 +1,4 @@
+import { isStrengthWorkout } from "../shared/arnold-schema-v1.js";
 import type {
   ArnoldDataset,
   ArnoldGoal,
@@ -70,7 +71,7 @@ export function goalPoints(
   } else {
     const completed = new Map(
       dataset.workouts
-        .filter((w) => w.status === "completed")
+        .filter((w) => w.status === "completed" && isStrengthWorkout(w))
         .map((w) => [w.workout_id, w.workout_date_local]),
     );
     for (const set of dataset.sets) {

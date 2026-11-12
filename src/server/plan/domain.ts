@@ -13,6 +13,7 @@
  * agreement; here we read it back and surface a disagreement as a finding
  * rather than silently picking one row's opinion.
  */
+import { isStrengthWorkout } from "../../shared/arnold-schema-v1.js";
 import type {
   ArnoldDataset,
   ArnoldExercise,
@@ -124,6 +125,8 @@ export function workoutCount(
   return dataset.workouts.filter(
     (workout) =>
       workout.plan_version_id === planVersionId &&
+      isStrengthWorkout(workout) &&
+      workout.status !== "planned" &&
       workout.status !== "voided" &&
       workout.status !== "cancelled",
   ).length;

@@ -439,14 +439,18 @@ export function registerWatchTools(
                 where user_id = $1 and scope = $2 and revoked_at is null`,
               [caller.userId, HEALTH_SCOPE],
             );
-            return (
+            const strength =
               (
                 await c.query(
                   "delete from arnold.workout_health where user_id = $1",
                   [caller.userId],
                 )
-              ).rowCount ?? 0
+              ).rowCount ?? 0;
+            // Heart rate of runs (zones deleted, values set to null).
+            const runs = await c.query<{ erased: number }>(
+              "select arnold.erase_run_health() as erased",
             );
+            return strength + (runs.rows[0]?.erased ?? 0);
           },
         );
         const data = SetGarminHealthConsentResponseSchema.parse({

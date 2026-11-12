@@ -6,7 +6,11 @@ import {
   ArnoldExerciseSchema,
   ArnoldGoalSchema,
   ArnoldPlanItemSchema,
+  ArnoldPlanRunSessionSchema,
   ArnoldPlanVersionSchema,
+  ArnoldRunProfileSchema,
+  ArnoldRunSchema,
+  ArnoldRunSegmentSchema,
   ArnoldSetSchema,
   ArnoldWorkoutSchema,
   type ArnoldBodyWeight,
@@ -14,7 +18,11 @@ import {
   type ArnoldExercise,
   type ArnoldGoal,
   type ArnoldPlanItem,
+  type ArnoldPlanRunSession,
   type ArnoldPlanVersion,
+  type ArnoldRun,
+  type ArnoldRunProfile,
+  type ArnoldRunSegment,
   type ArnoldSet,
   type ArnoldWorkout,
 } from "../../shared/arnold-schema-v1.js";
@@ -133,6 +141,27 @@ const ChangeSchema = z.discriminatedUnion("table", [
     before: ArnoldBodyWeightSchema.nullable(),
     after: ArnoldBodyWeightSchema,
   }),
+  // Running (schema 1.1.0).
+  z.object({
+    table: z.literal("runProfiles"),
+    before: ArnoldRunProfileSchema.nullable(),
+    after: ArnoldRunProfileSchema,
+  }),
+  z.object({
+    table: z.literal("planRunSessions"),
+    before: ArnoldPlanRunSessionSchema.nullable(),
+    after: ArnoldPlanRunSessionSchema,
+  }),
+  z.object({
+    table: z.literal("runs"),
+    before: ArnoldRunSchema.nullable(),
+    after: ArnoldRunSchema,
+  }),
+  z.object({
+    table: z.literal("runSegments"),
+    before: ArnoldRunSegmentSchema.nullable(),
+    after: ArnoldRunSegmentSchema,
+  }),
 ]);
 export type EntityChange = z.infer<typeof ChangeSchema>;
 export type Entity =
@@ -142,12 +171,30 @@ export type Entity =
   | ArnoldPlanVersion
   | ArnoldPlanItem
   | ArnoldGoal
-  | ArnoldBodyWeight;
+  | ArnoldBodyWeight
+  | ArnoldRunProfile
+  | ArnoldPlanRunSession
+  | ArnoldRun
+  | ArnoldRunSegment;
 /**
  * Order matters: a set also carries workout_id and plan_item_id, a plan item a
- * plan_version_id, a goal an exercise_id.
+ * plan_version_id, a goal an exercise_id, a run segment a workout_id, a run
+ * session a plan_version_id. A run is keyed by its workout_id.
  */
 export const entityId = (row: Entity): string =>
+  "run_segment_id" in row
+    ? row.run_segment_id
+    : "plan_run_session_id" in row
+      ? row.plan_run_session_id
+      : "run_profile_id" in row
+        ? row.run_profile_id
+        : entityIdStrength(row);
+const entityIdStrength = (
+  row: Exclude<
+    Entity,
+    ArnoldRunSegment | ArnoldPlanRunSession | ArnoldRunProfile
+  >,
+): string =>
   "goal_id" in row
     ? row.goal_id
     : "body_weight_id" in row
@@ -368,6 +415,8 @@ const STABLE_COLUMNS = {
     "session_id",
     "session_name_snapshot",
     "source",
+    // A workout never changes between strength and run.
+    "activity_type",
   ],
   sets: [
     "set_id",
@@ -390,6 +439,12 @@ const STABLE_COLUMNS = {
   goals: ["goal_id", "kind", "exercise_id", "load_basis", "start_value"],
   // A measurement keeps its day and value; it can only be voided.
   bodyWeights: ["body_weight_id", "measured_on", "weight_kg", "source"],
+  // Running (1.1.0): a run stays the run of its workout, a segment its slot,
+  // a run session its version and session, like a plan position.
+  runProfiles: ["run_profile_id"],
+  planRunSessions: ["plan_run_session_id", "plan_version_id", "session_id"],
+  runs: ["workout_id"],
+  runSegments: ["run_segment_id", "workout_id", "segment_index"],
 } as const satisfies Record<EntityChange["table"], readonly string[]>;
 /** Fields of PLANS that describe the training content rather than the lifecycle. */
 const PLAN_CONTENT_COLUMNS = [
@@ -448,7 +503,7 @@ export function changedDataset(
     // historical record: its positions are frozen and only its own lifecycle
     // columns may still change (active -> archived).
     if (
-      change.table === "planItems" &&
+      (change.table === "planItems" || change.table === "planRunSessions") &&
       !draftVersions.has(change.after.plan_version_id)
     )
       throw new WriteError(

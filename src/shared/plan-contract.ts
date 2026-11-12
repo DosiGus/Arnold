@@ -30,7 +30,7 @@ import {
   ArnoldPlanVersionSchema,
   ArnoldUtcTimestampSchema,
   ARNOLD_SCHEMA_ID,
-  ARNOLD_SCHEMA_VERSION,
+  ArnoldSchemaVersionSchema,
 } from "./arnold-schema-v1.js";
 
 export const PLAN_CONTRACT = "arnold.plan/1";
@@ -317,7 +317,7 @@ export const PlanValidationResultSchema = z.strictObject({
   row_revision: positiveInt,
   status: planRow.status,
   schema_id: z.literal(ARNOLD_SCHEMA_ID),
-  schema_version: z.literal(ARNOLD_SCHEMA_VERSION),
+  schema_version: ArnoldSchemaVersionSchema,
   errors: z.array(PlanValidationIssueSchema),
   warnings: z.array(PlanValidationIssueSchema),
   recommendations: z.array(PlanValidationIssueSchema),
@@ -624,7 +624,7 @@ export type PlanExerciseOption = z.infer<typeof PlanExerciseOptionSchema>;
 export const PlanContextSchema = z.strictObject({
   plan_contract: z.literal(PLAN_CONTRACT),
   tracker_id: id,
-  schema_version: z.literal(ARNOLD_SCHEMA_VERSION),
+  schema_version: ArnoldSchemaVersionSchema,
   /** The version the editor should show, already projected. */
   plan: TrainingPlanVersionSchema.nullable(),
   active_plan_version_id: id.nullable(),

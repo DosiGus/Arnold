@@ -2,6 +2,7 @@ import { recoveryFor } from "../../shared/write-recovery.js";
 import { z } from "zod";
 import { analyzeSetLoad } from "../../analytics/load.js";
 import {
+  isStrengthWorkout,
   ArnoldExerciseSchema,
   ArnoldSetSchema,
   ArnoldWorkoutSchema,
@@ -836,10 +837,10 @@ export class WorkoutLoggingService {
               "Zum Ersetzen ist expected_row_revision erforderlich.",
             );
           this.revision(replaced, input.expected_row_revision);
-          if (replaced.status !== "completed")
+          if (replaced.status !== "completed" || !isStrengthWorkout(replaced))
             throw new WriteError(
               "INVALID_STATUS_TRANSITION",
-              "Nur ein abgeschlossenes Training kann ersetzt werden.",
+              "Nur ein abgeschlossenes Krafttraining kann ersetzt werden.",
             );
           await this.actor(context, "correct_completed");
         }
@@ -913,6 +914,7 @@ export class WorkoutLoggingService {
         const twins = data.workouts.filter(
           (w) =>
             w.status === "completed" &&
+            isStrengthWorkout(w) &&
             w.workout_id !== replaced?.workout_id &&
             w.workout_date_local === input.workout_date_local &&
             normalize(w.session_name_snapshot ?? "") === normalize(name),

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  strengthTrainingView,
   ARNOLD_SCHEMA_ID,
   ARNOLD_SCHEMA_VERSION,
   type ArnoldDataset,
@@ -86,6 +87,8 @@ export function buildArnoldDashboardAnalytics(
         (issue) => `${issue.path.join(".") || "options"}: ${issue.message}`,
       ),
     );
+  // Strength figures only: runs and planned workouts never count (RUN-003).
+  dataset = strengthTrainingView(dataset);
   const filter = parseAnalyticsFilter(options.filter ?? {});
   const input = prepareAnalyticsInput(
     dataset,

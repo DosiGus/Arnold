@@ -13,6 +13,7 @@
  * (null, and named in `x`), never 0.
  */
 import { createHash } from "node:crypto";
+import { strengthTrainingView } from "../../shared/arnold-schema-v1.js";
 import type {
   ArnoldDataset,
   ArnoldExercise,
@@ -286,7 +287,8 @@ async function dataFor(runtime: DatabaseArnoldRuntime, call: WatchCall) {
   const user = await runtime.forUser(context);
   if (await user.onboarding.setupRequired(context))
     throw new WatchApiError("SETUP_REQUIRED", 409);
-  return user.store.read();
+  // The strength routes never see runs or planned workouts (RUN-003).
+  return strengthTrainingView(await user.store.read());
 }
 
 /** 304 when the watch already has exactly this body. */

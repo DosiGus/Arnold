@@ -5,7 +5,10 @@
  * answers them from a validated `ArnoldDataset`. A read that fails never
  * falls back to other data; it becomes a failure the UI can act on.
  */
-import { ArnoldDatasetSchema } from "../shared/arnold-schema-v1.js";
+import {
+  ArnoldDatasetSchema,
+  strengthTrainingView,
+} from "../shared/arnold-schema-v1.js";
 import type { Recovery } from "../shared/write-recovery.js";
 import type { ArnoldDataset } from "../shared/arnold-schema-v1.js";
 import type { ArnoldStore } from "./workout/infrastructure.js";
@@ -125,7 +128,9 @@ export function storeSource(
           recovery: "contact_support",
         });
       return {
-        dataset: parsed.data,
+        // Dashboard, analytics and workout lists read strength training
+        // only; runs and planned workouts are left out (RUN-003).
+        dataset: strengthTrainingView(parsed.data),
         fetchedAt: new Date().toISOString(),
         ageMs: 0,
       };
