@@ -225,7 +225,8 @@ create trigger run_hr_zones_consent before insert or update on arnold.run_hr_zon
 
 -- Erases the current user's heart-rate data of runs: zone bounds deleted,
 -- values in runs and segments set to null with the reason consent_revoked.
--- Called in the same transaction as the revocation. Runs as the caller, so
+-- Called in the same transaction as the revocation. updated_at_utc never
+-- moves backwards (ISO strings in one format compare like times). Runs as the caller, so
 -- row level security limits it to the current user.
 create function arnold.erase_run_health() returns integer
   language plpgsql
@@ -245,12 +246,12 @@ begin
   update arnold.runs
      set hr_status = 'consent_revoked', hr_avg_bpm = null, hr_max_bpm = null,
          hr_zone_seconds = null, row_revision = row_revision + 1,
-         updated_at_utc = v_now
+         updated_at_utc = greatest(updated_at_utc, v_now)
    where user_id = v_user and hr_status = 'recorded';
   get diagnostics v_rows = row_count; v_count := v_count + v_rows;
   update arnold.run_segments
      set hr_avg_bpm = null, hr_max_bpm = null, row_revision = row_revision + 1,
-         updated_at_utc = v_now
+         updated_at_utc = greatest(updated_at_utc, v_now)
    where user_id = v_user and hr_avg_bpm is not null;
   get diagnostics v_rows = row_count; v_count := v_count + v_rows;
   return v_count;

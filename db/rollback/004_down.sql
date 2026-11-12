@@ -20,6 +20,9 @@
 begin;
 
 select pg_advisory_xact_lock(hashtext('arnold.migrate'));
+-- Checks the deferred foreign keys at once, so the ALTER TABLE below does
+-- not meet pending trigger events of the deletes.
+set constraints all immediate;
 
 do $$
 begin

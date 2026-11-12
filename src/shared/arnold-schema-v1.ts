@@ -1177,11 +1177,13 @@ export type ArnoldRunSegment = z.infer<typeof ArnoldRunSegmentSchema>;
  * changed.
  */
 export function strengthTrainingView(data: ArnoldDataset): ArnoldDataset {
+  // The engine also reads unvalidated datasets (its own defect handling), in
+  // which the 1.1.0 arrays may be missing.
   const hasRunning =
-    data.runProfiles.length ||
-    data.planRunSessions.length ||
-    data.runs.length ||
-    data.runSegments.length ||
+    data.runProfiles?.length ||
+    data.planRunSessions?.length ||
+    data.runs?.length ||
+    data.runSegments?.length ||
     data.workouts.some((w) => !isStrengthWorkout(w) || w.status === "planned");
   if (!hasRunning) return data;
   const workouts = data.workouts.filter(

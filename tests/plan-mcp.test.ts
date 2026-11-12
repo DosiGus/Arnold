@@ -208,7 +208,7 @@ describe("plan MCP tools", () => {
     );
     expect(validation.valid).toBe(true);
     expect(validation.activatable).toBe(true);
-    expect(validation.schema_version).toBe("1.0.0");
+    expect(validation.schema_version).toBe("1.1.0");
   });
 
   it("compares two versions through the tool", async () => {
