@@ -30,7 +30,30 @@ const freePort = () =>
     });
   });
 
+/**
+ * `embedded-postgres` registers an `async-exit-hook` on import. On
+ * `beforeExit` that hook calls `process.exit(0)`, which overwrites the exit
+ * code Vitest set for failed tests, so a red run would end with exit 0 and
+ * `npm test` / CI would report green. Remember the code seen at `beforeExit`
+ * (our listener runs in the same emit, before the hook's `process.exit` tick)
+ * and restore it in `exit`, where setting `process.exitCode` still counts.
+ */
+let preservedExitCode: number | undefined;
+let exitCodeGuardInstalled = false;
+function preserveFailureExitCode() {
+  if (exitCodeGuardInstalled) return;
+  exitCodeGuardInstalled = true;
+  process.on("beforeExit", () => {
+    const code = process.exitCode;
+    if (code !== undefined && Number(code) !== 0) preservedExitCode = Number(code);
+  });
+  process.on("exit", () => {
+    if (preservedExitCode !== undefined) process.exitCode = preservedExitCode;
+  });
+}
+
 export default async function setup(project: TestProject) {
+  preserveFailureExitCode();
   const directory = await mkdtemp(join(tmpdir(), "arnold-pg-"));
   const port = await freePort();
   const password = randomBytes(18).toString("hex");
