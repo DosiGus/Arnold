@@ -1,9 +1,3 @@
-# Arnold strength sculpture
+# Assets
 
-`strength-sculpture.webp` is the transparent, monochrome product sculpture used by the overview and onboarding. It is generated with the built-in Imagegen tool and optimized as WebP with alpha preserved. Vite imports it with `?inline`, keeping the MCP UI a single self-contained HTML document without external assets or network requests.
-
-Generated: 2026-10-29. Original generation is preserved in the Codex image library.
-
-## Generation prompt
-
-Use case: stylized-concept. Asset type: polished 3D product cutout for a monochrome premium gym companion dashboard. Create one floating futuristic dumbbell as a sculptural industrial design object: a bright brushed titanium and polished liquid chrome cylindrical grip, smoothly rounded substantial circular weight plates made of clear-to-smoked optical glass and chrome, five-axis precision machined edges, softly rounded geometry. Show the complete dumbbell in a dynamic diagonal three-quarter view, left end lower and closer to camera, right end upper and farther away, approximately 25 degree rising angle. It must read unmistakably as a beautiful real dumbbell, with a short grip and discs, not a barbell, not an infinity symbol. Studio product photography quality, highly realistic ray-traced reflections, broad white softbox highlights and deep graphite accents, understated futuristic Apple-like materials. Strictly monochrome black, white, neutral silver and clear glass; no colored lights. Isolated on genuinely transparent background, no ground plane, no cast shadow outside the object, no vignette, no background. Composition centered with generous transparent padding around every edge, square canvas. No letters, logos, numbers, people, hands, text or UI. Crisp silhouette and meticulous surface detail, museum-quality minimalist product sculpture.
+`strength-sculpture.webp`: transparente, monochrome Hantel-Skulptur für Übersicht und Einrichtung (WebP mit Alpha). Vite bindet sie mit `?inline` ein, damit die UI ein einziges HTML-Dokument ohne externe Dateien bleibt.

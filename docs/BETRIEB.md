@@ -41,7 +41,7 @@ Prüfen, was live ist:
 curl -s https://arnold-789221393068.europe-west1.run.app/health
 ```
 
-`release` ist der Commit. Fehlt das Feld, läuft ein Stand von vor der Beta-Integration.
+`release` ist der Commit.
 
 ## Rollback
 
@@ -69,8 +69,6 @@ Wichtig:
 - Ein Rollback tauscht nur den Code. Die Datenbank bleibt, wie der neue Stand sie geschrieben hat. Hat der neue Stand eine Migration gebracht, startet ein alter Stand nicht mehr (falsche Schemaversion); dann vorwärts reparieren statt zurückrollen.
 - Solange der Traffic festgehalten ist, bekommt eine neue Revision keinen Traffic. Darum stellt das Deploy-Skript ihn immer auf `--to-latest`.
 
-Geübt am 31.10.2026.
-
 ## Sicherung und Wiederherstellung
 
 Die Daten liegen in Supabase. Das Projekt läuft im **Free-Plan**; laut Supabase gilt dort:
@@ -94,7 +92,7 @@ Eingerichtet mit `bash scripts/setup-monitoring.sh` (wiederholbar), zuletzt am 0
 | ---------------------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Arnold: /health nicht erreichbar   | `/health` antwortet aus mindestens zwei Regionen nicht mit `ok` (auch bei Datenbankausfall: 503). | `curl /health`. Logs ansehen (unten). Kam es direkt nach einem Deploy: Rollback.                                                                            |
 | Arnold: Serverfehler (5xx) gehäuft | Mehr als 4 Antworten 5xx in 5 Minuten.                                                            | Logs nach `severity>=ERROR` filtern. Nach Deploy: Rollback. Sonst Supabase-Status prüfen.                                                                   |
-| Arnold: Tool-Aufruf abgestürzt     | Ein Tool ist mit einer unerwarteten Ausnahme abgebrochen.                                         | Logzeile ansehen: Tool, Zeit, interne Nutzerkennung. Als Issue mit Label `beta-bug` an Worker B.                                                            |
+| Arnold: Tool-Aufruf abgestürzt     | Ein Tool ist mit einer unerwarteten Ausnahme abgebrochen.                                         | Logzeile ansehen: Tool, Zeit, interne Nutzerkennung. Als GitHub-Issue mit Label `beta-bug` festhalten.                                                      |
 | Arnold: Datenbank nicht erreichbar | Ein Tool meldet `STORAGE_UNAVAILABLE` (höchstens eine E-Mail pro 15 Minuten).                     | Supabase-Status und -Dashboard prüfen (pausiert? Wartung?). `/health` prüft die Datenbank (2 s Zeitlimit, höchstens 10 s Cache) und meldet bei Ausfall 503. |
 
 Logs ansehen:
