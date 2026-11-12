@@ -45,7 +45,8 @@ function preserveFailureExitCode() {
   exitCodeGuardInstalled = true;
   process.on("beforeExit", () => {
     const code = process.exitCode;
-    if (code !== undefined && Number(code) !== 0) preservedExitCode = Number(code);
+    if (code !== undefined && Number(code) !== 0)
+      preservedExitCode = Number(code);
   });
   process.on("exit", () => {
     if (preservedExitCode !== undefined) process.exitCode = preservedExitCode;
