@@ -471,3 +471,49 @@ describe("watch API front door (GAR-B2-02)", () => {
     expect(log).not.toContain(watch.token.slice(6, 20));
   });
 });
+
+describe("rememberDevice (GAR-META-01)", () => {
+  const principal = (deviceId: string) =>
+    ({ deviceId, context: { userId: "usr_a" } }) as never;
+  const fake = () => {
+    const calls: unknown[][] = [];
+    const runtime = {
+      options: {
+        db: {
+          asUser: async (
+            _u: string,
+            fn: (c: { query: (...a: unknown[]) => Promise<void> }) => unknown,
+          ) =>
+            fn({
+              query: async (...a: unknown[]) => {
+                calls.push(a);
+              },
+            }),
+        },
+      },
+    } as never;
+    return { calls, runtime };
+  };
+
+  it("stores version and part number once per change", async () => {
+    const { rememberDevice } = await import("../src/server/watch/router.js");
+    const { calls, runtime } = fake();
+    await rememberDevice(runtime, principal("wdv_1"), "1.0.0/006-B3992-00");
+    await rememberDevice(runtime, principal("wdv_1"), "1.0.0/006-B3992-00");
+    expect(calls).toHaveLength(1);
+    expect((calls[0]![1] as unknown[]).slice(2)).toEqual([
+      "1.0.0",
+      "006-B3992-00",
+    ]);
+    await rememberDevice(runtime, principal("wdv_1"), "1.0.1/006-B3992-00");
+    expect(calls).toHaveLength(2);
+  });
+
+  it("ignores a missing or malformed header", async () => {
+    const { rememberDevice } = await import("../src/server/watch/router.js");
+    const { calls, runtime } = fake();
+    await rememberDevice(runtime, principal("wdv_2"), undefined);
+    await rememberDevice(runtime, principal("wdv_2"), "latest/x");
+    expect(calls).toHaveLength(0);
+  });
+});

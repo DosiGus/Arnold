@@ -73,7 +73,7 @@ export function zoneForUpload(
       ? "Etc/GMT"
       : `Etc/GMT${hours > 0 ? "-" : "+"}${Math.abs(hours)}`;
   }
-  throw new WatchApiError("VALIDATION_ERROR", 422);
+  throw new WatchApiError("VALIDATION_ERROR", 422, false, {}, "zone_offset");
 }
 
 const iso = (epochSeconds: number) =>
@@ -262,7 +262,17 @@ function appVersion(header: string | string[] | undefined): string {
 
 async function upload(runtime: DatabaseArnoldRuntime, call: WatchCall) {
   const parsed = WatchWorkoutRequestSchema.safeParse(call.body);
-  if (!parsed.success) throw new WatchApiError("VALIDATION_ERROR", 422);
+  if (!parsed.success) {
+    // Field paths only, never values: they are the watch's training data.
+    const path = parsed.error.issues[0]?.path.map(String).join(".") ?? "body";
+    throw new WatchApiError(
+      "VALIDATION_ERROR",
+      422,
+      false,
+      {},
+      `schema.${path}`,
+    );
+  }
   const request = parsed.data;
   const { context, deviceId } = call.principal!;
   const user = await runtime.forUser(context);
@@ -303,7 +313,13 @@ async function upload(runtime: DatabaseArnoldRuntime, call: WatchCall) {
     const [code, status, retryable] = ERRORS[
       response.error?.code ?? "STORAGE_UNAVAILABLE"
     ] ?? ["VALIDATION_ERROR", 422, false];
-    throw new WatchApiError(code, status, retryable);
+    throw new WatchApiError(
+      code,
+      status,
+      retryable,
+      {},
+      `write.${response.error?.code ?? "unknown"}`,
+    );
   }
   const workoutId = response.result.workout.workout_id;
   return {

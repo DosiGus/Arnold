@@ -61,6 +61,8 @@ export class WatchApiError extends Error {
     readonly status: number,
     readonly retryable = false,
     readonly headers: Record<string, string> = {},
+    /** Short slug for the log only (never shown to the watch, no values). */
+    readonly reason?: string,
   ) {
     super(code);
     this.name = "WatchApiError";
@@ -244,6 +246,7 @@ interface WatchLogEvent {
   ms: number;
   user?: string;
   code?: string;
+  reason?: string;
 }
 
 /** Same switch and shape as logToolCall: ARNOLD_TOOL_LOG=json. */
@@ -261,6 +264,7 @@ export function logWatchRequest(event: WatchLogEvent): void {
       message: `watch ${event.route}`,
       ...event,
       ...(event.code ? { code: safeCode(event.code) } : {}),
+      ...(event.reason ? { reason: safeCode(event.reason) } : {}),
     }),
   );
 }
@@ -273,6 +277,7 @@ function sendError(
   for (const [name, value] of Object.entries(error.headers))
     res.setHeader(name, value);
   res.locals.watchCode = error.code;
+  if (error.reason) res.locals.watchReason = error.reason;
   res.status(error.status).json({
     ...watchEnvelope(),
     error: {
@@ -289,6 +294,39 @@ const rateLimited = (retryAfterS: number) =>
   new WatchApiError("RATE_LIMITED", 429, true, {
     "Retry-After": String(retryAfterS),
   });
+
+/** Last app version / part number stored per device; the write happens on change only. */
+const knownDevices = new Map<string, string>();
+
+/**
+ * `X-Arnold-Watch: <app-version>/<part-number>` is stored on the device row so
+ * the account card and support see which build and watch model it is. Best
+ * effort: a failed write never fails the watch request.
+ */
+export async function rememberDevice(
+  runtime: DatabaseArnoldRuntime,
+  principal: WatchPrincipal,
+  header: string | undefined,
+): Promise<void> {
+  const [version, part] = (header ?? "").split("/").map((v) => v.trim());
+  if (!version || !/^\d+\.\d+\.\d+$/.test(version)) return;
+  const partNumber = part && /^[0-9A-Za-z-]{1,32}$/.test(part) ? part : null;
+  const key = `${principal.deviceId} ${version} ${partNumber ?? ""}`;
+  if (knownDevices.get(principal.deviceId) === key) return;
+  try {
+    await runtime.options.db.asUser(principal.context.userId, (c) =>
+      c.query(
+        `update arnold.watch_devices set app_version = $3, part_number = coalesce($4, part_number)
+          where user_id = $1 and device_id = $2
+            and (app_version is distinct from $3 or part_number is distinct from coalesce($4, part_number))`,
+        [principal.context.userId, principal.deviceId, version, partNumber],
+      ),
+    );
+    knownDevices.set(principal.deviceId, key);
+  } catch {
+    // Metadata only; tried again on the next request.
+  }
+}
 
 function bodyTooLarge(req: Request): boolean {
   const declared = Number(req.headers["content-length"]);
@@ -340,6 +378,7 @@ export function createWatchRouter(options: WatchApiOptions): Router {
           ms: Math.round(performance.now() - started),
           ...(principal ? { user: principal.context.userId } : {}),
           ...(res.locals.watchCode ? { code: res.locals.watchCode } : {}),
+          ...(res.locals.watchReason ? { reason: res.locals.watchReason } : {}),
         }),
       );
       try {
@@ -384,6 +423,7 @@ export function createWatchRouter(options: WatchApiOptions): Router {
           const held = new Set(principal.context.scopes);
           if (!REQUIRED_SCOPES[access].every((scope) => held.has(scope)))
             throw unauthenticated();
+          await rememberDevice(runtime, principal, req.get("x-arnold-watch"));
         }
         const call: WatchCall = {
           params: { ...(req.params as Record<string, string>) },
