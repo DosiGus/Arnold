@@ -167,6 +167,14 @@ describe("every published tool is classified", () => {
 });
 
 describe("the classification table", () => {
+  it("classifies the run week tools (RUN-008): get_run_week reads, schedule_run_week writes", () => {
+    expect(TOOL_ACCESS.get_run_week).toBe("AUTHENTICATED_READ");
+    expect(TOOL_ACCESS.schedule_run_week).toBe("AUTHENTICATED_WRITE");
+    expect(toolsWithAccess("AUTHENTICATED_WRITE")).toContain(
+      "schedule_run_week",
+    );
+  });
+
   it("classifies the Garmin watch tools as account management (GAR-B2-03)", () => {
     for (const tool of [
       "pair_garmin_watch",
