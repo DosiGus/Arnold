@@ -77,6 +77,8 @@ export const CONFIRMATION_RULES: Readonly<Record<string, ConfirmationEntry>> = {
   log_run: log,
   rate_run: log,
   get_run_week: read,
+  // RUN-010: opens a run card, reads and writes nothing itself.
+  show_arnold_run: read,
   schedule_run_week: {
     rule: "direct",
     reason:
