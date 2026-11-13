@@ -1238,22 +1238,35 @@ export class RunService {
     let planned: RunPair | undefined;
     let fresh: Parameters<typeof writeRunResult>[1]["fresh"];
     if (request.planned_workout_id) {
-      planned = requirePair(data, request.planned_workout_id);
-      if (planned.workout.status !== "planned")
-        throw new WriteError(
-          "INVALID_STATUS_TRANSITION",
-          "Dieser Lauf ist nicht mehr geplant (schon gelaufen oder abgesagt). Es wurde nichts gespeichert.",
-        );
-      if (planned.run.run_type !== run_type)
-        throw new WriteError(
-          "VALIDATION_ERROR",
-          `Der geplante Lauf ist vom Typ ${planned.run.run_type}.`,
-        );
-      if (planned.run.environment !== request.environment)
-        throw new WriteError(
-          "VALIDATION_ERROR",
-          "Umgebung weicht vom geplanten Lauf ab.",
-        );
+      const pair = requirePair(data, request.planned_workout_id);
+      if (pair.workout.status === "completed") {
+        // Done already, maybe by another recording: asked back; confirmed it
+        // is saved as a run of its own.
+        if (!request.confirm_duplicate)
+          throw new WriteError(
+            "DUPLICATE_WORKOUT",
+            "Dieser geplante Lauf ist schon erledigt. Es wurde nichts gespeichert.",
+            false,
+            [pair.workout.workout_id],
+          );
+      } else {
+        planned = pair;
+        if (planned.workout.status !== "planned")
+          throw new WriteError(
+            "INVALID_STATUS_TRANSITION",
+            "Dieser Lauf ist nicht mehr geplant (abgesagt oder gelöscht). Es wurde nichts gespeichert.",
+          );
+        if (planned.run.run_type !== run_type)
+          throw new WriteError(
+            "VALIDATION_ERROR",
+            `Der geplante Lauf ist vom Typ ${planned.run.run_type}.`,
+          );
+        if (planned.run.environment !== request.environment)
+          throw new WriteError(
+            "VALIDATION_ERROR",
+            "Umgebung weicht vom geplanten Lauf ab.",
+          );
+      }
     } else if (request.plan_version_id) {
       const session = data.planRunSessions.find(
         (s) =>
