@@ -6,6 +6,10 @@ import {
   type RunType,
 } from "../src/shared/run-contract.js";
 import {
+  CONTINUOUS_MINUTES,
+  COOLDOWN_S,
+  TEMPO_MINUTES,
+  WARMUP_S,
   checkRunWeek,
   scheduleRunWeek,
   weekPlanRun,
@@ -189,6 +193,8 @@ describe("property: scheduleRunWeek never breaks a week rule", () => {
       if (schedule.runs.some((run) => run.minutes_reserved))
         seen.add("free_run_reserved");
       if (schedule.dropped.length > 0) seen.add("session_dropped");
+      if (schedule.dropped.some((x) => x.reason.includes("Wochenumfang")))
+        seen.add("dropped_by_volume");
       if (schedule.notes.some((note) => note.code === "session_converted"))
         seen.add("session_converted");
       if (schedule.notes.some((note) => note.code === "hard_on_leg_day"))
@@ -216,6 +222,39 @@ describe("property: scheduleRunWeek never breaks a week rule", () => {
         (violation) => `${violation.rule}: ${violation.text}`,
       );
       if (rules.length > 0) failures.push(`#${index}: ${rules.join(" | ")}`);
+
+      // RUN-013: a session is dropped for the volume cap only when every
+      // remaining session (unless the 80/20 rule turned it into an easy run) is at the minimum of its run type (hard ones at
+      // level 0, the tempo run at its shortest, continuous runs at the
+      // shortest span) and no long run is left (it becomes an easy run first)
+      if (schedule.dropped.some((x) => x.reason.includes("Wochenumfang"))) {
+        const exp = schedule.context.experience;
+        for (const run of schedule.runs) {
+          // a session turned into an easy run by the 80/20 rule after the cut
+          // keeps the (clamped) length of the session it replaces: not meant
+          if (run.run_type !== run.session_run_type) continue;
+          const type = run.run_type;
+          let atMinimum: boolean;
+          if (type === "long") atMinimum = false;
+          else if (type === "free") atMinimum = true;
+          else if (type === "tempo")
+            atMinimum =
+              run.minutes <=
+              (WARMUP_S[exp] + COOLDOWN_S) / 60 + TEMPO_MINUTES[exp].min + 1e-6;
+          else if (type in CONTINUOUS_MINUTES)
+            atMinimum =
+              run.minutes <=
+              CONTINUOUS_MINUTES[type as keyof typeof CONTINUOUS_MINUTES].span[
+                exp
+              ].min +
+                1e-6;
+          else atMinimum = run.level === 0;
+          if (!atMinimum)
+            failures.push(
+              `#${index}: dropped for the volume cap while ${type} (${run.minutes} min, level ${run.level}) is above its minimum`,
+            );
+        }
+      }
 
       // structure: distinct days inside the window, within the weekly run count
       const dates = schedule.runs.map((run) => run.date);
@@ -259,6 +298,7 @@ describe("property: scheduleRunWeek never breaks a week rule", () => {
       "hard_run_planned",
       "free_run_reserved",
       "session_dropped",
+      "dropped_by_volume",
       "session_converted",
       "hard_on_leg_day",
     ])
