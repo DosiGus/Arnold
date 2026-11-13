@@ -166,6 +166,10 @@ export const WATCH_ROUTE_ACCESS: Readonly<Record<string, WatchRouteAccess>> = {
   "GET /plan/recent": "WATCH_READ",
   "POST /workouts": "WATCH_WRITE",
   "PUT /workouts/:session_uuid/health": "WATCH_WRITE",
+  "GET /runs/upcoming": "WATCH_READ",
+  "GET /runs/:id": "WATCH_READ",
+  "POST /runs": "WATCH_WRITE",
+  "PATCH /runs/:session_uuid/rpe": "WATCH_WRITE",
 };
 
 export class UnclassifiedWatchRouteError extends Error {

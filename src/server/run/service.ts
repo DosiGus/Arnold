@@ -1336,6 +1336,9 @@ export class RunService {
               zone_s: request.hr.zone_s,
             }
           : null,
+        // `hr: null` is the watch saying it has no heart-rate sensor; an
+        // absent hr is "not sent" (no consent on the watch side).
+        no_sensor: request.hr === null,
         segments: watchSegments(request, prescription, result.warnings),
         notes: null,
         client_session_id: request.session_uuid,
