@@ -9,7 +9,7 @@ import type {
   ScheduleRunWeekResult,
   RunView,
 } from "../shared/run-contract";
-import { dateLabel } from "./format";
+import { dateLabel, formatNumber } from "./format";
 import {
   RUN_TYPE_LABEL,
   UNKNOWN,
@@ -19,6 +19,7 @@ import {
   paceLabel,
   readMetric,
   num,
+  reasonText,
 } from "./run/format";
 
 const SEEN =
@@ -82,12 +83,25 @@ export function runWeekContext(
   ].join("\n");
 }
 
+function ratioLine(ratio: RunAnalysisResponse["load_ratio"]): string {
+  const raw = (ratio ?? {}) as Record<string, unknown>;
+  const value = raw.value as {
+    ratio?: unknown;
+    known_runs?: unknown;
+    total_runs?: unknown;
+  } | null;
+  const r = num(value?.ratio);
+  if (r === null)
+    return `Das 7:28-Verhältnis ist unbekannt (${reasonText(typeof raw.reason === "string" ? raw.reason : null)}).`;
+  const known = num(value?.known_runs);
+  const total = num(value?.total_runs);
+  return `7:28-Verhältnis ${formatNumber(r, 2)}${known !== null && total !== null && known < total ? ` aus ${known} von ${total} Läufen` : ""}; eine Orientierung, keine Diagnose.`;
+}
+
 export function runStatsContext(analysis: RunAnalysisResponse) {
   return [
     `Arnold zeigt gerade den Laufverlauf der letzten ${analysis.weeks.length} Wochen bis ${dateLabel(analysis.reference_date, true)}.`,
-    analysis.load_ratio && readMetric(analysis, "load_ratio").reason === null
-      ? ""
-      : "",
+    ratioLine(analysis.load_ratio),
     "Unbekannte Werte stehen mit Grund in der Karte (nie 0). Teilweise bekannte Summen heißen „aus x von y Läufen“.",
     SEEN,
   ]
