@@ -71,7 +71,10 @@ export function session(
     session_order: order,
     session_name: `Lauf ${order}`,
     run_type,
-    template: minutes === null ? { level: 0 } : { level: 0, minutes },
+    template:
+      minutes === null
+        ? { level: 0 }
+        : { level: 0, minutes: [minutes[0], minutes[1]] },
     preferred_weekday: null,
     ...extra,
   };
