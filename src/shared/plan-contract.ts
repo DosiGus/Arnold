@@ -32,6 +32,7 @@ import {
   ARNOLD_SCHEMA_ID,
   ArnoldSchemaVersionSchema,
 } from "./arnold-schema-v1.js";
+import { RunSessionTemplateSchema, RunTypeSchema } from "./run-contract.js";
 
 export const PLAN_CONTRACT = "arnold.plan/1";
 
@@ -126,6 +127,25 @@ export const TrainingSessionSchema = z.strictObject({
 });
 export type TrainingSession = z.infer<typeof TrainingSessionSchema>;
 
+/**
+ * A run session of a plan version ("Laufeinheit", RUN-008): what kind of run
+ * on which usual weekday, with the starting bounds of the run engine. It
+ * shares the session_id space of the version with the strength sessions.
+ */
+export const PlanRunSessionSchema = z.strictObject({
+  plan_run_session_id: id,
+  session_id: id,
+  session_name: z.string(),
+  session_order: positiveInt,
+  run_type: RunTypeSchema,
+  template: RunSessionTemplateSchema,
+  /** ISO weekday, 1 = Monday; null = no preference. */
+  preferred_weekday: z.number().int().min(1).max(7).nullable(),
+  status: z.enum(["active", "removed"]),
+  row_revision: positiveInt,
+});
+export type PlanRunSession = z.infer<typeof PlanRunSessionSchema>;
+
 /** One immutable-once-activated state of a plan. */
 export const TrainingPlanVersionSchema = z.strictObject({
   plan_version_id: id,
@@ -142,6 +162,8 @@ export const TrainingPlanVersionSchema = z.strictObject({
   updated_at_utc: ArnoldUtcTimestampSchema,
   row_revision: positiveInt,
   sessions: z.array(TrainingSessionSchema),
+  /** Run sessions; absent while the version has none. */
+  run_sessions: z.array(PlanRunSessionSchema).optional(),
   session_count: nonnegativeInt,
   exercise_count: nonnegativeInt,
   /** True while content may still be edited, i.e. exactly for a draft. */
@@ -291,6 +313,10 @@ export const PLAN_VALIDATION_CODES = [
   "DAYS_PER_WEEK_MISMATCH",
   "MISSING_TARGET_SETS",
   "WIDE_REP_RANGE",
+  // Run sessions (RUN-008): hints with a reason, never a block.
+  "RUN_WEEK_RULE",
+  "RUN_INTERFERENCE",
+  "RUN_PROFILE_MISSING",
 ] as const;
 export const PlanValidationCodeSchema = z.enum(PLAN_VALIDATION_CODES);
 export type PlanValidationCode = z.infer<typeof PlanValidationCodeSchema>;
@@ -435,6 +461,25 @@ export const PlanEditSchema = z.discriminatedUnion("type", [
     target_load_basis: ArnoldLoadBasisSchema.nullable().optional(),
   }),
   z.strictObject({
+    type: z.literal("add_run_session"),
+    session_name: name,
+    run_type: RunTypeSchema,
+    session_order: positiveInt.optional(),
+    /** Usual weekday, 1 = Monday. */
+    preferred_weekday: z.number().int().min(1).max(7).nullable().optional(),
+    /** Starting level and bounds; without it the run engine's standard (level 0). */
+    template: RunSessionTemplateSchema.optional(),
+  }),
+  z.strictObject({
+    type: z.literal("update_run_session"),
+    session_id: id,
+    session_name: name.optional(),
+    run_type: RunTypeSchema.optional(),
+    preferred_weekday: z.number().int().min(1).max(7).nullable().optional(),
+    template: RunSessionTemplateSchema.optional(),
+  }),
+  z.strictObject({ type: z.literal("remove_run_session"), session_id: id }),
+  z.strictObject({
     type: z.literal("replace_draft_sessions"),
     sessions: z.array(TrainingSessionInputSchema).min(1).max(30),
   }),
@@ -535,7 +580,11 @@ export const PlanReadInputs = {
     plan_family_id: id.optional(),
   }),
   get_plan_history: z.strictObject({ plan_family_id: id.optional() }),
-  validate_training_plan: z.strictObject({ plan_version_id: id }),
+  validate_training_plan: z.strictObject({
+    plan_version_id: id,
+    /** For "heute" in the run week rules; UTC when omitted. */
+    timezone: z.string().min(1).max(64).optional(),
+  }),
   compare_plan_versions: z.strictObject({
     from_plan_version_id: id,
     to_plan_version_id: id,

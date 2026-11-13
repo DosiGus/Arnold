@@ -58,6 +58,9 @@ export const TOOL_ACCESS: Readonly<Record<string, ToolAccessClass>> = {
   cancel_planned_run: "AUTHENTICATED_WRITE",
   log_run: "AUTHENTICATED_WRITE",
   rate_run: "AUTHENTICATED_WRITE",
+  // RUN-008: week view and the two-step week planning.
+  get_run_week: "AUTHENTICATED_READ",
+  schedule_run_week: "AUTHENTICATED_WRITE",
 
   // ── mcp-workout.ts — Task 004 ──
   get_workout: "AUTHENTICATED_READ",

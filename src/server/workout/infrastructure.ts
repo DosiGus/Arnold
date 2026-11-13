@@ -464,6 +464,20 @@ const field = (row: object | null, key: string) =>
 export const createdAt = (row: Entity): string | undefined =>
   "created_at_utc" in row ? row.created_at_utc : undefined;
 
+/** True when two run session rows differ only in `template.level` (and the revision). */
+function onlyLevelChanged(
+  before: ArnoldPlanRunSession,
+  after: ArnoldPlanRunSession,
+): boolean {
+  const flat = (row: ArnoldPlanRunSession) =>
+    canonical({
+      ...row,
+      template: { ...row.template, level: 0 },
+      row_revision: 0,
+    });
+  return flat(before) === flat(after);
+}
+
 export function changedDataset(
   dataset: ArnoldDataset,
   changes: readonly EntityChange[],
@@ -507,9 +521,22 @@ export function changedDataset(
     // Plan content lives only in drafts. An activated or archived version is a
     // historical record: its positions are frozen and only its own lifecycle
     // columns may still change (active -> archived).
+    // One exception: the level of a run session in the ACTIVE version is the
+    // progression state of the run engine (RUN-008). It moves with the runs,
+    // while the session's content (type, name, bounds, weekday) stays frozen.
     if (
       (change.table === "planItems" || change.table === "planRunSessions") &&
-      !draftVersions.has(change.after.plan_version_id)
+      !draftVersions.has(change.after.plan_version_id) &&
+      !(
+        change.table === "planRunSessions" &&
+        change.before &&
+        onlyLevelChanged(change.before, change.after) &&
+        dataset.plans.some(
+          (plan) =>
+            plan.plan_version_id === change.after.plan_version_id &&
+            plan.status === "active",
+        )
+      )
     )
       throw new WriteError(
         "PERMISSION_DENIED",

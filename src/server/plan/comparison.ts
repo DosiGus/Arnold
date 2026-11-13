@@ -26,6 +26,8 @@ import type {
   TrainingSession,
 } from "../../shared/plan-contract.js";
 
+import { diffRunSessions } from "./run-sessions.js";
+
 const normalize = (value: string) =>
   value
     .normalize("NFKD")
@@ -355,6 +357,8 @@ export function diffVersions(
       );
     }
   }
+  // Run sessions (RUN-008) are compared the same way, reported with the same kinds.
+  changes.push(...diffRunSessions(from.run_sessions, to.run_sessions));
   return changes;
 }
 

@@ -10,7 +10,12 @@
 import { z } from "zod";
 import {
   buildRunPrescription,
+  dayLabel,
+  isHardRun,
+  legLoadOn,
   referenceTempoZones,
+  runInterference,
+  strengthDays,
   type RunPlan,
 } from "../../analytics/running/index.js";
 import {
@@ -60,6 +65,7 @@ import {
   type LoggingOptions,
 } from "../workout/service.js";
 import { watchEntry, watchSegments } from "./watch.js";
+import { defaultFocus, strengthAround } from "./week.js";
 import {
   experienceOf,
   localDay,
@@ -524,6 +530,31 @@ export class RunService {
     return { plan, environment };
   }
 
+  /**
+   * Hints for a run around the user's strength days (RUN-008): hard run on a
+   * heavy leg day, unknown leg load the day before, easy run on a leg day, and
+   * a hard run the day after a heavy leg day. Hints with a reason, never a block.
+   */
+  private interferenceHints(
+    data: ArnoldDataset,
+    today: string,
+    date: string,
+    runType: RunType,
+  ): string[] {
+    const profile = data.runProfiles[0] ?? null;
+    const days = strengthAround(data, today, [addDays(date, -1), date]);
+    if (!days.length) return [];
+    const focus = defaultFocus(profile, strengthDays(data).length);
+    const hints = runInterference({ date, run_type: runType }, days, focus).map(
+      (note) => note.text,
+    );
+    if (isHardRun(runType) && legLoadOn(days, addDays(date, -1)).heavy === true)
+      hints.push(
+        `${dayLabel(date)}: Der Vortag war ein schwerer Beintag. Mit müden Beinen besser locker laufen oder den harten Lauf um einen Tag verschieben.`,
+      );
+    return hints;
+  }
+
   private plannedRow(
     id: string,
     plan: Extract<RunPlan, { ok: true }>,
@@ -628,6 +659,9 @@ export class RunService {
       input,
       today,
       result.warnings,
+    );
+    result.warnings.push(
+      ...this.interferenceHints(data, today, date, input.run_type),
     );
     const workout = this.plannedWorkout(plan, date, input.timezone, now);
     changes.push({ table: "workouts", before: null, after: workout });
@@ -1490,7 +1524,7 @@ function revision(row: { row_revision: number }, expected: number) {
     );
 }
 
-function errorBody(error: unknown) {
+export function errorBody(error: unknown) {
   const failed =
     error instanceof WriteError
       ? error

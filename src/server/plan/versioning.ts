@@ -23,10 +23,12 @@
  */
 import {
   ArnoldPlanItemSchema,
+  ArnoldPlanRunSessionSchema,
   ArnoldPlanVersionSchema,
   type ArnoldDataset,
   type ArnoldExercise,
   type ArnoldPlanItem,
+  type ArnoldPlanRunSession,
   type ArnoldPlanVersion,
 } from "../../shared/arnold-schema-v1.js";
 import type {
@@ -45,6 +47,12 @@ export type ItemState = {
   current: ArnoldPlanItem;
 };
 
+export type RunSessionState = {
+  /** The row as read from storage; null for a run session created in this batch. */
+  original: ArnoldPlanRunSession | null;
+  current: ArnoldPlanRunSession;
+};
+
 export type DraftModel = {
   plan: ArnoldPlanVersion;
   /** Null while the version itself is being created. */
@@ -55,6 +63,10 @@ export type DraftModel = {
   /** Per session, the active position ids in display order. */
   sessionItems: Map<string, string[]>;
   sessionNames: Map<string, string>;
+  /** Run sessions of the version by session_id (RUN-008), removed ones included. */
+  runSessions: Map<string, RunSessionState>;
+  /** Active run session ids in display order. */
+  runOrder: string[];
 };
 
 export type EditContext = {
@@ -253,6 +265,19 @@ export function loadModel(
     const order = (seen.get(a) ?? 0) - (seen.get(b) ?? 0);
     return order !== 0 ? order : a < b ? -1 : 1;
   });
+  const runSessions = new Map<string, RunSessionState>(
+    dataset.planRunSessions
+      .filter((row) => row.plan_version_id === plan.plan_version_id)
+      .map((row) => [row.session_id, { original: row, current: row }]),
+  );
+  const runOrder = [...runSessions.values()]
+    .filter((state) => state.current.status === "active")
+    .sort(
+      (a, b) =>
+        a.current.session_order - b.current.session_order ||
+        (a.current.session_id < b.current.session_id ? -1 : 1),
+    )
+    .map((state) => state.current.session_id);
   return {
     plan,
     planOriginal: plan,
@@ -260,6 +285,8 @@ export function loadModel(
     sessionOrder,
     sessionItems,
     sessionNames,
+    runSessions,
+    runOrder,
   };
 }
 
@@ -272,6 +299,8 @@ export function newModel(plan: ArnoldPlanVersion): DraftModel {
     sessionOrder: [],
     sessionItems: new Map(),
     sessionNames: new Map(),
+    runSessions: new Map(),
+    runOrder: [],
   };
 }
 
@@ -281,10 +310,20 @@ function nameTaken(
   name: string,
   exceptSessionId?: string,
 ): boolean {
-  return model.sessionOrder.some(
-    (id) =>
-      id !== exceptSessionId &&
-      normalizeName(model.sessionNames.get(id) ?? "") === normalizeName(name),
+  const wanted = normalizeName(name);
+  return (
+    model.sessionOrder.some(
+      (id) =>
+        id !== exceptSessionId &&
+        normalizeName(model.sessionNames.get(id) ?? "") === wanted,
+    ) ||
+    // Strength and run sessions share one name space inside a version.
+    model.runOrder.some(
+      (id) =>
+        id !== exceptSessionId &&
+        normalizeName(model.runSessions.get(id)?.current.session_name ?? "") ===
+          wanted,
+    )
   );
 }
 
@@ -387,6 +426,66 @@ function removeItem(model: DraftModel, state: ItemState) {
 function reviveSession(model: DraftModel, sessionId: string) {
   if (!model.sessionOrder.includes(sessionId))
     model.sessionOrder.push(sessionId);
+}
+
+function requireRunSession(
+  model: DraftModel,
+  sessionId: string,
+): RunSessionState {
+  const state = model.runSessions.get(sessionId);
+  if (!state || state.current.status !== "active")
+    throw fail(
+      "SESSION_NOT_FOUND",
+      "Diese Laufeinheit gehört nicht zum Entwurf oder ist bereits entfernt.",
+    );
+  return state;
+}
+
+function addRunSession(
+  model: DraftModel,
+  ctx: EditContext,
+  input: {
+    session_name: string;
+    run_type: ArnoldPlanRunSession["run_type"];
+    session_order?: number;
+    preferred_weekday?: number | null;
+    template?: ArnoldPlanRunSession["template"];
+  },
+  sessionId = ctx.id(),
+): string {
+  if (nameTaken(model, input.session_name))
+    throw fail(
+      "VALIDATION_ERROR",
+      `Es gibt bereits eine Einheit mit dem Namen "${input.session_name}".`,
+    );
+  if (
+    model.runSessions.has(sessionId) ||
+    ctx.dataset.planItems.some(
+      (item) =>
+        item.plan_version_id === model.plan.plan_version_id &&
+        item.session_id === sessionId,
+    )
+  )
+    throw fail("VALIDATION_ERROR", "Diese Einheits-ID ist schon vergeben.");
+  const at =
+    input.session_order === undefined
+      ? model.runOrder.length
+      : Math.min(Math.max(input.session_order - 1, 0), model.runOrder.length);
+  model.runOrder.splice(at, 0, sessionId);
+  const row = ArnoldPlanRunSessionSchema.parse({
+    plan_run_session_id: ctx.id(),
+    plan_version_id: model.plan.plan_version_id,
+    session_id: sessionId,
+    session_order: at + 1,
+    session_name: input.session_name,
+    run_type: input.run_type,
+    template: input.template ?? { level: 0 },
+    preferred_weekday: input.preferred_weekday ?? null,
+    status: "active",
+    row_revision: 1,
+  });
+  model.runSessions.set(sessionId, { original: null, current: row });
+  return sessionId;
 }
 
 export function applyEdit(
@@ -620,6 +719,38 @@ export function applyEdit(
       });
       return;
     }
+    case "add_run_session": {
+      addRunSession(model, ctx, edit);
+      return;
+    }
+    case "update_run_session": {
+      const state = requireRunSession(model, edit.session_id);
+      if (
+        edit.session_name !== undefined &&
+        nameTaken(model, edit.session_name, edit.session_id)
+      )
+        throw fail(
+          "VALIDATION_ERROR",
+          `Es gibt bereits eine Einheit mit dem Namen "${edit.session_name}".`,
+        );
+      state.current = ArnoldPlanRunSessionSchema.parse({
+        ...state.current,
+        session_name: edit.session_name ?? state.current.session_name,
+        run_type: edit.run_type ?? state.current.run_type,
+        template: edit.template ?? state.current.template,
+        preferred_weekday:
+          edit.preferred_weekday !== undefined
+            ? edit.preferred_weekday
+            : state.current.preferred_weekday,
+      });
+      return;
+    }
+    case "remove_run_session": {
+      const state = requireRunSession(model, edit.session_id);
+      state.current = { ...state.current, status: "removed" };
+      model.runOrder = model.runOrder.filter((id) => id !== edit.session_id);
+      return;
+    }
     case "replace_draft_sessions": {
       // A wholesale redesign. Every existing position is tombstoned and the new
       // structure is built from scratch, so no stale row survives unnoticed.
@@ -700,6 +831,46 @@ export function finalizeModel(model: DraftModel, now: string): EntityChange[] {
     });
   }
 
+  // Run sessions: positions follow the display order, a changed row advances
+  // its revision, an unchanged one writes nothing.
+  model.runOrder.forEach((sessionId, index) => {
+    const state = model.runSessions.get(sessionId)!;
+    state.current = { ...state.current, session_order: index + 1 };
+  });
+  for (const state of [...model.runSessions.values()].sort((a, b) =>
+    a.current.session_id < b.current.session_id ? -1 : 1,
+  )) {
+    if (!state.original) {
+      state.current = ArnoldPlanRunSessionSchema.parse({
+        ...state.current,
+        row_revision: 1,
+      });
+      changes.push({
+        table: "planRunSessions",
+        before: null,
+        after: state.current,
+      });
+      continue;
+    }
+    const normalized = {
+      ...state.current,
+      row_revision: state.original.row_revision,
+    };
+    if (canonical(normalized) === canonical(state.original)) {
+      state.current = state.original;
+      continue;
+    }
+    state.current = ArnoldPlanRunSessionSchema.parse({
+      ...state.current,
+      row_revision: state.original.row_revision + 1,
+    });
+    changes.push({
+      table: "planRunSessions",
+      before: state.original,
+      after: state.current,
+    });
+  }
+
   // The version's own row is the single optimistic-concurrency token for the
   // whole draft, so any edit advances it even when only positions moved.
   const plan = ArnoldPlanVersionSchema.parse(
@@ -745,6 +916,29 @@ export function deriveDraft(
     // historical workouts and the new plan still speak about the same day.
     // A new family is a new routine and re-issues its session ids.
     addSession(model, ctx, input, options.asNewFamily ? ctx.id() : sessionId);
+  // Run sessions travel with the version: the same rules for identity, and the
+  // current level stays what it is (the progression does not start over).
+  for (const row of ctx.dataset.planRunSessions
+    .filter(
+      (r) =>
+        r.plan_version_id === source.plan_version_id && r.status === "active",
+    )
+    .sort(
+      (a, b) =>
+        a.session_order - b.session_order ||
+        (a.session_id < b.session_id ? -1 : 1),
+    ))
+    addRunSession(
+      model,
+      ctx,
+      {
+        session_name: row.session_name,
+        run_type: row.run_type,
+        preferred_weekday: row.preferred_weekday,
+        template: row.template,
+      },
+      options.asNewFamily ? ctx.id() : row.session_id,
+    );
   return model;
 }
 
