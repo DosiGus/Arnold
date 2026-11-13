@@ -162,8 +162,10 @@ export function legLoadOn(
 ): { strength: boolean; heavy: boolean | null } {
   const mine = days.filter((d) => d.date === date);
   if (mine.length === 0) return { strength: false, heavy: false };
-  if (mine.some((d) => d.heavy_legs === true)) return { strength: true, heavy: true };
-  if (mine.some((d) => d.heavy_legs === null)) return { strength: true, heavy: null };
+  if (mine.some((d) => d.heavy_legs === true))
+    return { strength: true, heavy: true };
+  if (mine.some((d) => d.heavy_legs === null))
+    return { strength: true, heavy: null };
   // Two sessions on one day: their leg sets add up.
   const sum = mine.reduce((total, d) => total + (d.leg_sets ?? 0), 0);
   return { strength: true, heavy: sum >= HEAVY_LEG_MIN_WORKING_SETS };
@@ -178,7 +180,11 @@ export const isHardRun = (type: RunType) => HARD_RUN_TYPES.includes(type);
  * main goal), unknown leg load the day before, an easy run on a leg day.
  */
 export function runInterference(
-  run: { readonly date: string; readonly run_type: RunType; readonly session_id?: string | null },
+  run: {
+    readonly date: string;
+    readonly run_type: RunType;
+    readonly session_id?: string | null;
+  },
   days: readonly StrengthDay[],
   focus: TrainingFocus,
 ): WeekNote[] {

@@ -66,7 +66,11 @@ export const TAPER = {
 } as const;
 /** Block phases: weeks of peak and build before the taper. */
 export const PEAK_WEEKS = 2;
-export const BUILD_PHASE_WEEKS = { "5k": 4, "10k": 4, half_marathon: 5 } as const;
+export const BUILD_PHASE_WEEKS = {
+  "5k": 4,
+  "10k": 4,
+  half_marathon: 5,
+} as const;
 /** Under this many weeks a block has only build and taper (with a hint). */
 export const SHORT_BLOCK_WEEKS = 6;
 /** Weekly minutes when neither history nor profile knows the volume. */
@@ -122,7 +126,8 @@ export interface WeekContextInput {
 
 /* ---------------------------------------------------------------- output */
 
-export type WeekPhase = "none" | "base" | "build" | "peak" | "taper" | "race_over";
+export type WeekPhase =
+  "none" | "base" | "build" | "peak" | "taper" | "race_over";
 export type Reentry = "none" | "short" | "long" | "restart" | "new";
 
 export type VolumeBasis =
@@ -208,12 +213,14 @@ export interface WeekContext {
 
 /** Fail closed: a date that is not a real calendar day is an error, never a guess. */
 export function day(date: string): string {
-  if (!isCalendarDate(date)) throw new RangeError(`Kein Kalenderdatum: ${date}`);
+  if (!isCalendarDate(date))
+    throw new RangeError(`Kein Kalenderdatum: ${date}`);
   return date;
 }
 
 /** 1 = Monday … 7 = Sunday. */
-export const weekdayOf = (date: string) => daysBetween(weekStart(date), date) + 1;
+export const weekdayOf = (date: string) =>
+  daysBetween(weekStart(date), date) + 1;
 
 export const WEEKDAY_NAMES = [
   "Montag",
@@ -284,12 +291,17 @@ export function blockPhase(
     return { phase: "none", days_to_race: null, short_block: false };
   const race = day(profile.race_date);
   const toRace = daysBetween(date, race);
-  if (toRace < 0) return { phase: "race_over", days_to_race: toRace, short_block: false };
+  if (toRace < 0)
+    return { phase: "race_over", days_to_race: toRace, short_block: false };
   const taper = TAPER[profile.goal].days;
   const start = block_start === null ? date : day(block_start);
-  const blockDays = daysBetween(compareDate(start, date) < 0 ? start : date, race);
+  const blockDays = daysBetween(
+    compareDate(start, date) < 0 ? start : date,
+    race,
+  );
   const short = blockDays < SHORT_BLOCK_WEEKS * 7;
-  if (toRace <= taper) return { phase: "taper", days_to_race: toRace, short_block: short };
+  if (toRace <= taper)
+    return { phase: "taper", days_to_race: toRace, short_block: short };
   if (short) return { phase: "build", days_to_race: toRace, short_block: true };
   const beforeTaper = toRace - taper;
   if (beforeTaper <= PEAK_WEEKS * 7)
@@ -327,7 +339,11 @@ function profileVolume(profile: WeekRunProfile, experience: RunExperience) {
  */
 function blocks(runs: readonly WeekHistoryRun[], today: string, count: number) {
   return Array.from({ length: count }, (_, i) =>
-    minutesBetween(runs, addDays(today, -7 * (i + 1)), addDays(today, -7 * i - 1)),
+    minutesBetween(
+      runs,
+      addDays(today, -7 * (i + 1)),
+      addDays(today, -7 * i - 1),
+    ),
   );
 }
 
@@ -377,7 +393,11 @@ export function weekContext(input: WeekContextInput): WeekContext {
   /* focus */
   const focus: TrainingFocus =
     input.focus ??
-    (isRace(profile.goal) ? "running" : input.has_strength ? "strength" : "running");
+    (isRace(profile.goal)
+      ? "running"
+      : input.has_strength
+        ? "strength"
+        : "running");
 
   /* phase */
   const phaseInfo = blockPhase(profile, today, input.block_start ?? null);
@@ -512,8 +532,13 @@ export function weekContext(input: WeekContextInput): WeekContext {
   let longest: number | null = recentKnown.length
     ? Math.max(...recentKnown.map((run) => run.timer_s! / 60))
     : null;
-  if (longest === null && runs.length === 0 && profile.longest_run_4w_min !== null)
-    longest = profile.longest_run_4w_min > 0 ? profile.longest_run_4w_min : null;
+  if (
+    longest === null &&
+    runs.length === 0 &&
+    profile.longest_run_4w_min !== null
+  )
+    longest =
+      profile.longest_run_4w_min > 0 ? profile.longest_run_4w_min : null;
   const longDef = CONTINUOUS_MINUTES.long.span[experience].def;
   const long_cap_min =
     longest === null ? longDef : Math.floor(longest + LONG_GROWTH_MAX_MIN);
@@ -530,21 +555,34 @@ export function weekContext(input: WeekContextInput): WeekContext {
     if (value < max_hard) {
       max_hard = value;
       hardReasons.push(why);
-    } else if (value === max_hard && value < MAX_HARD_RUNS) hardReasons.push(why);
+    } else if (value === max_hard && value < MAX_HARD_RUNS)
+      hardReasons.push(why);
   };
   if (experience === "beginner")
-    limit(MAX_HARD_RUNS_BEGINNER, "Einsteiger: höchstens eine harte Einheit pro Woche.");
+    limit(
+      MAX_HARD_RUNS_BEGINNER,
+      "Einsteiger: höchstens eine harte Einheit pro Woche.",
+    );
   if (focus === "strength")
     limit(
       MAX_HARD_RUNS_STRENGTH_FOCUS,
       "Hauptziel Kraft: höchstens eine harte Laufeinheit pro Woche.",
     );
   if (phase === "base")
-    limit(MAX_HARD_RUNS_BASE_PHASE, "Grundlagenphase: höchstens eine harte Einheit.");
+    limit(
+      MAX_HARD_RUNS_BASE_PHASE,
+      "Grundlagenphase: höchstens eine harte Einheit.",
+    );
   if (beginner_first_weeks)
-    limit(0, "Die ersten vier Wochen als Einsteiger: nur Steigerungen, keine harte Einheit.");
+    limit(
+      0,
+      "Die ersten vier Wochen als Einsteiger: nur Steigerungen, keine harte Einheit.",
+    );
   if (reentry === "long" || reentry === "restart")
-    limit(0, "Wiedereinstieg nach langer Pause: eine Woche ohne harte Einheit.");
+    limit(
+      0,
+      "Wiedereinstieg nach langer Pause: eine Woche ohne harte Einheit.",
+    );
   if (beginner_first_weeks)
     notes.push({
       code: "beginner_first_weeks",

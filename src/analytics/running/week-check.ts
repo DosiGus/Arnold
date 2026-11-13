@@ -165,7 +165,13 @@ export function checkRunWeek(
           cap,
         )
       : total.unknown
-        ? result("volume", "unknown", "Bei einem Lauf fehlt die Dauer: der Umfang ist unbekannt.", null, cap)
+        ? result(
+            "volume",
+            "unknown",
+            "Bei einem Lauf fehlt die Dauer: der Umfang ist unbekannt.",
+            null,
+            cap,
+          )
         : result(
             "volume",
             "ok",
@@ -192,7 +198,13 @@ export function checkRunWeek(
           EASY_SHARE_MIN,
         )
       : ratedTotal.unknown || intense.unknown
-        ? result("easy_share", "unknown", "Der lockere Anteil ist unbekannt (Dauer oder Intensität fehlt).", null, EASY_SHARE_MIN)
+        ? result(
+            "easy_share",
+            "unknown",
+            "Der lockere Anteil ist unbekannt (Dauer oder Intensität fehlt).",
+            null,
+            EASY_SHARE_MIN,
+          )
         : result(
             "easy_share",
             "ok",
@@ -209,7 +221,9 @@ export function checkRunWeek(
   const weeks = [...new Set(context.window.map(weekStart))];
   const overWeeks = weeks.filter((start) => {
     const end = addDays(start, 6);
-    const planned = hardPlanned.filter((r) => weekStart(r.date) === start).length;
+    const planned = hardPlanned.filter(
+      (r) => weekStart(r.date) === start,
+    ).length;
     const done = history.filter(
       (r) =>
         isHardRun(r.run_type) &&
@@ -269,12 +283,18 @@ export function checkRunWeek(
           HARD_SPACING_DAYS,
           [...new Set(tooClose)],
         )
-      : result("hard_spacing", "ok", "Zwischen harten Einheiten liegen mindestens 48 Stunden."),
+      : result(
+          "hard_spacing",
+          "ok",
+          "Zwischen harten Einheiten liegen mindestens 48 Stunden.",
+        ),
   );
 
   /* no hard run the day after a long run */
   const longDates = new Set([
-    ...history.filter((r) => r.run_type === "long").map((r) => r.workout_date_local),
+    ...history
+      .filter((r) => r.run_type === "long")
+      .map((r) => r.workout_date_local),
     ...runs.filter((r) => r.run_type === "long").map((r) => r.date),
   ]);
   const afterLong = hardPlanned
@@ -290,7 +310,11 @@ export function checkRunWeek(
           null,
           afterLong,
         )
-      : result("hard_after_long", "ok", "Kein harter Lauf am Tag nach dem langen Lauf."),
+      : result(
+          "hard_after_long",
+          "ok",
+          "Kein harter Lauf am Tag nach dem langen Lauf.",
+        ),
   );
 
   /* no hard run the day after a heavy leg day */
@@ -320,7 +344,11 @@ export function checkRunWeek(
             null,
             legsUnknown.map((r) => r.date),
           )
-        : result("hard_after_heavy_legs", "ok", "Kein harter Lauf am Tag nach einem schweren Beintag."),
+        : result(
+            "hard_after_heavy_legs",
+            "ok",
+            "Kein harter Lauf am Tag nach einem schweren Beintag.",
+          ),
   );
 
   /* long run: share of the week and growth */
@@ -331,7 +359,9 @@ export function checkRunWeek(
       !total.unknown &&
       r.minutes > LONG_SHARE_MAX * total.total + EPS,
   );
-  const longUnknown = longs.some((r) => r.minutes === null) || (longs.length > 0 && total.unknown);
+  const longUnknown =
+    longs.some((r) => r.minutes === null) ||
+    (longs.length > 0 && total.unknown);
   results.push(
     shareOver.length
       ? result(
@@ -343,7 +373,13 @@ export function checkRunWeek(
           shareOver.map((r) => r.date),
         )
       : longUnknown
-        ? result("long_share", "unknown", "Dauer des langen Laufs oder der Woche unbekannt.", null, LONG_SHARE_MAX)
+        ? result(
+            "long_share",
+            "unknown",
+            "Dauer des langen Laufs oder der Woche unbekannt.",
+            null,
+            LONG_SHARE_MAX,
+          )
         : result(
             "long_share",
             "ok",
@@ -372,14 +408,21 @@ export function checkRunWeek(
           growthOver.map((r) => r.date),
         )
       : longs.some((r) => r.minutes === null)
-        ? result("long_growth", "unknown", "Dauer des langen Laufs unbekannt.", null, context.long_cap_min)
+        ? result(
+            "long_growth",
+            "unknown",
+            "Dauer des langen Laufs unbekannt.",
+            null,
+            context.long_cap_min,
+          )
         : result("long_growth", "ok", growthBasis, null, context.long_cap_min),
   );
 
   /* race day: the race is the run of the day */
-  const onRace = context.race_date === null
-    ? []
-    : runs.filter((r) => r.date === context.race_date);
+  const onRace =
+    context.race_date === null
+      ? []
+      : runs.filter((r) => r.date === context.race_date);
   results.push(
     onRace.length
       ? result(
@@ -393,7 +436,9 @@ export function checkRunWeek(
       : result("race_day", "ok", "Am Wettkampftag ist nichts anderes geplant."),
   );
 
-  const notes = runs.flatMap((r) => runInterference(r, strength, context.focus));
+  const notes = runs.flatMap((r) =>
+    runInterference(r, strength, context.focus),
+  );
   return {
     rules_version: RUN_RULES_VERSION,
     context,

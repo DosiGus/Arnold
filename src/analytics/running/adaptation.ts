@@ -211,8 +211,7 @@ export function adaptRunLevel(input: AdaptationInput): LevelDecision {
 
   const rated = runs.map((run) => ({
     fulfilment: fulfilmentOf(run),
-    over:
-      run.rpe === null || run.rpe === undefined ? null : run.rpe - expected,
+    over: run.rpe === null || run.rpe === undefined ? null : run.rpe - expected,
   }));
   const back = rated.every(
     (r) =>
@@ -230,8 +229,7 @@ export function adaptRunLevel(input: AdaptationInput): LevelDecision {
   const easy = EASY_CHECK_TYPES.includes(type)
     ? easyRunsTooHard(input.history)
     : { too_hard: false, shares: [] };
-  const latestDecoupling =
-    type === "long" ? decouplingPercent(runs[0]) : null;
+  const latestDecoupling = type === "long" ? decouplingPercent(runs[0]) : null;
   const extra: Partial<LevelDecision> = {
     easy_too_hard: easy.too_hard,
     decoupling_percent: latestDecoupling,
@@ -251,7 +249,10 @@ export function adaptRunLevel(input: AdaptationInput): LevelDecision {
       `Lockere Läufe waren zu hart (${easy.shares.map(pct).join(" und ")} der Zeit über Zone 2): langsamer laufen` +
         (input.experience === "beginner" ? " und Gehpausen einbauen." : "."),
     );
-  if (latestDecoupling !== null && latestDecoupling > LONG_DECOUPLING_MAX_PERCENT)
+  if (
+    latestDecoupling !== null &&
+    latestDecoupling > LONG_DECOUPLING_MAX_PERCENT
+  )
     blockers.push(
       `Puls-Entkopplung im letzten langen Lauf ${latestDecoupling.toFixed(1)} % (über ${LONG_DECOUPLING_MAX_PERCENT} %): den langen Lauf noch nicht verlängern.`,
     );
