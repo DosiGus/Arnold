@@ -368,7 +368,12 @@ export function validateProjection(
   const activeSessions = sessions.filter((session) =>
     session.exercises.some((exercise) => exercise.status === "active"),
   );
-  if (!sessions.length)
+  // A pure run plan (RUN-008) has run sessions and no strength sessions: that is
+  // a complete plan, not an empty one.
+  const activeRuns = (version.run_sessions ?? []).filter(
+    (session) => session.status === "active",
+  );
+  if (!sessions.length && !activeRuns.length)
     found.push(
       issue("error", {
         code: "NO_SESSION",
@@ -376,7 +381,7 @@ export function validateProjection(
           "Der Plan enthält keine Trainingseinheit. Ein aktivierbarer Plan braucht mindestens eine Einheit.",
       }),
     );
-  else if (!activeSessions.length)
+  else if (!activeSessions.length && !activeRuns.length)
     found.push(
       issue("error", {
         code: "NO_ACTIVE_EXERCISE",
@@ -444,13 +449,13 @@ export function validateProjection(
   // Training guidance, explicitly non-blocking.
   if (
     version.days_per_week !== null &&
-    activeSessions.length > 0 &&
-    version.days_per_week !== activeSessions.length
+    activeSessions.length + activeRuns.length > 0 &&
+    version.days_per_week !== activeSessions.length + activeRuns.length
   )
     found.push(
       issue("recommendation", {
         code: "DAYS_PER_WEEK_MISMATCH",
-        message: `Der Plan nennt ${version.days_per_week} Trainingstage pro Woche, enthält aber ${activeSessions.length} Trainingseinheiten. Beides ist zulässig – etwa bei rotierenden Plänen.`,
+        message: `Der Plan nennt ${version.days_per_week} Trainingstage pro Woche, enthält aber ${activeSessions.length + activeRuns.length} Trainingseinheiten. Beides ist zulässig – etwa bei rotierenden Plänen.`,
         field: "days_per_week",
       }),
     );

@@ -486,7 +486,7 @@ export class TrainingPlanService {
       });
       basedOn = source.plan_version_id;
       changeSource = projectVersion(dataset, source);
-      if (!model.sessionOrder.length)
+      if (!model.sessionOrder.length && !model.runOrder.length)
         throw planError(
           "VALIDATION_ERROR",
           "Die Quell-Planversion enthält keine aktive Übung und kann nicht als Grundlage dienen.",
@@ -957,6 +957,12 @@ export class TrainingPlanService {
           (item) => item.plan_version_id !== model.plan.plan_version_id,
         ),
         ...[...model.items.values()].map((state) => state.current),
+      ],
+      planRunSessions: [
+        ...dataset.planRunSessions.filter(
+          (row) => row.plan_version_id !== model.plan.plan_version_id,
+        ),
+        ...[...model.runSessions.values()].map((state) => state.current),
       ],
     };
     return projectVersion(candidate, model.plan);
