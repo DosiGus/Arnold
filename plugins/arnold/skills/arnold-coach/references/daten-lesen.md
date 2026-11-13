@@ -38,7 +38,7 @@ Stand 1.0 (November 2026). Alle Zahlen kommen aus der Arnold-Auswertung auf dem 
 - `from_watch: true`: das Training wurde auf der Garmin-Uhr aufgezeichnet. Es ist ein normales Training; Ändern und Korrigieren funktioniert wie immer.
 - `watch` gibt es nur, wenn eine Aufzeichnung vorliegt: `duration_s` (Dauer), `rest` (tatsächliche Pausen `actual_s` gegen geplante `planned_s`, nur vollständig gemessene Pausen).
 - `watch.health` nur mit Einwilligung des Nutzers, sonst `null`: `heart_rate` (`average_bpm`, `max_bpm`), `calories_kcal`, `before` und `after` (`body_battery`, `stress`, `resting_hr`), `differences` (nachher minus vorher).
-- Body Battery und Stress sind Schätzungen der Uhr, keine Messung von Gesundheit. Arnold kennt keine persönlichen Pulszonen; sprich nicht von Zonen.
+- Body Battery und Stress sind Schätzungen der Uhr, keine Messung von Gesundheit. Für Krafttraining gibt es keine Pulszonen. Für Läufe gelten die Zonen aus `get_run_profile` (Abschnitt „Läufe“).
 
 ## `get_workout` → `progression`
 
@@ -71,3 +71,16 @@ Mögliche Vorschläge, höchstens zwei:
 - Regelmäßiger trainieren, bevor etwas am Plan geändert wird.
 - Ein, zwei Sätze mehr für die Muskelgruppe (Planänderung mit Entwurf und Ja).
 - Nach langem Stillstand eine Variante tauschen (z. B. Bankdrücken gegen Kurzhantel-Bankdrücken für einige Wochen).
+
+## Läufe
+
+Läufe haben eigene Werkzeuge. Alle Kennzahlen kommen fertig von Arnold; Krafttraining steht in denselben Antworten daneben. `value: null` mit `reason` ist unbekannt, nie 0. Alle Aufrufe mit `timezone`.
+
+- **`get_run_profile`**: Revision, Ziel, Wettkampfdatum, Referenzleistung (gültig oder nicht), Erfahrung, daraus abgeleitet VDOT (Leistungszahl) und Tempozonen, dazu, was noch fehlt. Fehlt etwas, sag das und verweise auf arnold-trainingsplan (dort wird das Profil ergänzt). Nichts davon nachrechnen.
+- **`get_run_analysis`** mit `view`: `run` (ein Lauf, `workout_id`), `week` (Woche um `date`, sonst heute) oder `four_weeks`. Liefert Tempo, Kilometerzeiten, Bestzeiten, Zeit in Zonen, Belastung, Wochenumfang, Erfüllung des Plans, Trend und das 7:28-Verhältnis (Belastung der letzten 7 Tage im Verhältnis zu den letzten 28 Tagen; ein Hinweis auf den Verlauf, keine Aussage über Gesundheit).
+- **`get_run_week`**: Woche Montag bis Sonntag mit Laufen und Kraft: geplant, erledigt, verpasst, die Laufeinheiten des aktiven Plans mit Stufe und Arnolds nächste Vorschläge (nur Vorschau, nichts gespeichert) und Hinweise (`notes`), etwa harter Lauf am Beintag oder gekürzte Einheit.
+- Pulswerte und Zonenzeiten: nur vorhanden, wenn der Nutzer in die Gesundheitsdaten eingewilligt hat und ein Pulsgurt oder die Uhr sie geliefert hat. Sonst `null` mit Grund; dann gibt es sie nicht, und du sprichst nicht von Puls. Nie medizinisch deuten.
+- Ein Lauf ist erst ab etwa drei Läufen oder drei Wochen ein Trend. Vorher sagen, dass es noch zu früh ist.
+- Nur Gleiches vergleichen: lockere mit lockeren Läufen, gleiche Umgebung (Strecke, Laufband, Bahn).
+
+So erklären: „Diese Woche hast du drei von vier geplanten Läufen gemacht. Der lange Lauf fehlt noch; Arnold hat ihn auf Sonntag gelegt.“

@@ -2,14 +2,14 @@
 
 Dieses Paket verbindet den Arnold-MCP-Server mit zwei Skills. Der Server bleibt unverändert und ist weiterhin allein zuständig für Login, Daten, Prüfungen, Gewichte und Schreibvorgänge. Die Skills geben ChatGPT feste Abläufe und Regeln.
 
-| Datei                          | Inhalt                                                  |
-| ------------------------------ | ------------------------------------------------------- |
-| `plugin.json`                  | Name, Version, Texte und Rechtslinks für das Plugin     |
-| `mcp.json`                     | Live-Adresse des Servers, OAuth mit Selbstregistrierung |
-| `skills/arnold-trainingsplan/` | Plan erstellen, übernehmen und ändern                   |
-| `skills/arnold-coach/`         | Fragen, Fortschritt, Stillstand, Motivation, Schmerzen  |
-| `skills/*/references/`         | Planungsregeln, Trainingswissenschaft, Daten lesen      |
-| `skills/*/agents/openai.yaml`  | MCP-Abhängigkeit des Skills                             |
+| Datei                          | Inhalt                                                          |
+| ------------------------------ | --------------------------------------------------------------- |
+| `plugin.json`                  | Name, Version, Texte und Rechtslinks für das Plugin             |
+| `mcp.json`                     | Live-Adresse des Servers, OAuth mit Selbstregistrierung         |
+| `skills/arnold-trainingsplan/` | Plan erstellen, übernehmen und ändern                           |
+| `skills/arnold-coach/`         | Fragen, Fortschritt, Stillstand, Motivation, Schmerzen          |
+| `skills/*/references/`         | Planungsregeln, Trainingswissenschaft (mit Laufen), Daten lesen |
+| `skills/*/agents/openai.yaml`  | MCP-Abhängigkeit des Skills                                     |
 
 Das Onboarding braucht keinen Skill: Es wird vom Server und den Einrichtungs-Werkzeugen geführt. Die Server-Anweisungen gelten weiter auch für Nutzer, die Arnold ohne Plugin verbinden.
 
@@ -44,10 +44,19 @@ Sollen einen Skill auslösen:
 3. „Warum stagniert mein Bankdrücken?“ → arnold-coach, lädt Daten, Prüfliste, höchstens zwei Rückfragen.
 4. „Warum soll ich nächstes Mal 62,5 kg nehmen?“ → arnold-coach, erklärt `progression`, ändert die Rechnung nicht.
 5. „Mir tut beim Schulterdrücken die Schulter weh.“ → arnold-coach, keine Steigerung, keine Diagnose, Abklärung bei anhaltenden Beschwerden.
+6. „Heute 45 Minuten Zone 2.“ → arnold-trainingsplan, `plan_run` (`base`, 45 Minuten), keine Tempi oder Pulswerte von ChatGPT.
+7. „Morgen Intervalle.“ → `plan_run` (`intervals`, morgiges Datum), keine selbst gewählte Dauer.
+8. „Schieb den langen Lauf auf Sonntag.“ → `get_run_week`, dann `update_planned_run`.
+9. „Mach heute nur 30 Minuten.“ → `update_planned_run` (gleiche Laufart, 30 Minuten).
+10. „Plane meine Laufwoche.“ → `schedule_run_week` als Vorschau mit Rückfrage; erst nach Ja derselbe Aufruf mit `confirm`, `request_id` und `preview_hash`.
+11. „Wie lief meine Woche?“ → arnold-coach, `get_run_week` und/oder `get_run_analysis`, kurze Einordnung.
+12. „Warum soll ich so langsam laufen?“ → arnold-coach, erklärt Zone 2, nennt kein eigenes Tempo.
+13. „Beim Laufen ist mir schwindelig, die Brust drückt.“ → arnold-coach, Lauf beenden, ärztlich abklären (bei Brustschmerz 112), keine Diagnose.
 
 Sollen keinen Skill auslösen:
 
 1. „Push gemacht, alles wie letztes Mal.“ → sofort speichern, kein Coaching.
+   „Ich bin 8 km in 44 Minuten gelaufen.“ → sofort `log_run` (Datum, Zeit und Distanz), kein Coaching.
 2. „@Arnold“ → Startansicht, höchstens zwei Sätze.
 3. „Zeig mir meine Rekorde.“ → Rekord-Karte, keine Analyse.
 

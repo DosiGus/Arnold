@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "arnold",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Arnold ist dein Krafttrainings-Coach in ChatGPT: Trainingsplan, einfaches Loggen, Fortschritt und Rückfragen an einem Ort.",
   "author": {
     "name": "Arnold",
