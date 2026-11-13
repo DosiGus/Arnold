@@ -10,7 +10,19 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { TOOL_ACCESS } from "../src/server/auth/tool-access.js";
+import { ARNOLD_INSTRUCTIONS } from "../src/server/mcp-arnold.js";
+import {
+  LONG_GROWTH_MAX_MIN,
+  LONG_SHARE_MAX_BY_RUNS,
+  TAPER,
+} from "../src/analytics/running/week-context.js";
+import { RUN_RULES_VERSION } from "../src/analytics/running/version.js";
 import { PlanEditSchema } from "../src/shared/plan-contract.js";
+import {
+  GetRunWeekInputSchema,
+  RunWriteInputs,
+  ScheduleRunWeekInputSchema,
+} from "../src/shared/run-contract.js";
 
 const PLUGIN = "plugins/arnold";
 const SKILLS = join(PLUGIN, "skills");
@@ -50,7 +62,7 @@ function frontmatter(text: string): Record<string, string> {
 
 /** Verbs Arnold's tools start with; a backticked name with one looks like a tool. */
 const TOOL_VERBS =
-  /^(get|show|create|update|submit|confirm|revise|validate|compare|activate|archive|log|void|start|complete|cancel|list|clone|request|finish|delete|replace|add|remove|rename|reorder|duplicate)_[a-z_]+$/;
+  /^(get|show|create|update|submit|confirm|revise|validate|compare|activate|archive|log|void|start|complete|cancel|list|clone|request|finish|delete|replace|add|remove|rename|reorder|duplicate|plan|schedule|rate)_[a-z_]+$/;
 
 const PLAN_EDITS = new Set(
   PlanEditSchema.options.map((option) => option.shape.type.value as string),
@@ -157,5 +169,280 @@ describe("skills", () => {
       );
       expect(description, skill).toMatch(/Nicht verwenden, um (ein|das)/);
     }
+  });
+});
+
+/**
+ * RUN-011: what ChatGPT is told to call for a spoken running request. Whether
+ * the model really does so is checked by hand (plugins/arnold/README.md); what
+ * is enforced here: the skill names exactly these tools for exactly these
+ * sentences, they are published, and the arguments it describes are accepted
+ * by the real input schemas (so the skill never teaches an invalid call).
+ */
+const RUN_ID = "run_workout_1";
+const TZ = "Europe/Berlin";
+const RUN_CASES: {
+  sentence: string;
+  tools: string[];
+  calls: { tool: string; input: Record<string, unknown> }[];
+}[] = [
+  {
+    sentence: "heute 45 Minuten Zone 2",
+    tools: ["plan_run"],
+    calls: [
+      {
+        tool: "plan_run",
+        input: {
+          request_id: "r1",
+          timezone: TZ,
+          run_type: "base",
+          minutes: 45,
+        },
+      },
+    ],
+  },
+  {
+    sentence: "morgen Intervalle",
+    tools: ["plan_run"],
+    calls: [
+      {
+        tool: "plan_run",
+        input: {
+          request_id: "r2",
+          timezone: TZ,
+          workout_date_local: "2026-11-14",
+          run_type: "intervals",
+        },
+      },
+    ],
+  },
+  {
+    sentence: "schieb den langen Lauf auf Sonntag",
+    tools: ["get_run_week", "update_planned_run"],
+    calls: [
+      { tool: "get_run_week", input: { timezone: TZ } },
+      {
+        tool: "update_planned_run",
+        input: {
+          request_id: "r3",
+          workout_id: RUN_ID,
+          expected_row_revision: 1,
+          timezone: TZ,
+          workout_date_local: "2026-11-15",
+        },
+      },
+    ],
+  },
+  {
+    sentence: "mach heute nur 30 Minuten",
+    tools: ["update_planned_run"],
+    calls: [
+      {
+        tool: "update_planned_run",
+        input: {
+          request_id: "r4",
+          workout_id: RUN_ID,
+          expected_row_revision: 1,
+          run_type: "base",
+          minutes: 30,
+        },
+      },
+    ],
+  },
+  {
+    sentence: "ich bin 8 km in 44 Minuten gelaufen",
+    tools: ["log_run"],
+    calls: [
+      {
+        tool: "log_run",
+        input: {
+          request_id: "r5",
+          timezone: TZ,
+          workout_date_local: "2026-11-13",
+          timer_s: 44 * 60,
+          distance_m: 8000,
+        },
+      },
+    ],
+  },
+  {
+    sentence: "plane meine Laufwoche",
+    tools: ["schedule_run_week"],
+    calls: [
+      { tool: "schedule_run_week", input: { timezone: TZ } },
+      {
+        tool: "schedule_run_week",
+        input: {
+          timezone: TZ,
+          confirm: true,
+          request_id: "r6",
+          preview_hash: "hash-from-preview",
+        },
+      },
+    ],
+  },
+  {
+    sentence: "wie lief meine Woche",
+    tools: ["get_run_week", "get_run_analysis"],
+    calls: [
+      { tool: "get_run_week", input: { timezone: TZ } },
+      {
+        tool: "get_run_analysis",
+        input: { view: "week", timezone: TZ },
+      },
+    ],
+  },
+];
+
+const RUN_READ_SCHEMAS = {
+  get_run_week: GetRunWeekInputSchema,
+  schedule_run_week: ScheduleRunWeekInputSchema,
+} as const;
+
+describe("running skills (RUN-011)", () => {
+  const planSkill = read(join(SKILLS, "arnold-trainingsplan", "SKILL.md"));
+
+  it.each(RUN_CASES)(
+    'maps "$sentence" to the expected tool call',
+    ({ sentence, tools, calls }) => {
+      // The plan skill has a row with this sentence and every tool of the case.
+      const row = planSkill
+        .split("\n")
+        .find((line) => line.startsWith("|") && line.includes(`„${sentence}“`));
+      expect(row, sentence).toBeDefined();
+      for (const tool of tools) {
+        expect(tool in TOOL_ACCESS, tool).toBe(true);
+        expect(row, `${sentence} → ${tool}`).toContain(`\`${tool}\``);
+      }
+      // The first tool of the case is the one the model calls first.
+      expect(calls[0].tool).toBe(tools[0]);
+      // The arguments the skill describes pass the published input schemas.
+      for (const { tool, input } of calls) {
+        const schema =
+          tool in RUN_READ_SCHEMAS
+            ? RUN_READ_SCHEMAS[tool as keyof typeof RUN_READ_SCHEMAS]
+            : tool in RunWriteInputs
+              ? RunWriteInputs[tool as keyof typeof RunWriteInputs]
+              : undefined;
+        if (!schema) continue; // get_run_analysis: schema checked in run tests
+        const parsed = schema.safeParse(input);
+        expect(parsed.success ? [] : parsed.error.issues, tool).toEqual([]);
+      }
+    },
+  );
+
+  it("shows the preview first and confirms only with the preview's hash", () => {
+    const preview = ScheduleRunWeekInputSchema.safeParse({ timezone: TZ });
+    expect(preview.success).toBe(true);
+    // confirm without request_id and preview_hash is refused by the schema.
+    expect(
+      ScheduleRunWeekInputSchema.safeParse({ timezone: TZ, confirm: true })
+        .success,
+    ).toBe(false);
+    expect(planSkill).toContain("preview_hash");
+    expect(planSkill).toContain("ausdrücklichen Ja");
+  });
+
+  it("teaches the typed run plan edits and validation with a timezone", () => {
+    for (const edit of [
+      "add_run_session",
+      "update_run_session",
+      "remove_run_session",
+    ]) {
+      expect(PLAN_EDITS.has(edit), edit).toBe(true);
+      expect(planSkill).toContain(`\`${edit}\``);
+    }
+    expect(planSkill).toMatch(/`validate_training_plan` mit `timezone`/);
+    expect(
+      PlanEditSchema.safeParse({
+        type: "add_run_session",
+        session_name: "Grundlagenlauf",
+        run_type: "base",
+        preferred_weekday: 6,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("keeps the running science in step with the rules of the code", () => {
+    const science = read(
+      join(SKILLS, "arnold-coach", "references", "trainingswissenschaft.md"),
+    );
+    expect(science).toContain("## 7. Laufen");
+    expect(RUN_RULES_VERSION).toBe("1.2.0");
+    expect(science).toContain(`Regelstand ${RUN_RULES_VERSION}`);
+    const shares = LONG_SHARE_MAX_BY_RUNS;
+    expect(science).toContain(
+      `${shares[5] * 100} % der Wochenlaufzeit bei fünf und mehr Läufen, ${shares[4] * 100} % bei vier, ${shares[3] * 100} % bei drei und ${shares[2] * 100} % bei zwei Läufen`,
+    );
+    expect(science).toContain(`${LONG_GROWTH_MAX_MIN} Minuten länger`);
+    expect(science).toContain(`+${LONG_GROWTH_MAX_MIN}-Minuten-Regel`);
+    for (const [distance, taper] of Object.entries(TAPER)) {
+      expect(taper.days, distance).toBeGreaterThan(0);
+      expect(science).toContain(`${taper.days} Tage`);
+      expect(science).toContain(`${Math.round(taper.factor * 100)} %`);
+    }
+    for (const word of [
+      "80/20",
+      "Interferenz",
+      "Wiedereinstieg",
+      "Kürzen vor Streichen",
+    ])
+      expect(science).toContain(word);
+  });
+
+  it("sends a warning sign during a run to a doctor, without a diagnosis", () => {
+    const coach = read(join(SKILLS, "arnold-coach", "SKILL.md"));
+    for (const word of ["Brustschmerz", "Atemnot", "Schwindel"])
+      expect(coach).toContain(word);
+    expect(coach).toContain("Lauf sofort beenden und ärztlich abklären");
+    expect(coach).toContain("ohne Diagnose");
+  });
+
+  it("gives ChatGPT no way to set paces, zones or volumes", () => {
+    for (const text of [
+      planSkill,
+      read(join(SKILLS, "arnold-coach", "SKILL.md")),
+      ARNOLD_INSTRUCTIONS,
+    ])
+      expect(text).toMatch(/Tempi, Pulszonen,/);
+  });
+});
+
+describe("server instructions (RUN-011)", () => {
+  it("name the run tools and only published ones", () => {
+    for (const tool of [
+      "plan_run",
+      "update_planned_run",
+      "cancel_planned_run",
+      "log_run",
+      "schedule_run_week",
+      "get_run_week",
+      "get_run_analysis",
+      "get_run_profile",
+      "update_run_profile",
+    ])
+      expect(ARNOLD_INSTRUCTIONS, tool).toContain(tool);
+    const unknown = [...ARNOLD_INSTRUCTIONS.matchAll(/\b[a-z]+(?:_[a-z]+)+\b/g)]
+      .map(([name]) => name)
+      .filter(
+        (name) =>
+          TOOL_VERBS.test(name) &&
+          !/_ids?$/.test(name) &&
+          !(name in TOOL_ACCESS) &&
+          !PLAN_EDITS.has(name),
+      );
+    expect(unknown).toEqual([]);
+  });
+
+  it("require a preview and a yes before the week is stored", () => {
+    expect(ARNOLD_INSTRUCTIONS).toContain(
+      "schedule_run_week zuerst als Vorschau zeigen und fragen",
+    );
+    expect(ARNOLD_INSTRUCTIONS).toContain(
+      "erst nach einem ausdrücklichen Ja derselbe Aufruf mit confirm, request_id und preview_hash",
+    );
+    expect(ARNOLD_INSTRUCTIONS).toContain(
+      "cancel_planned_run erst nach Rückfrage",
+    );
   });
 });
