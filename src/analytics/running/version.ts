@@ -7,4 +7,4 @@
  * explainable (semantic versioning: major = a rule that changes what is
  * allowed, minor = new run types or options, patch = wording).
  */
-export const RUN_RULES_VERSION = "1.0.0";
+export const RUN_RULES_VERSION = "1.1.0";
