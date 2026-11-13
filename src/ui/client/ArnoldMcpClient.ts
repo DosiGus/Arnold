@@ -46,6 +46,15 @@ import {
   type ArnoldWorkoutHistoryView,
   type ProgressMetricKey,
 } from "../../shared/arnold-view";
+import {
+  GetRunWeekInputSchema,
+  RunAnalysisResponseSchema,
+  RunProfileResponseSchema,
+  RunWeekResponseSchema,
+  RunWriteResponseSchema,
+  ScheduleRunWeekResponseSchema,
+  type RunWriteOperation,
+} from "../../shared/run-contract";
 import { z } from "zod";
 import type { ArnoldClient } from "../client";
 import {
@@ -606,6 +615,47 @@ export class ArnoldMcpClient {
   async progress(query: ProgressQuery): Promise<ArnoldExerciseProgressView> {
     return ArnoldExerciseProgressViewSchema.parse(
       await this.client.call("get_arnold_exercise_progress", args(query)),
+    );
+  }
+
+  /* ------------------------------------------------------------- running */
+  /** Every call below is a run tool; the card shows what comes back, nothing else. */
+  async runWeek(input: z.infer<typeof GetRunWeekInputSchema>) {
+    return RunWeekResponseSchema.parse(
+      await this.client.call("get_run_week", input, { publish: false }),
+    );
+  }
+  async runAnalysis(input: {
+    view: "run" | "week" | "four_weeks";
+    workout_id?: string;
+    date?: string;
+    timezone: string;
+  }) {
+    return RunAnalysisResponseSchema.parse(
+      await this.client.call("get_run_analysis", input, { publish: false }),
+    );
+  }
+  async runProfile(timezone?: string) {
+    return RunProfileResponseSchema.parse(
+      await this.client.call("get_run_profile", timezone ? { timezone } : {}, {
+        publish: false,
+      }),
+    );
+  }
+  /** Step 1 without `confirm`; step 2 with the hash of the preview the user saw. */
+  async scheduleRunWeek(input: {
+    timezone: string;
+    confirm?: boolean;
+    request_id?: string;
+    preview_hash?: string;
+  }) {
+    return ScheduleRunWeekResponseSchema.parse(
+      await this.client.call("schedule_run_week", input, { publish: false }),
+    );
+  }
+  async runWrite(operation: RunWriteOperation, input: Record<string, unknown>) {
+    return RunWriteResponseSchema.parse(
+      await this.client.call(operation, input, { publish: false }),
     );
   }
 }

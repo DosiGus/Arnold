@@ -7,6 +7,7 @@ import {
 import { registerWorkoutTools } from "./mcp-workout.js";
 import { registerPlanTools } from "./mcp-plan.js";
 import { registerRunTools } from "./mcp-run.js";
+import { registerRunCardTool } from "./mcp-run-cards.js";
 import type { RunService } from "./run/service.js";
 import { registerOnboardingTools } from "./mcp-onboarding.js";
 import { gateUntilSetUp } from "./onboarding/setup-gate.js";
@@ -547,6 +548,7 @@ export function createArnoldMcpServer(
   registerWorkoutTools(server, source, logging, actorContext);
   registerPlanTools(server, plans, actorContext);
   registerRunTools(server, runs, actorContext);
+  registerRunCardTool(server, runs, resourceUri);
   // Onboarding is its own app resource and tool set. Registering it last keeps
   // the dashboard surface above byte-for-byte unchanged for a deployment that
   // publishes no onboarding at all.
