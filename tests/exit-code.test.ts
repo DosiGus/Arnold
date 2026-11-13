@@ -14,6 +14,8 @@ it("a failing run with the real globalSetup exits non-zero", () => {
   for (const key of Object.keys(env)) {
     if (key.startsWith("VITEST")) delete env[key];
   }
+  delete env.FORCE_COLOR;
+  env.NO_COLOR = "1";
   const result = spawnSync(
     process.execPath,
     [
@@ -24,7 +26,11 @@ it("a failing run with the real globalSetup exits non-zero", () => {
     ],
     { cwd: root, env, encoding: "utf8", timeout: 90_000 },
   );
-  const output = `${result.stdout}\n${result.stderr}`;
+  // CI sets FORCE_COLOR; strip colour codes so the summary can be matched.
+  const output = `${result.stdout}\n${result.stderr}`.replace(
+    /\u001b\[[0-9;]*m/g,
+    "",
+  );
   expect(output).toMatch(/Tests\s+1 failed/);
   expect(result.status).not.toBe(0);
   expect(result.status).not.toBeNull();
