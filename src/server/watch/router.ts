@@ -33,6 +33,7 @@ import type { DatabaseArnoldRuntime } from "../db/runtime.js";
 import { healthRoutes } from "./health.js";
 import { pairingRoutes } from "./pairing.js";
 import { planRoutes } from "./plan.js";
+import { runRoutes } from "./runs.js";
 import { workoutRoutes } from "./workouts.js";
 import { safeCode, toolLogEnabled } from "../tool-log.js";
 import {
@@ -210,7 +211,7 @@ export interface WatchReply {
 }
 
 export interface WatchRoute {
-  method: "GET" | "POST" | "PUT" | "DELETE";
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
   handler: (call: WatchCall) => Promise<WatchReply>;
 }
@@ -230,6 +231,7 @@ export function watchRoutes(runtime: DatabaseArnoldRuntime): WatchRoute[] {
     ...planRoutes(runtime),
     ...workoutRoutes(runtime),
     ...healthRoutes(runtime),
+    ...runRoutes(runtime),
   ];
 }
 
@@ -357,6 +359,7 @@ export function createWatchRouter(options: WatchApiOptions): Router {
       GET: router.get,
       POST: router.post,
       PUT: router.put,
+      PATCH: router.patch,
       DELETE: router.delete,
     }[route.method].bind(router);
     register(route.path, async (req: Request, res: Response) => {
@@ -382,7 +385,11 @@ export function createWatchRouter(options: WatchApiOptions): Router {
         }),
       );
       try {
-        if (route.method === "POST" || route.method === "PUT") {
+        if (
+          route.method === "POST" ||
+          route.method === "PUT" ||
+          route.method === "PATCH"
+        ) {
           if (!req.is("application/json"))
             throw new WatchApiError("VALIDATION_ERROR", 415);
           if (bodyTooLarge(req))
