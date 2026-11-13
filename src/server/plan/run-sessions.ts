@@ -6,10 +6,7 @@
  * Everything else about a run (type, weekday, level bounds, current level)
  * becomes `targets_changed` with a label that says "Laufeinheit".
  */
-import type {
-  PlanChange,
-  PlanRunSession,
-} from "../../shared/plan-contract.js";
+import type { PlanChange, PlanRunSession } from "../../shared/plan-contract.js";
 
 const normalize = (value: string) =>
   value
@@ -60,7 +57,9 @@ export function diffRunSessions(
     // Inside a family the session keeps its id; across families the name is
     // all that is left to say "the same run".
     const source =
-      before.find((s) => unmatched.has(s) && s.session_id === target.session_id) ??
+      before.find(
+        (s) => unmatched.has(s) && s.session_id === target.session_id,
+      ) ??
       before.find(
         (s) =>
           unmatched.has(s) &&

@@ -123,6 +123,54 @@ function legLoadOfWorkout(data: ArnoldDataset, workoutId: string) {
   };
 }
 
+/** Run sessions of a plan as the week planner reads them. */
+export const weekSessionInputs = (
+  sessions: readonly Pick<
+    ArnoldPlanRunSession,
+    | "session_id"
+    | "session_order"
+    | "session_name"
+    | "run_type"
+    | "template"
+    | "preferred_weekday"
+  >[],
+): WeekSessionInput[] =>
+  sessions.map((s) => ({
+    session_id: s.session_id,
+    session_order: s.session_order,
+    session_name: s.session_name,
+    run_type: s.run_type,
+    template: s.template,
+    preferred_weekday: s.preferred_weekday,
+    // The stored level is the current one (written back with every plan).
+    level: s.template.level,
+  }));
+
+/** The planner input for a window starting today, from the stored data. */
+export function plannerInput(
+  data: ArnoldDataset,
+  profile: ArnoldRunProfile,
+  today: string,
+  sessions: readonly WeekSessionInput[],
+  fixed_runs: readonly FixedRunInput[],
+  focus?: TrainingFocus,
+): WeekPlannerInput {
+  const strength = strengthDays(data);
+  const zones = referenceTempoZones(referenceOf(profile), today);
+  return {
+    today,
+    profile: weekProfile(profile),
+    history: historyOf(data),
+    focus: focus ?? defaultFocus(profile, strength.length),
+    has_strength: strength.length > 0,
+    sessions,
+    strength_days: strength,
+    fixed_runs,
+    paces: zones.value,
+    hr_zones: null,
+  };
+}
+
 export interface WeekSetup {
   readonly today: string;
   readonly plan: ArnoldPlanVersion;
@@ -193,32 +241,11 @@ export function buildWeekSetup(
       },
     ];
   });
-  const todo: WeekSessionInput[] = active.sessions
-    .filter((s) => !covered.has(s.session_id))
-    .map((s) => ({
-      session_id: s.session_id,
-      session_order: s.session_order,
-      session_name: s.session_name,
-      run_type: s.run_type,
-      template: s.template,
-      preferred_weekday: s.preferred_weekday,
-      // The stored level is the current one (written back with every plan).
-      level: s.template.level,
-    }));
+  const todo = weekSessionInputs(
+    active.sessions.filter((s) => !covered.has(s.session_id)),
+  );
   const strength = strengthDays(data);
-  const zones = referenceTempoZones(referenceOf(profile), today);
-  const input: WeekPlannerInput = {
-    today,
-    profile: weekProfile(profile),
-    history: historyOf(data),
-    focus: focus ?? defaultFocus(profile, strength.length),
-    has_strength: strength.length > 0,
-    sessions: todo,
-    strength_days: strength,
-    fixed_runs,
-    paces: zones.value,
-    hr_zones: null,
-  };
+  const input = plannerInput(data, profile, today, todo, fixed_runs, focus);
   return {
     today,
     plan: active.plan,

@@ -80,6 +80,8 @@ interface OwnExercises {
   input?: Record<string, unknown>;
 }
 import { validateProjection, validatePlanVersion } from "./validation.js";
+import { runValidationIssues } from "./run-validation.js";
+import { localDay } from "../run/views.js";
 import {
   applyEdit,
   buildNewPlan,
@@ -169,6 +171,39 @@ export class TrainingPlanService {
     return (this.options.clock?.() ?? new Date()).toISOString();
   }
 
+  /**
+   * The validation of a projected version, plus the hints for its run sessions
+   * (RUN-008): warnings and recommendations only, never an error, so `valid`
+   * and `activatable` stay what the structural validation says.
+   */
+  private checked(
+    version: TrainingPlanVersion,
+    dataset: ArnoldDataset,
+    base: PlanValidationResult = validateProjection(
+      version,
+      this.catalog(dataset),
+    ),
+    timezone = "UTC",
+  ): PlanValidationResult {
+    const extra = runValidationIssues(
+      version,
+      dataset,
+      localDay(this.now(), timezone),
+    );
+    if (!extra.length) return base;
+    return {
+      ...base,
+      warnings: [
+        ...base.warnings,
+        ...extra.filter((i) => i.severity === "warning"),
+      ],
+      recommendations: [
+        ...base.recommendations,
+        ...extra.filter((i) => i.severity === "recommendation"),
+      ],
+    };
+  }
+
   private newId(): string {
     return this.options.id?.() ?? crypto.randomUUID();
   }
@@ -213,9 +248,7 @@ export class TrainingPlanService {
     return {
       plan: version,
       validation:
-        plan.status === "draft"
-          ? validateProjection(version, this.catalog(dataset))
-          : null,
+        plan.status === "draft" ? this.checked(version, dataset) : null,
     };
   }
 
@@ -289,15 +322,22 @@ export class TrainingPlanService {
 
   async validate(input: {
     plan_version_id: string;
+    timezone?: string;
   }): Promise<PlanValidationResult> {
     const dataset = await this.options.store.read();
     const result = validatePlanVersion(dataset, input.plan_version_id);
-    if (!result)
+    const plan = findPlan(dataset, input.plan_version_id);
+    if (!result || !plan)
       throw planError(
         "PLAN_VERSION_NOT_FOUND",
         "Diese Planversion existiert nicht.",
       );
-    return result;
+    return this.checked(
+      projectVersion(dataset, plan),
+      dataset,
+      result,
+      input.timezone,
+    );
   }
 
   async compare(input: {
@@ -361,7 +401,7 @@ export class TrainingPlanService {
       exercises: exerciseOptions(dataset),
       validation:
         version && version.status === "draft"
-          ? validateProjection(version, this.catalog(dataset))
+          ? this.checked(version, dataset)
           : null,
       write_mode: this.mode,
       can_write: canWrite,
@@ -528,7 +568,7 @@ export class TrainingPlanService {
 
     const changes = finalizeModel(model, now);
     const projected = this.projectModel(dataset, model);
-    const validation = validateProjection(projected, this.catalog(dataset));
+    const validation = this.checked(projected, dataset);
     // A draft may be saved while incomplete — that is the point of a draft —
     // but a structurally impossible draft is refused outright.
     const blocking = validation.errors.filter(
@@ -741,7 +781,7 @@ export class TrainingPlanService {
     const changes: EntityChange[] = [];
     const audit: AuditEvent[] = [];
     const projected = projectVersion(dataset, plan);
-    const validation = validateProjection(projected, this.catalog(dataset));
+    const validation = this.checked(projected, dataset);
 
     if (operation === "archive_plan_draft") {
       // A never-activated draft cannot be stored as `archived` without an
