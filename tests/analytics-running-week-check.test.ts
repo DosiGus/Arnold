@@ -360,17 +360,44 @@ describe("hard runs: 48 h, after the long run, after heavy legs", () => {
 });
 
 describe("long run", () => {
-  it("is at most 30 % of the week", () => {
-    const ok = check([
-      planned(d(0), "long", 30, 0),
-      planned(d(2), "base", 70, 0),
-    ]);
-    expect(rule(ok, "long_share").status).toBe("ok");
-    const bad = check([
-      planned(d(0), "long", 31, 0),
-      planned(d(2), "base", 69, 0),
-    ]);
-    expect(rule(bad, "long_share").status).toBe("violated");
+  it("is at most 30 / 35 / 40 / 50 % of the week at 5+ / 4 / 3 / 2 runs", () => {
+    /** A week of `count` runs: a long run of `long` minutes, the rest 100 minutes in total. */
+    const week = (count: number, long: number) => {
+      const others = count - 1;
+      return check([
+        planned(d(0), "long", long, 0),
+        ...Array.from({ length: others }, (_, i) =>
+          planned(d(1 + i), "base", 100 / others, 0),
+        ),
+      ]);
+    };
+    // limit L of the total: long <= L * (long + 100)  <=>  long <= 100 * L / (1 - L)
+    const cases: [number, number][] = [
+      [6, 42.857],
+      [5, 42.857],
+      [4, 53.846],
+      [3, 66.667],
+      [2, 100],
+    ];
+    for (const [count, edge] of cases) {
+      expect(
+        rule(week(count, edge - 0.01), "long_share").status,
+        `${count}`,
+      ).toBe("ok");
+      expect(
+        rule(week(count, edge + 0.1), "long_share").status,
+        `${count}`,
+      ).toBe("violated");
+    }
+    // the limit in the result follows the number of runs
+    expect(rule(week(3, 60), "long_share").limit).toBe(0.4);
+    expect(rule(week(2, 60), "long_share").limit).toBe(0.5);
+  });
+
+  it("has no share limit for a single run, and reports unknown minutes", () => {
+    expect(
+      rule(check([planned(d(0), "long", 60, 0)]), "long_share").status,
+    ).toBe("ok");
     const unknown = check([
       planned(d(0), "long", 30, 0),
       planned(d(2), "base", null, 0),
