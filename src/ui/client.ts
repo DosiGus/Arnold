@@ -26,6 +26,15 @@ import {
   type ListGarminWatches,
   type PairGarminWatchResponse,
 } from "../shared/watch-contract";
+import {
+  RunCardViewSchema,
+  RunCardSchema,
+  type RunCardView,
+} from "../shared/run-card-contract";
+import {
+  RunWriteResponseSchema,
+  ScheduleRunWeekResponseSchema,
+} from "../shared/run-contract";
 import { ArnoldToolError, asFailure, type UiFailure } from "./recovery";
 import { readStoredClaim } from "./client/onboarding-claim";
 
@@ -52,6 +61,8 @@ export type ArnoldPayload =
   | { contract: "dashboard"; dashboard: ArnoldDashboardView }
   | { contract: "account"; account: DeleteAccountResponse }
   | { contract: "garmin"; garmin: GarminPayload }
+  /** A run card (RUN-010); it loads its own numbers from the run tools. */
+  | { contract: "run"; run: RunCardView }
   /** The setup wizard. Its own contract, so it never renders dashboard data. */
   | { contract: "onboarding"; onboarding: OnboardingView };
 
@@ -104,6 +115,8 @@ export class ArnoldClient {
         garmin: { kind: "watches", watches: watches.data },
       };
     if (!content || typeof content !== "object") return null;
+    const runCard = RunCardViewSchema.safeParse(content);
+    if (runCard.success) return { contract: "run", run: runCard.data };
     // Checked first and by its own contract field: an onboarding payload must
     // never be mistaken for a dashboard, and vice versa.
     const onboarding = OnboardingViewSchema.safeParse(content);
@@ -141,6 +154,9 @@ export class ArnoldClient {
       result.isError &&
       (WriteResponseSchema.safeParse(result.structuredContent).success ||
         PlanWriteResponseSchema.safeParse(result.structuredContent).success ||
+        RunWriteResponseSchema.safeParse(result.structuredContent).success ||
+        ScheduleRunWeekResponseSchema.safeParse(result.structuredContent)
+          .success ||
         OnboardingResponseSchema.safeParse(result.structuredContent).success)
     )
       return result.structuredContent;
@@ -175,7 +191,8 @@ export class ArnoldClient {
    * the chat history. The wizard reloads itself once mounted instead.
    */
   private refreshTool(payload: ArnoldPayload | null) {
-    if (payload?.contract === "onboarding") return null;
+    if (payload?.contract === "onboarding" || payload?.contract === "run")
+      return null;
     if (payload?.contract === "account") return "delete_arnold_account";
     // A pairing cannot be asked again without counting as an attempt, and a
     // replayed one is usually used up; it is shown as it was.
@@ -291,6 +308,17 @@ export class ArnoldClient {
         await this.call("pair_garmin_watch", {
           user_code: garmin.get("code") ?? "",
           timezone: garmin.get("tz") ?? "Europe/Berlin",
+        });
+        return;
+      }
+      // `?run=run_week` opens a run card; `workout_id` picks the run.
+      const runCard = RunCardSchema.safeParse(garmin.get("run"));
+      if (runCard.success) {
+        await this.call("show_arnold_run", {
+          card: runCard.data,
+          ...(garmin.get("workout_id")
+            ? { workout_id: garmin.get("workout_id") }
+            : {}),
         });
         return;
       }

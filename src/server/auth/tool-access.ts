@@ -61,6 +61,8 @@ export const TOOL_ACCESS: Readonly<Record<string, ToolAccessClass>> = {
   // RUN-008: week view and the two-step week planning.
   get_run_week: "AUTHENTICATED_READ",
   schedule_run_week: "AUTHENTICATED_WRITE",
+  // RUN-010: opens a run card; reads nothing itself (the card calls the run tools).
+  show_arnold_run: "AUTHENTICATED_READ",
 
   // ── mcp-workout.ts — Task 004 ──
   get_workout: "AUTHENTICATED_READ",
