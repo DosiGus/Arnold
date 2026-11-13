@@ -238,38 +238,47 @@ export function RunResultCard({
                   )}
                   {view.hint && <p className="ac-text">{view.hint}</p>}
                   {zoneSeconds && zoneShare ? (
-                    <Rows
-                      label="Zeit in den Pulszonen"
-                      items={zoneSeconds.map((s, i) => ({
-                        key: `z${i + 1}`,
-                        label: `Zone ${i + 1}`,
-                        value: `${clockLabel(num(s))} · ${percentLabel(num(zoneShare[i]))}`,
-                      }))}
-                    />
+                    <>
+                      <p className="ac-caption">Zeit in den Pulszonen</p>
+                      <Rows
+                        label="Zeit in den Pulszonen"
+                        items={zoneSeconds.map((s, i) => ({
+                          key: `z${i + 1}`,
+                          label: `Zone ${i + 1}`,
+                          value: `${clockLabel(num(s))} · ${percentLabel(num(zoneShare[i]))}`,
+                        }))}
+                      />
+                    </>
                   ) : (
                     <p className="ac-caption" data-testid="zones-unknown">
                       Pulszonen: {hrNote || reasonText(zones.reason)}
                     </p>
                   )}
                   {bests.length > 0 && (
-                    <Rows
-                      label="Bestzeiten in diesem Lauf"
-                      items={bests.map((b) => ({
-                        key: b.key,
-                        label: BEST_LABEL[b.key],
-                        value: clockLabel(b.time),
-                      }))}
-                    />
+                    <>
+                      <p className="ac-caption">Bestzeiten in diesem Lauf</p>
+                      <Rows
+                        label="Bestzeiten in diesem Lauf"
+                        items={bests.map((b) => ({
+                          key: b.key,
+                          label: BEST_LABEL[b.key],
+                          value: clockLabel(b.time),
+                        }))}
+                      />
+                    </>
                   )}
                   {kmTimes && kmTimes.length > 0 && (
-                    <Rows
-                      label="Kilometerzeiten"
-                      items={kmTimes.map((t, i) => ({
-                        key: `km${i + 1}`,
-                        label: `Km ${i + 1}`,
-                        value: clockLabel(num(t)),
-                      }))}
-                    />
+                    <>
+                      <p className="ac-caption">Kilometerzeiten</p>
+                      <Rows
+                        label="Kilometerzeiten"
+                        items={kmTimes.map((t, i) => ({
+                          key: `km${i + 1}`,
+                          label: `Km ${i + 1}`,
+                          value: clockLabel(num(t)),
+                        }))}
+                      />
+                    </>
                   )}
                   {view.unknown.length > 0 && (
                     <ul className="run-notes" aria-label="Nicht bekannt">

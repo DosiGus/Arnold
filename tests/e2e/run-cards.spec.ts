@@ -255,7 +255,7 @@ const analysisRun = (consent = false) => ({
     view: consent
       ? doneView({
           result: {
-            ...(doneView().result as object),
+            ...(doneView().result as unknown as object),
             hr_status: "recorded",
             hr_avg_bpm: 139,
             hr_max_bpm: 158,
