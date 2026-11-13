@@ -23,14 +23,25 @@ import {
   type ArnoldWorkout,
 } from "../../shared/arnold-schema-v1.js";
 import {
+  RUN_WATCH_API_VERSION,
   RunWriteInputs,
   RunWriteResponseSchema,
+  WatchRunDetailSchema,
+  WatchRunRequestSchema,
+  WatchRunResponseSchema,
+  WatchRunRpeRequestSchema,
+  WatchRunRpeResponseSchema,
+  WatchRunsUpcomingSchema,
   type RunEnvironment,
   type RunType,
   type RunWriteOperation,
   type RunWriteResponse,
   type RunWriteResult,
+  type WatchRunDetail,
+  type WatchRunRequest,
+  type WatchRunsUpcoming,
 } from "../../shared/run-contract.js";
+import { WATCH_MIN_APP_VERSION } from "../../shared/watch-contract.js";
 import type { WriteResult } from "../../shared/workout-contract.js";
 import { recoveryFor } from "../../shared/write-recovery.js";
 import { STORAGE_RETRY_MESSAGE, commitWrite } from "../plan/commit.js";
@@ -48,6 +59,7 @@ import {
   WorkoutLoggingService,
   type LoggingOptions,
 } from "../workout/service.js";
+import { watchEntry, watchSegments } from "./watch.js";
 import {
   experienceOf,
   localDay,
@@ -101,6 +113,24 @@ const addDays = (day: string, days: number) =>
     .slice(0, 10);
 const MAX_DAYS_AHEAD = 366;
 
+export type WatchRunResponse = z.infer<typeof WatchRunResponseSchema>;
+export type WatchRunRpeResponse = z.infer<typeof WatchRunRpeResponseSchema>;
+type WatchOperation = "save_watch_run" | "set_watch_rpe";
+
+/** The answer of a watch function: the value or the error the route maps. */
+export type WatchOutcome<T> =
+  | { ok: true; value: T }
+  | {
+      ok: false;
+      error: {
+        code: string;
+        message: string;
+        retryable: boolean;
+        details: string[];
+        recovery: string;
+      };
+    };
+
 const emptyResult = (): WriteResult => ({
   workout: null,
   sets: [],
@@ -110,7 +140,7 @@ const emptyResult = (): WriteResult => ({
 
 /** One audit event per changed row; values and status only. */
 function auditEvents(
-  operation: RunWriteOperation,
+  operation: RunWriteOperation | WatchOperation,
   requestId: string,
   changes: readonly EntityChange[],
   actor: Actor,
@@ -460,6 +490,7 @@ export class RunService {
       minutes?: number;
       meters?: number;
       fast_finish?: boolean;
+      level?: number;
     },
     today: string,
     warnings: string[],
@@ -478,7 +509,7 @@ export class RunService {
       experience: experienceOf(profile),
       minutes: want.minutes ?? null,
       meters: want.meters ?? null,
-      level: 0,
+      level: want.level ?? 0,
       paces: zones.value,
       pace_reason: zones.reason,
       hr_zones: null,
@@ -929,6 +960,462 @@ export class RunService {
     return outcome.workout;
   }
 
+  /* ------------------------------------------------------------- watch */
+
+  /**
+   * `GET /runs/upcoming`: planned runs today and the next six days (dated,
+   * ascending) and the next run session of the active plan. The route is
+   * RUN-009; this only reads the caller's own data.
+   */
+  async upcoming(
+    context: unknown,
+    timezone: string,
+    now: Date = this.clock()(),
+  ): Promise<WatchRunsUpcoming> {
+    const actor = await this.actor(context);
+    const data = await this.options.store.read();
+    const today = localDay(now.toISOString(), timezone);
+    const last = addDays(today, 6);
+    const runs = data.workouts
+      .filter(
+        (w) =>
+          w.activity_type === "run" &&
+          w.status === "planned" &&
+          w.workout_date_local >= today &&
+          w.workout_date_local <= last,
+      )
+      .sort(
+        (a, b) =>
+          a.workout_date_local.localeCompare(b.workout_date_local) ||
+          a.created_at_utc.localeCompare(b.created_at_utc),
+      )
+      .flatMap((w) => {
+        const prescription = data.runs.find(
+          (r) => r.workout_id === w.workout_id,
+        )?.prescription;
+        return prescription
+          ? [watchEntry(w.workout_id, w.workout_date_local, prescription)]
+          : [];
+      })
+      .slice(0, 7);
+    const session = this.nextPlanSession(data);
+    const plan = session
+      ? this.sessionPrescription(data, session, today)
+      : null;
+    return WatchRunsUpcomingSchema.parse({
+      api_version: RUN_WATCH_API_VERSION,
+      min_app_version: WATCH_MIN_APP_VERSION,
+      d: today,
+      hc: await this.consent(actor),
+      runs,
+      next:
+        session && plan
+          ? watchEntry(
+              session.plan_run_session_id,
+              undefined,
+              plan.prescription,
+            )
+          : null,
+    });
+  }
+
+  /**
+   * `GET /runs/:id`: the stored prescription of a planned run, or the one
+   * the engine builds for a run session of the plan. Null when the id is not
+   * one of the caller's (a stranger's id looks like a missing one).
+   */
+  async detail(
+    context: unknown,
+    id: string,
+    timezone: string,
+    now: Date = this.clock()(),
+  ): Promise<WatchRunDetail | null> {
+    await this.actor(context);
+    const data = await this.options.store.read();
+    const planned = data.workouts.find(
+      (w) =>
+        w.workout_id === id &&
+        w.activity_type === "run" &&
+        w.status === "planned",
+    );
+    let prescription =
+      (planned &&
+        data.runs.find((r) => r.workout_id === planned.workout_id)
+          ?.prescription) ||
+      null;
+    if (!prescription) {
+      const session = data.planRunSessions.find(
+        (s) => s.plan_run_session_id === id && s.status === "active",
+      );
+      prescription = session
+        ? (this.sessionPrescription(
+            data,
+            session,
+            localDay(now.toISOString(), timezone),
+          )?.prescription ?? null)
+        : null;
+    }
+    return prescription
+      ? WatchRunDetailSchema.parse({
+          api_version: RUN_WATCH_API_VERSION,
+          min_app_version: WATCH_MIN_APP_VERSION,
+          id,
+          p: prescription,
+        })
+      : null;
+  }
+
+  /**
+   * The run session after the last one done in the active plan (the first if
+   * none was done yet); null without an active plan with run sessions.
+   */
+  private nextPlanSession(data: ArnoldDataset) {
+    const plan = [...data.plans]
+      .filter((p) => p.status === "active" && p.activated_at_utc !== null)
+      .sort((a, b) =>
+        b.activated_at_utc!.localeCompare(a.activated_at_utc!),
+      )[0];
+    if (!plan) return null;
+    const sessions = data.planRunSessions
+      .filter(
+        (s) =>
+          s.plan_version_id === plan.plan_version_id && s.status === "active",
+      )
+      .sort((a, b) => a.session_order - b.session_order);
+    if (!sessions.length) return null;
+    const lastDone = data.workouts
+      .filter(
+        (w) =>
+          w.activity_type === "run" &&
+          w.status === "completed" &&
+          w.plan_version_id === plan.plan_version_id &&
+          sessions.some((s) => s.session_id === w.session_id),
+      )
+      .sort(
+        (a, b) =>
+          b.workout_date_local.localeCompare(a.workout_date_local) ||
+          b.created_at_utc.localeCompare(a.created_at_utc),
+      )[0];
+    const at = lastDone
+      ? sessions.findIndex((s) => s.session_id === lastDone.session_id)
+      : -1;
+    return sessions[(at + 1) % sessions.length]!;
+  }
+
+  /** The engine's prescription for a plan run session; null if it cannot be built. */
+  private sessionPrescription(
+    data: ArnoldDataset,
+    session: ArnoldDataset["planRunSessions"][number],
+    today: string,
+  ) {
+    const t = session.template;
+    try {
+      return this.prescribe(
+        data,
+        {
+          run_type: session.run_type,
+          environment: t.environment ?? undefined,
+          ...(t.minutes
+            ? { minutes: t.minutes[0] }
+            : t.meters
+              ? { meters: t.meters[0] }
+              : {}),
+          level: t.level,
+        },
+        today,
+        [],
+      ).plan;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * `POST /runs`: the result of one finished run from the watch. Same result
+   * logic as log_run (a planned run is completed, heart rate is stored only
+   * with the health consent and otherwise dropped and reported). request_id
+   * makes a repeat harmless; the same session_uuid under a new request_id is
+   * DUPLICATE_WORKOUT. `timezone` is the user's IANA zone (the watch only
+   * knows its offset).
+   */
+  async saveWatchRun(
+    raw: unknown,
+    context: unknown,
+    timezone: string,
+  ): Promise<WatchOutcome<WatchRunResponse>> {
+    try {
+      const actor = await this.actor(context);
+      const request = WatchRunRequestSchema.parse(raw);
+      const outcome = await commitWrite<WriteResult>({
+        trackerId: this.options.trackerId,
+        store: this.options.store,
+        requestId: request.request_id,
+        fingerprint: fingerprint({ operation: "save_watch_run", request }),
+        actorSubject: actor.subject,
+        clock: this.clock(),
+        build: async (data, now) => {
+          const changes: EntityChange[] = [];
+          const result = emptyResult();
+          result.workout = await this.watchRun(
+            request,
+            data,
+            actor,
+            timezone,
+            now,
+            changes,
+            result,
+          );
+          return {
+            changes,
+            result,
+            audit: auditEvents(
+              "save_watch_run",
+              request.request_id,
+              changes,
+              actor,
+              now,
+            ),
+          };
+        },
+      });
+      const data = await this.options.store.read();
+      const workoutId = outcome.result.workout!.workout_id;
+      const run = data.runs.find((r) => r.workout_id === workoutId);
+      return {
+        ok: true,
+        value: WatchRunResponseSchema.parse({
+          api_version: RUN_WATCH_API_VERSION,
+          min_app_version: WATCH_MIN_APP_VERSION,
+          workout_id: workoutId,
+          replayed: outcome.replayed,
+          hr_discarded:
+            request.hr != null && !!run && run.hr_status !== "recorded",
+        }),
+      };
+    } catch (error) {
+      return { ok: false, error: errorBody(error) };
+    }
+  }
+
+  private async watchRun(
+    request: WatchRunRequest,
+    data: ArnoldDataset,
+    actor: Actor,
+    timezone: string,
+    now: string,
+    changes: EntityChange[],
+    result: WriteResult,
+  ) {
+    try {
+      localDay(now, timezone);
+    } catch {
+      throw new WriteError("VALIDATION_ERROR", "Ungültige Zeitzone.");
+    }
+    const localToday = new Date(
+      Date.parse(now) + request.utc_offset_min * 60_000,
+    )
+      .toISOString()
+      .slice(0, 10);
+    if (
+      request.workout_date_local > localToday ||
+      Date.parse(request.started_at_utc) > Date.parse(now) + 10 * 60_000
+    )
+      throw new WriteError(
+        "DATE_IN_FUTURE",
+        "Der Lauf liegt in der Zukunft. Es wurde nichts gespeichert.",
+      );
+    const known = data.workouts.find(
+      (w) => w.client_session_id === request.session_uuid,
+    );
+    if (known)
+      throw new WriteError(
+        "DUPLICATE_WORKOUT",
+        "Diese Aufzeichnung ist schon gespeichert.",
+        false,
+        [known.workout_id],
+      );
+    const run_type = request.run_type;
+    let planned: RunPair | undefined;
+    let fresh: Parameters<typeof writeRunResult>[1]["fresh"];
+    if (request.planned_workout_id) {
+      planned = requirePair(data, request.planned_workout_id);
+      if (planned.workout.status !== "planned")
+        throw new WriteError(
+          "INVALID_STATUS_TRANSITION",
+          "Dieser Lauf ist nicht mehr geplant (schon gelaufen oder abgesagt). Es wurde nichts gespeichert.",
+        );
+      if (planned.run.run_type !== run_type)
+        throw new WriteError(
+          "VALIDATION_ERROR",
+          `Der geplante Lauf ist vom Typ ${planned.run.run_type}.`,
+        );
+      if (planned.run.environment !== request.environment)
+        throw new WriteError(
+          "VALIDATION_ERROR",
+          "Umgebung weicht vom geplanten Lauf ab.",
+        );
+    } else if (request.plan_version_id) {
+      const session = data.planRunSessions.find(
+        (s) =>
+          s.plan_version_id === request.plan_version_id &&
+          s.session_id === request.session_id &&
+          s.status === "active",
+      );
+      if (!session)
+        throw new WriteError(
+          "VALIDATION_ERROR",
+          "Die Planeinheit gibt es nicht (mehr).",
+        );
+      if (session.run_type !== run_type)
+        throw new WriteError(
+          "VALIDATION_ERROR",
+          `Die Planeinheit ist vom Typ ${session.run_type}.`,
+        );
+      const plan = this.sessionPrescription(data, session, localToday);
+      fresh = {
+        prescription: plan?.prescription ?? null,
+        rationale: plan ? plan.rationale.join("\n") : null,
+        rules_version: plan?.rules_version ?? null,
+        plan_version_id: session.plan_version_id,
+        session_id: session.session_id,
+        name: session.session_name,
+      };
+    }
+    const duplicate = findDuplicateRun(
+      data,
+      {
+        date: request.workout_date_local,
+        run_type,
+        timer_s: request.timer_s,
+        distance_m: request.distance_m,
+      },
+      new Set(planned ? [planned.workout.workout_id] : []),
+    );
+    if (duplicate && !request.confirm_duplicate)
+      throw new WriteError(
+        "DUPLICATE_WORKOUT",
+        "Ein gleicher Lauf (Tag, Art, Zeit, Distanz) ist schon gespeichert.",
+        false,
+        [duplicate.workout_id],
+      );
+    const prescription =
+      planned?.run.prescription ?? fresh?.prescription ?? null;
+    return writeRunResult(
+      {
+        now,
+        id: () => this.id(),
+        consent: await this.consent(actor),
+        changes,
+        warnings: result.warnings,
+      },
+      {
+        date: request.workout_date_local,
+        timezone,
+        run_type,
+        environment: request.environment,
+        result_source: "watch",
+        timer_s: request.timer_s,
+        elapsed_s: request.elapsed_s,
+        distance_m: request.distance_m,
+        distance_source: request.distance_source,
+        started_at_utc: request.started_at_utc,
+        ended_at_utc: request.ended_at_utc,
+        ascent_m: request.ascent_m ?? null,
+        descent_m: request.descent_m ?? null,
+        cadence_spm: request.cadence_spm ?? null,
+        calories_kcal: request.calories_kcal ?? null,
+        te_aerobic: request.te_aerobic ?? null,
+        te_anaerobic: request.te_anaerobic ?? null,
+        pause_count: request.pauses,
+        splits_100m: request.splits,
+        rpe: request.rpe ?? null,
+        hr: request.hr
+          ? {
+              avg: request.hr.avg,
+              max: request.hr.max,
+              zone_s: request.hr.zone_s,
+            }
+          : null,
+        segments: watchSegments(request, prescription, result.warnings),
+        notes: null,
+        client_session_id: request.session_uuid,
+        workout_source: "sync",
+        fresh,
+      },
+      { planned },
+    ).workout;
+  }
+
+  /**
+   * `PATCH /runs/:session_uuid/rpe`: the effort, sent after the result. The
+   * run is found by the session id of its upload; request_id makes a repeat
+   * harmless.
+   */
+  async setWatchRpe(
+    sessionUuid: string,
+    raw: unknown,
+    context: unknown,
+  ): Promise<WatchOutcome<WatchRunRpeResponse>> {
+    try {
+      const actor = await this.actor(context);
+      const request = WatchRunRpeRequestSchema.parse(raw);
+      const outcome = await commitWrite<WriteResult>({
+        trackerId: this.options.trackerId,
+        store: this.options.store,
+        requestId: request.request_id,
+        fingerprint: fingerprint({
+          operation: "set_watch_rpe",
+          sessionUuid,
+          request,
+        }),
+        actorSubject: actor.subject,
+        clock: this.clock(),
+        build: async (data, now) => {
+          const changes: EntityChange[] = [];
+          const result = emptyResult();
+          const workout = data.workouts.find(
+            (w) =>
+              w.client_session_id === sessionUuid && w.activity_type === "run",
+          );
+          if (!workout)
+            throw new WriteError("WORKOUT_NOT_FOUND", "Lauf nicht gefunden.");
+          const before = requirePair(data, workout.workout_id);
+          if (before.workout.status !== "completed")
+            throw new WriteError(
+              "INVALID_STATUS_TRANSITION",
+              "Die Anstrengung gibt es nur für einen gespeicherten Lauf.",
+            );
+          if (before.run.rpe !== null && before.run.rpe !== request.rpe)
+            await this.actor(context, "correct_completed");
+          result.workout = this.applyRpe(before, request.rpe, now, changes);
+          return {
+            changes,
+            result,
+            audit: auditEvents(
+              "set_watch_rpe",
+              request.request_id,
+              changes,
+              actor,
+              now,
+            ),
+          };
+        },
+      });
+      return {
+        ok: true,
+        value: WatchRunRpeResponseSchema.parse({
+          api_version: RUN_WATCH_API_VERSION,
+          min_app_version: WATCH_MIN_APP_VERSION,
+          workout_id: outcome.result.workout!.workout_id,
+          rpe: request.rpe,
+          replayed: outcome.replayed,
+        }),
+      };
+    } catch (error) {
+      return { ok: false, error: errorBody(error) };
+    }
+  }
+
   private async rateRun(
     raw: unknown,
     data: ArnoldDataset,
@@ -947,6 +1434,16 @@ export class RunService {
       );
     if (before.run.rpe !== null && before.run.rpe !== input.rpe)
       await this.actor(context, "correct_completed");
+    return this.applyRpe(before, input.rpe, now, changes);
+  }
+
+  /** The new rpe of a saved run: workout and run row both get a new revision. */
+  private applyRpe(
+    before: RunPair,
+    rpe: number,
+    now: string,
+    changes: EntityChange[],
+  ) {
     const workout = ArnoldWorkoutSchema.parse({
       ...before.workout,
       updated_at_utc: now,
@@ -958,7 +1455,7 @@ export class RunService {
       before: before.run,
       after: ArnoldRunSchema.parse({
         ...before.run,
-        rpe: input.rpe,
+        rpe,
         updated_at_utc: now,
         row_revision: before.run.row_revision + 1,
       }),
@@ -977,11 +1474,7 @@ function revision(row: { row_revision: number }, expected: number) {
     );
 }
 
-function failure(
-  operation: RunWriteOperation,
-  requestId: string,
-  error: unknown,
-): RunWriteResponse {
+function errorBody(error: unknown) {
   const failed =
     error instanceof WriteError
       ? error
@@ -994,17 +1487,25 @@ function failure(
           )
         : new WriteError("STORAGE_UNAVAILABLE", STORAGE_RETRY_MESSAGE, true);
   return {
+    code: failed.code,
+    message: failed.message,
+    retryable: failed.retryable,
+    details: failed.details,
+    recovery: recoveryFor(failed.code, failed.retryable),
+  };
+}
+
+function failure(
+  operation: RunWriteOperation,
+  requestId: string,
+  error: unknown,
+): RunWriteResponse {
+  return {
     ok: false,
     operation,
     request_id: requestId,
     replayed: false,
     result: null,
-    error: {
-      code: failed.code,
-      message: failed.message,
-      retryable: failed.retryable,
-      details: failed.details,
-      recovery: recoveryFor(failed.code, failed.retryable),
-    },
+    error: errorBody(error),
   } as RunWriteResponse;
 }
