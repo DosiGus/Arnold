@@ -19,7 +19,6 @@ import {
   weekContext,
   weekdayOf,
   WEEKDAY_NAMES,
-  type StrengthDay,
 } from "../../analytics/running/index.js";
 import type { ArnoldDataset } from "../../shared/arnold-schema-v1.js";
 import type {
@@ -31,6 +30,7 @@ import {
   defaultFocus,
   historyOf,
   plannerInput,
+  projectStrength,
   weekProfile,
   weekSessionInputs,
   WINDOW_DAYS,
@@ -66,44 +66,6 @@ const weekdayGap = (a: number, b: number) => {
   const d = Math.abs(a - b);
   return Math.min(d, 7 - d);
 };
-
-/**
- * The strength days of the last 28 days, laid onto the seven days from today
- * by weekday: what the user usually does on a Tuesday is expected again. A day
- * with any heavy leg day is heavy, otherwise an unknown one stays unknown.
- */
-function projectStrength(
-  data: ArnoldDataset,
-  today: string,
-): readonly StrengthDay[] {
-  const past = strengthDays(data).filter((d) => {
-    const age = Math.round(
-      (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${d.date}T00:00:00Z`)) /
-        86_400_000,
-    );
-    return age >= 0 && age < 28;
-  });
-  const projected: StrengthDay[] = [];
-  for (let i = 0; i < WINDOW_DAYS; i++) {
-    const date = addDays(today, i);
-    const same = past.filter((d) => weekdayOf(d.date) === weekdayOf(date));
-    if (!same.length) continue;
-    const heavy = same.some((d) => d.heavy_legs === true)
-      ? true
-      : same.some((d) => d.heavy_legs === null)
-        ? null
-        : false;
-    projected.push({
-      date,
-      leg_sets: same.some((d) => d.leg_sets === null)
-        ? null
-        : Math.max(...same.map((d) => d.leg_sets ?? 0)),
-      heavy_legs: heavy,
-      planned: true,
-    });
-  }
-  return projected;
-}
 
 export function runValidationIssues(
   version: TrainingPlanVersion,
@@ -203,7 +165,10 @@ export function runValidationIssues(
       );
 
   // Interference with the usual strength days.
-  const projected = projectStrength(data, today);
+  const window = Array.from({ length: WINDOW_DAYS }, (_, i) =>
+    addDays(today, i),
+  );
+  const projected = projectStrength(data, today, window);
   const weekdayDates = new Map<number, string>();
   for (let i = 0; i < WINDOW_DAYS; i++)
     weekdayDates.set(weekdayOf(addDays(today, i)), addDays(today, i));

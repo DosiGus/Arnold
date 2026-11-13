@@ -7,7 +7,12 @@
  * shapes of the tools. A value that is not known stays null, never 0. Calendar
  * days always come from `workout_date_local` and the user's time zone.
  */
-import { addDays, compareDate, weekStart } from "../../analytics/period.js";
+import {
+  addDays,
+  compareDate,
+  daysBetween,
+  weekStart,
+} from "../../analytics/period.js";
 import {
   isLegMuscle,
   referenceTempoZones,
@@ -169,6 +174,55 @@ export function plannerInput(
     paces: zones.value,
     hr_zones: null,
   };
+}
+
+/**
+ * The usual strength days of the given dates: the strength days of the last 28
+ * days laid onto them by weekday (what the user does on a Tuesday is expected
+ * again). A day with any heavy leg day is heavy, otherwise an unknown one stays
+ * unknown. Dates with no usual strength day are left out.
+ */
+export function projectStrength(
+  data: ArnoldDataset,
+  today: string,
+  dates: readonly string[],
+): StrengthDay[] {
+  const past = strengthDays(data).filter((d) => {
+    const age = daysBetween(d.date, today);
+    return age >= 0 && age < 28;
+  });
+  const projected: StrengthDay[] = [];
+  for (const date of dates) {
+    const same = past.filter((d) => weekdayOf(d.date) === weekdayOf(date));
+    if (!same.length) continue;
+    projected.push({
+      date,
+      leg_sets: same.some((d) => d.leg_sets === null)
+        ? null
+        : Math.max(...same.map((d) => d.leg_sets ?? 0)),
+      heavy_legs: same.some((d) => d.heavy_legs === true)
+        ? true
+        : same.some((d) => d.heavy_legs === null)
+          ? null
+          : false,
+      planned: true,
+    });
+  }
+  return projected;
+}
+
+/** What is known about the strength days at `dates`: done ones up to today, usual ones after. */
+export function strengthAround(
+  data: ArnoldDataset,
+  today: string,
+  dates: readonly string[],
+): StrengthDay[] {
+  const done = strengthDays(data);
+  return dates.flatMap((date) =>
+    compareDate(date, today) <= 0
+      ? done.filter((d) => d.date === date)
+      : projectStrength(data, today, [date]),
+  );
 }
 
 export interface WeekSetup {
