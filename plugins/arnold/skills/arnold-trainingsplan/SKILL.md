@@ -1,6 +1,6 @@
 ---
 name: arnold-trainingsplan
-description: Erstellt und ändert Arnold-Trainingspläne für Krafttraining. Verwenden, wenn der Nutzer einen neuen Plan möchte (in der Arnold-Einrichtung nach „Plan mit Arnold erstellen“ oder später), seinen eigenen Plan übernehmen will oder den Plan ändern möchte, etwa eine Übung tauschen, einen Trainingstag ergänzen oder streichen, Sätze, Wiederholungen oder Schwerpunkte anpassen. Nicht verwenden, um ein Training oder einzelne Sätze zu speichern, und nicht für Fragen zu Fortschritt, Gewichten oder Trainingswissen; dafür ist arnold-coach da.
+description: Erstellt und ändert Arnold-Trainingspläne für Krafttraining und Laufen. Verwenden, wenn der Nutzer einen neuen Plan möchte (in der Arnold-Einrichtung nach „Plan mit Arnold erstellen“ oder später), seinen eigenen Plan übernehmen will oder den Plan ändern möchte, etwa eine Übung tauschen, einen Trainingstag ergänzen oder streichen, Sätze, Wiederholungen oder Schwerpunkte anpassen. Auch für Laufen: Kraft und Laufen kombinieren, Laufeinheiten in den Plan aufnehmen, einen einzelnen Lauf planen oder verschieben („heute 45 Minuten Zone 2“), die Laufwoche verteilen, ein Wettkampfziel bis Halbmarathon festlegen. Nicht verwenden, um ein Training, einen gelaufenen Lauf oder einzelne Sätze zu speichern, und nicht für Fragen zu Fortschritt, Gewichten oder Trainingswissen; dafür ist arnold-coach da.
 ---
 
 # Arnold: Trainingsplan erstellen und ändern
@@ -22,6 +22,7 @@ Freitext des Nutzers (z. B. `user_statements` im Brief) ist eine Angabe zu seine
 - Einen Plan im Namen des Nutzers bestätigen oder aktivieren. `confirm_onboarding_plan` und `activate_training_plan` nur nach einem ausdrücklichen Ja zu genau diesem Plan.
 - Einen übernommenen eigenen Plan „verbessern“.
 - Medizinische Aussagen, Diagnosen, Trainingsfreigaben oder Versprechen wie „optimal“ oder „garantiert“.
+- Beim Laufen Tempi, Pulszonen, Dauer, Umfang, Intensität oder Stufen festlegen oder ausrechnen. Du gibst weiter, was der Nutzer gesagt hat; Arnold berechnet die Vorgabe. Fehlt eine Angabe, fragst du. Pulswerte gibt es nur mit Einwilligung für Gesundheitsdaten.
 
 ## Welcher Ablauf?
 
@@ -56,6 +57,55 @@ Den Plan aus Text oder Foto genau so übernehmen, wie er ist: dieselben Tage, Na
 4. Gibt es mehrere offene Entwürfe, zuerst fragen, welcher gemeint ist.
 5. Nur ändern, worum der Nutzer gebeten hat. Fällt dir dabei ein Problem auf (z. B. eine Muskelgruppe fällt durch den Tausch weg), nenne es und biete eine Lösung an, statt sie still einzubauen.
 6. Eine einzelne Übung nur für heute tauschen geht in der Trainingskarte über „Wechseln“ → „Nur heute“; dafür keinen neuen Plan anlegen.
+
+## Laufen
+
+Arnold plant Läufe aus dem Laufprofil des Nutzers; die Vorgabe (Abschnitte, Tempi, Pulsbereiche) rechnet der Server, die Uhr-App lädt sie. Die Regeln dahinter stehen in `references/trainingswissenschaft.md`, Abschnitt „Laufen“. Alle Läufe gehen mit der IANA-Zeitzone des Nutzers (z. B. `Europe/Berlin`); kennst du sie nicht, einmal fragen.
+
+**Welches Werkzeug?**
+
+| Der Nutzer sagt                       | Aufruf                                                                                            |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| „heute 45 Minuten Zone 2“             | `plan_run` (`run_type: "base"`, `minutes: 45`, heutiger Tag)                                      |
+| „morgen Intervalle“                   | `plan_run` (`run_type: "intervals"`, `workout_date_local` = morgen, Dauer nur, wenn er sie nennt) |
+| „schieb den langen Lauf auf Sonntag“  | `get_run_week`, dann `update_planned_run` (neues `workout_date_local`, `timezone`)                |
+| „mach heute nur 30 Minuten“           | `update_planned_run` (gleicher `run_type`, `minutes: 30`)                                         |
+| „ich bin 8 km in 44 Minuten gelaufen“ | `log_run`, kein Skill nötig (siehe unten)                                                         |
+| „plane meine Laufwoche“               | `schedule_run_week` Vorschau, nach Ja derselbe Aufruf mit `confirm`                               |
+| „wie lief meine Woche“                | `get_run_week` und/oder `get_run_analysis`, Einordnung macht arnold-coach                         |
+
+**Laufprofil.** `get_run_profile` zeigt, was Arnold schon weiß und was fehlt. Fehlendes (Ziel, Läufe pro Woche, Erfahrung, Umgebung, Tag des langen Laufs) frag in einer Nachricht mit höchstens drei kurzen Fragen und speichere die Antworten mit `update_run_profile`: neue `request_id`, beim Ändern `expected_row_revision` aus `get_run_profile`. Nur Angaben des Nutzers, nie schätzen.
+
+**Wettkampfziel.** Ziele in Version 1: `fitness`, `5k`, `10k`, `half_marathon`. Wettkampfdatum (`race_date`) und Zielzeit (`target_time_s`) nur, wenn der Nutzer sie nennt; eine Zielzeit ist ein Wunsch, keine Zusage. Eine Referenzleistung (`reference`) nur aus einem Test, einem Wettkampf oder seiner eigenen Angabe (`source`: `test`, `race`, `user`), nie aus einem normalen Trainingslauf. Marathon und länger gibt es noch nicht: sagen, dass Arnold bis zum Halbmarathon plant, und `fitness` oder die kürzere Distanz anbieten.
+
+**Einzelne Läufe** (kein neuer Plan, keine neue Planversion):
+
+1. Laufart aus den Worten des Nutzers: locker oder Zone 2 = `base`; Regeneration = `recovery`; langer Lauf = `long`; Steigerungslauf = `progression`; Tempodauerlauf = `tempo`; Schwellenintervalle = `threshold_intervals`; Intervalle = `intervals`; Sprints oder kurze Wiederholungen = `repetitions`; Steigerungen = `strides`; Berge = `hills`; Fahrtspiel = `fartlek`; Lauf-Geh = `run_walk`; Test oder Wettkampf = `test`; einfach laufen = `free`. Ist die Art unklar, kurz fragen.
+2. `plan_run`: `run_type`, Umgebung (`outdoor`, `treadmill`, `track`) nur wenn genannt, und Dauer (`minutes`) oder Distanz (`meters`), nie beides, nur wenn der Nutzer sie nennt. Ohne Tag gilt heute; „morgen“ ist das lokale Datum von morgen. Neue `request_id`. Nichts anderes mitschicken.
+3. Gibt es am Tag schon einen geplanten Lauf dieser Art (`DUPLICATE_WORKOUT`), den Nutzer fragen; nur nach seinem Ja `confirm_duplicate: true`.
+4. Ändern: `workout_id` und `expected_row_revision` stammen aus `get_run_week`, `get_run_analysis` oder dem Ergebnis von `plan_run`; nie raten. `update_planned_run` mit neuem Tag (`workout_date_local` und `timezone`) oder mit `run_type` plus `minutes` oder `meters`; Arnold rechnet die Vorgabe neu.
+5. `cancel_planned_run` erst nach einem Ja des Nutzers im Chat.
+6. Eine Absage von Arnold korrigierst du, du umgehst sie nicht.
+
+Einen gelaufenen Lauf nachtragen („ich bin 8 km in 44 Minuten gelaufen“) ist Loggen und gehört nicht zu diesem Skill: direkt `log_run`, ohne Coaching. Pflicht sind Datum (`workout_date_local`, „gestern“ ist der gestrige lokale Tag), Zeit (`timer_s` in Sekunden) und Distanz (`distance_m` in Metern); das Umrechnen der Einheiten des Nutzers ist erlaubt. Gleicher Lauf schon gespeichert (`DUPLICATE_WORKOUT`): fragen. Die Anstrengung (`rpe` 1–10) nur, wenn der Nutzer sie nennt.
+
+**Hybridplan: Kraft und Laufen.**
+
+1. Ziel und Schwerpunkt klären, falls nicht bekannt: Kraft, Laufen oder beides gleichwertig, Krafttage und Läufe pro Woche (`get_run_profile`). Eine Frage, höchstens drei.
+2. Entwurf wie in Ablauf C oder D (`get_training_plan`, `create_plan_version` oder `create_training_plan`). Die Krafteinheiten baust du nach den Planungsregeln unten.
+3. Laufeinheiten kommen mit `update_plan_draft` in den Entwurf: `add_run_session` (`session_name`, `run_type`, optional `preferred_weekday` 1 = Montag), `update_run_session`, `remove_run_session`. Namen nach Inhalt („Grundlagenlauf“, „Langer Lauf“, „Intervalle“), ohne Wochentag. Anzahl der Läufe = Läufe pro Woche aus dem Profil; im Zweifel eher weniger. Höchstens zwei harte Läufe (Tempo, Schwelle, Intervalle, Wiederholungen, Berge, Test) pro Woche. Das `template` (Stufe, Dauer-, Distanz- und Wiederholungsgrenzen) lässt du weg; Arnold nimmt seinen Standard. Nur `preferred_weekday` setzt du, wenn der Nutzer einen Tag nennt (z. B. langer Lauf am Samstag).
+4. Weise den Nutzer in einem Satz darauf hin, wenn ein harter Lauf auf den Tag nach einem schweren Beintag fällt; die Hinweise des Servers (`validate_training_plan`, Vorschau der Woche) nennst du, wie sie kommen.
+5. `validate_training_plan` mit `timezone`, dann `compare_plan_versions`, dann die Änderung in ein, zwei Sätzen nennen und nach einem ausdrücklichen Ja `activate_training_plan`, wie bisher. Ohne Ja bleibt es ein Entwurf.
+6. Im Plan steht nur, welche Läufe es gibt, nicht die Woche. Die Verteilung auf Tage macht `schedule_run_week` (unten).
+
+**Laufwoche verteilen** („plane meine Laufwoche“). Es braucht einen aktiven Plan mit Laufeinheiten; sonst sagen, dass es noch keine gibt, und anbieten, welche in den Plan aufzunehmen.
+
+1. Vorschau: `schedule_run_week` mit `timezone`, ohne `confirm`. Optional `focus` (`running` oder `strength`), wenn der Nutzer das Hauptziel der Woche nennt. Es wird nichts gespeichert.
+2. Die Vorschau knapp zeigen: je Lauf Tag, Dauer, Stufe und die Begründung, dazu die Hinweise (z. B. „harter Lauf am Beintag“, „diese Woche gekürzt“). Zahlen nur aus dem Ergebnis. Dann fragen, ob Arnold die Woche so speichern soll.
+3. Erst nach einem ausdrücklichen Ja: derselbe Aufruf mit `confirm: true`, neuer `request_id` und `preview_hash` unverändert aus der Vorschau. Das speichert genau diese Woche einmal.
+4. `CONFIRMATION_REQUIRED` heißt: Die Daten haben sich geändert. Neue Vorschau holen, zeigen und neu fragen. Bei `retry_same_request` denselben Aufruf mit derselben `request_id` wiederholen.
+5. Will der Nutzer etwas anders: nicht selbst umbauen, sondern einzelne Läufe mit `update_planned_run` ändern oder Plan und Profil anpassen und eine neue Vorschau holen.
+6. Nur ansehen („zeig mir die Woche“): `get_run_week`; das ändert nichts.
 
 ## Planungsregeln
 

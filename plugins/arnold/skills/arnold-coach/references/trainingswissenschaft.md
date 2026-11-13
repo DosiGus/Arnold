@@ -1,6 +1,6 @@
 # Trainingswissenschaft für Arnold
 
-Stand 1.0 (November 2026). Diese Datei trennt vier Dinge: was die Quellen zeigen, was Arnold daraus ableitet, praktische Faustregeln und Produktentscheidungen. Im Chat nur so stark formulieren, wie die jeweilige Ebene es trägt.
+Stand 1.1 (November 2026). Diese Datei trennt vier Dinge: was die Quellen zeigen, was Arnold daraus ableitet, praktische Faustregeln und Produktentscheidungen. Im Chat nur so stark formulieren, wie die jeweilige Ebene es trägt. Der Abschnitt 7 (Laufen) ist durchgehend Faustregel und Produktentscheidung (Regelstand 1.2.0), keine Studienaussage.
 
 ## 1. Quellen und was sie zeigen
 
@@ -59,3 +59,25 @@ Festlegungen des Produkts, keine Forschungsergebnisse:
 - Belegt: „Übersichtsarbeiten zeigen …“. Faustregel: „In der Praxis hat sich bewährt …“. Produkt: „Arnold rechnet so: …“.
 - Was hier nicht steht, nicht als gesichert ausgeben. Ist die Lage unklar, das sagen.
 - Nie „optimal“, „garantiert“ oder konkrete Ergebnisversprechen.
+
+## 7. Laufen
+
+Gängige Praxis im Ausdauertraining und Entscheidungen von Arnolds Laufplanung, nicht aus den Quellen oben belegt. Im Chat als Faustregel bzw. „Arnold rechnet so“ sagen. Zonen, Tempi, Dauer und Umfang legt Arnold fest; ChatGPT gibt nur weiter, was der Nutzer sagt, und erklärt.
+
+**Zonen.** Fünf Pulszonen: 1 Regeneration, 2 Grundlage, 3 zügiger Dauerlauf, 4 Schwelle, 5 Maximale Sauerstoffaufnahme (VO2max). Die Grenzen kommen aus dem Garmin-Profil des Nutzers, sonst aus Garmins Standardprozenten, sonst nennt Arnold nur die Zonennummer. Pulswerte nur mit Einwilligung für Gesundheitsdaten.
+
+**80/20.** Faustregel: Der größte Teil der Laufzeit (etwa vier Fünftel) läuft locker in Zone 1–2, der kleinere Teil ist hart. Zone 2 fühlt sich fast zu leicht an: Man kann dabei in ganzen Sätzen sprechen. Wer locker laufen soll und dauernd in Zone 3 oder höher landet, läuft zu schnell; Arnold sieht das (mehr als 20 % der Zeit über Zone 2 in zwei lockeren Läufen) und empfiehlt dann langsamer zu laufen, bei Anfängern auch Gehpausen.
+
+**Harte Läufe.** Als hart zählen Tempodauerlauf, Schwellenintervalle, Intervalle, kurze Wiederholungen, Bergläufe und Test/Wettkampf. Arnold plant höchstens zwei pro Woche, mit mindestens 48 Stunden Abstand und nicht am Tag nach einem langen Lauf. Anfänger laufen zu Beginn überwiegend locker; Arnold beginnt mit kurzen Steigerungen statt harten Einheiten.
+
+**Langer Lauf.** Er ist ein Teil der Woche, nie die ganze Woche. Arnold begrenzt ihn nach Läufen pro Woche auf höchstens 30 % der Wochenlaufzeit bei fünf und mehr Läufen, 35 % bei vier, 40 % bei drei und 50 % bei zwei Läufen. Zusätzlich gilt die +15-Minuten-Regel: höchstens 15 Minuten länger als der längste Lauf der letzten vier Wochen. Der Wochenumfang wächst höchstens etwa 10 % gegenüber der Vorwoche.
+
+**Entlastungswoche.** Nach drei Aufbauwochen folgt eine leichtere Woche mit etwa 25 % weniger Umfang (3:1). Passt der Umfang nicht, kürzt Arnold zuerst die Einheiten bis zur Mindestdauer ihrer Art, harte zuerst, und behält die Anzahl der Läufe. Erst wenn alle Einheiten am Minimum sind, entfällt eine, eine harte zuerst: Kürzen vor Streichen.
+
+**Kraft und Laufen zusammen (Interferenz).** Schwere Beinarbeit (ab etwa sechs Arbeitssätzen für Beine und Gesäß) und harte oder lange Läufe belasten dieselben Muskeln. Arnold legt harte Läufe deshalb nicht auf den Tag nach einem schweren Beintag und nicht auf einen Tag, an dem noch nicht klar ist, ob der Beintag schwer wird; am selben Tag mindestens sechs Stunden Abstand. Das sind Hinweise mit Begründung, keine Verbote. Lockere Läufe und Krafttraining für den Oberkörper stören sich kaum. Der Wunsch des Nutzers geht vor; Nachteil in einem Satz nennen.
+
+**Taper vor dem Wettkampf.** Faustregel: Umfang reduzieren, Intensität beibehalten. Arnold rechnet so: 5 km etwa 7 Tage mit rund 70 % Umfang, 10 km etwa 10 Tage mit rund 65 %, Halbmarathon etwa 14 Tage mit rund 60 %. Ziele in Version 1: Fitness, 5 km, 10 km und Halbmarathon; kürzere Vorbereitungen als etwa sechs Wochen bekommen nur Aufbau und Taper, mit Hinweis. Eine Zielzeit ist ein Wunsch, keine Zusage.
+
+**Wiedereinstieg nach Pause.** Arnold rechnet so: Mehr als 7 Tage ohne Lauf: etwa 80 % des bisherigen Umfangs. Mehr als 14 Tage: etwa 65 % und ohne harte Einheit. Mehr als 28 Tage: neue Ausgangslage aus dem Laufprofil, eine Woche ohne harte Einheit. Nach Krankheit oder Verletzung gehört die Rückkehr zu Ärztin, Arzt oder Physiotherapie.
+
+**Schmerz und Warnzeichen.** Brustschmerz oder -enge, Schwindel, ungewöhnliche Atemnot: Lauf beenden und ärztlich abklären lassen, keine Diagnose, kein weiterer Trainingstipp. Schmerz beim Laufen, der nicht verschwindet oder sich verschlimmert: nicht durchlaufen, ärztlich oder physiotherapeutisch abklären lassen.
