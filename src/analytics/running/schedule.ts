@@ -82,7 +82,10 @@ export interface ScheduledRun {
   readonly session_run_type: RunType;
   readonly level: number;
   readonly environment: RunEnvironment;
+  /** Planned minutes; for a run without a target duration the reserved time. */
   readonly minutes: number;
+  /** True when `minutes` is a reserve because the run has no duration (free run). */
+  readonly minutes_reserved: boolean;
   readonly intense_minutes: number | null;
   readonly plan: Extract<RunPlan, { ok: true }>;
 }
@@ -338,7 +341,14 @@ export function scheduleRunWeek(input: ScheduleRunWeekInput): RunWeekSchedule {
       else if (total < range[0]) item.minutes = range[0];
     }
   }
-  const minutesOf = (item: Item) => (item.plan?.summary.total_s ?? 0) / 60;
+  // A run without a duration (a free run without a target) is unknown, not 0
+  // minutes: the week reserves the base run default for it.
+  const reserve = CONTINUOUS_MINUTES.base.span[exp].def;
+  const minutesOf = (item: Item) => {
+    if (item.plan === null) return 0;
+    const seconds = item.plan.summary.total_s;
+    return seconds === null ? reserve : seconds / 60;
+  };
   const fixedMinutes = fixedPlan.reduce(
     (sum, run) => sum + (run.minutes ?? 0),
     0,
@@ -508,6 +518,7 @@ export function scheduleRunWeek(input: ScheduleRunWeekInput): RunWeekSchedule {
       level: item.plan!.summary.level,
       environment: item.environment,
       minutes: minutesOf(item),
+      minutes_reserved: item.plan!.summary.total_s === null,
       intense_minutes: intenseMinutes(item.plan!.summary),
       plan: item.plan!,
     }))
@@ -518,7 +529,11 @@ export function scheduleRunWeek(input: ScheduleRunWeekInput): RunWeekSchedule {
       runs: [
         ...fixedPlan,
         ...runs.map((run) =>
-          weekPlanRun(run.date, run.plan.summary, run.session_id),
+          weekPlanRun(
+            run.date,
+            { ...run.plan.summary, total_s: run.minutes * 60 },
+            run.session_id,
+          ),
         ),
       ],
       strength_days: strength,
