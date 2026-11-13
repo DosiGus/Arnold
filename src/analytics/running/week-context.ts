@@ -38,8 +38,27 @@ export const MAX_HARD_RUNS_STRENGTH_FOCUS = 1;
 export const MAX_HARD_RUNS_BASE_PHASE = 1;
 /** Beginners: the first four weeks only strides, no hard run. */
 export const BEGINNER_FIRST_WEEKS_DAYS = 28;
-/** Long run: share of the week's running time, at most. */
-export const LONG_SHARE_MAX = 0.3;
+/**
+ * Long run: share of the week's running time, at most — depending on how many
+ * runs the week has (RUN-013). A flat 30 % made the long run impossible for
+ * hybrid athletes with three runs (it would have to be a 45-minute run next to
+ * two 20-minute runs, so it always became an easy run). The fewer the runs,
+ * the larger the share a long run has to take; from five runs on the
+ * classic 30 % rule holds. One run is the whole week: no meaningful share.
+ * Planner and checker both read the limit here, so they never disagree.
+ */
+export const LONG_SHARE_MAX_BY_RUNS = {
+  1: 1,
+  2: 0.5,
+  3: 0.4,
+  4: 0.35,
+  5: 0.3,
+} as const;
+/** Long run share limit for a week with `runCount` runs (planned runs in the window). */
+export function longShareMax(runCount: number): number {
+  const n = Math.max(1, Math.min(5, Math.floor(runCount)));
+  return LONG_SHARE_MAX_BY_RUNS[n as 1 | 2 | 3 | 4 | 5];
+}
 /** Long run: minutes longer than the longest run of the last four weeks, at most. */
 export const LONG_GROWTH_MAX_MIN = 15;
 /** Weekly volume (time) over the week before, at most. */

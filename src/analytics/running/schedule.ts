@@ -5,7 +5,13 @@ import type {
 } from "../../shared/run-contract.js";
 import { addDays, compareDate, daysBetween, weekStart } from "../period.js";
 import { adaptRunLevel, type AdaptationRun } from "./adaptation.js";
-import { CONTINUOUS_MINUTES, RUN_TYPE_NAMES } from "./catalog.js";
+import {
+  CONTINUOUS_MINUTES,
+  COOLDOWN_S,
+  RUN_TYPE_NAMES,
+  TEMPO_MINUTES,
+  WARMUP_S,
+} from "./catalog.js";
 import { isHardRun, legLoadOn, type StrengthDay } from "./interference.js";
 import { buildRunPrescription, type RunPlan } from "./prescription.js";
 import type { TempoZones } from "./vdot.js";
@@ -23,7 +29,7 @@ import {
   EASY_SHARE_MIN,
   floor5,
   HARD_SPACING_DAYS,
-  LONG_SHARE_MAX,
+  longShareMax,
   weekContext,
   weekdayOf,
   type WeekContext,
@@ -377,6 +383,26 @@ export function scheduleRunWeek(input: ScheduleRunWeekInput): RunWeekSchedule {
       total - longs.reduce((sum, item) => sum + minutesOf(item), 0);
     const longSpan = CONTINUOUS_MINUTES.long.span[exp];
     const baseSpan = CONTINUOUS_MINUTES.base.span[exp];
+    // Shortest duration of a run type when the week is capped: the minimum of
+    // its span; for the tempo run warm-up and cool-down plus the shortest
+    // tempo part. Free runs (no duration) and structured sessions (their
+    // minimum is level 0, see `levelOf`) have no minutes to cut.
+    const minimumOf = (item: Item): number | null => {
+      if (item.type === "free") return null;
+      if (item.type === "tempo")
+        return (WARMUP_S[exp] + COOLDOWN_S) / 60 + TEMPO_MINUTES[exp].min;
+      return spanOf(item.type, exp)?.min ?? null;
+    };
+    const slackOf = (item: Item) => {
+      const minimum = minimumOf(item);
+      return minimum === null ? 0 : Math.max(0, minutesOf(item) - minimum);
+    };
+    // Level as built (the prescription caps it at the run type's ceiling);
+    // continuous runs are shortened by minutes, not by level.
+    const levelOf = (item: Item) =>
+      spanOf(item.type, exp) !== null || item.type === "tempo"
+        ? 0
+        : item.plan!.summary.level;
     const shortenLong = (item: Item, limit: number, why: string) => {
       const minutes = floor5(limit);
       if (minutes >= longSpan.min) {
@@ -410,52 +436,75 @@ export function scheduleRunWeek(input: ScheduleRunWeekInput): RunWeekSchedule {
       );
       continue;
     }
-    // (b) long run share
+    // (b) long run share: the limit depends on the number of runs of the
+    // week (planned ones plus fixed ones), see `longShareMax`
+    const shareMax = longShareMax(items.length + fixedPlan.length);
     const tooBig = longs.find(
-      (item) => minutesOf(item) > LONG_SHARE_MAX * total + 1e-6,
+      (item) => minutesOf(item) > shareMax * total + 1e-6,
     );
     if (tooBig) {
       shortenLong(
         tooBig,
-        (LONG_SHARE_MAX / (1 - LONG_SHARE_MAX)) * others,
-        `Der lange Lauf ist höchstens ${Math.round(LONG_SHARE_MAX * 100)} % der Wochenlaufzeit.`,
+        (shareMax / (1 - shareMax)) * others,
+        `Der lange Lauf ist höchstens ${Math.round(shareMax * 100)} % der Wochenlaufzeit (bei ${items.length + fixedPlan.length} Läufen).`,
       );
       continue;
     }
-    // (c) volume
+    // (c) volume (RUN-013): first shorten the sessions towards the minimum
+    // of their run type — hard ones first — and keep the frequency; only when
+    // every session is at its minimum, a session goes, a hard one first.
     const over = total - context.volume.minutes;
     if (over > 1e-6) {
-      const flexible = items
-        .filter(
-          (item) => spanOf(item.type, exp) !== null && item.type !== "free",
-        )
-        .map((item) => ({
-          item,
-          slack: minutesOf(item) - spanOf(item.type, exp)!.min,
-        }))
-        .filter((entry) => entry.slack >= 5)
-        .sort((a, b) => b.slack - a.slack)[0];
-      if (flexible) {
-        const cut = Math.min(floor5(flexible.slack), Math.ceil(over / 5) * 5);
-        flexible.item.minutes = minutesOf(flexible.item) - cut;
+      const byPriority = [...items].sort(
+        (a, b) =>
+          Number(isHardRun(b.type)) - Number(isHardRun(a.type)) ||
+          slackOf(b) - slackOf(a),
+      );
+      // (c1/c2) the first session in this order that can still get shorter:
+      // minutes down to the minimum (continuous runs, tempo run) or, for the
+      // structured sessions, one level lower (level 0 is their minimum)
+      const shrinkable = byPriority.find(
+        (item) => slackOf(item) > 0 || levelOf(item) > 0,
+      );
+      if (shrinkable) {
+        if (slackOf(shrinkable) > 0) {
+          const cut = Math.min(slackOf(shrinkable), Math.ceil(over / 5) * 5);
+          shrinkable.minutes = minutesOf(shrinkable) - cut;
+        } else {
+          shrinkable.level = levelOf(shrinkable) - 1;
+          notes.push({
+            code: "level_lowered",
+            session_id: shrinkable.session.session_id,
+            text: `${shrinkable.session.session_name}: eine Stufe leichter, damit der Wochenumfang passt.`,
+          });
+        }
         continue;
       }
-      const leveled = items
-        .filter((item) => item.level > 0)
-        .sort((a, b) => b.level - a.level)[0];
-      if (leveled) {
-        leveled.level -= 1;
+      // (c3) a long run becomes an easy run before a session is dropped
+      const longRun = items.find((item) => item.type === "long");
+      if (longRun) {
         notes.push({
-          code: "level_lowered",
-          session_id: leveled.session.session_id,
-          text: `${leveled.session.session_name}: eine Stufe leichter, damit der Wochenumfang passt.`,
+          code: "session_converted",
+          session_id: longRun.session.session_id,
+          text: `${longRun.session.session_name}: diese Woche ein Grundlagenlauf statt des langen Laufs. Der Wochenumfang ist auf ${context.volume.minutes} Minuten begrenzt.`,
         });
+        longRun.type = "base";
+        longRun.level = 0;
+        longRun.minutes = baseSpan.min;
         continue;
       }
+      // (c4) everything is at its minimum: drop a hard session, then a
+      // quality session, only then an easy run (the last of the week)
       if (items.length > 0) {
+        const victim =
+          [...items].reverse().find((item) => isHardRun(item.type)) ??
+          [...items]
+            .reverse()
+            .find((item) => (intenseMinutes(item.plan!.summary) ?? 0) > 0) ??
+          items[items.length - 1];
         removeItem(
-          items[items.length - 1],
-          `Der Wochenumfang ist auf ${context.volume.minutes} Minuten begrenzt. ${context.volume.reasons.join(" ")}`,
+          victim,
+          `Der Wochenumfang ist auf ${context.volume.minutes} Minuten begrenzt, alle anderen Einheiten sind schon auf Mindestdauer. ${context.volume.reasons.join(" ")}`,
         );
         continue;
       }

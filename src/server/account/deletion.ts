@@ -64,6 +64,7 @@ export function deletionSummary(): { stored_items: string[] } {
     stored_items: [
       "Deine Arnold-Anmeldung (interne Kennung, keine E-Mail-Adresse)",
       "Deine Trainingspläne, Trainings und Sätze",
+      "Dein Laufprofil, deine Läufe mit Abschnitten und Zwischenzeiten, Pulszonen und geplante Läufe",
       "Deine Ziele und Körpergewichtseinträge",
       "Dein Einrichtungsstand mit Profilangaben",
       "Das Protokoll deiner Speichervorgänge und das Änderungsprotokoll",

@@ -14,7 +14,7 @@ import {
   EASY_SHARE_MIN,
   HARD_SPACING_DAYS,
   LONG_GROWTH_MAX_MIN,
-  LONG_SHARE_MAX,
+  longShareMax,
   weekContext,
   type WeekContext,
   type WeekContextInput,
@@ -351,13 +351,15 @@ export function checkRunWeek(
           ),
   );
 
-  /* long run: share of the week and growth */
+  /* long run: share of the week (limit by number of runs) and growth */
   const longs = runs.filter((r) => r.run_type === "long");
+  const shareMax = longShareMax(runs.length);
+  const sharePct = Math.round(shareMax * 100);
   const shareOver = longs.filter(
     (r) =>
       r.minutes !== null &&
       !total.unknown &&
-      r.minutes > LONG_SHARE_MAX * total.total + EPS,
+      r.minutes > shareMax * total.total + EPS,
   );
   const longUnknown =
     longs.some((r) => r.minutes === null) ||
@@ -367,9 +369,9 @@ export function checkRunWeek(
       ? result(
           "long_share",
           "violated",
-          `Der lange Lauf (${round(shareOver[0].minutes!)} min) ist mehr als ${Math.round(LONG_SHARE_MAX * 100)} % der Wochenlaufzeit (${round(total.total)} min).`,
+          `Der lange Lauf (${round(shareOver[0].minutes!)} min) ist mehr als ${sharePct} % der Wochenlaufzeit (${round(total.total)} min); bei ${runs.length} Läufen pro Woche sind höchstens ${sharePct} % erlaubt.`,
           shareOver[0].minutes! / total.total,
-          LONG_SHARE_MAX,
+          shareMax,
           shareOver.map((r) => r.date),
         )
       : longUnknown
@@ -378,16 +380,16 @@ export function checkRunWeek(
             "unknown",
             "Dauer des langen Laufs oder der Woche unbekannt.",
             null,
-            LONG_SHARE_MAX,
+            shareMax,
           )
         : result(
             "long_share",
             "ok",
             longs.length
-              ? `Der lange Lauf ist höchstens ${Math.round(LONG_SHARE_MAX * 100)} % der Wochenlaufzeit.`
+              ? `Der lange Lauf ist höchstens ${sharePct} % der Wochenlaufzeit (bei ${runs.length} Läufen).`
               : "Kein langer Lauf geplant.",
             null,
-            LONG_SHARE_MAX,
+            shareMax,
           ),
   );
   const growthOver = longs.filter(
