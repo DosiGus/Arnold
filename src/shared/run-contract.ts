@@ -574,3 +574,458 @@ export function fromCode<T extends string>(
 /** Name → wire code. */
 export const toCode = <T extends string>(values: readonly T[], name: T) =>
   values.indexOf(name);
+
+/* ------------------------------------------------- MCP tools (RUN-007) */
+
+/**
+ * The single-run tools of ChatGPT. Arnold decides everything that can hurt
+ * (paces, zones, durations, intensity); the model only passes on what the
+ * user said and never invents a number. A value Arnold does not know stays
+ * null with a reason (D-RUN-04), never 0.
+ */
+import { toolErrorSchema } from "./write-recovery.js";
+
+const toolRequestId = z.string().min(1).max(128);
+const toolDate = z.iso.date();
+const toolTimezone = z
+  .string()
+  .min(1)
+  .max(64)
+  .refine((value) => {
+    try {
+      new Intl.DateTimeFormat("en", { timeZone: value });
+      return true;
+    } catch {
+      return false;
+    }
+  }, "Unbekannte Zeitzone (IANA, z. B. Europe/Berlin).");
+const toolReason = z.string().min(1).max(500);
+const toolMinutes = int.min(1).max(600);
+const toolMeters = int.min(1).max(RUN_LIMITS.maxMeters);
+const toolWeekday = int.min(1).max(7);
+
+/** The part of a planned run the user may choose; Arnold fills in the rest. */
+const plannedRunContent = {
+  run_type: RunTypeSchema,
+  environment: RunEnvironmentSchema.optional(),
+  minutes: toolMinutes.optional(),
+  meters: toolMeters.optional(),
+  fast_finish: z.boolean().optional(),
+};
+const oneLength = (
+  value: { minutes?: number; meters?: number },
+  ctx: z.RefinementCtx,
+) => {
+  if (value.minutes !== undefined && value.meters !== undefined)
+    ctx.addIssue({
+      code: "custom",
+      path: ["meters"],
+      message: "Dauer (minutes) oder Distanz (meters), nicht beides.",
+    });
+};
+
+export const RUN_WRITE_OPERATIONS = [
+  "update_run_profile",
+  "plan_run",
+  "update_planned_run",
+  "cancel_planned_run",
+  "log_run",
+  "rate_run",
+] as const;
+export type RunWriteOperation = (typeof RUN_WRITE_OPERATIONS)[number];
+
+/** One lap of a run the user reports (never a prescription). */
+export const RunLapInputSchema = z.strictObject({
+  timer_s: int.min(1).max(RUN_LIMITS.maxSeconds),
+  distance_m: int.min(1).max(RUN_LIMITS.maxMeters),
+});
+
+export const RunWriteInputs = {
+  update_run_profile: z
+    .strictObject({
+      request_id: toolRequestId,
+      /** Revision of the existing profile; omitted when it is created. */
+      expected_row_revision: int.positive().optional(),
+      goal: RunGoalSchema.optional(),
+      race_date: toolDate.nullable().optional(),
+      target_time_s: int
+        .positive()
+        .max(RUN_LIMITS.maxSeconds)
+        .nullable()
+        .optional(),
+      /** A test, a race or the user's own statement; null removes it. */
+      reference: z
+        .strictObject({
+          distance_m: int.min(1).max(RUN_LIMITS.maxMeters),
+          time_s: int.min(1).max(RUN_LIMITS.maxSeconds),
+          date: toolDate,
+          source: RunReferenceSourceSchema,
+        })
+        .nullable()
+        .optional(),
+      running_experience_months: int.min(0).max(1200).nullable().optional(),
+      runs_per_week: int.min(1).max(7).optional(),
+      long_run_weekday: toolWeekday.nullable().optional(),
+      preferred_environment: RunEnvironmentSchema.optional(),
+      base_minutes_per_week: int.min(0).max(3000).nullable().optional(),
+      longest_run_4w_min: int.min(0).max(600).nullable().optional(),
+      alarm_settings: RunAlarmSettingsSchema.nullable().optional(),
+    })
+    .refine(
+      (value) =>
+        Object.keys(value).some(
+          (key) => key !== "request_id" && key !== "expected_row_revision",
+        ),
+      "Mindestens eine Angabe zum Laufprofil ändern.",
+    ),
+  plan_run: z
+    .strictObject({
+      request_id: toolRequestId,
+      /** For "heute" when no date is given. */
+      timezone: toolTimezone,
+      workout_date_local: toolDate.optional(),
+      ...plannedRunContent,
+      /** Only after the user said yes to a second planned run of that type that day. */
+      confirm_duplicate: z.literal(true).optional(),
+    })
+    .superRefine(oneLength),
+  update_planned_run: z
+    .strictObject({
+      request_id: toolRequestId,
+      workout_id: RunIdSchema,
+      expected_row_revision: int.positive(),
+      /** Needed with a new date. */
+      timezone: toolTimezone.optional(),
+      workout_date_local: toolDate.optional(),
+      run_type: RunTypeSchema.optional(),
+      environment: RunEnvironmentSchema.optional(),
+      minutes: toolMinutes.optional(),
+      meters: toolMeters.optional(),
+      fast_finish: z.boolean().optional(),
+    })
+    .superRefine((value, ctx) => {
+      oneLength(value, ctx);
+      if (value.workout_date_local !== undefined && !value.timezone)
+        ctx.addIssue({
+          code: "custom",
+          path: ["timezone"],
+          message: "Mit einem neuen Datum die Zeitzone angeben.",
+        });
+      const content =
+        value.minutes !== undefined ||
+        value.meters !== undefined ||
+        value.run_type !== undefined ||
+        value.fast_finish !== undefined;
+      if (
+        content &&
+        (value.run_type === undefined ||
+          (value.minutes === undefined && value.meters === undefined))
+      )
+        ctx.addIssue({
+          code: "custom",
+          path: ["run_type"],
+          message:
+            "Zum Ändern des Inhalts run_type und minutes oder meters angeben; Arnold berechnet die Vorgabe neu.",
+        });
+      if (
+        !content &&
+        value.workout_date_local === undefined &&
+        value.environment === undefined
+      )
+        ctx.addIssue({
+          code: "custom",
+          message: "Nichts zu ändern.",
+        });
+    }),
+  cancel_planned_run: z.strictObject({
+    request_id: toolRequestId,
+    workout_id: RunIdSchema,
+    expected_row_revision: int.positive(),
+    reason: toolReason.optional(),
+  }),
+  log_run: z
+    .strictObject({
+      request_id: toolRequestId,
+      timezone: toolTimezone,
+      /** Local calendar day of the run; "gestern" is yesterday's date. */
+      workout_date_local: toolDate,
+      /** `screenshot` when the values were read from an image. */
+      source: z.enum(["chat", "screenshot"]).optional(),
+      /** The planned run this one fulfils. */
+      planned_workout_id: RunIdSchema.optional(),
+      run_type: RunTypeSchema.optional(),
+      environment: RunEnvironmentSchema.optional(),
+      timer_s: int.min(1).max(RUN_LIMITS.maxSeconds),
+      elapsed_s: int.min(1).max(RUN_LIMITS.maxSeconds).optional(),
+      distance_m: int.min(1).max(RUN_LIMITS.maxMeters),
+      distance_source: RunDistanceSourceSchema.optional(),
+      started_at_utc: utc.optional(),
+      ascent_m: meters.optional(),
+      descent_m: meters.optional(),
+      cadence_spm: int.min(1).max(300).optional(),
+      calories_kcal: int.min(0).max(20_000).optional(),
+      rpe: rpe.optional(),
+      /** Only stored with the health consent; otherwise discarded and reported. */
+      hr_avg_bpm: bpm.optional(),
+      hr_max_bpm: bpm.optional(),
+      laps: z.array(RunLapInputSchema).max(RUN_LIMITS.maxSegments).optional(),
+      notes: toolReason.optional(),
+      /** Replaces a saved run: the old one is voided in the same write. */
+      replaces_workout_id: RunIdSchema.optional(),
+      expected_row_revision: int.positive().optional(),
+      confirm_duplicate: z.literal(true).optional(),
+    })
+    .superRefine((value, ctx) => {
+      if (value.elapsed_s !== undefined && value.timer_s > value.elapsed_s)
+        ctx.addIssue({
+          code: "custom",
+          path: ["timer_s"],
+          message: "Timerzeit länger als die Gesamtzeit.",
+        });
+      if ((value.hr_avg_bpm === undefined) !== (value.hr_max_bpm === undefined))
+        ctx.addIssue({
+          code: "custom",
+          path: ["hr_avg_bpm"],
+          message: "Durchschnitts- und Maximalpuls nur zusammen.",
+        });
+      if (
+        value.hr_avg_bpm !== undefined &&
+        value.hr_max_bpm !== undefined &&
+        value.hr_avg_bpm > value.hr_max_bpm
+      )
+        ctx.addIssue({
+          code: "custom",
+          path: ["hr_avg_bpm"],
+          message: "Durchschnittspuls über dem Maximalpuls.",
+        });
+      if (
+        value.replaces_workout_id !== undefined &&
+        value.expected_row_revision === undefined
+      )
+        ctx.addIssue({
+          code: "custom",
+          path: ["expected_row_revision"],
+          message: "Zum Ersetzen ist expected_row_revision erforderlich.",
+        });
+      if (
+        value.replaces_workout_id !== undefined &&
+        value.planned_workout_id !== undefined
+      )
+        ctx.addIssue({
+          code: "custom",
+          path: ["replaces_workout_id"],
+          message:
+            "Entweder einen geplanten Lauf abschließen oder einen gespeicherten ersetzen.",
+        });
+      const lapDistance = (value.laps ?? []).reduce(
+        (s, l) => s + l.distance_m,
+        0,
+      );
+      if (value.laps?.length && lapDistance > value.distance_m + 100)
+        ctx.addIssue({
+          code: "custom",
+          path: ["laps"],
+          message: "Die Runden sind zusammen länger als die Gesamtdistanz.",
+        });
+    }),
+  rate_run: z.strictObject({
+    request_id: toolRequestId,
+    workout_id: RunIdSchema,
+    rpe,
+    expected_row_revision: int.positive().optional(),
+  }),
+} as const;
+
+export const RunReadInputs = {
+  get_run_profile: z.strictObject({ timezone: toolTimezone.optional() }),
+  get_run_analysis: z
+    .strictObject({
+      view: z.enum(["run", "week", "four_weeks"]),
+      workout_id: RunIdSchema.optional(),
+      /** Any day of the week; "today" when omitted. */
+      date: toolDate.optional(),
+      timezone: toolTimezone,
+    })
+    .superRefine((value, ctx) => {
+      if (value.view === "run" && !value.workout_id)
+        ctx.addIssue({
+          code: "custom",
+          path: ["workout_id"],
+          message: "Für einen einzelnen Lauf workout_id angeben.",
+        });
+    }),
+} as const;
+
+export const RUN_ERROR_CODES = [
+  "VALIDATION_ERROR",
+  "WORKOUT_NOT_FOUND",
+  "INVALID_STATUS_TRANSITION",
+  "REVISION_CONFLICT",
+  "DUPLICATE_OPERATION",
+  "DUPLICATE_WORKOUT",
+  "DATE_IN_FUTURE",
+  "CONFIRMATION_REQUIRED",
+  "SCHEMA_MISMATCH",
+  "TEMPLATE_WRITE_FORBIDDEN",
+  "AUTH_REQUIRED",
+  "PERMISSION_DENIED",
+  "STORAGE_UNAVAILABLE",
+] as const;
+export const RunErrorCodeSchema = z.enum(RUN_ERROR_CODES);
+export type RunErrorCode = z.infer<typeof RunErrorCodeSchema>;
+
+const nullableInt = int.nullable();
+/** A value Arnold does not have, and why. */
+export const RunUnknownSchema = z.strictObject({
+  field: z.string(),
+  reason: z.string(),
+});
+
+export const RunViewSchema = z.strictObject({
+  workout_id: RunIdSchema,
+  /** Revision of the workout; the value for expected_row_revision. */
+  row_revision: int.positive(),
+  workout_date_local: toolDate,
+  status: z.enum(["planned", "completed", "cancelled", "voided"]),
+  run_type: RunTypeSchema,
+  environment: RunEnvironmentSchema,
+  name: z.string().nullable(),
+  hint: z.string().nullable(),
+  /** What Arnold prescribed; null for a free or logged run. */
+  planned: z
+    .strictObject({
+      total_s: nullableInt,
+      distance_m: nullableInt,
+      segments: int,
+      has_pace_targets: z.boolean(),
+      alarms: z.strictObject({
+        hr: z.boolean(),
+        pace: z.boolean(),
+        lo: z.boolean(),
+      }),
+    })
+    .nullable(),
+  result: z
+    .strictObject({
+      result_source: RunResultSourceSchema,
+      timer_s: nullableInt,
+      elapsed_s: nullableInt,
+      distance_m: nullableInt,
+      distance_source: RunDistanceSourceSchema.nullable(),
+      pace_s_per_km: nullableInt,
+      rpe: nullableInt,
+      hr_status: RunHrStatusSchema,
+      hr_avg_bpm: nullableInt,
+      hr_max_bpm: nullableInt,
+      calories_kcal: nullableInt,
+      cadence_spm: nullableInt,
+      ascent_m: nullableInt,
+      descent_m: nullableInt,
+      lap_count: int,
+    })
+    .nullable(),
+  unknown: z.array(RunUnknownSchema),
+});
+export type RunView = z.infer<typeof RunViewSchema>;
+
+export const RunProfileViewSchema = z.strictObject({
+  run_profile_id: RunIdSchema,
+  row_revision: int.positive(),
+  goal: RunGoalSchema,
+  race_date: toolDate.nullable(),
+  target_time_s: nullableInt,
+  reference: z
+    .strictObject({
+      distance_m: int,
+      time_s: int,
+      date: toolDate,
+      source: RunReferenceSourceSchema,
+    })
+    .nullable(),
+  running_experience_months: nullableInt,
+  runs_per_week: int,
+  long_run_weekday: nullableInt,
+  preferred_environment: RunEnvironmentSchema,
+  base_minutes_per_week: nullableInt,
+  longest_run_4w_min: nullableInt,
+  alarm_settings: RunAlarmSettingsSchema.nullable(),
+});
+export type RunProfileView = z.infer<typeof RunProfileViewSchema>;
+
+/** What Arnold derived from the profile; none of it is ever set by the model. */
+export const RunProfileDerivedSchema = z.strictObject({
+  experience: z.enum(["beginner", "intermediate", "advanced"]),
+  reference_valid: z.boolean(),
+  reference_reason: z.string().nullable(),
+  reference_valid_until: toolDate.nullable(),
+  vdot: z.number().nullable(),
+  pace_zones: z.record(z.string(), z.unknown()).nullable(),
+});
+
+export const RunProfileResponseSchema = z.strictObject({
+  profile: RunProfileViewSchema.nullable(),
+  derived: RunProfileDerivedSchema,
+  /** What the user should still tell Arnold for better plans. */
+  missing: z.array(z.string()),
+});
+export type RunProfileResponse = z.infer<typeof RunProfileResponseSchema>;
+
+export const RunWriteResultSchema = z.strictObject({
+  profile: RunProfileViewSchema.nullable(),
+  run: RunViewSchema.nullable(),
+  /** The planned run this write took off the plan (date move, other day). */
+  replaced_workout_id: RunIdSchema.nullable(),
+  /** Why Arnold chose this run, in German, for the user. */
+  rationale: z.array(z.string()),
+  warnings: z.array(z.string()),
+  /** Heart-rate values were sent without the health consent and dropped. */
+  hr_discarded: z.boolean(),
+});
+export type RunWriteResult = z.infer<typeof RunWriteResultSchema>;
+
+export const RunWriteResponseSchema = z
+  .strictObject({
+    ok: z.boolean(),
+    operation: z.enum(RUN_WRITE_OPERATIONS),
+    request_id: z.string(),
+    replayed: z.boolean(),
+    result: RunWriteResultSchema.nullable(),
+    error: toolErrorSchema(RunErrorCodeSchema).nullable(),
+  })
+  .superRefine((value, ctx) => {
+    if (
+      value.ok
+        ? value.result === null || value.error !== null
+        : value.result !== null || value.error === null || value.replayed
+    )
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "Ergebnis und Fehler widersprechen dem bestätigten Operationsstatus.",
+      });
+  });
+export type RunWriteResponse = z.infer<typeof RunWriteResponseSchema>;
+
+export const RunAnalysisResponseSchema = z.strictObject({
+  view: z.enum(["run", "week", "four_weeks"]),
+  reference_date: toolDate,
+  run: z
+    .strictObject({
+      view: RunViewSchema,
+      metrics: z.record(z.string(), z.unknown()),
+    })
+    .nullable(),
+  weeks: z.array(
+    z.strictObject({
+      week_start: toolDate,
+      week_end: toolDate,
+      running: z.record(z.string(), z.unknown()),
+      /** Strength next to running: counted, not converted into a load number. */
+      strength: z.strictObject({ workouts: int, working_sets: int }),
+    }),
+  ),
+  /** 7:28-day load ratio; null with the reason when it cannot be given. */
+  load_ratio: z.record(z.string(), z.unknown()).nullable(),
+  notes: z.array(z.string()),
+});
+export type RunAnalysisResponse = z.infer<typeof RunAnalysisResponseSchema>;
