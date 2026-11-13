@@ -329,4 +329,33 @@ describe("run tools over real Streamable HTTP", () => {
     expect(missing.isError).toBe(true);
     expect(JSON.stringify(missing.content)).toContain("WORKOUT_NOT_FOUND");
   });
+  it("void_workout covers a completed run and the analysis then skips it", async () => {
+    await start();
+    const done = await write("log_run", {
+      request_id: "vw1",
+      timezone: tz,
+      workout_date_local: soon(-2),
+      environment: "outdoor",
+      timer_s: 1800,
+      distance_m: 5000,
+    });
+    const run = done.result!.run!;
+    const voided = await call("void_workout", {
+      request_id: "vw2",
+      workout_id: run.workout_id,
+      expected_row_revision: run.row_revision,
+      correction_reason: "Doppelt erfasst",
+    });
+    expect(voided.isError).toBeFalsy();
+    const week = RunAnalysisResponseSchema.parse(
+      (
+        await call("get_run_analysis", {
+          view: "week",
+          date: soon(-2),
+          timezone: tz,
+        })
+      ).structuredContent,
+    );
+    expect((week.weeks[0]!.running as Record<string, any>).run_count).toBe(0);
+  });
 });
