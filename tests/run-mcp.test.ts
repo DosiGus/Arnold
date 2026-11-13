@@ -358,4 +358,48 @@ describe("run tools over real Streamable HTTP", () => {
     );
     expect((week.weeks[0]!.running as Record<string, any>).run_count).toBe(0);
   });
+  it("log_run replaces a saved run (revision needed); the old one is voided", async () => {
+    await start();
+    const base = {
+      timezone: tz,
+      workout_date_local: soon(-3),
+      environment: "outdoor",
+    };
+    const first = (
+      await write("log_run", {
+        request_id: "rp1",
+        ...base,
+        timer_s: 1800,
+        distance_m: 5000,
+      })
+    ).result!.run!;
+    const noRevision = await call("log_run", {
+      request_id: "rp2",
+      ...base,
+      timer_s: 1900,
+      distance_m: 5100,
+      replaces_workout_id: first.workout_id,
+    });
+    expect(noRevision.isError).toBe(true);
+    const fixed = await write("log_run", {
+      request_id: "rp3",
+      ...base,
+      timer_s: 1900,
+      distance_m: 5100,
+      replaces_workout_id: first.workout_id,
+      expected_row_revision: first.row_revision,
+    });
+    expect(fixed.ok).toBe(true);
+    expect(fixed.result!.replaced_workout_id).toBe(first.workout_id);
+    const week = RunAnalysisResponseSchema.parse(
+      (
+        await call("get_run_analysis", {
+          view: "week",
+          date: base.workout_date_local,
+          timezone: tz,
+        })
+      ).structuredContent,
+    );
+    expect((week.weeks[0]!.running as Record<string, any>).run_count).toBe(1);
+  });
 });
