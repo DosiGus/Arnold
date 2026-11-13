@@ -252,6 +252,11 @@ export const AuditEventSchema = z.object({
     "GOAL_ARCHIVED",
     "BODY_WEIGHT_LOGGED",
     "BODY_WEIGHT_VOIDED",
+    // Running (RUN-007). Values and status only, never free text or heart rate.
+    "RUN_PROFILE_UPDATED",
+    "RUN_CREATED",
+    "RUN_UPDATED",
+    "RUN_SEGMENT_CREATED",
     // Task 005 plan lifecycle. Business-readable, with no personal data beyond the acting subject.
     "PLAN_CREATED",
     "PLAN_DRAFT_CREATED",
