@@ -255,7 +255,7 @@ const analysisRun = (consent = false) => ({
     view: consent
       ? doneView({
           result: {
-            ...doneView().result,
+            ...(doneView().result as object),
             hr_status: "recorded",
             hr_avg_bpm: 139,
             hr_max_bpm: 158,
@@ -279,8 +279,8 @@ const statsWeek = (
   count: number,
   distance = sum(count ? count * 8000 : null, count, count),
 ) => ({
-  week_start: `2026-${n < 3 ? "10" : "11"}-${String([5, 12, 19, 26][n] ?? 2).padStart(2, "0")}`,
-  week_end: `2026-${n < 3 ? "10" : "11"}-${String([11, 18, 25, 1][n] ?? 8).padStart(2, "0")}`,
+  week_start: ["2026-10-19", "2026-10-26", "2026-11-02", "2026-11-09"][n],
+  week_end: ["2026-10-25", "2026-11-01", "2026-11-08", "2026-11-15"][n],
   running: {
     run_count: count,
     distance_m: distance,
@@ -555,7 +555,7 @@ test("run_today: Kürzer saves the minutes the user chose", async ({ page }) => 
   // The save button stays off until the user picks fewer minutes than planned.
   const save = card.getByRole("button", { name: "Kürzer speichern" });
   await expect(save).toBeDisabled();
-  await card.getByRole("button", { name: /Neue Dauer weniger/ }).click();
+  await card.getByRole("button", { name: /Neue Dauer verringern/ }).click();
   await expect(save).toBeEnabled();
   await save.click();
   await expect(card).toContainText("Gekürzt und gespeichert.");
@@ -755,7 +755,7 @@ test("run_stats: 7:28 unknown with its reason, weeks without runs show no figure
   await expect(empty).toContainText("Keine Läufe gelaufen.");
   await expect(empty).not.toContainText(/km|Tempo/);
   // A sum fed by 3 of 4 runs says so; the number is the server's.
-  await expect(card).toContainText("25,0 km aus 3 von 4 Läufen");
+  await expect(card).toContainText("25 km aus 3 von 4 Läufen");
   await expect(
     card.locator(".ac-rows li").filter({ hasText: "Belastung 7 : 28 Tage" }),
   ).not.toContainText("aus");
@@ -811,7 +811,7 @@ test("run_setup: creating a profile sends only the user's answers with one reque
   const save = card.getByRole("button", { name: "Speichern" });
   await expect(save).toBeDisabled();
   await card.getByRole("button", { name: "10 km" }).click();
-  await card.getByRole("button", { name: /Läufe pro Woche mehr/ }).click();
+  await card.getByRole("button", { name: /Läufe pro Woche erhöhen/ }).click();
   await save.click();
   await expect(card).toContainText("Gespeichert.");
   const sent = calls.find((c) => c.tool === "update_run_profile")!.args;
