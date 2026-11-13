@@ -36,7 +36,7 @@ export class RunNotFoundError extends Error {
 }
 
 /** All runs of the dataset in the shape the metrics read. */
-function runInputs(data: ArnoldDataset): RunInput[] {
+export function runInputs(data: ArnoldDataset): RunInput[] {
   const workouts = new Map(data.workouts.map((w) => [w.workout_id, w]));
   const segments = new Map<string, (typeof data.runSegments)[number][]>();
   for (const segment of data.runSegments) {

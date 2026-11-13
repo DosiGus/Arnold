@@ -1474,7 +1474,7 @@ function revision(row: { row_revision: number }, expected: number) {
     );
 }
 
-function errorBody(error: unknown) {
+export function errorBody(error: unknown) {
   const failed =
     error instanceof WriteError
       ? error

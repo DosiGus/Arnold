@@ -1029,3 +1029,176 @@ export const RunAnalysisResponseSchema = z.strictObject({
   notes: z.array(z.string()),
 });
 export type RunAnalysisResponse = z.infer<typeof RunAnalysisResponseSchema>;
+
+/* ------------------------------------------------------------ run week (RUN-008) */
+
+/**
+ * `schedule_run_week`, in two steps: without `confirm` (or with false) Arnold
+ * only shows the proposal and changes nothing; with `confirm: true` it writes
+ * exactly that proposal, once. `preview_hash` from the preview names what the
+ * user saw: if the data changed in between, Arnold refuses (CONFIRMATION_REQUIRED)
+ * and asks for a new preview.
+ */
+export const ScheduleRunWeekInputSchema = z
+  .strictObject({
+    /** For "heute" and the seven days from today. */
+    timezone: toolTimezone,
+    confirm: z.boolean().optional(),
+    /** Required with confirm: true. */
+    request_id: toolRequestId.optional(),
+    /** Required with confirm: true; copied unchanged from the preview. */
+    preview_hash: z.string().min(1).max(128).optional(),
+    /** Main goal of the user for this week; Arnold derives it when absent. */
+    focus: z.enum(["running", "strength"]).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.confirm === true) {
+      if (!value.request_id)
+        ctx.addIssue({
+          code: "custom",
+          path: ["request_id"],
+          message: "Mit confirm: true ist request_id erforderlich.",
+        });
+      if (!value.preview_hash)
+        ctx.addIssue({
+          code: "custom",
+          path: ["preview_hash"],
+          message:
+            "Mit confirm: true ist preview_hash aus der Vorschau erforderlich.",
+        });
+    }
+  });
+export type ScheduleRunWeekInput = z.infer<typeof ScheduleRunWeekInputSchema>;
+
+export const GetRunWeekInputSchema = z.strictObject({
+  /** Any day of the calendar week to show (Monday to Sunday); today when omitted. */
+  date: toolDate.optional(),
+  timezone: toolTimezone,
+});
+export type GetRunWeekInput = z.infer<typeof GetRunWeekInputSchema>;
+
+export const RunWeekNoteSchema = z.strictObject({
+  code: z.string(),
+  text: z.string(),
+  date: toolDate.optional(),
+  session_id: z.string().optional(),
+});
+
+/** A run on a day of the week, planned (Arnold's proposal or stored) or done. */
+export const RunWeekRunSchema = z.strictObject({
+  /** Null in a preview (nothing is stored yet). */
+  workout_id: RunIdSchema.nullable(),
+  session_id: z.string().nullable(),
+  name: z.string(),
+  run_type: RunTypeSchema,
+  environment: RunEnvironmentSchema,
+  status: z.enum(["proposed", "planned", "completed", "cancelled", "missed"]),
+  /** Level of the run session after Arnold's adaptation; null for single runs. */
+  level: z.number().int().nonnegative().nullable(),
+  /** Planned minutes; null = unknown (never 0). */
+  minutes: z.number().nonnegative().nullable(),
+  /** True when `minutes` is only reserved because the run has no target time. */
+  minutes_reserved: z.boolean(),
+  intense_minutes: z.number().nonnegative().nullable(),
+  timer_s: z.number().int().nonnegative().nullable(),
+  distance_m: z.number().int().nonnegative().nullable(),
+  rpe: z.number().int().nullable(),
+  /** Why Arnold changed the session for this week (shortened, converted …). */
+  changed: z.boolean(),
+});
+export type RunWeekRun = z.infer<typeof RunWeekRunSchema>;
+
+export const RunWeekStrengthSchema = z.strictObject({
+  workout_id: RunIdSchema,
+  name: z.string().nullable(),
+  status: z.enum(["planned", "completed"]),
+  working_sets: z.number().int().nonnegative().nullable(),
+  leg_sets: z.number().int().nonnegative().nullable(),
+  /** From six working sets for the legs; null = unknown. */
+  heavy_legs: z.boolean().nullable(),
+});
+
+export const RunWeekDaySchema = z.strictObject({
+  date: toolDate,
+  weekday: z.number().int().min(1).max(7),
+  is_today: z.boolean(),
+  runs: z.array(RunWeekRunSchema),
+  strength: z.array(RunWeekStrengthSchema),
+});
+
+export const RunWeekSessionSchema = z.strictObject({
+  session_id: z.string(),
+  session_name: z.string(),
+  run_type: RunTypeSchema,
+  /** Current level of the session (what the next run is prescribed at). */
+  level: z.number().int().nonnegative(),
+  preferred_weekday: z.number().int().min(1).max(7).nullable(),
+});
+
+export const ScheduleRunWeekResultSchema = z.strictObject({
+  rules_version: z.string(),
+  from: toolDate,
+  to: toolDate,
+  phase: z.string(),
+  deload: z.boolean(),
+  volume_cap_minutes: z.number(),
+  max_hard: z.number().int(),
+  /** Names the proposal; send it back unchanged with confirm: true. */
+  preview_hash: z.string(),
+  days: z.array(RunWeekDaySchema),
+  dropped: z.array(
+    z.strictObject({
+      session_id: z.string(),
+      session_name: z.string(),
+      reason: z.string(),
+    }),
+  ),
+  /** Reasons for everything Arnold changed, plus interference hints. */
+  notes: z.array(RunWeekNoteSchema),
+  /** The run sessions with the level they now have (written back on confirm). */
+  levels: z.array(
+    z.strictObject({
+      session_id: z.string(),
+      session_name: z.string(),
+      from: z.number().int().nonnegative(),
+      to: z.number().int().nonnegative(),
+    }),
+  ),
+  /** Week rules that the proposal breaks; empty for what Arnold plans. */
+  violations: z.array(z.string()),
+});
+export type ScheduleRunWeekResult = z.infer<typeof ScheduleRunWeekResultSchema>;
+
+export const ScheduleRunWeekResponseSchema = z.strictObject({
+  ok: z.boolean(),
+  mode: z.enum(["preview", "confirmed"]),
+  request_id: z.string().nullable(),
+  replayed: z.boolean(),
+  result: ScheduleRunWeekResultSchema.nullable(),
+  error: toolErrorSchema(RunErrorCodeSchema).nullable(),
+});
+export type ScheduleRunWeekResponse = z.infer<
+  typeof ScheduleRunWeekResponseSchema
+>;
+
+export const RunWeekResponseSchema = z.strictObject({
+  today: toolDate,
+  week_start: toolDate,
+  week_end: toolDate,
+  days: z.array(RunWeekDaySchema),
+  summary: z.strictObject({
+    runs_planned: z.number().int(),
+    runs_completed: z.number().int(),
+    runs_missed: z.number().int(),
+    strength_planned: z.number().int(),
+    strength_completed: z.number().int(),
+    /** Minutes of completed runs; null when one of them has no time. */
+    run_minutes_completed: z.number().nullable(),
+  }),
+  /** The run sessions of the active plan with their current level. */
+  sessions: z.array(RunWeekSessionSchema),
+  /** Arnold's next proposal (nothing stored), as the preview of schedule_run_week. */
+  suggestions: z.array(RunWeekRunSchema.extend({ date: toolDate })),
+  notes: z.array(RunWeekNoteSchema),
+});
+export type RunWeekResponse = z.infer<typeof RunWeekResponseSchema>;

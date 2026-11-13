@@ -76,6 +76,12 @@ export const CONFIRMATION_RULES: Readonly<Record<string, ConfirmationEntry>> = {
   update_planned_run: log,
   log_run: log,
   rate_run: log,
+  get_run_week: read,
+  schedule_run_week: {
+    rule: "direct",
+    reason:
+      "Zweistufig: Die Vorschau ändert nichts; geschrieben wird erst mit confirm nach dem Ja des Nutzers auf die Vorschau.",
+  },
   cancel_planned_run: {
     rule: "ask_in_chat",
     reason: "Sagt einen geplanten Lauf ab; vorher im Chat nachfragen.",

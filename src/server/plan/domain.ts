@@ -24,6 +24,7 @@ import {
   PLAN_SCHEMA_LIMITS,
   type PlanExerciseOption,
   type PlannedExercise,
+  type PlanRunSession,
   type TrainingPlan,
   type TrainingPlanVersion,
   type TrainingPlanVersionSummary,
@@ -132,6 +133,36 @@ export function workoutCount(
   ).length;
 }
 
+/** The run sessions of one version in display order (RUN-008). */
+export function runSessionsOf(
+  dataset: ArnoldDataset,
+  planVersionId: string,
+  options: { includeRemoved?: boolean } = {},
+): PlanRunSession[] {
+  return dataset.planRunSessions
+    .filter(
+      (row) =>
+        row.plan_version_id === planVersionId &&
+        (options.includeRemoved || row.status === "active"),
+    )
+    .map((row) => ({
+      plan_run_session_id: row.plan_run_session_id,
+      session_id: row.session_id,
+      session_name: row.session_name,
+      session_order: row.session_order,
+      run_type: row.run_type,
+      template: row.template,
+      preferred_weekday: row.preferred_weekday,
+      status: row.status,
+      row_revision: row.row_revision,
+    }))
+    .sort(
+      (a, b) =>
+        a.session_order - b.session_order ||
+        (a.session_id < b.session_id ? -1 : 1),
+    );
+}
+
 /** Full projection of one version, sessions included. */
 export function projectVersion(
   dataset: ArnoldDataset,
@@ -139,6 +170,7 @@ export function projectVersion(
   options: { includeRemoved?: boolean } = {},
 ): TrainingPlanVersion {
   const sessions = sessionsOf(dataset, plan.plan_version_id, options);
+  const runSessions = runSessionsOf(dataset, plan.plan_version_id, options);
   return {
     plan_version_id: plan.plan_version_id,
     plan_family_id: plan.plan_family_id,
@@ -154,6 +186,8 @@ export function projectVersion(
     updated_at_utc: plan.updated_at_utc,
     row_revision: plan.row_revision,
     sessions,
+    // Only present for a plan with run sessions, so strength plans read as before.
+    ...(runSessions.length ? { run_sessions: runSessions } : {}),
     session_count: sessions.filter((s) =>
       s.exercises.some((e) => e.status === "active"),
     ).length,

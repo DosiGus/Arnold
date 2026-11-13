@@ -6,18 +6,23 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/server";
 import {
+  GetRunWeekInputSchema,
   RUN_WRITE_OPERATIONS,
   RunAnalysisResponseSchema,
   RunProfileResponseSchema,
   RunReadInputs,
   RunWriteInputs,
+  RunWeekResponseSchema,
   RunWriteResponseSchema,
+  ScheduleRunWeekInputSchema,
+  ScheduleRunWeekResponseSchema,
   type RunWriteOperation,
 } from "../shared/run-contract.js";
 import { failureText } from "../shared/write-recovery.js";
 import { localDay, profileResponse } from "./run/views.js";
 import { RunNotFoundError, analyseRuns } from "./run/analysis.js";
 import type { RunService } from "./run/service.js";
+import { RunWeekService } from "./run/week-service.js";
 
 const NEVER =
   "ChatGPT legt NIE selbst Tempi, Pulszonen, Umfänge oder Intensität fest und rechnet nichts aus: nur weitergeben, was der Nutzer gesagt hat; Arnold berechnet die Vorgabe. Fehlt eine Angabe, den Nutzer fragen.";
@@ -145,6 +150,87 @@ export function registerRunTools(
           ],
         };
       }
+    },
+  );
+  const week = new RunWeekService(runs);
+  server.registerTool(
+    "get_run_week",
+    {
+      description:
+        "Zeigt die Trainingswoche (Montag bis Sonntag) mit Laufen und Kraft: geplant, erledigt, verpasst, dazu die Laufeinheiten des aktiven Plans mit aktueller Stufe und Arnolds nächste Vorschläge (nur Vorschau, nichts wird gespeichert). Alle Zahlen kommen fertig von Arnold; unbekannte Werte sind null, nie 0. timezone angeben. Nichts selbst nachrechnen oder planen.",
+      inputSchema: GetRunWeekInputSchema,
+      outputSchema: RunWeekResponseSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async (input) => {
+      try {
+        const payload = await week.view(input, actorContext);
+        return {
+          content: [{ type: "text" as const, text: "Trainingswoche." }],
+          structuredContent: payload,
+        };
+      } catch {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: failureText(
+                "STORAGE_UNAVAILABLE",
+                "Trainingswoche konnte nicht geladen werden.",
+                "retry_same_request",
+              ),
+            },
+          ],
+        };
+      }
+    },
+  );
+  server.registerTool(
+    "schedule_run_week",
+    {
+      description: `Verteilt die Laufeinheiten des aktiven Plans auf die nächsten sieben Tage, in zwei Schritten. Schritt 1 (confirm weglassen): Vorschau mit Tagen, Dauer, Stufe, Begründungen und Hinweisen (z. B. harter Lauf am Beintag); es wird nichts gespeichert. Dem Nutzer die Vorschau zeigen und fragen. Schritt 2 erst nach seinem ausdrücklichen Ja: derselbe Aufruf mit confirm true, request_id und preview_hash aus der Vorschau; das speichert genau diese Woche einmal. Haben sich die Daten geändert (CONFIRMATION_REQUIRED), eine neue Vorschau zeigen. ${NEVER} Erfolg wird erst gemeldet, wenn Läufe, Protokoll und Quittung gemeinsam gespeichert sind; bei retry_same_request denselben Aufruf mit derselben request_id wiederholen.`,
+      inputSchema: ScheduleRunWeekInputSchema,
+      outputSchema: ScheduleRunWeekResponseSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async (input: unknown) => {
+      const payload = await week.schedule(input, actorContext);
+      return {
+        isError: !payload.ok,
+        structuredContent: payload,
+        content: [
+          {
+            type: "text" as const,
+            text: !payload.ok
+              ? [
+                  failureText(
+                    payload.error!.code,
+                    payload.error!.message,
+                    payload.error!.recovery,
+                  ),
+                  ...(payload.error!.details.length
+                    ? [`Details: ${payload.error!.details.join("; ")}`]
+                    : []),
+                ].join("\n")
+              : payload.mode === "preview"
+                ? "Vorschau der Woche; nichts gespeichert."
+                : payload.replayed
+                  ? "Bereits bestätigte Woche; keine weitere Änderung."
+                  : "Woche gespeichert und verifiziert.",
+          },
+        ],
+      };
     },
   );
   for (const operation of RUN_WRITE_OPERATIONS) {
