@@ -3,8 +3,8 @@
  * here that the engine or the metrics own (paces and zones come from
  * src/analytics/running); a value that is not there is null with a reason.
  */
+import { paceSecondsPerKm } from "../../analytics/running/metrics/index.js";
 import {
-  paceSecondsPerKm,
   referenceTempoZones,
   referenceValidUntil,
   runExperience,
