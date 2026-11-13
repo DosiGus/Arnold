@@ -183,6 +183,16 @@ export class RunService {
     this.logging = new WorkoutLoggingService(options);
   }
 
+  /**
+   * The user's complete data (runs included) for the read tools. The shared
+   * data source shows strength training only, so runs are read from the store
+   * after the same caller check as a write.
+   */
+  async dataset(context: unknown): Promise<ArnoldDataset> {
+    await this.actor(context);
+    return this.options.store.read();
+  }
+
   /** The verified caller; the same checks as the workout tools. */
   actor(context: unknown, permission?: "write" | "correct_completed") {
     return this.logging.actor(context, permission);

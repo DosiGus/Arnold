@@ -20,6 +20,7 @@ import {
   InMemoryArnoldStore,
 } from "../workout/infrastructure.js";
 import { WorkoutLoggingService } from "../workout/service.js";
+import { RunService } from "../run/service.js";
 import { TrainingPlanService } from "./service.js";
 
 export const PLAN_FIXTURE_TRACKER = "arnold-plan-fixture-tracker";
@@ -686,6 +687,7 @@ export type PlanFixtureRuntime = {
   source: ArnoldDataSource;
   plans: TrainingPlanService;
   service: WorkoutLoggingService;
+  runs: RunService;
   store: InMemoryArnoldStore;
 };
 
@@ -721,5 +723,6 @@ export function createFixturePlanning(
     store,
     plans: new TrainingPlanService({ mode: "fixture", ...shared }),
     service: new WorkoutLoggingService({ mode: "fixture", ...shared }),
+    runs: new RunService({ mode: "fixture", ...shared }),
   };
 }
