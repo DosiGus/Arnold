@@ -48,6 +48,17 @@ export const TOOL_ACCESS: Readonly<Record<string, ToolAccessClass>> = {
   get_arnold_workouts: "AUTHENTICATED_READ",
   get_arnold_exercise_progress: "AUTHENTICATED_READ",
 
+  // ── mcp-run.ts — RUN-007 ──
+  get_run_profile: "AUTHENTICATED_READ",
+  get_run_analysis: "AUTHENTICATED_READ",
+  // Registered only when a run service is injected and not disabled.
+  update_run_profile: "AUTHENTICATED_WRITE",
+  plan_run: "AUTHENTICATED_WRITE",
+  update_planned_run: "AUTHENTICATED_WRITE",
+  cancel_planned_run: "AUTHENTICATED_WRITE",
+  log_run: "AUTHENTICATED_WRITE",
+  rate_run: "AUTHENTICATED_WRITE",
+
   // ── mcp-workout.ts — Task 004 ──
   get_workout: "AUTHENTICATED_READ",
   // Registered only when a workout runtime is injected and not disabled.

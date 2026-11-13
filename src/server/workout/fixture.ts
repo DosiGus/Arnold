@@ -3,6 +3,7 @@ import {
   type ArnoldDataset,
 } from "../../shared/arnold-schema-v1.js";
 import { storeSource } from "../arnold-source.js";
+import { RunService } from "../run/service.js";
 import { WorkoutLoggingService } from "./service.js";
 import {
   FixtureAuthorizationGuard,
@@ -143,7 +144,10 @@ export function workoutFixtureDataset(): ArnoldDataset {
     sets: [],
   });
 }
-export function createFixtureLogging(dataset = workoutFixtureDataset()) {
+export function createFixtureLogging(
+  dataset = workoutFixtureDataset(),
+  options: { healthConsent?: () => Promise<boolean> } = {},
+) {
   const store = new InMemoryArnoldStore(dataset);
   const source = storeSource(store, {
     synthetic: true,
@@ -157,7 +161,14 @@ export function createFixtureLogging(dataset = workoutFixtureDataset()) {
     store,
     authorization: new FixtureAuthorizationGuard(dataset.config.tracker_id),
   });
-  return { source, service, store };
+  const runs = new RunService({
+    mode: "fixture",
+    trackerId: dataset.config.tracker_id,
+    store,
+    authorization: new FixtureAuthorizationGuard(dataset.config.tracker_id),
+    healthConsent: options.healthConsent,
+  });
+  return { source, service, store, runs };
 }
 /**
  * The write mode the environment asks for. Only the fixture profile is chosen

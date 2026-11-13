@@ -68,6 +68,18 @@ export const CONFIRMATION_RULES: Readonly<Record<string, ConfirmationEntry>> = {
   get_arnold_exercise_progress: read,
 
   // Workout
+  // Running (RUN-007)
+  get_run_profile: read,
+  get_run_analysis: read,
+  update_run_profile: log,
+  plan_run: log,
+  update_planned_run: log,
+  log_run: log,
+  rate_run: log,
+  cancel_planned_run: {
+    rule: "ask_in_chat",
+    reason: "Sagt einen geplanten Lauf ab; vorher im Chat nachfragen.",
+  },
   get_workout: read,
   start_workout: log,
   log_workout_sets: log,

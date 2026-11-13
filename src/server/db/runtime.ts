@@ -28,7 +28,11 @@ import {
   type Actor,
   type AuthorizationGuard,
 } from "../workout/infrastructure.js";
-import { WorkoutLoggingService } from "../workout/service.js";
+import {
+  WorkoutLoggingService,
+  type LoggingOptions,
+} from "../workout/service.js";
+import { RunService } from "../run/service.js";
 import { logStartWeight } from "../workout/start-weight.js";
 import type { StoredDataItem } from "../../shared/account-contract.js";
 import type { Database } from "./database.js";
@@ -152,7 +156,7 @@ export class DatabaseArnoldRuntime {
         key: "training_data",
         label: "Trainingsdaten",
         contains:
-          "Deine Trainingspläne, Trainings und Sätze mit Gewicht, Wiederholungen und Notizen, dazu deine Ziele und Körpergewichtseinträge. Die Zahl nennt die Trainings.",
+          "Deine Trainingspläne, Trainings und Sätze mit Gewicht, Wiederholungen und Notizen, dazu deine Läufe mit Laufprofil, Abschnitten und Pulswerten (nur mit Einwilligung), Ziele und Körpergewichtseinträge. Die Zahl nennt die Trainings, Kraft und Läufe zusammen.",
         count: counts.workouts.count,
         oldest_at: iso(counts.workouts.oldest),
         newest_at: iso(counts.workouts.newest),
@@ -272,6 +276,7 @@ export class DatabaseUserRuntime {
   readonly source: ArnoldDataSource;
   readonly plans: TrainingPlanService;
   readonly service: WorkoutLoggingService;
+  readonly runs: RunService;
   readonly onboarding: OnboardingService;
 
   private constructor(
@@ -322,7 +327,7 @@ export class DatabaseUserRuntime {
       recordStartWeight: (weightKg, requestId, context) =>
         logStartWeight(this.service, weightKg, requestId, context),
     });
-    this.service = new WorkoutLoggingService({
+    const loggingOptions: LoggingOptions = {
       mode: "database",
       trackerId,
       store: this.store,
@@ -343,6 +348,23 @@ export class DatabaseUserRuntime {
           return actor;
         },
       },
+    };
+    this.service = new WorkoutLoggingService(loggingOptions);
+    // Heart rate of a run is stored only with the health consent (D-RUN-07).
+    this.runs = new RunService({
+      ...loggingOptions,
+      healthConsent: async (actor) =>
+        db.asUser(
+          actor.subject,
+          async (c) =>
+            (
+              await c.query(
+                `select 1 from arnold.health_consents
+                  where user_id = $1 and scope = 'garmin_health' and revoked_at is null`,
+                [actor.subject],
+              )
+            ).rowCount === 1,
+        ),
     });
   }
 
