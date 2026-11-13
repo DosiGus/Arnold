@@ -7,6 +7,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/server";
 import {
   RUN_WRITE_OPERATIONS,
+  RunAnalysisResponseSchema,
   RunProfileResponseSchema,
   RunReadInputs,
   RunWriteInputs,
@@ -15,6 +16,7 @@ import {
 } from "../shared/run-contract.js";
 import { failureText } from "../shared/write-recovery.js";
 import { localDay, profileResponse } from "./run/views.js";
+import { RunNotFoundError, analyseRuns } from "./run/analysis.js";
 import type { RunService } from "./run/service.js";
 
 const NEVER =
@@ -93,6 +95,52 @@ export function registerRunTools(
                 "Laufprofil konnte nicht geladen werden.",
                 "retry_same_request",
               ),
+            },
+          ],
+        };
+      }
+    },
+  );
+  server.registerTool(
+    "get_run_analysis",
+    {
+      description:
+        "Wertet Läufe aus: view run (ein Lauf, workout_id), week (Woche mit date, sonst heute) oder four_weeks (vier Wochen bis date). Alle Kennzahlen (Tempo, Kilometerzeiten, Bestzeiten, Zonen, Belastung, Wochenumfang, Erfüllung, Trend, 7:28-Verhältnis) kommen fertig von Arnold; Krafttraining steht daneben. Unbekannte Werte haben value null und einen Grund (reason), nie 0. Nichts selbst nachrechnen oder schätzen. timezone angeben.",
+      inputSchema: RunReadInputs.get_run_analysis,
+      outputSchema: RunAnalysisResponseSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async (input) => {
+      try {
+        const dataset = await runs.dataset(actorContext);
+        const payload = analyseRuns(dataset, input, new Date());
+        return {
+          content: [{ type: "text" as const, text: "Laufauswertung." }],
+          structuredContent: payload,
+        };
+      } catch (error) {
+        const notFound = error instanceof RunNotFoundError;
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: notFound
+                ? failureText(
+                    "WORKOUT_NOT_FOUND",
+                    "Lauf nicht gefunden.",
+                    "none",
+                  )
+                : failureText(
+                    "STORAGE_UNAVAILABLE",
+                    "Laufauswertung konnte nicht geladen werden.",
+                    "retry_same_request",
+                  ),
             },
           ],
         };

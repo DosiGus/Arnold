@@ -8,6 +8,7 @@ import type { Server } from "node:http";
 import { createHttpApp } from "../src/server/http";
 import { createFixtureLogging } from "../src/server/workout/fixture";
 import {
+  RunAnalysisResponseSchema,
   RunProfileResponseSchema,
   RunWriteResponseSchema,
 } from "../src/shared/run-contract";
@@ -258,5 +259,74 @@ describe("run tools over real Streamable HTTP", () => {
     });
     expect(done.result!.hr_discarded).toBe(false);
     expect(done.result!.run!.result!.hr_avg_bpm).toBe(140);
+  });
+  it("get_run_analysis: run, week and four weeks; unknown stays unknown with a reason", async () => {
+    await start();
+    const day = soon(-1);
+    const done = await write("log_run", {
+      request_id: "a1",
+      timezone: tz,
+      workout_date_local: day,
+      environment: "outdoor",
+      timer_s: 2700,
+      distance_m: 7000,
+    });
+    const id = done.result!.run!.workout_id;
+    const one = RunAnalysisResponseSchema.parse(
+      (
+        await call("get_run_analysis", {
+          view: "run",
+          workout_id: id,
+          timezone: tz,
+        })
+      ).structuredContent,
+    );
+    expect(one.run!.view.workout_id).toBe(id);
+    const m = one.run!.metrics as Record<string, any>;
+    expect(m.pace_s_per_km.value).toBeCloseTo(385.71, 1);
+    // no rpe, no heart rate: unknown with a reason, never 0
+    expect(m.load.srpe.value).toBeNull();
+    expect(m.load.srpe.reason).toBe("rpe_missing");
+    expect(m.decoupling.value).toBeNull();
+    const week = RunAnalysisResponseSchema.parse(
+      (
+        await call("get_run_analysis", {
+          view: "week",
+          date: day,
+          timezone: tz,
+        })
+      ).structuredContent,
+    );
+    expect(week.weeks).toHaveLength(1);
+    const running = week.weeks[0]!.running as Record<string, any>;
+    expect(running.run_count).toBe(1);
+    expect(running.distance_m.value).toBe(7000);
+    expect(running.load_srpe).toMatchObject({
+      value: null,
+      known: 0,
+      total: 1,
+    });
+    expect(week.weeks[0]!.strength).toEqual({ workouts: 0, working_sets: 0 });
+    expect(week.load_ratio).toMatchObject({ value: null });
+    const four = RunAnalysisResponseSchema.parse(
+      (await call("get_run_analysis", { view: "four_weeks", timezone: tz }))
+        .structuredContent,
+    );
+    expect(four.weeks).toHaveLength(4);
+    expect(four.run).toBeNull();
+  });
+
+  it("get_run_analysis: missing id is refused, unknown run is not found", async () => {
+    await start();
+    expect(
+      (await call("get_run_analysis", { view: "run", timezone: tz })).isError,
+    ).toBe(true);
+    const missing = await call("get_run_analysis", {
+      view: "run",
+      workout_id: "01900000-0000-7000-8000-000000000000",
+      timezone: tz,
+    });
+    expect(missing.isError).toBe(true);
+    expect(JSON.stringify(missing.content)).toContain("WORKOUT_NOT_FOUND");
   });
 });
