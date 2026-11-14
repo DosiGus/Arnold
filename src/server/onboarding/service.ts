@@ -84,6 +84,9 @@ import {
   firstOpenStep,
   validateProfile,
   validateProposalAgainstProfile,
+  runSetupState,
+  wantsRunning,
+  type RunProfileFacts,
 } from "./profile.js";
 import {
   RepositoryConflictError,
@@ -558,6 +561,33 @@ export class OnboardingService {
     };
   }
 
+  /**
+   * Whether the run details a running goal needs are stored. Read through the
+   * same user-scoped store as everything else; a failed read fails the call
+   * instead of pretending the details exist.
+   */
+  private async runSetup(profile: OnboardingProfile) {
+    if (!wantsRunning(profile.training))
+      return { required: false, ready: true };
+    const stored = (await this.options.read()).runProfiles[0];
+    const facts: RunProfileFacts = stored
+      ? {
+          base_minutes_per_week: stored.base_minutes_per_week,
+          longest_run_4w_min: stored.longest_run_4w_min,
+        }
+      : null;
+    return runSetupState(profile.training, facts);
+  }
+
+  private async assertRunReady(profile: OnboardingProfile) {
+    if ((await this.runSetup(profile)).ready) return;
+    throw fail(
+      "PROFILE_INCOMPLETE",
+      "Für „Ausdauer und Laufen“ fehlen noch die Laufangaben (Minuten pro Woche und längster Lauf). Sie in der Einrichtung bei den Laufangaben eintragen lassen.",
+      ["run_profile: Laufangaben fehlen"],
+    );
+  }
+
   /** One onboarding state, as every caller sees it. */
   private async project(record: OnboardingRecord): Promise<OnboardingState> {
     const expired =
@@ -570,6 +600,7 @@ export class OnboardingService {
       ? { ...record.session, status: "EXPIRED" as const }
       : record.session;
     const complete = isProfileComplete(session.profile);
+    const runSetup = await this.runSetup(session.profile);
     return OnboardingStateSchema.parse({
       onboarding_contract: ONBOARDING_CONTRACT,
       session: {
@@ -582,6 +613,7 @@ export class OnboardingService {
         step: session.current_step,
         can_request_plan:
           complete &&
+          runSetup.ready &&
           !expired &&
           allowedEvents(machine).includes("REQUEST_PLAN"),
         can_confirm_plan:
@@ -599,6 +631,7 @@ export class OnboardingService {
         ? loadEstimates(plan, session.profile, await this.catalog())
         : [],
       split_options: splitsForDays(session.profile.training.days_per_week),
+      run_setup: runSetup,
       mode: this.mode,
       setup_finish_available: this.options.setupFinishAvailable ?? false,
       can_write_plan: Boolean(this.options.plans),
@@ -986,6 +1019,7 @@ export class OnboardingService {
         "Für einen Planvorschlag fehlen noch Pflichtangaben.",
         validation.errors.map((issue) => `${issue.code}: ${issue.message}`),
       );
+    await this.assertRunReady(profile);
     return buildBrief(profile, {
       onboarding_session_id: record.session.onboarding_session_id,
       exercises: await this.catalog(),
@@ -1009,6 +1043,7 @@ export class OnboardingService {
           replayed: true,
         };
       this.assertRevision(record, input.expected_revision, input.request_id);
+      await this.assertRunReady(record.session.profile);
       const stored = await this.commit(
         record,
         { type: "REQUEST_PLAN" },
@@ -1061,6 +1096,7 @@ export class OnboardingService {
           "PROFILE_INCOMPLETE",
           "Ein Planvorschlag setzt vollständige Pflichtangaben voraus.",
         );
+      await this.assertRunReady(record.session.profile);
 
       // Does the proposal answer what the user asked for? Structural validity
       // is the plan service's job and is checked right after.

@@ -213,6 +213,8 @@ export const TRAINING_GOALS = [
   "strength",
   "fat_loss",
   "general_fitness",
+  /** Added with the running feature; profiles without it stay valid. */
+  "endurance_running",
 ] as const;
 export const TrainingGoalSchema = z.enum(TRAINING_GOALS);
 export type TrainingGoal = z.infer<typeof TrainingGoalSchema>;
@@ -825,6 +827,14 @@ export const OnboardingStateSchema = z.strictObject({
       }),
     )
     .default([]),
+  /**
+   * The run details a running goal needs. `required` follows the goals
+   * ("Ausdauer und Laufen" chosen); `ready` is true once the run profile
+   * holds them. Absent in older states: nothing required.
+   */
+  run_setup: z
+    .strictObject({ required: z.boolean(), ready: z.boolean() })
+    .default({ required: false, ready: true }),
   /** `production` when the setup belongs to a verified account. */
   mode: z.enum(["fixture", "production"]),
   setup_finish_available: z.boolean().default(false),
@@ -1048,6 +1058,7 @@ export const GOAL_LABEL: Record<TrainingGoal, string> = {
   strength: "Stärker werden",
   fat_loss: "Abnehmen und straffen",
   general_fitness: "Fit und gesund bleiben",
+  endurance_running: "Ausdauer und Laufen",
 };
 
 export const GOAL_HINT: Record<TrainingGoal, string> = {
@@ -1056,6 +1067,8 @@ export const GOAL_HINT: Record<TrainingGoal, string> = {
   fat_loss: "Muskeln halten und Körperfett reduzieren.",
   general_fitness:
     "Gesund und regelmäßig trainieren, ohne festes Leistungsziel.",
+  endurance_running:
+    "Laufen aufbauen: Fitness, 5 km, 10 km oder Halbmarathon.",
 };
 
 export const EXPERIENCE_LABEL: Record<ExperienceLevel, string> = {
