@@ -38,6 +38,14 @@
     <string id="HomeExerciseOne">$1$ exercise</string>
     <string id="HomeExercises">$1$ exercises</string>
     <string id="HomeMinutes">$1$ min</string>
+    <string id="HomeToday">Today</string>
+    <string id="HomeStrengthRow">Strength: $1$</string>
+    <string id="HomeRunRow">Run: $1$</string>
+    <string id="HomeFreeRun">Free run</string>
+    <string id="HomeFreeOpen">Open</string>
+    <string id="HomeFreeZone2">Zone 2</string>
+    <string id="HomeMarker">&gt;</string>
+    <string id="PreStartTitle">Pre-start</string>
     <string id="AgeNow">just now</string>
     <string id="AgeMinutes">$1$ min ago</string>
     <string id="AgeHours">$1$ h ago</string>

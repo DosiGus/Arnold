@@ -618,30 +618,25 @@ function homeViewDrawsEveryPlanState(logger as Logger) as Boolean {
 }
 
 (:test)
-function homeDelegateMovesTheDayAndLoadsAMissingPlan(logger as Logger) as Boolean {
+function homeDelegateStartsTheTrainingAndLoadsAMissingPlan(logger as Logger) as Boolean {
     var rig = new PlanRig();
     rig.loadAll();
     var picker = new SessionPicker();
     var launcher = new TestLauncher(new Journal(rig.pairing.store), rig.pairing.clock, new RecordingSignals(), PlayerRig.senderFor(rig.pairing.store, rig.pairing.clock));
-    var delegate = new HomeDelegate(rig.pairing.controller, rig.sync, picker, launcher);
+    var delegate = new HomeDelegate(rig.pairing.controller, rig.sync, picker, launcher, RunRig.homeFor(rig.pairing));
     Expect.equal(picker.selectedIndex(rig.cache.directory()), 1);
-    Test.assert(delegate.onNextPage());
-    Expect.equal(picker.selectedIndex(rig.cache.directory()), 2);
-    Test.assert(delegate.onPreviousPage());
-    Test.assert(delegate.onPreviousPage());
-    Expect.equal(picker.selectedIndex(rig.cache.directory()), 0);
-    // START with everything loaded starts the day from the stored copy and does not touch the network
+    // START with everything loaded starts the next day from the stored copy and does not touch the network
     var sent = rig.pairing.transport.sentCount();
     Test.assert(delegate.onSelect());
     Expect.equal(rig.pairing.transport.sentCount(), sent);
     Expect.equal(launcher.shown.size(), 1);
-    Expect.equal(launcher.shown[0].dayName(), "Day d1");
+    Expect.equal(launcher.shown[0].dayName(), "Day d2");
     rig.pairing.store.deleteValue(StoreKeys.ACTIVE_SESSION);   // (the workout is not part of this test)
     // without a stored plan START loads it again
-    rig.pairing.store.deleteValue(StoreKeys.ACTIVE_SESSION);
     rig.sync.start();
     rig.exhaustRetries();
     rig.cache.clear();
+    Test.assert(delegate.onPreviousPage());   // without a plan the free run is selected; UP goes to the training row
     Test.assert(delegate.onSelect());
     Expect.equal(rig.sync.state, PlanSync.SYNC_LOADING);
     Expect.equal(launcher.shown.size(), 1);   // nothing was started without a plan
@@ -652,8 +647,8 @@ function homeDelegateMovesTheDayAndLoadsAMissingPlan(logger as Logger) as Boolea
 function homeDelegateStartsPairingWhenNotConnected(logger as Logger) as Boolean {
     var rig = new PlanRig();
     var launcher = new TestLauncher(new Journal(rig.pairing.store), rig.pairing.clock, new RecordingSignals(), PlayerRig.senderFor(rig.pairing.store, rig.pairing.clock));
-    var delegate = new HomeDelegate(rig.pairing.controller, rig.sync, new SessionPicker(), launcher);
-    Test.assert(!delegate.onNextPage());     // no day to choose yet
+    var delegate = new HomeDelegate(rig.pairing.controller, rig.sync, new SessionPicker(), launcher, RunRig.homeFor(rig.pairing));
+    Test.assert(!delegate.onNextPage());     // nothing to choose before connecting
     Test.assert(delegate.onSelect());
     Expect.equal(rig.pairing.controller.state, PairingController.STATE_PAIRING);
     return true;

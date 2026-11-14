@@ -2,26 +2,37 @@ import Toybox.Lang;
 import Toybox.WatchUi;
 
 // Buttons of the start screen. Not connected: as the pairing screen. Connected:
-// UP and DOWN choose the training day; START loads the plan again when it is
-// missing or failed (the training itself starts here in a later task); MENU
-// opens the account menu.
+// UP and DOWN choose a row (the training, a run planned today, free run, zone 2);
+// START opens it: the training from the stored copy (or loads the plan again when it
+// is missing or failed), a run on the pre-start screen. A workout in progress is
+// continued by START. MENU opens the account menu.
 class HomeDelegate extends PairingDelegate {
     private var _controller as PairingController;
     private var _sync as PlanSync;
     private var _picker as SessionPicker;
     private var _launcher as TrainingLauncher;
+    private var _run as RunHome;
 
-    function initialize(controller as PairingController, sync as PlanSync, picker as SessionPicker, launcher as TrainingLauncher) {
+    function initialize(controller as PairingController, sync as PlanSync, picker as SessionPicker, launcher as TrainingLauncher, run as RunHome) {
         PairingDelegate.initialize(controller);
         _controller = controller;
         _sync = sync;
         _picker = picker;
         _launcher = launcher;
+        _run = run;
     }
 
     function onSelect() as Boolean {
         if (!_controller.isPaired()) {
             return PairingDelegate.onSelect();
+        }
+        if (_launcher.activeName() == null) {
+            var rows = _run.stops(_sync, _picker);
+            var stop = _run.selectedStop(rows, _sync);
+            if (stop.kind != HomeStop.STOP_STRENGTH) {
+                startRun(stop);
+                return true;
+            }
         }
         var dir = _sync.cache.directory();
         var day = _picker.selectedDay(dir);
@@ -34,6 +45,23 @@ class HomeDelegate extends PairingDelegate {
             _sync.start();
         }
         return true;
+    }
+
+    // A free run opens the pre-start screen at once; a planned run from its stored
+    // prescription (without it the runs are loaded again).
+    hidden function startRun(stop as HomeStop) as Void {
+        if (stop.kind == HomeStop.STOP_FREE) {
+            _run.opener().open(new PreStartRequest(PreStartRequest.MODE_FREE, "", null));
+        } else if (stop.kind == HomeStop.STOP_ZONE2) {
+            _run.opener().open(new PreStartRequest(PreStartRequest.MODE_ZONE2, "", null));
+        } else {
+            var body = _run.sync.cache.prescription(stop.id);
+            if (body != null) {
+                _run.opener().open(new PreStartRequest(PreStartRequest.MODE_PLANNED, stop.id, body));
+            } else {
+                _run.sync.start();
+            }
+        }
     }
 
     function outboxSender() as OutboxSender or Null {
@@ -52,7 +80,10 @@ class HomeDelegate extends PairingDelegate {
         if (!_controller.isPaired()) {
             return false;
         }
-        _picker.move(_sync.cache.directory(), delta);
+        if (_launcher.activeName() != null) {
+            return true;
+        }
+        _run.move(_run.stops(_sync, _picker), _sync, delta);
         WatchUi.requestUpdate();
         return true;
     }

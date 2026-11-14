@@ -12,19 +12,22 @@ class HomeView extends WatchUi.View {
     private var _picker as SessionPicker;
     private var _clock as PairingClock;
     private var _launcher as TrainingLauncher;
+    private var _run as RunHome;
 
-    function initialize(controller as PairingController, sync as PlanSync, picker as SessionPicker, launcher as TrainingLauncher) {
+    function initialize(controller as PairingController, sync as PlanSync, picker as SessionPicker, launcher as TrainingLauncher, run as RunHome) {
         View.initialize();
         _controller = controller;
         _sync = sync;
         _picker = picker;
         _launcher = launcher;
+        _run = run;
         _clock = new PairingClock();
     }
 
     function onShow() as Void {
         _controller.setObserver(method(:onChanged));
         _sync.setObserver(method(:onChanged));
+        _run.sync.setObserver(method(:onChanged));
         _launcher.sender().setObserver(method(:onSendChanged));
         syncIfNeeded();
         if (_controller.isPaired()) {
@@ -42,6 +45,7 @@ class HomeView extends WatchUi.View {
     function onHide() as Void {
         _controller.setObserver(null);
         _sync.setObserver(null);
+        _run.sync.setObserver(null);
         _launcher.sender().setObserver(null);
     }
 
@@ -56,7 +60,7 @@ class HomeView extends WatchUi.View {
         if (_controller.isPaired() && running != null) {
             PairingLayout.draw(dc, HomeScreen.withPending(HomeScreen.resumeLines(running as String), pending));
         } else if (_controller.isPaired()) {
-            PairingLayout.draw(dc, HomeScreen.withPending(HomeScreen.lines(dc, _sync, _picker, _clock.nowSeconds()), pending));
+            PairingLayout.draw(dc, HomeScreen.withPending(HomeScreen.stopLines(dc, _sync, _run, _picker, _clock.nowSeconds()), pending));
         } else {
             PairingLayout.draw(dc, PairingScreen.lines(dc, _controller));
         }
@@ -70,6 +74,9 @@ class HomeView extends WatchUi.View {
         if (_sync.state == PlanSync.SYNC_IDLE || (_sync.state == PlanSync.SYNC_FAILED && _sync.problem == PlanSync.PROBLEM_AUTH)) {
             _sync.start();
         }
+        if (_run.sync.state == RunSync.RUN_IDLE || (_run.sync.state == RunSync.RUN_FAILED && _run.sync.problem == RunSync.RUN_PROBLEM_AUTH)) {
+            _run.sync.start();
+        }
     }
 }
 
@@ -78,6 +85,49 @@ module HomeScreen {
 
     function text(id as ResourceId) as String {
         return WatchUi.loadResource(id) as String;
+    }
+
+    // How current the plan is, or what the watch is doing about it.
+    function statusLine(sync as PlanSync, now as Number) as PairingLine {
+        var gray = Graphics.COLOR_LT_GRAY;
+        var alert = Graphics.COLOR_YELLOW;
+        if (sync.isPhoneMissing()) {
+            return new PairingLine(text(Rez.Strings.HomeNoPhone), Graphics.FONT_XTINY, alert);
+        }
+        if (sync.state == PlanSync.SYNC_LOADING) {
+            return new PairingLine(text(Rez.Strings.HomeUpdating), Graphics.FONT_XTINY, gray);
+        }
+        var fetched = sync.cache.fetchedAt();
+        var age = ageText(fetched == null ? 0 : now - (fetched as Number));
+        var offline = sync.state == PlanSync.SYNC_FAILED && sync.problem == PlanSync.PROBLEM_UNREACHABLE;
+        var template = text(offline ? Rez.Strings.HomePlanAgeOffline : Rez.Strings.HomePlanAge);
+        return new PairingLine(Lang.format(template, [age]), Graphics.FONT_XTINY, offline ? alert : gray);
+    }
+
+    // The start screen: "Today" (training of the plan, runs planned today), then "Free run".
+    // The selected row is white with a marker, the others gray.
+    function stopLines(dc as Dc, sync as PlanSync, run as RunHome, picker as SessionPicker, now as Number) as Array<PairingLine> {
+        var out = [] as Array<PairingLine>;
+        if (sync.cache.directory() != null) {
+            out.add(statusLine(sync, now).skippable());
+        }
+        var rows = run.stops(sync, picker);
+        var selected = run.selectedIndex(rows, sync);
+        var freeHeader = false;
+        for (var i = 0; i < rows.size(); i++) {
+            var kind = rows[i].kind;
+            if (i == 0) {
+                out.add(new PairingLine(text(Rez.Strings.HomeToday), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY).skippable());
+            }
+            if (!freeHeader && (kind == HomeStop.STOP_FREE || kind == HomeStop.STOP_ZONE2)) {
+                freeHeader = true;
+                out.add(new PairingLine(text(Rez.Strings.HomeFreeRun), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY).skippable());
+            }
+            var chosen = i == selected;
+            var row = chosen ? text(Rez.Strings.HomeMarker) + " " + rows[i].text : rows[i].text;
+            out.add(PairingLayout.lowerNameLine(dc, row, chosen ? Graphics.COLOR_WHITE : Graphics.COLOR_LT_GRAY));
+        }
+        return out;
     }
 
     function lines(dc as Dc, sync as PlanSync, picker as SessionPicker, now as Number) as Array<PairingLine> {
@@ -90,18 +140,7 @@ module HomeScreen {
             return noPlanLines(sync);
         }
         var day = picker.selectedDay(dir) as Dictionary;
-        // status line: how current the plan is, or what the watch is doing about it
-        if (sync.isPhoneMissing()) {
-            out.add(new PairingLine(text(Rez.Strings.HomeNoPhone), Graphics.FONT_XTINY, alert));
-        } else if (sync.state == PlanSync.SYNC_LOADING) {
-            out.add(new PairingLine(text(Rez.Strings.HomeUpdating), Graphics.FONT_XTINY, gray));
-        } else {
-            var fetched = sync.cache.fetchedAt();
-            var age = ageText(fetched == null ? 0 : now - (fetched as Number));
-            var offline = sync.state == PlanSync.SYNC_FAILED && sync.problem == PlanSync.PROBLEM_UNREACHABLE;
-            var template = text(offline ? Rez.Strings.HomePlanAgeOffline : Rez.Strings.HomePlanAge);
-            out.add(new PairingLine(Lang.format(template, [age]), Graphics.FONT_XTINY, offline ? alert : gray));
-        }
+        out.add(statusLine(sync, now));
         var index = picker.selectedIndex(dir);
         var count = ((dir as Dictionary)["days"] as Array).size();
         out.add(new PairingLine(day["n"] as String, Graphics.FONT_MEDIUM, white));
@@ -203,6 +242,7 @@ module HomeFlow {
         var picker = new SessionPicker();
         var sync = Session.planSync();
         var launcher = Session.launcher();
-        return [new HomeView(Session.pairing(), sync, picker, launcher), new HomeDelegate(Session.pairing(), sync, picker, launcher)];
+        var run = new RunHome(Session.runSync(), new PairingClock(), new PreStartLauncher());
+        return [new HomeView(Session.pairing(), sync, picker, launcher, run), new HomeDelegate(Session.pairing(), sync, picker, launcher, run)];
     }
 }

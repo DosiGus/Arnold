@@ -15,7 +15,7 @@ function homeViewDrawsOnDeviceDisplay(logger as Logger) as Boolean {
     rig.pairing.restartPaired();
     rig.loadAll();
     var launcher = new TestLauncher(new Journal(rig.pairing.store), rig.pairing.clock, new RecordingSignals(), PlayerRig.senderFor(rig.pairing.store, rig.pairing.clock));
-    var view = new HomeView(rig.pairing.controller, rig.sync, new SessionPicker(), launcher);
+    var view = new HomeView(rig.pairing.controller, rig.sync, new SessionPicker(), launcher, RunRig.homeFor(rig.pairing));
     view.onUpdate(bitmap.getDc());
     logger.debug("display " + settings.screenWidth + "x" + settings.screenHeight);
     return true;

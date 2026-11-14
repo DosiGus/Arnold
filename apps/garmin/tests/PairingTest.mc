@@ -9,10 +9,16 @@ import Toybox.Test;
 (:test)
 class FakeClock extends PairingClock {
     var now as Number;
+    var offsetMinutes as Number;
 
     function initialize() {
         PairingClock.initialize();
         now = 1000000;
+        offsetMinutes = 0;
+    }
+
+    function utcOffsetMinutes() as Number {
+        return offsetMinutes;
     }
 
     function nowSeconds() as Number {
