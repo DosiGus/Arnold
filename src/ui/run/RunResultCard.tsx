@@ -11,6 +11,7 @@ import {
   UNKNOWN,
   clockLabel,
   distanceLabel,
+  fieldLabel,
   num,
   paceLabel,
   percentLabel,
@@ -284,7 +285,7 @@ export function RunResultCard({
                     <ul className="run-notes" aria-label="Nicht bekannt">
                       {view.unknown.map((u) => (
                         <li key={u.field} className="ac-caption">
-                          {u.field}: {reasonText(u.reason)}
+                          {fieldLabel(u.field)}: {reasonText(u.reason)}
                         </li>
                       ))}
                     </ul>

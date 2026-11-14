@@ -720,6 +720,51 @@ test("run_result with heart rate shows the zones Arnold delivered", async ({
   await expect(zones.locator("li").nth(1)).toContainText("31:40 · 70 %");
 });
 
+test("run_result names unknown values in German, never by the raw field name", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  const unknown = [
+    { field: "rpe", reason: "not_given" },
+    { field: "heart_rate", reason: "hr_no_consent" },
+    { field: "ascent_m", reason: "not_provided" },
+    { field: "cadence_spm", reason: "not_provided" },
+    { field: "pace", reason: "no_pace_data" },
+    { field: "some_future_field", reason: "not_provided" },
+  ];
+  await mockRun(page, "run_result", {
+    get_run_analysis: () => ({
+      value: {
+        ...analysisRun(false),
+        run: {
+          ...analysisRun(false).run,
+          view: doneView({ unknown }),
+        },
+      },
+    }),
+  });
+  await open(page, "run_result", RUN);
+  const list = main(page, "run_result").getByRole("list", {
+    name: "Nicht bekannt",
+  });
+  await expect(list.locator("li")).toHaveCount(unknown.length);
+  await expect(list).toContainText("Anstrengung: Nicht angegeben.");
+  await expect(list).toContainText("Puls: Ohne deine Einwilligung");
+  await expect(list).toContainText("Anstieg: Nicht angegeben.");
+  await expect(list).toContainText("Schrittfrequenz: Nicht angegeben.");
+  await expect(list).toContainText("Tempo: Kein Tempo bekannt.");
+  await expect(list).toContainText("Wert: Nicht angegeben.");
+  for (const raw of [
+    "rpe",
+    "heart_rate",
+    "ascent_m",
+    "cadence_spm",
+    "pace",
+    "some_future_field",
+  ])
+    await expect(list).not.toContainText(raw);
+});
+
 test("run_result without any finished run shows no figures", async ({
   page,
 }) => {

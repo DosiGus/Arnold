@@ -73,6 +73,13 @@ Arnold plant Läufe aus dem Laufprofil des Nutzers; die Vorgabe (Abschnitte, Tem
 | „ich bin 8 km in 44 Minuten gelaufen“ | `log_run`, kein Skill nötig (siehe unten)                                                         |
 | „plane meine Laufwoche“               | `schedule_run_week` Vorschau, nach Ja derselbe Aufruf mit `confirm`                               |
 | „wie lief meine Woche“                | `get_run_week` und/oder `get_run_analysis`, Einordnung macht arnold-coach                         |
+| „was steht heute an“                  | `show_arnold_run` (`card: "run_today"`)                                                           |
+| „wie läuft meine Woche“               | `show_arnold_run` (`card: "run_week"`)                                                            |
+| „wie war mein Lauf“                   | `show_arnold_run` (`card: "run_result"`, `workout_id` nur, wenn bekannt; sonst der letzte Lauf)   |
+| „wie entwickle ich mich beim Laufen“  | `show_arnold_run` (`card: "run_stats"`)                                                           |
+| „ich will auch laufen“                | `show_arnold_run` (`card: "run_setup"`)                                                           |
+
+**Laufkarten.** `show_arnold_run` zeigt die Zahlen als Karte im Chat; sie lädt sie selbst von Arnold. Im Chat danach nur ein, zwei Sätze zur Einordnung, nichts wiederholen und nichts nachrechnen. `run_today` direkt nach `plan_run` und bei „Was steht heute an?“; `run_result` nach einem Lauf („Wie war mein Lauf?“, mit `workout_id`, sonst der letzte Lauf); `run_week` bei „Wie läuft meine Woche?“ und zum Ansehen der Vorschau, bevor du nach der Bestätigung von `schedule_run_week` fragst; `run_stats` bei Verlauf und Entwicklung; `run_setup` bei „Ich will auch laufen“ (dort richtet der Nutzer das Laufprofil ein; kein `update_run_profile` für ihn).
 
 **Laufprofil.** `get_run_profile` zeigt, was Arnold schon weiß und was fehlt. Fehlendes (Ziel, Läufe pro Woche, Erfahrung, Umgebung, Tag des langen Laufs) frag in einer Nachricht mit höchstens drei kurzen Fragen und speichere die Antworten mit `update_run_profile`: neue `request_id`, beim Ändern `expected_row_revision` aus `get_run_profile`. Nur Angaben des Nutzers, nie schätzen.
 
@@ -101,7 +108,7 @@ Einen gelaufenen Lauf nachtragen („ich bin 8 km in 44 Minuten gelaufen“) ist
 **Laufwoche verteilen** („plane meine Laufwoche“). Es braucht einen aktiven Plan mit Laufeinheiten; sonst sagen, dass es noch keine gibt, und anbieten, welche in den Plan aufzunehmen.
 
 1. Vorschau: `schedule_run_week` mit `timezone`, ohne `confirm`. Optional `focus` (`running` oder `strength`), wenn der Nutzer das Hauptziel der Woche nennt. Es wird nichts gespeichert.
-2. Die Vorschau knapp zeigen: je Lauf Tag, Dauer, Stufe und die Begründung, dazu die Hinweise (z. B. „harter Lauf am Beintag“, „diese Woche gekürzt“). Zahlen nur aus dem Ergebnis. Dann fragen, ob Arnold die Woche so speichern soll.
+2. Die Vorschau zeigen: bevorzugt mit `show_arnold_run` (`card: "run_week"`, dort steht sie zum Bestätigen), sonst knapp im Text: je Lauf Tag, Dauer, Stufe und die Begründung, dazu die Hinweise (z. B. „harter Lauf am Beintag“, „diese Woche gekürzt“). Zahlen nur aus dem Ergebnis. Dann fragen, ob Arnold die Woche so speichern soll.
 3. Erst nach einem ausdrücklichen Ja: derselbe Aufruf mit `confirm: true`, neuer `request_id` und `preview_hash` unverändert aus der Vorschau. Das speichert genau diese Woche einmal.
 4. `CONFIRMATION_REQUIRED` heißt: Die Daten haben sich geändert. Neue Vorschau holen, zeigen und neu fragen. Bei `retry_same_request` denselben Aufruf mit derselben `request_id` wiederholen.
 5. Will der Nutzer etwas anders: nicht selbst umbauen, sondern einzelne Läufe mit `update_planned_run` ändern oder Plan und Profil anpassen und eine neue Vorschau holen.

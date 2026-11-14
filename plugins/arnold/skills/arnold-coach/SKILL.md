@@ -43,6 +43,7 @@ Dieser Skill liest nur. Er speichert, ändert und löscht nichts. Soll etwas ges
 - Aufbau des Plans: `get_training_plan`.
 - Laufprofil, Zonen und was Arnold daraus ableitet: `get_run_profile` (`timezone` angeben).
 - Läufe auswerten: `get_run_analysis` mit `view: "run"` (ein Lauf), `"week"` oder `"four_weeks"`; die Woche mit Laufen und Kraft, geplant, erledigt, verpasst und die Hinweise: `get_run_week`. Beide mit `timezone`.
+- Will der Nutzer seinen Lauf, die Laufwoche oder den Lauf-Verlauf sehen: `show_arnold_run` mit `card: "run_result"` („Wie war mein Lauf?“, `workout_id` oder der letzte Lauf), `"run_week"` („Wie läuft meine Woche?“), `"run_stats"` (Verlauf, Entwicklung), `"run_today"` („Was steht heute an?“) oder `"run_setup"` („Ich will auch laufen“). Die Karte zeigt die Zahlen; im Chat nur kurz einordnen, nichts wiederholen oder nachrechnen.
 - Will der Nutzer den Verlauf sehen: `show_arnold_dashboard` mit `card: "progress"` und `exercise_id`. Die Karte zeigt die Zahlen; im Chat nur einordnen, nichts wiederholen.
 
 **3. Einordnen**
@@ -80,7 +81,7 @@ Wie die Felder zu lesen sind und ab wann eine Aussage trägt, steht in `referenc
 
 Die Regeln und ihre Einordnung (Belegt, Faustregel, Produkt) stehen in `references/trainingswissenschaft.md`, Abschnitt „Laufen“; wie die Felder zu lesen sind, in `references/daten-lesen.md`, Abschnitt „Läufe“. Du erklärst, was Arnold vorgibt, und änderst nichts.
 
-**„Wie lief meine Woche?“** `get_run_week` (Woche mit Laufen und Kraft: geplant, erledigt, verpasst, Hinweise) und/oder `get_run_analysis` mit `view: "week"`. Ergebnis zuerst: erledigt gegen geplant, höchstens eine Zahl dazu, ein Punkt, der gut lief, und höchstens ein nächster Schritt. Unbekannte Werte (`null`) sind unbekannt.
+**„Wie lief / läuft meine Woche?“** Zuerst die Karte `show_arnold_run` mit `card: "run_week"`; Zahlen daraus wiederholst du nicht. Brauchst du sie für deine Einordnung: `get_run_week` (Woche mit Laufen und Kraft: geplant, erledigt, verpasst, Hinweise) und/oder `get_run_analysis` mit `view: "week"`. Ergebnis zuerst: erledigt gegen geplant, höchstens eine Zahl dazu, ein Punkt, der gut lief, und höchstens ein nächster Schritt. Unbekannte Werte (`null`) sind unbekannt.
 
 **Zonen.** Zone 1 Regeneration, 2 Grundlage, 3 zügiger Dauerlauf, 4 Schwelle, 5 maximale Sauerstoffaufnahme. Grenzen und Tempozonen liest du aus `get_run_profile`; Pulsbereiche nennst du nur, wenn Arnold sie liefert. Gibt es keine, nur die Zonennummer und das Gefühl (Zone 2: ganze Sätze sprechen).
 
