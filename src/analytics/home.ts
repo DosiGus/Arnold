@@ -7,7 +7,7 @@
  * read, the reference date comes in from the caller.
  */
 import type { ArnoldLoadBasis } from "../shared/arnold-schema-v1.js";
-import { weekActivity, weekStreak } from "./activity.js";
+import { weekActivity, weekStreak, type RunDays } from "./activity.js";
 import type { PreparedInput } from "./eligibility.js";
 import { goalProgress, type GoalProgress } from "./goals.js";
 import { addDays, compareDate, monthKey, weekStart } from "./period.js";
@@ -114,12 +114,18 @@ export type HomeAnalytics = Readonly<{
   latest_body_weight: Readonly<{ date: string; weight_kg: number }> | null;
 }>;
 
-function streakOf(input: PreparedInput, weeklyGoal: number | null): HomeStreak {
-  const weeks = weekActivity(input);
-  const streak = weekStreak(weeks, input.referenceDate, weeklyGoal);
+function streakOf(
+  input: PreparedInput,
+  weeklyGoal: number | null,
+  runs?: RunDays,
+): HomeStreak {
+  // Training days include completed runs; everything else on this screen stays
+  // strength-only.
+  const reference = (runs?.input ?? input).referenceDate;
+  const weeks = weekActivity(input, runs);
+  const streak = weekStreak(weeks, reference, weeklyGoal);
   const byWeek = new Map(weeks.map((w) => [w.week_start, w]));
-  const anchor =
-    input.referenceDate ?? input.dataLastDate ?? weeks.at(-1)?.week_start;
+  const anchor = reference ?? input.dataLastDate ?? weeks.at(-1)?.week_start;
   const strip: HomeStreakWeek[] = [];
   if (anchor) {
     const current = weekStart(anchor);
@@ -131,7 +137,7 @@ function streakOf(input: PreparedInput, weeklyGoal: number | null): HomeStreak {
           week_start: week,
           training_days: days,
           goal_met: weeklyGoal !== null && days >= weeklyGoal,
-          is_current_week: i === 0 && input.referenceDate !== null,
+          is_current_week: i === 0 && reference !== null,
         }),
       );
     }
@@ -366,6 +372,7 @@ export function nextSession(input: PreparedInput): HomeNextSession | null {
 export function computeHome(
   input: PreparedInput,
   weeklyGoal: number | null,
+  runs?: RunDays,
 ): HomeAnalytics {
   const reference = input.referenceDate ?? input.dataLastDate;
   const completed = input.completedWorkouts;
@@ -465,7 +472,7 @@ export function computeHome(
   return Object.freeze({
     reference_date: input.referenceDate,
     next_session: nextSession(input),
-    streak: streakOf(input, weeklyGoal),
+    streak: streakOf(input, weeklyGoal, runs),
     workouts_this_year:
       year === null
         ? completed.length

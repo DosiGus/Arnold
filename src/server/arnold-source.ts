@@ -9,6 +9,10 @@ import {
   ArnoldDatasetSchema,
   strengthTrainingView,
 } from "../shared/arnold-schema-v1.js";
+import {
+  runTrainingDates,
+  type DatasetWithRunDays,
+} from "../analytics/activity.js";
 import type { Recovery } from "../shared/write-recovery.js";
 import type { ArnoldDataset } from "../shared/arnold-schema-v1.js";
 import type { ArnoldStore } from "./workout/infrastructure.js";
@@ -127,10 +131,18 @@ export function storeSource(
           retryable: false,
           recovery: "contact_support",
         });
+      // Completed runs reach the dashboard only as calendar days (RUN-022):
+      // the dates are read here, from this user's own rows, and travel with
+      // the strength-only dataset.
+      const runDays = runTrainingDates(parsed.data);
+      const strength = strengthTrainingView(parsed.data);
+      const dataset: DatasetWithRunDays = runDays.length
+        ? { ...strength, runTrainingDates: runDays }
+        : strength;
       return {
         // Dashboard, analytics and workout lists read strength training
         // only; runs and planned workouts are left out (RUN-003).
-        dataset: strengthTrainingView(parsed.data),
+        dataset,
         fetchedAt: new Date().toISOString(),
         ageMs: 0,
       };

@@ -5,7 +5,12 @@ import {
   ARNOLD_SCHEMA_VERSION,
   type ArnoldDataset,
 } from "../shared/arnold-schema-v1.js";
-import { computeActivity } from "./activity.js";
+import {
+  computeActivity,
+  resolveRunDays,
+  runTrainingDatesOf,
+  type DatasetWithRunDays,
+} from "./activity.js";
 import { prepareAnalyticsInput, type PreparedInput } from "./eligibility.js";
 import { isCalendarDate } from "./period.js";
 import { computePlanAdherence } from "./plans.js";
@@ -87,6 +92,8 @@ export function buildArnoldDashboardAnalytics(
         (issue) => `${issue.path.join(".") || "options"}: ${issue.message}`,
       ),
     );
+  // Completed runs count as training days (RUN-022), nothing else of them.
+  const runDates = runTrainingDatesOf(dataset as DatasetWithRunDays);
   // Strength figures only: runs and planned workouts never count (RUN-003).
   dataset = strengthTrainingView(dataset);
   const filter = parseAnalyticsFilter(options.filter ?? {});
@@ -94,6 +101,11 @@ export function buildArnoldDashboardAnalytics(
     dataset,
     filter,
     parsed.data.reference_date ?? null,
+  );
+  const runs = resolveRunDays(
+    input,
+    runDates,
+    (parsed.data.reference_date ?? null) !== null,
   );
   const result = {
     metadata: {
@@ -122,6 +134,7 @@ export function buildArnoldDashboardAnalytics(
     activity: computeActivity(
       input,
       parsed.data.weekly_goal_training_days ?? null,
+      runs,
     ),
     volume: computeVolume(input),
     records: computeRecords(input),
@@ -130,7 +143,7 @@ export function buildArnoldDashboardAnalytics(
       parsed.data.progress_exercise_ids ?? null,
       parsed.data.include_series ?? true,
     ),
-    weekly_trends: computeTrends(input),
+    weekly_trends: computeTrends(input, runs),
     plan_adherence: computePlanAdherence(input),
     data_quality: computeDataQuality(input),
   };
@@ -153,5 +166,10 @@ export function buildHomeAnalytics(
   const input = prepareAnalytics(dataset, {
     reference_date: options.reference_date ?? null,
   });
-  return computeHome(input, options.weekly_goal_training_days ?? null);
+  const runs = resolveRunDays(
+    input,
+    runTrainingDatesOf(dataset as DatasetWithRunDays),
+    (options.reference_date ?? null) !== null,
+  );
+  return computeHome(input, options.weekly_goal_training_days ?? null, runs);
 }

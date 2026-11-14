@@ -1,3 +1,4 @@
+import type { RunDays } from "./activity.js";
 import type { PreparedWorkout, PreparedInput } from "./eligibility.js";
 import type { SetLoadAnalysis } from "./load.js";
 import {
@@ -66,14 +67,26 @@ function group(
 /**
  * Week and month comparisons. Buckets without any training are kept so a gap is
  * visible as a zero instead of disappearing from the chart.
+ *
+ * With `runs`, the days of completed runs also count as training days and as
+ * trained dates; workouts, sets and volume stay strength-only.
  */
-export function computeTrends(input: PreparedInput) {
+export function computeTrends(input: PreparedInput, runs?: RunDays) {
+  const days = runs?.input ?? input;
+  const runDatesIn = (keyOf: (date: string) => string) => {
+    const byKey = new Map<string, string[]>();
+    for (const date of runs?.dates ?? [])
+      byKey.set(keyOf(date), [...(byKey.get(keyOf(date)) ?? []), date]);
+    return byKey;
+  };
+  const runWeeks = runDatesIn(weekStart);
+  const runMonths = runDatesIn(monthKey);
   const currentWeek =
-    input.referenceDate === null ? null : weekStart(input.referenceDate);
+    days.referenceDate === null ? null : weekStart(days.referenceDate);
   const weeklyBuckets = group(
     input.workouts,
     (workout) => workout.week_start,
-    input.periodWeeks,
+    days.periodWeeks,
   );
   const weekly: {
     week_start: string;
@@ -97,16 +110,20 @@ export function computeTrends(input: PreparedInput) {
       ...isoWeek(week_start),
       is_current_week: week_start === currentWeek,
       workouts: bucket.workouts.length,
-      training_days: bucket.dates.size,
-      // Calendar days with a completed session, from workout_date_local. Two
-      // sessions on one day are one day (D5).
+      training_days: new Set([
+        ...bucket.dates,
+        ...(runWeeks.get(week_start) ?? []),
+      ]).size,
+      // Calendar days with a completed session or run, from
+      // workout_date_local. Two sessions on one day are one day (D5).
       trained_dates: Object.freeze(
         [
-          ...new Set(
-            bucket.workouts
+          ...new Set([
+            ...bucket.workouts
               .filter((workout) => workout.completed)
               .map((workout) => workout.date),
-          ),
+            ...(runWeeks.get(week_start) ?? []),
+          ]),
         ].sort(compareDate),
       ),
       working_sets: analyses.filter((analysis) => analysis.bucket === "working")
@@ -125,8 +142,8 @@ export function computeTrends(input: PreparedInput) {
   // next month would then report an improvement against a month nobody analysed.
   const months = [
     ...new Set([
-      ...(input.periodFrom !== null && input.periodTo !== null
-        ? monthsBetween(input.periodFrom, input.periodTo)
+      ...(days.periodFrom !== null && days.periodTo !== null
+        ? monthsBetween(days.periodFrom, days.periodTo)
         : []),
       ...input.workouts.map((workout) => monthKey(workout.date)),
     ]),
@@ -152,7 +169,8 @@ export function computeTrends(input: PreparedInput) {
     monthly.push({
       month,
       workouts: bucket.workouts.length,
-      training_days: bucket.dates.size,
+      training_days: new Set([...bucket.dates, ...(runMonths.get(month) ?? [])])
+        .size,
       working_sets: analyses.filter((analysis) => analysis.bucket === "working")
         .length,
       nominal_volume,

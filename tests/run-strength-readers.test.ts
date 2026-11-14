@@ -3,12 +3,17 @@
  * workouts. The strength figures of a dataset stay exactly the same when the
  * same dataset also holds completed runs, planned runs (also after the last
  * strength day), a run profile and run sessions in the active plan.
+ *
+ * RUN-022: the one exception is the count of training days. The calendar days
+ * of completed runs count there (tests/analytics-run-days.test.ts), so the
+ * comparisons below leave those figures out; everything else is identical.
  */
 import { describe, expect, it } from "vitest";
 import {
   buildArnoldDashboardAnalytics,
   buildHomeAnalytics,
 } from "../src/analytics/index";
+import type { DatasetWithRunDays } from "../src/analytics/activity";
 import { goalPoints } from "../src/analytics/goals";
 import {
   buildDashboardView,
@@ -159,6 +164,29 @@ function withRunning(): ArnoldDataset {
   });
 }
 
+/** Day figures that completed runs legitimately change (RUN-022). */
+const DAY_FIGURES = new Set([
+  "training_days",
+  "completed_training_days",
+  "average_training_days_per_week",
+  "training_days_current_month",
+  "first_training_date",
+  "last_training_date",
+  "trained_dates",
+  "week_streak",
+  "streak",
+]);
+function withoutDayFigures(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withoutDayFigures);
+  if (value && typeof value === "object")
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([key]) => !DAY_FIGURES.has(key))
+        .map(([key, entry]) => [key, withoutDayFigures(entry)]),
+    );
+  return value;
+}
+
 const fakeStore = (dataset: ArnoldDataset) =>
   ({ read: async () => dataset }) as unknown as ArnoldStore;
 const source = (dataset: ArnoldDataset) =>
@@ -180,14 +208,18 @@ describe("strength readers with running data in the dataset", () => {
   });
 
   it("keeps the dashboard analytics and the start screen figures identical", () => {
-    expect(buildArnoldDashboardAnalytics(mixed)).toEqual(
-      buildArnoldDashboardAnalytics(base),
+    expect(withoutDayFigures(buildArnoldDashboardAnalytics(mixed))).toEqual(
+      withoutDayFigures(buildArnoldDashboardAnalytics(base)),
     );
     for (const weekly of [null, 3])
       expect(
-        buildHomeAnalytics(mixed, { weekly_goal_training_days: weekly }),
+        withoutDayFigures(
+          buildHomeAnalytics(mixed, { weekly_goal_training_days: weekly }),
+        ),
       ).toEqual(
-        buildHomeAnalytics(base, { weekly_goal_training_days: weekly }),
+        withoutDayFigures(
+          buildHomeAnalytics(base, { weekly_goal_training_days: weekly }),
+        ),
       );
   });
 
@@ -205,11 +237,18 @@ describe("strength readers with running data in the dataset", () => {
 
   it("shows the same dashboard and workout history through the data source", async () => {
     const context = { generatedAt: "2026-11-13T06:00:00Z" };
-    const fromMixed = (await source(mixed).load()).dataset;
+    const loaded = (await source(mixed).load()).dataset as DatasetWithRunDays;
+    // The loader hands over the strength dataset plus the days of completed
+    // runs; those two completed runs are the only addition (RUN-022).
+    const { runTrainingDates: runDays, ...fromMixed } = loaded;
+    expect(runDays).toEqual(["2026-09-08", "2026-10-12"]);
     expect(fromMixed).toEqual(base);
     expect(buildDashboardView(fromMixed, context)).toEqual(
       buildDashboardView(base, context),
     );
+    expect(
+      withoutDayFigures(buildDashboardView(loaded, context).totals),
+    ).toEqual(withoutDayFigures(buildDashboardView(base, context).totals));
     expect(
       buildWorkoutHistoryView(fromMixed, context, {
         statuses: [
