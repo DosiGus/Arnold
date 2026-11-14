@@ -13,6 +13,22 @@ module StoreKeys {
 
     const RUN_UPCOMING as String = "run:up";   // planned runs of today and the next six days (RUN-012)
 
+    const RUN_ACTIVE as String = "run:active";   // uuid of the run in progress (or finished, not yet sent), RUN-015
+
+    // State of a run being recorded (RUN-015): small head entry, the prescription it runs on (a copy), and the
+    // 100 m splits in chunks of 60.
+    function runHead(runUuid as String) as String {
+        return "run:" + runUuid + ":h";
+    }
+
+    function runCopy(runUuid as String) as String {
+        return "run:" + runUuid + ":p";
+    }
+
+    function runSplits(runUuid as String, chunk as Number) as String {
+        return "run:" + runUuid + ":s" + chunk.toString();
+    }
+
     // The prescription of one planned run, stored on its own like a plan day.
     function runPrescription(runId as String) as String {
         return "run:p:" + runId;

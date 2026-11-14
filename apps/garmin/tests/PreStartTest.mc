@@ -62,7 +62,7 @@ class RecordingStarter extends RunStarter {
     var started as Array<PreStartModel>;
 
     function initialize() {
-        RunStarter.initialize();
+        RunStarter.initialize(null);
         started = [] as Array<PreStartModel>;
     }
 

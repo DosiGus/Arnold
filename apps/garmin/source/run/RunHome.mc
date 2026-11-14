@@ -166,6 +166,6 @@ class PreStartLauncher {
         var model = new PreStartModel(request);
         var sensors = new RunSensors(new GpsCapability());
         var view = new PreStartView(model, sensors);
-        WatchUi.pushView(view, new PreStartDelegate(model, sensors, new RunStarter()), WatchUi.SLIDE_LEFT);
+        WatchUi.pushView(view, new PreStartDelegate(model, sensors, new RunStarter(sensors)), WatchUi.SLIDE_LEFT);
     }
 }

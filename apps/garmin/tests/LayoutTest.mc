@@ -423,8 +423,6 @@ function thePreStartScreenFitsOnEveryDisplay(logger as Logger) as Boolean {
     // a free run in the shortest form
     var free = new PreStartModel(PreStartRig.free());
     Test.assert(LayoutRig.fits(dc, PreStartScreen.lines(dc, free, Position.QUALITY_NOT_AVAILABLE, null, 100)));
-    // the placeholder after START
-    Test.assert(LayoutRig.fits(dc, [new PairingLine(HomeScreen.text(Rez.Strings.RecPlaceholder), Graphics.FONT_MEDIUM, Graphics.COLOR_WHITE)] as Array<PairingLine>));
     return true;
 }
 
