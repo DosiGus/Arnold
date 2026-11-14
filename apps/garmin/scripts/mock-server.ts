@@ -21,6 +21,14 @@
  *     count = how many requests it hits (default: until cleared); route = only that route.
  *   DELETE /__mock/fault   clear;  GET /__mock/log   request log;  POST /__mock/reset   all state
  *
+ * Finished runs (RUN-018): POST /runs is checked against WatchRunRequestSchema of the server (strict keys, limits),
+ * answers 201 {workout_id, replayed:false, hr_discarded}, the same request_id and content again 200 replayed:true, the
+ * same request_id with other content or the same session_uuid under another request_id 409 DUPLICATE_OPERATION /
+ * DUPLICATE_WORKOUT. Heart rate values without the consent are dropped (hr_discarded:true). PATCH /runs/:id/rpe is not
+ * here: a Connect IQ watch cannot send PATCH, the effort travels in POST /runs.
+ *   POST /__mock/health-consent {"on":false}   switch the consent (loopback only)
+ *   npx tsx apps/garmin/scripts/mock-server.ts --run-e2e <log file of the simulator>   post the printed runs, check, exit
+ *
  * Planned runs (RUN-012): GET /runs/upcoming (today and the next six days, relative to the current
  * UTC date) and GET /runs/:id (prescription, ETag `"<tag>"`; the list carries the tag without quotes,
  * as the server does). Both with If-None-Match, like the plan routes.
@@ -34,6 +42,7 @@ import {
 } from "node:http";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { WatchRunRequestSchema } from "../../../src/shared/run-contract.js";
 
 const BASE = "/api/watch/v1";
 const BODY_LIMIT = 64 * 1024;
@@ -208,6 +217,11 @@ export function createMockState(fixtures: ReturnType<typeof loadFixtures>) {
       { hash: string; response: Json; count: number }
     >(),
     workoutSessions: new Set<string>(),
+    runUploads: new Map<
+      string,
+      { hash: string; response: Json; count: number; stored: Json }
+    >(),
+    runSessions: new Map<string, string>(),
     health: new Map<string, Json>(),
     fault: null as Fault | null,
     log: [] as LogEntry[],
@@ -288,7 +302,7 @@ function route(
   }
 
   const isWatchRoute =
-    /^\/(device|plan|plan\/recent|plan\/sessions\/[^/]+|runs\/[^/]+|workouts|workouts\/[^/]+\/health)$/.test(
+    /^\/(device|plan|plan\/recent|plan\/sessions\/[^/]+|runs|runs\/[^/]+|workouts|workouts\/[^/]+\/health)$/.test(
       path,
     );
   if (!isWatchRoute) return null;
@@ -388,6 +402,53 @@ function route(
     state.workouts.set(requestId, { hash, response, count: 1 });
     state.workoutSessions.add(sessionUuid);
     return { status: 200, body: response };
+  }
+  if (method === "POST" && path === "/runs") {
+    const parsed = WatchRunRequestSchema.safeParse(body);
+    if (!parsed.success)
+      return fail(
+        "VALIDATION_ERROR",
+        parsed.error.issues
+          .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+          .join("; ")
+          .slice(0, 300),
+      );
+    const request = parsed.data;
+    const hash = bodyHash(body);
+    const seen = state.runUploads.get(request.request_id);
+    if (seen) {
+      seen.count += 1;
+      if (seen.hash !== hash)
+        return fail(
+          "DUPLICATE_OPERATION",
+          "Gleiche request_id mit anderem Inhalt.",
+        );
+      return { status: 200, body: { ...seen.response, replayed: true } };
+    }
+    if (state.runSessions.has(request.session_uuid))
+      return fail("DUPLICATE_WORKOUT", "Dieser Lauf ist schon gespeichert.");
+    const hasHr =
+      request.hr != null || request.segments.some((segment) => segment.hr);
+    const discarded = hasHr && !state.healthConsent;
+    const stored: Json = { ...request };
+    if (discarded) {
+      delete stored.hr;
+      stored.segments = request.segments.map(({ hr: _hr, ...rest }) => rest);
+    }
+    const response = {
+      ...envelope,
+      workout_id: `wo_${randomUUID()}`,
+      replayed: false,
+      hr_discarded: discarded,
+    };
+    state.runUploads.set(request.request_id, {
+      hash,
+      response,
+      count: 1,
+      stored,
+    });
+    state.runSessions.set(request.session_uuid, request.request_id);
+    return { status: 201, body: response };
   }
   const health = /^\/workouts\/([^/]+)\/health$/.exec(path);
   if (method === "PUT" && health) {
@@ -539,10 +600,20 @@ export function startMockServer(options: {
           state.fault = null;
           return send(res, { status: 200, body: { fault: null } });
         }
+        if (url.pathname === "/__mock/health-consent" && method === "POST") {
+          state.healthConsent = input.on === true;
+          return send(res, {
+            status: 200,
+            body: { health_consent: state.healthConsent },
+          });
+        }
         if (url.pathname === "/__mock/log")
           return send(res, {
             status: 200,
             body: {
+              runs: Object.fromEntries(
+                [...state.runUploads].map(([id, r]) => [id, r.count]),
+              ),
               log: state.log,
               workouts: Object.fromEntries(
                 [...state.workouts].map(([id, w]) => [id, w.count]),
@@ -822,6 +893,138 @@ async function selfTest(port: number, fixturesDir: string) {
     (await call("POST", `${BASE}/workouts`, { pad: "x".repeat(70000) }, auth))
       .status === 413,
   );
+  // Finished runs (RUN-018): the server's schema, replay, duplicates, consent.
+  const runBody = (uuid: string, extra: Json = {}): Json => ({
+    request_id: `gr_${uuid}`,
+    session_uuid: uuid,
+    workout_date_local: "2026-11-10",
+    utc_offset_min: 60,
+    started_at_utc: "2026-11-10T06:00:00Z",
+    ended_at_utc: "2026-11-10T06:30:00Z",
+    environment: "outdoor",
+    run_type: "base",
+    timer_s: 1800,
+    elapsed_s: 1800,
+    distance_m: 4300,
+    distance_source: "gps",
+    splits: [30, 60, 90],
+    pauses: 0,
+    segments: [
+      { i: 0, rep: null, kind: 1, st: 2, t: 1800, dm: 4300, tz: null },
+    ],
+    ...extra,
+  });
+  const runHr = {
+    avg: 140,
+    max: 150,
+    zone_s: [0, 0, 1800, 0, 0],
+    zones: [100, 120, 140, 160, 180, 200],
+    zones_sport: "running",
+  };
+  const uuidA = randomUUID();
+  const runA = await call(
+    "POST",
+    `${BASE}/runs`,
+    runBody(uuidA, { hr: runHr, rpe: 5 }),
+    auth,
+  );
+  check(
+    "Lauf: neu 201 mit workout_id, nicht wiederholt, Puls behalten",
+    runA.status === 201 &&
+      /^wo_/.test(String(runA.body?.workout_id)) &&
+      runA.body?.replayed === false &&
+      runA.body?.hr_discarded === false,
+  );
+  const runAgain = await call(
+    "POST",
+    `${BASE}/runs`,
+    runBody(uuidA, { hr: runHr, rpe: 5 }),
+    auth,
+  );
+  check(
+    "Lauf: gleiche Anfrage 200 replayed, gleiche workout_id",
+    runAgain.status === 200 &&
+      runAgain.body?.replayed === true &&
+      runAgain.body?.workout_id === runA.body?.workout_id,
+  );
+  const runOther = await call(
+    "POST",
+    `${BASE}/runs`,
+    runBody(uuidA, { rpe: 6 }),
+    auth,
+  );
+  check(
+    "Lauf: gleiche request_id, anderer Inhalt 409 DUPLICATE_OPERATION",
+    runOther.status === 409 &&
+      (runOther.body?.error as Json)?.code === "DUPLICATE_OPERATION",
+  );
+  const runTwin = await call(
+    "POST",
+    `${BASE}/runs`,
+    { ...runBody(uuidA), request_id: "gr_other" },
+    auth,
+  );
+  check(
+    "Lauf: dieselbe session_uuid unter neuer request_id 409 DUPLICATE_WORKOUT",
+    runTwin.status === 409 &&
+      (runTwin.body?.error as Json)?.code === "DUPLICATE_WORKOUT",
+  );
+  const runBad = await call(
+    "POST",
+    `${BASE}/runs`,
+    runBody(randomUUID(), { lat: 1.5 }),
+    auth,
+  );
+  check(
+    "Lauf: unbekanntes Feld (Koordinate) 422",
+    runBad.status === 422 &&
+      (runBad.body?.error as Json)?.code === "VALIDATION_ERROR",
+  );
+  const runLong = await call(
+    "POST",
+    `${BASE}/runs`,
+    runBody(randomUUID(), { splits: new Array(60).fill(10) }),
+    auth,
+  );
+  check("Lauf: mehr Zwischenzeiten als Strecke 422", runLong.status === 422);
+  await call("POST", "/__mock/health-consent", { on: false });
+  const uuidB = randomUUID();
+  const runB = await call(
+    "POST",
+    `${BASE}/runs`,
+    runBody(uuidB, { hr: runHr }),
+    auth,
+  );
+  check(
+    "Lauf: Puls ohne Einwilligung verworfen (hr_discarded)",
+    runB.status === 201 &&
+      runB.body?.hr_discarded === true &&
+      !("hr" in (state.runUploads.get(`gr_${uuidB}`)?.stored ?? {})),
+  );
+  const uuidC = randomUUID();
+  const runC = await call("POST", `${BASE}/runs`, runBody(uuidC), auth);
+  check(
+    "Lauf: ohne Puls und ohne Einwilligung nichts verworfen",
+    runC.status === 201 && runC.body?.hr_discarded === false,
+  );
+  await call("POST", "/__mock/health-consent", { on: true });
+  check(
+    "Lauf: Log zaehlt die Wiederholung",
+    ((await call("GET", "/__mock/log")).body?.runs as Json)?.[`gr_${uuidA}`] ===
+      3,
+  );
+  check(
+    "Lauf: PATCH …/rpe gibt es nicht (die Uhr kann es nicht)",
+    (
+      await call(
+        "PATCH",
+        `${BASE}/runs/${uuidA}/rpe`,
+        { request_id: "x", rpe: 5 },
+        auth,
+      )
+    ).status >= 400,
+  );
+
   await call("POST", "/__mock/fault", {
     fault: "STORAGE_UNAVAILABLE",
     count: 1,
@@ -897,12 +1100,148 @@ async function selfTest(port: number, fixturesDir: string) {
   process.exit(failed ? 1 : 0);
 }
 
+/**
+ * End-to-end check of RUN-018: the requests the watch built in the simulator (the unit test printed them as
+ * `RUNPAYLOAD <name> <json>`) go to the mock server as the watch would send them; the server's schema accepts them,
+ * a repeat is the same run, and without the consent no heart rate value is there to be dropped.
+ */
+async function runE2e(port: number, fixturesDir: string, file: string) {
+  const { server, state } = startMockServer({
+    port,
+    host: "127.0.0.1",
+    fixturesDir,
+    quiet: true,
+  });
+  await new Promise((r) => server.once("listening", r));
+  const base = `http://127.0.0.1:${port}`;
+  const call = async (
+    method: string,
+    path: string,
+    body?: unknown,
+    headers: Record<string, string> = {},
+  ) => {
+    const res = await fetch(base + path, {
+      method,
+      headers:
+        body === undefined
+          ? headers
+          : { "Content-Type": "application/json", ...headers },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const text = await res.text();
+    return {
+      status: res.status,
+      body: text ? (JSON.parse(text) as Json) : null,
+    };
+  };
+  const checks: [string, boolean][] = [];
+  const check = (name: string, ok: boolean) => checks.push([name, ok]);
+  const start = await call("POST", `${BASE}/pair/start`, {
+    device_label: "Forerunner 255",
+    part_number: "006-B3992-00",
+    app_version: "0.1.0",
+  });
+  await call("POST", `${BASE}/pair/token`, {
+    device_code: start.body?.device_code,
+  });
+  const poll = await call("POST", `${BASE}/pair/token`, {
+    device_code: start.body?.device_code,
+  });
+  const auth = {
+    Authorization: `Bearer ${String(poll.body?.access_token ?? "")}`,
+  };
+
+  const lines = readFileSync(file, "utf8")
+    .split("\n")
+    .filter((line) => line.includes("RUNPAYLOAD "));
+  const payloads = new Map<string, Json>();
+  for (const line of lines) {
+    const match = /RUNPAYLOAD (\S+) (\{.*\})\s*$/.exec(line);
+    if (match)
+      payloads.set(
+        match[1]!,
+        JSON.parse(match[2]!.replace(/\\"/g, '"')) as Json,
+      );
+  }
+  for (const name of [
+    "grundlage-mit-hr",
+    "intervalle-mit-hr",
+    "laufband-ohne-hr",
+  ])
+    check(`${name}: vom Simulator ausgegeben`, payloads.has(name));
+  for (const [name, payload] of payloads) {
+    const withHr = name.endsWith("-mit-hr");
+    check(
+      `${name}: Pulswerte ${withHr ? "mit" : "ohne"} Einwilligung`,
+      withHr
+        ? payload.hr != null
+        : payload.hr === undefined && !JSON.stringify(payload).includes('"hr"'),
+    );
+    check(
+      `${name}: keine Koordinaten`,
+      !/"(lat|lon|position|coord)/i.test(JSON.stringify(payload)),
+    );
+    const first = await call("POST", `${BASE}/runs`, payload, auth);
+    check(
+      `${name}: Server nimmt den Lauf an (201)`,
+      first.status === 201 &&
+        first.body?.replayed === false &&
+        first.body?.hr_discarded === false,
+    );
+    if (first.status !== 201) console.log(JSON.stringify(first.body));
+    const again = await call("POST", `${BASE}/runs`, payload, auth);
+    check(
+      `${name}: Wiederholung ist derselbe Lauf (200, replayed)`,
+      again.status === 200 &&
+        again.body?.replayed === true &&
+        again.body?.workout_id === first.body?.workout_id,
+    );
+    check(
+      `${name}: ein Lauf gespeichert`,
+      state.runUploads.get(String(payload.request_id))?.count === 2 &&
+        state.runSessions.get(String(payload.session_uuid)) ===
+          payload.request_id,
+    );
+  }
+  // A server without the consent: the watch's run without heart rate values loses nothing.
+  await call("POST", "/__mock/health-consent", { on: false });
+  const treadmill = payloads.get("laufband-ohne-hr");
+  if (treadmill) {
+    const fresh = {
+      ...treadmill,
+      request_id: `gr_${randomUUID()}`,
+      session_uuid: randomUUID(),
+    };
+    const r = await call("POST", `${BASE}/runs`, fresh, auth);
+    check(
+      "laufband-ohne-hr: ohne Einwilligung nichts verworfen",
+      r.status === 201 && r.body?.hr_discarded === false,
+    );
+  }
+  server.close();
+  for (const [name, ok] of checks)
+    console.log(`${ok ? "ok  " : "FEHLER"} ${name}`);
+  const failed = checks.filter(([, ok]) => !ok).length;
+  console.log(
+    failed
+      ? `${failed} von ${checks.length} fehlgeschlagen`
+      : `E2E Lauf: ${checks.length} Prüfungen bestanden`,
+  );
+  process.exit(failed ? 1 : 0);
+}
+
 const port = Number(process.env.MOCK_PORT ?? 8812);
 const fixturesDir = resolve(
   process.env.WATCH_FIXTURES_DIR ?? join(repoRoot, "tests/fixtures/watch"),
 );
 if (process.argv.includes("--self-test")) {
   await selfTest(port, fixturesDir);
+} else if (process.argv.includes("--run-e2e")) {
+  await runE2e(
+    port,
+    fixturesDir,
+    process.argv[process.argv.indexOf("--run-e2e") + 1]!,
+  );
 } else {
   const host = process.env.MOCK_HOST ?? "127.0.0.1";
   const { server } = startMockServer({
