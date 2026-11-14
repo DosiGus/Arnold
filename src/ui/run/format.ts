@@ -122,6 +122,23 @@ const REASON: Record<string, string> = {
   not_given: "Nicht angegeben.",
   not_provided: "Nicht angegeben.",
 };
+/** German names of the fields a run result can report as unknown. */
+const FIELD: Record<string, string> = {
+  rpe: "Anstrengung",
+  heart_rate: "Puls",
+  pace: "Tempo",
+  ascent_m: "Anstieg",
+  descent_m: "Abstieg",
+  cadence_spm: "Schrittfrequenz",
+  calories_kcal: "Kalorien",
+  distance_m: "Distanz",
+  timer_s: "Laufzeit",
+  elapsed_s: "Gesamtzeit",
+};
+/** Never the raw field name: an unknown field gets a neutral word. */
+export const fieldLabel = (field: string | null | undefined) =>
+  (field && Object.hasOwn(FIELD, field) && FIELD[field]) || "Wert";
+
 export const reasonText = (reason: string | null | undefined) =>
   (reason && REASON[reason]) || "Noch nicht bekannt.";
 
