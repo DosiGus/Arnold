@@ -1,129 +1,118 @@
 import Toybox.Graphics;
 import Toybox.Lang;
+import Toybox.System;
 import Toybox.Timer;
 import Toybox.WatchUi;
 
-// Texts of a run on the display. No state: the numbers come in as parameters.
-module RunText {
-    // "mm:ss", from one hour "h:mm:ss".
-    function clock(seconds as Number) as String {
-        var s = seconds < 0 ? 0 : seconds;
-        var h = s / 3600;
-        var m = (s % 3600) / 60;
-        if (h > 0) {
-            return h.toString() + ":" + m.format("%02d") + ":" + (s % 60).format("%02d");
-        }
-        return m.format("%02d") + ":" + (s % 60).format("%02d");
-    }
-
-    // Distance in km with two decimals and the decimal sign of the language.
-    function km(cm as Number) as String {
-        var hundredths = cm / 1000;
-        return (hundredths / 100).toString() + HomeScreen.text(Rez.Strings.RunSep) + (hundredths % 100).format("%02d");
-    }
-
-    // "5,42 km", or "5,42 km (geschätzt)" when the distance is the watch's estimate.
-    function distance(cm as Number, estimated as Boolean) as String {
-        return Lang.format(HomeScreen.text(estimated ? Rez.Strings.RunKmEst : Rez.Strings.RunKm), [km(cm)]);
-    }
-}
-
-// The stand-in display of a run (RUN-015; RUN-016 builds the real one): time, distance, segment.
-module RunScreen {
-    function lines(dc as Dc, session as RunSession) as Array<PairingLine> {
-        var out = [] as Array<PairingLine>;
-        out.add(new PairingLine(segmentText(session), Graphics.FONT_TINY, Graphics.COLOR_LT_GRAY));
-        out.add(PairingLayout.bigLine(dc, RunText.clock(session.calc.timerS), Graphics.COLOR_WHITE));
-        out.add(new PairingLine(RunText.distance(session.calc.distanceCm, session.distanceIsEstimated()), Graphics.FONT_MEDIUM, Graphics.COLOR_WHITE));
-        if (session.state == RunSession.STATE_AUTO_PAUSED) {
-            out.add(new PairingLine(HomeScreen.text(Rez.Strings.RunAutoPaused), Graphics.FONT_TINY, Graphics.COLOR_ORANGE));
-        } else if (session.state == RunSession.STATE_PAUSED) {
-            out.add(new PairingLine(HomeScreen.text(Rez.Strings.RunPaused), Graphics.FONT_TINY, Graphics.COLOR_ORANGE));
-        }
-        return out;
-    }
-
-    // "Abschnitt 3/8", "Plan fertig" after the last segment, "Freier Lauf" without segments.
-    function segmentText(session as RunSession) as String {
-        if (session.plan.count() == 0) {
-            return HomeScreen.text(Rez.Strings.RunType13);
-        }
-        if (session.isPlanDone()) {
-            return HomeScreen.text(Rez.Strings.RunPlanDone);
-        }
-        return Lang.format(HomeScreen.text(Rez.Strings.RunSegmentOf), [session.segmentNumber(), session.plan.count()]);
-    }
-}
-
-// Shows the run and drives it: the timer calls `tick` once a second, the screen is drawn once after it.
-class RunView extends WatchUi.View {
+// The beat of a run: once a second the session counts, then the screen is drawn once. It lives as long as the
+// run, not as long as one view: a menu on top of the run display must not stop the counting.
+class RunTicker {
     private var _session as RunSession;
+    private var _view as RunView or Null;
     private var _timer as Timer.Timer or Null;
 
-    function initialize(session as RunSession) {
-        View.initialize();
+    function initialize(session as RunSession, view as RunView or Null) {
         _session = session;
+        _view = view;
         _timer = null;
     }
 
-    function onShow() as Void {
+    function start() as Void {
         if (_timer == null) {
             _timer = new Timer.Timer();
             (_timer as Timer.Timer).start(method(:onSecond), 1000, true);
         }
     }
 
-    function onHide() as Void {
+    function stop() as Void {
         if (_timer != null) {
             (_timer as Timer.Timer).stop();
             _timer = null;
         }
+        _view = null;
     }
 
+    function isRunning() as Boolean {
+        return _timer != null;
+    }
+
+    // One second. In the energy saving mode of an AMOLED watch nothing is redrawn (the watch draws once a minute).
     function onSecond() as Void {
         _session.tick();
-        WatchUi.requestUpdate();
-    }
-
-    function onUpdate(dc as Dc) as Void {
-        PairingLayout.draw(dc, RunScreen.lines(dc, _session));
+        var view = _view;
+        if (view == null || !(view as RunView).isReduced()) {
+            WatchUi.requestUpdate();
+        }
     }
 }
 
-// Placeholder keys (RUN-016 replaces them): START pauses and continues, the lap key ends the segment,
-// BACK in a pause saves the run and leaves; while running it does nothing, so a run is never left by accident.
-class RunDelegate extends WatchUi.BehaviorDelegate {
+// Shows the run: page by page (UP and DOWN), once a second. On an AMOLED watch the energy saving mode shows a
+// reduced picture (Garmin's rules against burn-in: few lit pixels, dark, moved a little every minute).
+class RunView extends WatchUi.View {
     private var _session as RunSession;
+    private var _ticker as RunTicker;
+    private var _page as Number;
+    private var _sleeping as Boolean;
 
     function initialize(session as RunSession) {
-        BehaviorDelegate.initialize();
+        View.initialize();
         _session = session;
+        _ticker = new RunTicker(session, self);
+        _page = 0;
+        _sleeping = false;
     }
 
-    function onSelect() as Boolean {
-        if (_session.isPaused()) {
-            _session.resume();
-        } else {
-            _session.pause();
-        }
+    function ticker() as RunTicker {
+        return _ticker;
+    }
+
+    function page() as Number {
+        return _page;
+    }
+
+    // delta = +1 for DOWN, -1 for UP; wraps around.
+    function movePage(delta as Number) as Void {
+        var count = RunPages.pageCount(_session);
+        _page = ((_page + delta) % count + count) % count;
+    }
+
+    function onShow() as Void {
+        _ticker.start();
+    }
+
+    function onEnterSleep() as Void {
+        _sleeping = true;
         WatchUi.requestUpdate();
-        return true;
     }
 
-    function onKey(event as WatchUi.KeyEvent) as Boolean {
-        if (event.getKey() == WatchUi.KEY_LAP) {
-            _session.nextSegment();
-            WatchUi.requestUpdate();
-            return true;
-        }
-        return BehaviorDelegate.onKey(event);
+    function onExitSleep() as Void {
+        _sleeping = false;
+        WatchUi.requestUpdate();
     }
 
-    function onBack() as Boolean {
-        if (_session.isPaused()) {
-            _session.save();
-            WatchUi.popView(WatchUi.SLIDE_RIGHT);
+    // True while the watch is in the energy saving mode of a display that burns in (AMOLED).
+    function isReduced() as Boolean {
+        return _sleeping && RunView.needsBurnInProtection();
+    }
+
+    static function needsBurnInProtection() as Boolean {
+        var settings = System.getDeviceSettings();
+        return settings has :requiresBurnInProtection && settings.requiresBurnInProtection;
+    }
+
+    function onUpdate(dc as Dc) as Void {
+        if (isReduced()) {
+            var minute = System.getClockTime().min;
+            RunLayout.draw(dc, RunPages.sleepLines(_session), -1, shift(minute, dc.getWidth()), shift(minute / 5, dc.getHeight()));
+            return;
         }
-        return true;
+        var page = RunPages.build(dc, _session, _page);
+        RunLayout.draw(dc, page.lines, page.zone, 0, 0);
+    }
+
+    // Moves the reduced picture by a few pixels in steps, so no pixel keeps the same value for long.
+    static function shift(step as Number, size as Number) as Number {
+        var unit = size / 60 + 1;
+        return ((step % 5) - 2) * unit;
     }
 }

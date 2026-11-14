@@ -53,15 +53,7 @@ class RunHome {
     // Whether a run waits to be continued: the journal knows an active run that is not saved and whose head is intact.
     function hasInterruptedRun() as Boolean {
         var runJournal = journal;
-        if (runJournal == null) {
-            return false;
-        }
-        var id = (runJournal as RunJournal).activeId();
-        if (id == null) {
-            return false;
-        }
-        var head = (runJournal as RunJournal).readHead(id as String);
-        return head != null && ((head as Dictionary)["st"] as Number) != RunSession.STATE_FINISHED;
+        return runJournal != null && (runJournal as RunJournal).hasInterrupted();
     }
 
     // The rows in order: an interrupted run, training, runs of today, free run, zone 2.
@@ -204,7 +196,7 @@ class PreStartLauncher {
         if (session == null) {
             return false;
         }
-        starter.open(session as RunSession);
+        starter.open(session as RunSession, false);
         return true;
     }
 }

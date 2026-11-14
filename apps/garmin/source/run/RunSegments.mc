@@ -14,17 +14,24 @@ class RunSegments {
     }
 
     const MAX as Number = 80;
+    const FREE_RUN as Number = 13;       // run type code of a free run (also: no or unknown code)
 
     private var _list as Array or Null;
     private var _repeats as Array or Null;
     private var _total as Number;
+    private var _kind as Number;
 
     function initialize(prescription as Dictionary or Null) {
         _list = null;
         _repeats = null;
         _total = 0;
+        _kind = FREE_RUN;
         if (prescription == null) {
             return;
+        }
+        var code = (prescription as Dictionary)["k"] as Object or Null;
+        if (code instanceof Number && (code as Number) >= 0 && (code as Number) < FREE_RUN) {
+            _kind = code as Number;
         }
         var s = (prescription as Dictionary)["s"] as Object or Null;
         if (!(s instanceof Array)) {
@@ -131,5 +138,73 @@ class RunSegments {
             return 0;
         }
         return (at(ordinal) as Array)[2] as Number;
+    }
+
+    // The run type code of the prescription (0 recovery ... 12 test), FREE_RUN without one.
+    function runKind() as Number {
+        return _kind;
+    }
+
+    // Segment kind: 0 warmup, 1 work, 2 recovery, 3 cooldown, 4 rest; -1 beyond the end.
+    function kindOf(ordinal as Number) as Number {
+        var segment = at(ordinal);
+        if (segment == null) {
+            return -1;
+        }
+        var kind = (segment as Array)[0] as Object or Null;
+        return kind instanceof Number ? kind as Number : -1;
+    }
+
+    // Target type of a segment: 0 none, 1 heart rate zone, 2 pace (s/km), 3 heart rate (bpm), 4 effort.
+    function targetType(ordinal as Number) as Number {
+        var segment = at(ordinal);
+        if (segment == null) {
+            return 0;
+        }
+        var type = (segment as Array)[3] as Object or Null;
+        var low = (segment as Array)[4] as Object or Null;
+        var high = (segment as Array)[5] as Object or Null;
+        if (type instanceof Number && low instanceof Number && high instanceof Number && (type as Number) >= 0 && (type as Number) <= 4) {
+            return type as Number;
+        }
+        return 0;
+    }
+
+    // Lower bound of the target (for pace: the fast one), 0 without one.
+    function targetLow(ordinal as Number) as Number {
+        return targetType(ordinal) == 0 ? 0 : (at(ordinal) as Array)[4] as Number;
+    }
+
+    // Upper bound of the target (for pace: the slow one), 0 without one.
+    function targetHigh(ordinal as Number) as Number {
+        return targetType(ordinal) == 0 ? 0 : (at(ordinal) as Array)[5] as Number;
+    }
+
+    // [round, rounds] when segment `ordinal` lies in a repeated block (round 1 based), else null.
+    function roundOf(ordinal as Number) as Array<Number> or Null {
+        if (ordinal < 0 || ordinal >= _total || _repeats == null) {
+            return null;
+        }
+        var pos = 0;
+        var done = 0;
+        for (var i = 0; i < (_repeats as Array).size(); i++) {
+            var block = blockOf(i);
+            if (block == null) {
+                continue;
+            }
+            var first = ((_repeats as Array)[i] as Array)[0] as Number;
+            done += first - pos;
+            var length = (block as Array<Number>)[0];
+            var span = length * (block as Array<Number>)[1];
+            if (ordinal < done) {
+                return null;
+            }
+            if (ordinal < done + span) {
+                return [(ordinal - done) / length + 1, (block as Array<Number>)[1]] as Array<Number>;
+            }
+            done += span;
+            pos = first + length;
+        }
+        return null;
     }
 }
