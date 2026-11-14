@@ -53,7 +53,7 @@ module RunPages {
         var zone = -1;
         var status = statusLine(session);
         if (status != null) {
-            out.add(status as PairingLine);
+            out.add((status as PairingLine).skippable());    // the main number turns orange as well, so a tight display loses the words first
         }
         var page = index < 0 ? 0 : (index >= pageCount(session) ? pageCount(session) - 1 : index);
         if (page == 0) {
@@ -66,6 +66,13 @@ module RunPages {
             fourth(session, out);
         }
         out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunPageOf), [page + 1, pageCount(session)]), Graphics.FONT_XTINY, Graphics.COLOR_DK_GRAY).skippable());
+        if (status != null) {
+            for (var i = 0; i < out.size(); i++) {
+                if (out[i].wide) {
+                    out[i].color = Graphics.COLOR_ORANGE;
+                }
+            }
+        }
         return new RunPage(out, zone);
     }
 
@@ -81,7 +88,7 @@ module RunPages {
     }
 
     function bar() as PairingLine {
-        return new PairingLine("-", Graphics.FONT_TINY, Graphics.COLOR_TRANSPARENT);
+        return new PairingLine("-", Graphics.FONT_XTINY, Graphics.COLOR_TRANSPARENT);
     }
 
     function dim(text as String) as PairingLine {
@@ -185,7 +192,7 @@ module RunPages {
     // Time, distance, pace, heart rate of a run without segments.
     function freePage(dc as Dc, session as RunSession, out as Array<PairingLine>) as Void {
         if (session.isPlanDone()) {
-            out.add(dim(HomeScreen.text(Rez.Strings.RunPlanDone)));
+            out.add(dim(HomeScreen.text(Rez.Strings.RunPlanDone)).skippable());
         }
         out.add(PairingLayout.bigLine(dc, RunText.clock(session.calc.timerS), Graphics.COLOR_WHITE));
         out.add(new PairingLine(RunText.distance(session.calc.distanceCm, session.distanceIsEstimated()), Graphics.FONT_MEDIUM, Graphics.COLOR_WHITE));
@@ -268,7 +275,7 @@ module RunLayout {
         var total = dc.getWidth() * 60 / 100;
         var gap = dc.getWidth() / 70 + 1;
         var each = (total - 4 * gap) / 5;
-        var height = slot * 45 / 100;
+        var height = slot * 60 / 100;
         var y = top + (slot - height) / 2;
         var x = centerX - total / 2;
         for (var z = 0; z < 5; z++) {

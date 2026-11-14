@@ -133,6 +133,12 @@ class RunStarter {
         _nav = new RunNav();
     }
 
+    // Another way to move through the screens (tests record it).
+    function useNav(nav as RunNav) as RunStarter {
+        _nav = nav;
+        return self;
+    }
+
     function start(model as PreStartModel) as Void {
         var runParts = parts();
         if (runParts.journal.hasInterrupted()) {
