@@ -1,4 +1,5 @@
 import type { OnboardingProfile } from "../../../shared/onboarding-contract";
+import { wantsRunning } from "../../../shared/onboarding-profile";
 
 /** The pages of the profile step, in the order the setup walks them. */
 export type Page =
@@ -9,6 +10,7 @@ export type Page =
   | "environment"
   | "loads"
   | "wishes"
+  | "run"
   | "review";
 
 export const QUESTIONS: readonly Page[] = [
@@ -26,6 +28,7 @@ export const TITLE: Record<Page, string> = {
   environment: "Wo trainierst du?",
   loads: "Kennst du deine Gewichte?",
   wishes: "Deine Wünsche für den Plan",
+  run: "Deine Laufangaben",
   review: "So wird dein Plan",
 };
 
@@ -43,6 +46,7 @@ export const PAGE_FIELD: Record<Page, string[]> = {
   environment: ["training.environment"],
   loads: [],
   wishes: [],
+  run: [],
   review: [],
 };
 
@@ -72,7 +76,8 @@ export function initialProfileQuestion(profile: OnboardingProfile): Page {
           : t.environment === null
             ? "environment"
             : undefined;
-  if (!firstMissing) return "review";
+  if (!firstMissing)
+    return wantsRunning(t) && t.run === undefined ? "run" : "review";
   const anyAnswer =
     t.primary_goal !== null ||
     t.experience !== null ||
@@ -104,6 +109,7 @@ export function nextPage(
   current: Page,
   fromReview: boolean,
   withLoads = false,
+  withRun = false,
 ): Page {
   if (fromReview) return "review";
   if (current === "person") return "goal";
@@ -111,17 +117,23 @@ export function nextPage(
   if (index >= 0 && index < QUESTIONS.length - 1) return QUESTIONS[index + 1];
   if (current === "environment") return withLoads ? "loads" : "wishes";
   if (current === "loads") return "wishes";
+  if (current === "wishes") return withRun ? "run" : "review";
   return "review";
 }
 
 /** The page before `current`, or null on the first page. */
-export function previousPage(current: Page, withLoads = false): Page | null {
+export function previousPage(
+  current: Page,
+  withLoads = false,
+  withRun = false,
+): Page | null {
   if (current === "person") return null;
   if (current === "goal") return "person";
   const index = QUESTIONS.indexOf(current);
   if (index > 0) return QUESTIONS[index - 1];
   if (current === "loads") return "environment";
   if (current === "wishes") return withLoads ? "loads" : "environment";
-  if (current === "review") return "wishes";
+  if (current === "run") return "wishes";
+  if (current === "review") return withRun ? "run" : "wishes";
   return null;
 }

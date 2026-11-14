@@ -13,6 +13,7 @@ import {
   SESSION_MINUTES_MAX,
   SESSION_MINUTES_MIN,
 } from "../../../shared/onboarding-contract";
+import { wantsRunning } from "../../../shared/onboarding-profile";
 import { CardActions, CardNote } from "../cards";
 import {
   PAGE_FIELD,
@@ -32,6 +33,13 @@ import { renderQuestionPage } from "./question-page";
 import { renderWishesPage } from "./wishes-page";
 import { renderLoadsPage } from "./loads-page";
 import { renderReviewPage } from "./review-page";
+import { renderRunPage } from "./run-page";
+import {
+  RUN_DRAFT_DEFAULT,
+  draftFromRun,
+  runFromDraft,
+  type RunDraft,
+} from "./run-draft";
 
 /**
  * The setup as one guided card: a few people facts (optional), four
@@ -96,6 +104,7 @@ export function ProfileStep({
     avoided_exercise_ids: [],
     notes: "",
   });
+  const [runDraft, setRunDraft] = useState<RunDraft>(RUN_DRAFT_DEFAULT);
   const [fold, setFold] = useState(-1);
   // Number fields whose text is outside the allowed range.
   const [invalidNumbers, setInvalidNumbers] = useState<string[]>([]);
@@ -116,6 +125,7 @@ export function ProfileStep({
     setMinutesText(String(training.session_minutes ?? RHYTHM_DEFAULT.minutes));
     setEnvironment(training.environment ?? undefined);
     setLoads(training.known_loads ?? {});
+    setRunDraft(draftFromRun(training.run));
     setWishes({
       training_days: training.training_days ?? [],
       split: training.split,
@@ -153,6 +163,13 @@ export function ProfileStep({
     environment ?? training.environment,
   );
 
+  // Asked when "Ausdauer und Laufen" is a goal, on screen or already saved.
+  const withRun =
+    page === "goal"
+      ? goals.includes("endurance_running")
+      : wantsRunning(training);
+  const runResult = runFromDraft(runDraft);
+
   const go = (next: Page, edit = false) => {
     setFromReview(edit);
     setPage(next);
@@ -189,6 +206,8 @@ export function ProfileStep({
         return {
           training: { known_loads: Object.keys(loads).length ? loads : null },
         };
+      case "run":
+        return runResult.run ? { training: { run: runResult.run } } : null;
       case "wishes":
         return {
           training: {
@@ -210,12 +229,18 @@ export function ProfileStep({
   async function next(skip = false) {
     if (guard.current || busy) return;
     if (!skip && !answered) {
-      setError("Wähle eine Antwort aus.");
+      setError(
+        page === "run"
+          ? runResult.problems.target ||
+              runResult.problems.reference ||
+              "Wähle dein Laufziel und trag die Minuten pro Woche und den längsten Lauf ein."
+          : "Wähle eine Antwort aus.",
+      );
       return;
     }
     if (
       !skip &&
-      (page === "person" || page === "loads") &&
+      (page === "person" || page === "loads" || page === "run") &&
       invalidNumbers.length
     ) {
       setError("Prüf die markierten Zahlen oder lass das Feld leer.");
@@ -243,14 +268,14 @@ export function ProfileStep({
         const patch = patchFor(page);
         if (patch && !(await onSave(patch))) return;
       }
-      go(nextPage(page, fromReview, withLoads));
+      go(nextPage(page, fromReview, withLoads, withRun));
     } finally {
       guard.current = false;
     }
   }
   const back = () => {
     if (fromReview) return go("review");
-    const previous = previousPage(page, withLoads);
+    const previous = previousPage(page, withLoads, withRun);
     if (previous) go(previous);
     else onBack();
   };
@@ -282,9 +307,13 @@ export function ProfileStep({
               ? "Wünsche · freiwillig"
               : page === "loads"
                 ? "Angaben · Gewichte"
-                : "Prüfen"
+                : page === "run"
+                  ? "Angaben · Laufen"
+                  : "Prüfen"
       }
-      phase={page === "wishes" ? 1 : page === "review" ? 2 : 0}
+      phase={
+        page === "wishes" || page === "run" ? 1 : page === "review" ? 2 : 0
+      }
       within={
         page === "person"
           ? 0.1
@@ -374,6 +403,18 @@ export function ProfileStep({
       setInvalidNumbers,
     });
 
+  if (page === "run")
+    return renderRunPage({
+      head,
+      errorNote,
+      actions: actions(false),
+      busy,
+      draft: runDraft,
+      setDraft: setRunDraft,
+      problems: runResult.problems,
+      setInvalidNumbers,
+    });
+
   if (page === "wishes")
     return renderWishesPage({
       head,
@@ -398,6 +439,7 @@ export function ProfileStep({
     progress,
     canWritePlan,
     onRequestPlan,
+    withRun,
     onEdit: (edit) => go(edit, true),
   });
 }
