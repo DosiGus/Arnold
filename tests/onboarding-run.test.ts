@@ -8,7 +8,7 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createFixtureOnboarding } from "../src/server/onboarding/fixture";
-import type { OnboardingService } from "../src/server/onboarding/service";
+import { OnboardingService } from "../src/server/onboarding/service";
 import {
   GOAL_LABEL,
   OnboardingProfileSchema,
@@ -400,5 +400,67 @@ describe("the hand-over to the run profile", () => {
     });
     expect(second.ok, second.error?.message).toBe(true);
     expect((await runtime.runs.dataset(undefined)).runProfiles).toHaveLength(1);
+  });
+});
+
+describe("a deployment without a run service (fail closed, RUN-027)", () => {
+  /** The same setup, but the service has no way to keep a run profile. */
+  const withoutRunService = (service: OnboardingService) =>
+    new OnboardingService({
+      ...(service as unknown as { options: Record<string, unknown> }).options,
+      recordRunProfile: undefined,
+    } as never);
+
+  it("refuses to finish a running setup and activates nothing", async () => {
+    const runtime = createFixtureOnboarding();
+    const claim = await confirmed(
+      runtime.onboarding,
+      profileWith({ primary_goal: "endurance_running" }, RUN),
+    );
+    const bare = withoutRunService(runtime.onboarding);
+    const refused = await bare.finishSetup({ request_id: rid(), ...claim });
+    expect(refused.ok).toBe(false);
+    expect(refused.error?.code).toBe("PLAN_WRITE_UNAVAILABLE");
+    expect(refused.error?.message).toContain("Laufangaben");
+    const state = await bare.getOnboardingState(claim);
+    expect(state.session.status).not.toBe("COMPLETED");
+    expect((await runtime.runs.dataset(undefined)).runProfiles).toHaveLength(0);
+    // Where the run service exists, the same setup finishes as before.
+    const finished = await runtime.onboarding.finishSetup({
+      request_id: rid(),
+      ...claim,
+    });
+    expect(finished.ok, finished.error?.message).toBe(true);
+    expect((await runtime.runs.dataset(undefined)).runProfiles).toHaveLength(1);
+  });
+
+  it("also refuses when running is only a further goal", async () => {
+    const runtime = createFixtureOnboarding();
+    const claim = await confirmed(
+      runtime.onboarding,
+      profileWith(
+        { primary_goal: "strength", secondary_goals: ["endurance_running"] },
+        RUN,
+      ),
+    );
+    const refused = await withoutRunService(runtime.onboarding).finishSetup({
+      request_id: rid(),
+      ...claim,
+    });
+    expect(refused.ok).toBe(false);
+    expect(refused.error?.code).toBe("PLAN_WRITE_UNAVAILABLE");
+  });
+
+  it("finishes a setup without the running goal as before", async () => {
+    const runtime = createFixtureOnboarding();
+    const claim = await confirmed(
+      runtime.onboarding,
+      profileWith({ primary_goal: "strength" }),
+    );
+    const finished = await withoutRunService(runtime.onboarding).finishSetup({
+      request_id: rid(),
+      ...claim,
+    });
+    expect(finished.ok, finished.error?.message).toBe(true);
   });
 });

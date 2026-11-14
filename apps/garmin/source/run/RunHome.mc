@@ -15,11 +15,13 @@ class HomeStop {
     var kind as Number;
     var id as String;      // id of the planned run, else ""
     var text as String;    // the row as shown
+    var labeled as Boolean; // the row names itself ("Free run · Zone 2"), so it sits under no section header
 
     function initialize(stopKind as Number, runId as String, rowText as String) {
         kind = stopKind;
         id = runId;
         text = rowText;
+        labeled = false;
     }
 
     // Stable name of the stop, so the selection stays on it when the screen refreshes.
@@ -56,7 +58,12 @@ class RunHome {
         return runJournal != null && (runJournal as RunJournal).hasInterrupted();
     }
 
-    // The rows in order: an interrupted run, training, runs of today, free run, zone 2.
+    // The rows in order: an interrupted run, training, free run, runs of today, zone 2.
+    // Without a run today: training, then the section "Free run" with free run and zone 2.
+    // With a run today the free runs flank the first planned run, so that from the selected
+    // row every free run is one key away (UP: free run, DOWN: zone 2) and starts in three keys;
+    // the planned run stays one key and the training moves to two keys away. The free rows then
+    // carry their own label instead of a section header.
     function stops(plan as PlanSync, picker as SessionPicker) as Array<HomeStop> {
         var out = [] as Array<HomeStop>;
         if (hasInterruptedRun()) {
@@ -64,13 +71,24 @@ class RunHome {
         }
         out.add(new HomeStop(HomeStop.STOP_STRENGTH, "", strengthText(plan, picker)));
         var runs = sync.cache.todayRuns(_clock.nowSeconds(), _clock.utcOffsetMinutes());
+        var free = new HomeStop(HomeStop.STOP_FREE, "", HomeScreen.text(Rez.Strings.HomeFreeOpen));
+        var zone2 = new HomeStop(HomeStop.STOP_ZONE2, "", HomeScreen.text(Rez.Strings.HomeFreeZone2));
+        if (runs.size() > 0) {
+            free.text = HomeScreen.text(Rez.Strings.HomeFreeRun) + " · " + free.text;
+            zone2.text = HomeScreen.text(Rez.Strings.HomeFreeRun) + " · " + zone2.text;
+            free.labeled = true;
+            zone2.labeled = true;
+            out.add(free);
+        }
         for (var i = 0; i < runs.size(); i++) {
             var run = runs[i];
             var row = Lang.format(HomeScreen.text(Rez.Strings.HomeRunRow), [withMinutes(run["n"] as String, run["m"] as Object or Null)]);
             out.add(new HomeStop(HomeStop.STOP_RUN, run["id"] as String, row));
         }
-        out.add(new HomeStop(HomeStop.STOP_FREE, "", HomeScreen.text(Rez.Strings.HomeFreeOpen)));
-        out.add(new HomeStop(HomeStop.STOP_ZONE2, "", HomeScreen.text(Rez.Strings.HomeFreeZone2)));
+        if (runs.size() == 0) {
+            out.add(free);
+        }
+        out.add(zone2);
         return out;
     }
 

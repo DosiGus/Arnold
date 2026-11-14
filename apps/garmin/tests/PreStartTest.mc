@@ -361,9 +361,9 @@ function fromOpeningTheAppToTheStartAreAtMostThreeKeys(logger as Logger) as Bool
     run.delegate.onSelect();
     Expect.equal(run.starter.started.size(), 1);
     Test.assertMessage(planned.presses + 1 <= 3, "planned: " + (planned.presses + 1));
-    // free run (open): DOWN, START, START
+    // free run (open): UP, START, START (with a run today the free runs flank it)
     var free = new RunKeys(rig);
-    free.down();
+    free.up();
     free.start();
     var open = new PreStartRig(free.last());
     open.sensors.quality = Position.QUALITY_GOOD;
@@ -395,5 +395,66 @@ function withoutARunTodayEveryFreeRunNeedsAtMostThreeKeysToStart(logger as Logge
     zoneRig.delegate.onSelect();
     Expect.equal(zoneRig.starter.started[0].request.mode, PreStartRequest.MODE_ZONE2);
     Test.assertMessage(zone.presses + 1 <= 3, "zone 2: " + (zone.presses + 1));
+    return true;
+}
+
+// RUN-027: counts every key from opening the app to the start of the run, for every start screen:
+// the planned run at most two, free run and free run in zone 2 at most three, with and without a run today.
+// moves: -1 = UP, +1 = DOWN; the last two keys are START on the start screen and START in the pre-start screen.
+function keysToStart(rig as RunRig, moves as Array<Number>, mode as Number) as Number {
+    var keys = new RunKeys(rig);
+    for (var i = 0; i < moves.size(); i++) {
+        if (moves[i] < 0) {
+            keys.up();
+        } else {
+            keys.down();
+        }
+    }
+    keys.start();
+    var screen = new PreStartRig(keys.last());
+    screen.sensors.quality = Position.QUALITY_GOOD;
+    screen.delegate.onSelect();
+    Expect.equal(screen.starter.started.size(), 1);
+    Expect.equal(screen.starter.started[0].request.mode, mode);
+    return keys.presses + 1;
+}
+
+(:test)
+function everyRunStartsInTheKeyCountOfItsRow(logger as Logger) as Boolean {
+    // a run planned today: training, free run, run, zone 2
+    var today = new RunRig();
+    today.plan.loadAll();
+    today.sync.start();
+    today.plan.pairing.transport.respond(200, today.upcoming(today.threeRuns(1), true));
+    today.answerAll(1);
+    var planned = keysToStart(today, [] as Array<Number>, PreStartRequest.MODE_PLANNED);
+    var free = keysToStart(today, [-1] as Array<Number>, PreStartRequest.MODE_FREE);
+    var zone = keysToStart(today, [1] as Array<Number>, PreStartRequest.MODE_ZONE2);
+    logger.debug("run today: planned " + planned + ", free " + free + ", zone 2 " + zone);
+    Test.assertMessage(planned <= 2, "planned run: " + planned);
+    Test.assertMessage(free <= 3, "free run, run today: " + free);
+    Test.assertMessage(zone <= 3, "zone 2, run today: " + zone);
+    // the training on such a day (UP, UP, START): three keys, the plan starts as before
+    var strength = new RunKeys(today);
+    strength.up();
+    strength.up();
+    strength.start();
+    Test.assertMessage(strength.presses <= 3, "training, run today: " + strength.presses);
+    Expect.equal(strength.launcher.shown.size(), 1);
+    // no run today: training, free run, zone 2; the training is selected
+    var none = new RunRig();
+    none.plan.loadAll();
+    var freeNone = keysToStart(none, [1] as Array<Number>, PreStartRequest.MODE_FREE);
+    var zoneNone = keysToStart(none, [-1] as Array<Number>, PreStartRequest.MODE_ZONE2);
+    logger.debug("no run today: free " + freeNone + ", zone 2 " + zoneNone);
+    Test.assertMessage(freeNone <= 3, "free run, no run today: " + freeNone);
+    Test.assertMessage(zoneNone <= 3, "zone 2, no run today: " + zoneNone);
+    // no plan (offline), no run: free run is selected, zone 2 one key below
+    var offline = new RunRig();
+    offline.plan.begin();
+    offline.plan.exhaustRetries();
+    var freeOffline = keysToStart(offline, [] as Array<Number>, PreStartRequest.MODE_FREE);
+    var zoneOffline = keysToStart(offline, [1] as Array<Number>, PreStartRequest.MODE_ZONE2);
+    Test.assertMessage(freeOffline <= 3 && zoneOffline <= 3, "offline: " + freeOffline + ", " + zoneOffline);
     return true;
 }

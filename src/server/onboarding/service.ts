@@ -1495,6 +1495,9 @@ export class OnboardingService {
         );
       const opened = await this.open(input, context);
       let record = opened.record;
+      // Fail closed before anything is activated: a setup with the running
+      // goal must not finish where nothing can keep the run profile.
+      this.assertRunServiceFor(record.session);
       if (record.session.status === "COMPLETED") {
         // A finish whose run hand-over failed is repeated until it holds.
         await this.applyRunProfile(record.session, context);
@@ -1599,6 +1602,19 @@ export class OnboardingService {
   }
 
   /**
+   * A setup with the running goal needs a run service to keep the run
+   * profile. Without one the finish is refused, never silently skipped.
+   */
+  private assertRunServiceFor(session: OnboardingRecord["session"]) {
+    if (!wantsRunning(session.profile.training)) return;
+    if (this.options.recordRunProfile) return;
+    throw fail(
+      "PLAN_WRITE_UNAVAILABLE",
+      "In dieser Umgebung können Laufangaben nicht gespeichert werden. Die Einrichtung mit dem Ziel „Ausdauer und Laufen“ lässt sich hier nicht abschließen.",
+    );
+  }
+
+  /**
    * Hands the run details to the run service. The service's own request id
    * rules make this safe to repeat. A refusal is reported, not swallowed.
    */
@@ -1608,7 +1624,8 @@ export class OnboardingService {
   ) {
     const run = session.profile.training.run;
     if (!run || !wantsRunning(session.profile.training)) return;
-    if (!this.options.recordRunProfile) return;
+    if (!this.options.recordRunProfile)
+      return this.assertRunServiceFor(session);
     try {
       await this.options.recordRunProfile(
         run,
