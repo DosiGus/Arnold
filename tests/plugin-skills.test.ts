@@ -18,6 +18,7 @@ import {
 } from "../src/analytics/running/week-context.js";
 import { RUN_RULES_VERSION } from "../src/analytics/running/version.js";
 import { PlanEditSchema } from "../src/shared/plan-contract.js";
+import { ShowRunCardInputSchema } from "../src/shared/run-card-contract.js";
 import {
   GetRunWeekInputSchema,
   RunWriteInputs,
@@ -292,9 +293,24 @@ const RUN_CASES: {
       },
     ],
   },
+  // RUN-023: the run cards. The card shows the numbers, the chat only places them.
+  ...(
+    [
+      ["was steht heute an", "run_today", {}],
+      ["wie läuft meine Woche", "run_week", {}],
+      ["wie war mein Lauf", "run_result", { workout_id: RUN_ID }],
+      ["wie entwickle ich mich beim Laufen", "run_stats", {}],
+      ["ich will auch laufen", "run_setup", {}],
+    ] as const
+  ).map(([sentence, card, extra]) => ({
+    sentence,
+    tools: ["show_arnold_run"],
+    calls: [{ tool: "show_arnold_run", input: { card, ...extra } }],
+  })),
 ];
 
 const RUN_READ_SCHEMAS = {
+  show_arnold_run: ShowRunCardInputSchema,
   get_run_week: GetRunWeekInputSchema,
   schedule_run_week: ScheduleRunWeekInputSchema,
 } as const;
@@ -330,6 +346,38 @@ describe("running skills (RUN-011)", () => {
       }
     },
   );
+
+  it.each([
+    ["run_today", "heute"],
+    ["run_result", "Wie war mein Lauf"],
+    ["run_week", "Wie läuft meine Woche"],
+    ["run_stats", "Verlauf"],
+    ["run_setup", "Ich will auch laufen"],
+  ])("tells both skills and the server when to open %s", (card, phrase) => {
+    expect(ShowRunCardInputSchema.safeParse({ card }).success).toBe(true);
+    const coach = read(join(SKILLS, "arnold-coach", "SKILL.md"));
+    for (const text of [planSkill, coach, ARNOLD_INSTRUCTIONS]) {
+      expect(text).toContain("show_arnold_run");
+      expect(text).toContain(card);
+    }
+    expect(planSkill).toContain(phrase);
+    expect(ARNOLD_INSTRUCTIONS).toContain(phrase);
+  });
+
+  it("opens the run card after plan_run and before the week is confirmed", () => {
+    expect(planSkill).toContain("`run_today` direkt nach `plan_run`");
+    expect(planSkill).toContain(
+      '`card: "run_week"`, dort steht sie zum Bestätigen',
+    );
+    expect(ARNOLD_INSTRUCTIONS).toContain("run_today nach plan_run");
+    expect(ARNOLD_INSTRUCTIONS).toContain(
+      "zum Ansehen der Vorschau vor der Bestätigung von schedule_run_week",
+    );
+    // The card shows the numbers; the chat does not repeat or recompute them.
+    expect(ARNOLD_INSTRUCTIONS).toContain(
+      "nichts wiederholen oder nachrechnen",
+    );
+  });
 
   it("shows the preview first and confirms only with the preview's hash", () => {
     const preview = ScheduleRunWeekInputSchema.safeParse({ timezone: TZ });
@@ -411,6 +459,7 @@ describe("running skills (RUN-011)", () => {
 describe("server instructions (RUN-011)", () => {
   it("name the run tools and only published ones", () => {
     for (const tool of [
+      "show_arnold_run",
       "plan_run",
       "update_planned_run",
       "cancel_planned_run",
