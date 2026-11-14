@@ -58,29 +58,15 @@ export function wantsRunning(training: OnboardingProfile["training"]): boolean {
 }
 
 /**
- * What the run step of the setup must have stored before a plan can be asked
- * for: the goal and runs per week always exist once a run profile does, so the
- * two answers that can still be unknown are the weekly minutes and the longest
- * run of the last four weeks. Unknown is unknown: a missing value is never 0.
+ * The run details a running goal needs before a plan can be asked for. They
+ * are required answers of the run step; unknown is unknown, never 0.
  */
-export type RunProfileFacts = {
-  base_minutes_per_week: number | null;
-  longest_run_4w_min: number | null;
-} | null;
-
-export function runSetupState(
-  training: OnboardingProfile["training"],
-  runProfile: RunProfileFacts,
-): { required: boolean; ready: boolean } {
+export function runSetupState(training: OnboardingProfile["training"]): {
+  required: boolean;
+  ready: boolean;
+} {
   const required = wantsRunning(training);
-  return {
-    required,
-    ready:
-      !required ||
-      (runProfile !== null &&
-        runProfile.base_minutes_per_week !== null &&
-        runProfile.longest_run_4w_min !== null),
-  };
+  return { required, ready: !required || training.run !== undefined };
 }
 
 /** The value behind a required field name. */
@@ -517,7 +503,7 @@ export function buildBrief(
     );
   if (runs)
     constraints.push(
-      "Der Nutzer hat „Ausdauer und Laufen“ gewählt und seine Laufangaben in Arnold gespeichert. Sie mit get_run_profile lesen (Ziel, Läufe pro Woche, Minuten pro Woche, längster Lauf, Umfeld) und nicht noch einmal abfragen.",
+      "Der Nutzer hat „Ausdauer und Laufen“ gewählt und seine Laufangaben in der Einrichtung gemacht. Sie stehen im Feld running (Ziel, Läufe pro Woche, Minuten pro Woche, längster Lauf, Umfeld, optional Wettkampf, Zielzeit, Referenz) und werden beim Abschluss der Einrichtung ins Laufprofil übernommen. Nicht noch einmal abfragen.",
       "Nach dem Kraftvorschlag Laufeinheiten in denselben Entwurf legen: update_plan_draft mit add_run_session (session_name, run_type, optional preferred_weekday). Anzahl der Läufe = Läufe pro Woche aus dem Laufprofil, im Zweifel eher weniger; höchstens zwei harte Läufe pro Woche. Kraft- und Lauftage so verteilen, dass sie zu den gewählten Trainingstagen passen.",
       "Tempi, Pulszonen, Streckenlängen und Steigerungen nie selbst festlegen oder nennen: Das berechnet Arnold aus dem Laufprofil. Keine Wettkampfzeit versprechen.",
     );
@@ -537,6 +523,7 @@ export function buildBrief(
   return {
     ...base,
     path: "arnold_plan",
+    ...(runs && training.run ? { running: training.run } : {}),
     task: "Aus diesen Angaben einen Trainingsplan erstellen und mit submit_onboarding_plan_proposal (origin ai_proposal) als Entwurf übergeben.",
     goal: {
       primary: goal,
