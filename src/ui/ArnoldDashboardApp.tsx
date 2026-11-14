@@ -193,6 +193,7 @@ export function ArnoldDashboardApp({
           view={view}
           canWrite={canWrite}
           workoutContext={workoutContext}
+          client={client}
           onOpen={open}
         />
       )}
