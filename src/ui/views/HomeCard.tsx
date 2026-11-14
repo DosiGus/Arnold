@@ -11,6 +11,8 @@ import type { ArnoldDashboardView } from "../../shared/arnold-view";
 import type { WorkoutContext } from "../../shared/workout-contract";
 import { ArnoldCard } from "../components/cards";
 import { ProgressBar, goalValue } from "../components/home";
+import { HomeNextRun } from "../components/home-run";
+import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
 import { dateLabel, formatNumber } from "../format";
 import { draftFromProposal, exerciseLine } from "../workout-draft";
 import type { CardId } from "../cards";
@@ -56,11 +58,14 @@ export function HomeCard({
   view,
   canWrite,
   workoutContext,
+  client,
   onOpen,
 }: {
   view: ArnoldDashboardView;
   canWrite: boolean;
   workoutContext?: WorkoutContext | null;
+  /** Reads the next run; without it the start screen shows strength only. */
+  client?: ArnoldMcpClient;
   onOpen: (card: CardId, focus?: HomeFocus) => void;
 }) {
   const [recordKey, setRecordKey] = useState<string>();
@@ -172,6 +177,12 @@ export function HomeCard({
                 ? "Öffne dein Training für Übungen, Sätze und empfohlene Gewichte."
                 : "Erstelle deinen Plan oder erfasse ein freies Training im Chat."}
             </p>
+          )}
+          {client && (
+            <HomeNextRun
+              client={client}
+              onOpenRun={(card) => void client.openRun(card).catch(() => {})}
+            />
           )}
           <div className="ac-widget-training-actions">
             <button
