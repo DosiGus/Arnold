@@ -177,4 +177,21 @@
     <string id="SetKmSignal">Km signal</string>
     <string id="SetAutoPause">Auto pause</string>
     <string id="SetHrAlarms">HR alarms</string>
+    <string id="RunAlHrHigh">HR too high, slow down</string>
+    <string id="RunAlHrLow">A bit faster</string>
+    <string id="RunAlFaster">Faster</string>
+    <string id="RunAlSlower">Slower</string>
+    <string id="RunAlNext">Next: $1$</string>
+    <string id="RunAlNow">Now: $1$</string>
+    <string id="RunAlEnd">End</string>
+    <string id="RunAlKm">km $1$ · $2$</string>
+    <string id="RunAlKmOnly">km $1$</string>
+    <string id="RunAlDrink">Drink</string>
+    <string id="RunAlNoHr">No heart rate</string>
+    <string id="RunAlKind0">Warm-up</string>
+    <string id="RunAlKind1">Work</string>
+    <string id="RunAlKind2">Recovery</string>
+    <string id="RunAlKind3">Cool-down</string>
+    <string id="RunAlKind4">Rest</string>
+    <string id="RunAlEffort">RPE $1$</string>
 </strings>

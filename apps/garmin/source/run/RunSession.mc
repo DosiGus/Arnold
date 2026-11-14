@@ -199,6 +199,7 @@ class RunSession {
     var plan as RunSegments;
     var calc as RunTick;
     var reading as RunReading;
+    var alerts as RunAlertLink;    // the alarms of the run (RUN-017)
 
     private var _parts as RunParts;
     private var _segT as Number;   // timer at the start of the segment (seconds, whole run)
@@ -223,6 +224,7 @@ class RunSession {
         calc = new RunTick();
         calc.setZones(runParts.zones);
         reading = new RunReading();
+        alerts = new RunAlertLink(body, runParts.zones, runParts.settings);
         _segT = 0;
         _segD = 0;
         _kmLaps = 0;
@@ -355,6 +357,7 @@ class RunSession {
             return;
         }
         follow();
+        alerts.second(self);
         _since++;
         if (_since >= JOURNAL_EVERY_S) {
             writeJournal();
@@ -370,6 +373,15 @@ class RunSession {
         endSegment(true);
         follow();
         return true;
+    }
+
+    // Mute (or unmute) the alarm signals for this run; the hint line stays.
+    function setMuted(muted as Boolean) as Void {
+        alerts.muted = muted;
+    }
+
+    function isMuted() as Boolean {
+        return alerts.muted;
     }
 
     function pause() as Void {
