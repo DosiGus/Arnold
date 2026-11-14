@@ -330,6 +330,11 @@ function startScreenFitsTheDisplayWithRunsPlanAndWithout(logger as Logger) as Bo
     runs.add(many.entry("r9", 0, "Langer Lauf", null, 1));
     Test.assert(many.cache.putUpcoming(many.upcoming(runs, true), many.plan.pairing.clock.now, 0));
     Test.assert(HomeRig.ok(dc, many, "three runs"));
+    // a run that was cut off as the first row, with three runs, long names and the pending line
+    many.home.journal = new RunSim(null, 0, false).parts.journal;
+    var cut = many.home.stops(many.plan.sync, new SessionPicker());
+    Test.assertEqual(cut[0].kind, HomeStop.STOP_RUN_RESUME);
+    Test.assert(HomeRig.ok(dc, many, "resume row"));
     // moving down through every row keeps the screen valid
     var rows = many.home.stops(many.plan.sync, new SessionPicker());
     for (var i = 0; i < rows.size(); i++) {
@@ -423,8 +428,6 @@ function thePreStartScreenFitsOnEveryDisplay(logger as Logger) as Boolean {
     // a free run in the shortest form
     var free = new PreStartModel(PreStartRig.free());
     Test.assert(LayoutRig.fits(dc, PreStartScreen.lines(dc, free, Position.QUALITY_NOT_AVAILABLE, null, 100)));
-    // the placeholder after START
-    Test.assert(LayoutRig.fits(dc, [new PairingLine(HomeScreen.text(Rez.Strings.RecPlaceholder), Graphics.FONT_MEDIUM, Graphics.COLOR_WHITE)] as Array<PairingLine>));
     return true;
 }
 

@@ -121,24 +121,31 @@ class PreStartQuestion extends WatchUi.ConfirmationDelegate {
     }
 }
 
-// Where START leads. Until the recording exists (RUN-015) it is a placeholder screen.
+// Where START leads: the recording of the run (RUN-015) and its display. Without a recording (the watch refuses)
+// nothing opens and the pre-start screen stays.
 class RunStarter {
-    function initialize() {
+    private var _sensors as RunSensors or Null;
+
+    function initialize(runSensors as RunSensors or Null) {
+        _sensors = runSensors;
     }
 
     function start(model as PreStartModel) as Void {
-        WatchUi.pushView(new RecordingPlaceholderView(), new WatchUi.BehaviorDelegate(), WatchUi.SLIDE_LEFT);
-    }
-}
-
-// "Recording follows": the stand-in for the recording (RUN-015 replaces it). BACK returns to the pre-start screen.
-class RecordingPlaceholderView extends WatchUi.View {
-    function initialize() {
-        View.initialize();
+        var session = RunSession.start(model, parts());
+        if (session == null) {
+            return;
+        }
+        open(session as RunSession);
     }
 
-    function onUpdate(dc as Dc) as Void {
-        PairingLayout.draw(dc, [new PairingLine(HomeScreen.text(Rez.Strings.RecPlaceholder), Graphics.FONT_MEDIUM, Graphics.COLOR_WHITE)] as Array<PairingLine>);
+    // The services of a real run.
+    function parts() as RunParts {
+        var store = new KeyValueStore();
+        return new RunParts(new RunJournal(store), new PairingClock(), new Settings(store), new ActivityRunSource(), new FitRunBackend(), _sensors, RunZones.fromProfile());
+    }
+
+    function open(session as RunSession) as Void {
+        WatchUi.pushView(new RunView(session), new RunDelegate(session), WatchUi.SLIDE_LEFT);
     }
 }
 

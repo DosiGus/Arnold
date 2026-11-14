@@ -50,7 +50,9 @@ class HomeDelegate extends PairingDelegate {
     // A free run opens the pre-start screen at once; a planned run from its stored
     // prescription (without it the runs are loaded again).
     hidden function startRun(stop as HomeStop) as Void {
-        if (stop.kind == HomeStop.STOP_FREE) {
+        if (stop.kind == HomeStop.STOP_RUN_RESUME) {
+            _run.opener().resume();
+        } else if (stop.kind == HomeStop.STOP_FREE) {
             _run.opener().open(new PreStartRequest(PreStartRequest.MODE_FREE, "", null).with(null, _run.sync.cache.healthConsent()));
         } else if (stop.kind == HomeStop.STOP_ZONE2) {
             _run.opener().open(new PreStartRequest(PreStartRequest.MODE_ZONE2, "", null).with(null, _run.sync.cache.healthConsent()));
