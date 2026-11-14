@@ -33,7 +33,13 @@ export {
   type PreparedInput,
   type PreparedWorkout,
 } from "./eligibility.js";
-export { computeActivity, weekActivity, weekStreak } from "./activity.js";
+export {
+  computeActivity,
+  runTrainingDates,
+  weekActivity,
+  weekStreak,
+  type DatasetWithRunDays,
+} from "./activity.js";
 export { computeVolume, volumeBreakdown } from "./volume.js";
 export { computeRecords } from "./records.js";
 export { computeExerciseProgress } from "./progress.js";
