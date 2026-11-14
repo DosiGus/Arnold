@@ -272,3 +272,116 @@ function dialogsDuringTheWorkoutNameTheExercise(logger as Logger) as Boolean {
     Test.assert((asked.substring(0, asked.find("\n") as Number) as String).length() <= 26);
     return true;
 }
+
+// The start screen (RUN-012): "Today" with the training and the runs of today, "Free run" below.
+// Every row is one line at most as wide as the text area (long names are cut with "..."), the block
+// fits the display, the selected row carries the marker and the free runs are always there.
+(:test)
+module HomeRig {
+    const LONG_RUN as String = "Langer Dauerlauf mit Steigerungen am Ende, Äußere Runde";
+
+    function entries(rig as RunRig, count as Number, name as String) as Array {
+        var runs = [] as Array;
+        for (var i = 0; i < count; i++) {
+            runs.add(rig.entry("r" + i.toString(), 0, name, 45 + i, 1));
+        }
+        return runs;
+    }
+
+    function lines(dc as Dc, rig as RunRig) as Array<PairingLine> {
+        return HomeScreen.stopLines(dc, rig.plan.sync, rig.home, new SessionPicker(), rig.plan.pairing.clock.nowSeconds());
+    }
+
+    // fits the display, no row wider than the text area, "Free run" present, exactly one marker
+    function ok(dc as Dc, rig as RunRig, tag as String) as Boolean {
+        var lines = lines(dc, rig);
+        var drawn = PairingLayout.arrange(dc, lines);
+        Test.assertMessage(LayoutRig.fits(dc, lines), tag + " fits on " + dc.getWidth() + " px");
+        var marked = 0;
+        var free = false;
+        for (var i = 0; i < drawn.size(); i++) {
+            Test.assertMessage(dc.getTextWidthInPixels(drawn[i].text, drawn[i].font) <= PairingLayout.textWidth(dc), tag + " width of " + drawn[i].text);
+            if (drawn[i].text.find("> ") == 0) {
+                marked++;
+            }
+            if (drawn[i].text.find("Frei") != null || drawn[i].text.find("Open") != null) {
+                free = true;
+            }
+        }
+        Test.assertMessage(marked == 1, tag + " one marker, found " + marked);
+        Test.assertMessage(free, tag + " free run row on " + dc.getWidth() + " px");
+        return true;
+    }
+}
+
+(:test)
+function startScreenFitsTheDisplayWithRunsPlanAndWithout(logger as Logger) as Boolean {
+    var dc = LayoutRig.dc();
+    // training and one run today
+    var both = new RunRig();
+    both.plan.loadAll();
+    Test.assert(both.cache.putUpcoming(both.upcoming(HomeRig.entries(both, 1, "Zone 2"), true), both.plan.pairing.clock.now, 0));
+    Test.assert(HomeRig.ok(dc, both, "training+run"));
+    // training and three runs today, long names, unknown minutes
+    var many = new RunRig();
+    many.plan.loadAll();
+    var runs = HomeRig.entries(many, 2, HomeRig.LONG_RUN);
+    runs.add(many.entry("r9", 0, "Langer Lauf", null, 1));
+    Test.assert(many.cache.putUpcoming(many.upcoming(runs, true), many.plan.pairing.clock.now, 0));
+    Test.assert(HomeRig.ok(dc, many, "three runs"));
+    // moving down through every row keeps the screen valid
+    var rows = many.home.stops(many.plan.sync, new SessionPicker());
+    for (var i = 0; i < rows.size(); i++) {
+        many.home.move(rows, many.plan.sync, 1);
+        Test.assert(HomeRig.ok(dc, many, "selection " + i));
+    }
+    // the plan only (no run), no plan and offline, no plan and setup open
+    var planOnly = new RunRig();
+    planOnly.plan.loadAll();
+    Test.assert(HomeRig.ok(dc, planOnly, "training only"));
+    var offline = new RunRig();
+    offline.plan.begin();
+    offline.plan.exhaustRetries();
+    Test.assert(HomeRig.ok(dc, offline, "no plan offline"));
+    var loading = new RunRig();
+    loading.plan.begin();
+    Test.assert(HomeRig.ok(dc, loading, "no plan loading"));
+    var setup = new RunRig();
+    setup.plan.begin();
+    setup.plan.pairing.transport.respond(409, setup.plan.errorBody("SETUP_REQUIRED", false));
+    Test.assert(HomeRig.ok(dc, setup, "setup open"));
+    return true;
+}
+
+(:test)
+function startScreenCutsLongRunNamesAndKeepsUmlauts(logger as Logger) as Boolean {
+    var dc = LayoutRig.dc();
+    var rig = new RunRig();
+    rig.plan.loadAll();
+    Test.assert(rig.cache.putUpcoming(rig.upcoming(HomeRig.entries(rig, 1, HomeRig.LONG_RUN), true), rig.plan.pairing.clock.now, 0));
+    var drawn = PairingLayout.arrange(dc, HomeRig.lines(dc, rig));
+    var found = false;
+    for (var i = 0; i < drawn.size(); i++) {
+        if (drawn[i].text.find("Run: ") != null || drawn[i].text.find("Lauf: ") != null) {
+            found = true;
+            logger.debug(dc.getWidth() + " px: " + drawn[i].text);
+            Test.assert((drawn[i].text.substring(drawn[i].text.length() - 3, drawn[i].text.length()) as String).equals("..."));
+            Test.assert(dc.getTextWidthInPixels(drawn[i].text, drawn[i].font) <= PairingLayout.textWidth(dc));
+        }
+    }
+    Test.assertMessage(found, "the run row is on the screen");
+    return true;
+}
+
+// Burn-in protection also holds for the start screen.
+(:test)
+function startScreenHasNoLargeLitArea(logger as Logger) as Boolean {
+    var dc = LayoutRig.dc();
+    var rig = new RunRig();
+    rig.plan.loadAll();
+    Test.assert(rig.cache.putUpcoming(rig.upcoming(HomeRig.entries(rig, 1, "Zone 2"), true), rig.plan.pairing.clock.now, 0));
+    var share = LayoutRig.litShare(dc, HomeRig.lines(dc, rig));
+    logger.debug("start screen on " + dc.getWidth() + " px: lit " + share + " %");
+    Test.assertMessage(share <= 35, "lit " + share + " %");
+    return true;
+}
