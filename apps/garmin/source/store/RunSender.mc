@@ -127,6 +127,9 @@ class RunSender {
     function discard(uuid as String) as Void {
         _outbox.remove(uuid);
         _journal.discard(uuid);
+        if (_health != null) {
+            (_health as HealthSender).forget(uuid);
+        }
         changed();
     }
 

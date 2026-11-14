@@ -254,6 +254,11 @@ class RunSession {
         parts = 1;
         startedAt = runParts.clock.nowSeconds();
         _parts = runParts;
+        var capture = runParts.health;
+        if (capture != null) {
+            var c = capture as HealthCapture;
+            c.uuid = runUuid;   // the heart rate series belongs to this run
+        }
         plan = new RunSegments(body);
         calc = new RunTick();
         calc.setZones(runParts.zones);
@@ -267,12 +272,15 @@ class RunSession {
         _closed = false;
         results = [] as Array<Array<Number>>;
         pauses = 0;
+        _gHrSum = 0;
+        _gHrN = 0;
+        _gHrMax = 0;
+        _gBand = 0;
         effort = 0;
         endedAt = 0;
         correctedCm = -1;
         calories = -1;
         effect10 = -1;
-        resetSegmentSums();
     }
 
     // Starts a run from the pre-start screen. Null if the watch refuses the recording (nothing is left behind).
@@ -382,6 +390,10 @@ class RunSession {
     // Where the distance comes from: the treadmill has no position, its distance is the watch's estimate.
     function distanceIsEstimated() as Boolean {
         return environment == PreStartModel.ENV_TREADMILL;
+    }
+
+    function services() as RunParts {
+        return _parts;
     }
 
     function isClosed() as Boolean {

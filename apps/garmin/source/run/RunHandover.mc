@@ -37,4 +37,15 @@ module RunHandover {
         sender.sendAll();
         return queued;
     }
+
+    // The same with the real services, when the app opens (never lets a failure reach the screen).
+    function recoverOnOpen() as Void {
+        try {
+            var store = new KeyValueStore();
+            var parts = new RunParts(new RunJournal(store), new PairingClock(), new Settings(store), new ActivityRunSource(), new FitRunBackend(), null, RunZones.fromProfile());
+            recover(Session.runSender(), parts, RunConsent.isOn(store));
+        } catch (e) {
+            // the run stays in the journal; the next start of the app tries again
+        }
+    }
 }

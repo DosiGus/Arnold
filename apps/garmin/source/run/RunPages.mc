@@ -58,6 +58,10 @@ module RunPages {
         var page = index < 0 ? 0 : (index >= pageCount(session) ? pageCount(session) - 1 : index);
         if (page == 0) {
             zone = first(dc, session, out);
+            var hint = hintLine(session);
+            if (hint != null) {
+                out.add(hint as PairingLine);
+            }
         } else if (page == 1) {
             second(dc, session, out);
         } else if (page == 2) {
@@ -85,6 +89,16 @@ module RunPages {
             return new PairingLine(HomeScreen.text(Rez.Strings.RunPaused), Graphics.FONT_TINY, Graphics.COLOR_ORANGE);
         }
         return null;
+    }
+
+    // The hint of the alarms (RUN-017), small, for the five seconds it lasts: "Puls zu hoch, langsamer", "Gleich: Belastung" ...
+    // Optional like the other small lines, but the last to go: the page number goes first.
+    function hintLine(session as RunSession) as PairingLine or Null {
+        var hint = session.alerts.currentHint();
+        if (hint == null) {
+            return null;
+        }
+        return new PairingLine((hint as RunAlertHint).text, Graphics.FONT_XTINY, Graphics.COLOR_YELLOW).skippable();
     }
 
     function bar() as PairingLine {

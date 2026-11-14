@@ -52,6 +52,19 @@ module Session {
         return _runs as RunSync;
     }
 
+    var _runSender as RunSender or Null = null;
+
+    // Sends the finished runs (RUN-018); the heart rate series of a run follows through the health sender of the launcher.
+    function runSender() as RunSender {
+        if (_runSender == null) {
+            var store = new KeyValueStore();
+            var sender = new RunSender(client(), new RunOutbox(store), new RunJournal(store), new PairingClock(), pairing().method(:onAuthRejected));
+            sender.setHealth(launcher().sender().health());
+            _runSender = sender;
+        }
+        return _runSender as RunSender;
+    }
+
     var _launcher as TrainingLauncher or Null = null;
 
     // Starts and continues workouts.

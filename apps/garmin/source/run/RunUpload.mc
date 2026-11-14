@@ -22,7 +22,7 @@ module RunUpload {
         if (session.mode == PreStartRequest.MODE_ZONE2) {
             return BASE_RUN_KIND;
         }
-        return session.mode == PreStartRequest.MODE_PLANNED ? session.plan.runKind() : RunSegments.FREE_RUN;
+        return session.plan.runKind();   // 13 (free run) without a prescription
     }
 
     // "gps", "sensor" (the treadmill's own distance) or "corrected" (changed by the user).
