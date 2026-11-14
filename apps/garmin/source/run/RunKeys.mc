@@ -160,7 +160,7 @@ class RunSettingsChoices extends RunChoices {
     function labels() as Array<String> {
         var session = _controller.session;
         return [
-            HomeScreen.text(session.muted ? Rez.Strings.RunMuteOn : Rez.Strings.RunMuteOff),
+            HomeScreen.text(session.isMuted() ? Rez.Strings.RunMuteOn : Rez.Strings.RunMuteOff),
             HomeScreen.text(session.autoPauseOn() ? Rez.Strings.RunAutoOn : Rez.Strings.RunAutoOff)
         ] as Array<String>;
     }
@@ -168,7 +168,7 @@ class RunSettingsChoices extends RunChoices {
     function onChoose(index as Number) as Void {
         var session = _controller.session;
         if (index == 0) {
-            session.muted = !session.muted;
+            session.setMuted(!session.isMuted());
         } else {
             session.setAutoPause(!session.autoPauseOn());
         }

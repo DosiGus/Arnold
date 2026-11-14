@@ -442,7 +442,7 @@ function runSettingsSwitchAlarmsAndAutoPause(logger as Logger) as Boolean {
     Test.assert(menu.labels()[0].equals(HomeScreen.text(Rez.Strings.RunMuteOff)));
     Test.assert(menu.labels()[1].equals(HomeScreen.text(Rez.Strings.RunAutoOff)));
     menu.onChoose(0);
-    Test.assert(rig.session.muted);
+    Test.assert(rig.session.isMuted());
     Test.assert(menu.labels()[0].equals(HomeScreen.text(Rez.Strings.RunMuteOn)));
     menu.onChoose(1);
     Test.assert(rig.session.autoPauseOn());

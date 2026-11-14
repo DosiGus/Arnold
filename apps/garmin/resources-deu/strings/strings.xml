@@ -221,4 +221,21 @@
     <string id="SetKmSignal">Kilometersignal</string>
     <string id="SetAutoPause">Auto-Pause</string>
     <string id="SetHrAlarms">Pulsalarme</string>
+    <string id="RunAlHrHigh">Puls zu hoch, langsamer</string>
+    <string id="RunAlHrLow">Etwas schneller</string>
+    <string id="RunAlFaster">Schneller</string>
+    <string id="RunAlSlower">Langsamer</string>
+    <string id="RunAlNext">Gleich: $1$</string>
+    <string id="RunAlNow">Jetzt: $1$</string>
+    <string id="RunAlEnd">Ende</string>
+    <string id="RunAlKm">km $1$ · $2$</string>
+    <string id="RunAlKmOnly">km $1$</string>
+    <string id="RunAlDrink">Trinken</string>
+    <string id="RunAlNoHr">Kein Puls</string>
+    <string id="RunAlKind0">Aufwärmen</string>
+    <string id="RunAlKind1">Belastung</string>
+    <string id="RunAlKind2">Erholung</string>
+    <string id="RunAlKind3">Auslaufen</string>
+    <string id="RunAlKind4">Pause</string>
+    <string id="RunAlEffort">Anstrengung $1$</string>
 </strings>
