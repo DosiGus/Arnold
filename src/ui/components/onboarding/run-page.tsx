@@ -84,6 +84,7 @@ export function renderRunPage({
           Arnold selbst.
         </p>
       </div>
+      <h3 className="ac-section-title">Dein Laufziel</h3>
       <OptionChips
         label="Dein Laufziel"
         single
@@ -130,6 +131,7 @@ export function renderRunPage({
           }}
         />
       </div>
+      <h3 className="ac-section-title">Wo läufst du meistens?</h3>
       <OptionChips
         label="Wo läufst du meistens?"
         single
