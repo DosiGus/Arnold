@@ -224,12 +224,13 @@ describe("run tools over real Streamable HTTP", () => {
 
   it("log_run completes a planned run and drops heart rate without consent", async () => {
     await start(false);
-    const day = new Date().toISOString().slice(0, 10);
+    // Today in the user's time zone, never the UTC date (fails 23:00-24:00 UTC).
+    const day = new Date().toLocaleDateString("sv", { timeZone: tz });
     const planned = (await plan("c1", { workout_date_local: day })).result!
       .run!;
     const done = await write("log_run", {
       request_id: "c2",
-      timezone: "UTC",
+      timezone: tz,
       workout_date_local: day,
       planned_workout_id: planned.workout_id,
       timer_s: 2700,
