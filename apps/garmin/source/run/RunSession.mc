@@ -271,14 +271,14 @@ class RunSession {
         return session;
     }
 
-    hidden function take(head as Dictionary) as Void {
+    function take(head as Dictionary) as Void {
         calc.restore(head);
         ordinal = head["o"] as Number;
         _segT = head["ss"] as Number;
         _segD = head["sd"] as Number;
         _kmLaps = head["km"] as Number;
         laps = head["lp"] as Number;
-        parts = (head["np"] as Number) + 1;
+        parts = (head["np"] as Number) + 1;   // the head counts the recordings so far
         startedAt = head["at"] as Number;
         _savedSplits = calc.splitCount;
         if (ordinal > plan.count()) {
@@ -286,7 +286,7 @@ class RunSession {
         }
     }
 
-    hidden function openRecording() as Boolean {
+    function openRecording() as Boolean {
         try {
             if (!_parts.backend.open(environment)) {
                 return false;
@@ -491,6 +491,9 @@ class RunSession {
         var value = plan.durationValue(ordinal);
         lap(ordinal + 1);
         ordinal++;
+        if (ordinal >= plan.count()) {
+            _kmLaps = calc.distanceCm / KM_CM;   // laps per km start after the plan, not for what was run in it
+        }
         if (!manual && type == RunSegments.DURATION_SECONDS) {
             _segT += value;
             _segD = calc.distanceCm;
@@ -519,8 +522,8 @@ class RunSession {
         return {
             "v" => 1, "st" => state, "rid" => runId, "md" => mode, "en" => environment, "at" => startedAt,
             "o" => ordinal, "ss" => _segT, "sd" => _segD, "t" => calc.timerS, "d" => calc.distanceCm,
-            "a" => calc.ascentM, "z" => calc.zoneSeconds, "sc" => calc.splitCount, "km" => _kmLaps, "lp" => laps,
-            "np" => parts - 1, "hs" => calc.heartSum, "hn" => calc.heartN, "hx" => calc.heartMax,
+            "a" => calc.ascentM, "z" => [calc.zoneSeconds[0], calc.zoneSeconds[1], calc.zoneSeconds[2], calc.zoneSeconds[3], calc.zoneSeconds[4]], "sc" => calc.splitCount, "km" => _kmLaps, "lp" => laps,
+            "np" => parts, "hs" => calc.heartSum, "hn" => calc.heartN, "hx" => calc.heartMax,
             "cs" => calc.cadenceSum, "cn" => calc.cadenceN
         };
     }
