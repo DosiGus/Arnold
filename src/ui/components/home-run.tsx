@@ -62,7 +62,6 @@ export function HomeNextRun({
     <button
       type="button"
       className="ac-home-run"
-      aria-label={`Nächster Lauf: ${title}, ${when}, ${duration}. Lauf öffnen`}
       onClick={() => onOpenRun(run.is_today ? "run_today" : "run_week")}
     >
       <span className="ac-home-run-text">

@@ -13,6 +13,7 @@ export default defineConfig({
         "**/arnold-dashboard.spec.ts",
         "**/arnold-v2-qa.spec.ts",
         "**/run-cards.spec.ts",
+        "**/home-run.spec.ts",
       ],
     },
   ],
