@@ -5,6 +5,7 @@ import Toybox.WatchUi;
 // or a free run (open, or in zone 2). UP and DOWN move between them, START opens one.
 class HomeStop {
     enum Kind {
+        STOP_RUN_RESUME,   // a run that was interrupted (crash, forced exit): "Resume run"
         STOP_STRENGTH,
         STOP_RUN,
         STOP_FREE,
@@ -32,12 +33,14 @@ class HomeStop {
 // Default selection: the first run planned today, otherwise the training, otherwise "Open".
 class RunHome {
     var sync as RunSync;
+    var journal as RunJournal or Null;   // set when the app opens; without it no interrupted run is offered
     private var _clock as PairingClock;
     private var _opener as PreStartLauncher;
     private var _selected as String or Null;
 
     function initialize(runSync as RunSync, clock as PairingClock, opener as PreStartLauncher) {
         sync = runSync;
+        journal = null;
         _clock = clock;
         _opener = opener;
         _selected = null;
@@ -47,9 +50,26 @@ class RunHome {
         return _opener;
     }
 
-    // The rows in order: training, runs of today, free run, zone 2.
+    // Whether a run waits to be continued: the journal knows an active run that is not saved and whose head is intact.
+    function hasInterruptedRun() as Boolean {
+        var runJournal = journal;
+        if (runJournal == null) {
+            return false;
+        }
+        var id = (runJournal as RunJournal).activeId();
+        if (id == null) {
+            return false;
+        }
+        var head = (runJournal as RunJournal).readHead(id as String);
+        return head != null && ((head as Dictionary)["st"] as Number) != RunSession.STATE_FINISHED;
+    }
+
+    // The rows in order: an interrupted run, training, runs of today, free run, zone 2.
     function stops(plan as PlanSync, picker as SessionPicker) as Array<HomeStop> {
         var out = [] as Array<HomeStop>;
+        if (hasInterruptedRun()) {
+            out.add(new HomeStop(HomeStop.STOP_RUN_RESUME, "", HomeScreen.text(Rez.Strings.HomeRunResume)));
+        }
         out.add(new HomeStop(HomeStop.STOP_STRENGTH, "", strengthText(plan, picker)));
         var runs = sync.cache.todayRuns(_clock.nowSeconds(), _clock.utcOffsetMinutes());
         for (var i = 0; i < runs.size(); i++) {
@@ -70,6 +90,9 @@ class RunHome {
                     return i;
                 }
             }
+        }
+        if (rows[0].kind == HomeStop.STOP_RUN_RESUME) {
+            return 0;    // a run that was cut off comes first: it is the one thing that must not be lost
         }
         for (var j = 0; j < rows.size(); j++) {
             if (rows[j].kind == HomeStop.STOP_RUN) {
@@ -167,5 +190,37 @@ class PreStartLauncher {
         var sensors = new RunSensors(new GpsCapability());
         var view = new PreStartView(model, sensors);
         WatchUi.pushView(view, new PreStartDelegate(model, sensors, new RunStarter(sensors)), WatchUi.SLIDE_LEFT);
+    }
+
+    // "Resume run?": YES takes the run up again from the journal (paused, the user starts it with START).
+    function resume() as Void {
+        WatchUi.pushView(new WatchUi.Confirmation(HomeScreen.text(Rez.Strings.RunResumeAsk)), new RunResumeQuestion(self), WatchUi.SLIDE_UP);
+    }
+
+    // The answer was yes: the run from the journal on the run screen. Without a run (damaged, refused) nothing opens.
+    function resumed() as Boolean {
+        var starter = new RunStarter(new RunSensors(new GpsCapability()));
+        var session = RunSession.restore(starter.parts());
+        if (session == null) {
+            return false;
+        }
+        starter.open(session as RunSession);
+        return true;
+    }
+}
+
+class RunResumeQuestion extends WatchUi.ConfirmationDelegate {
+    private var _launcher as PreStartLauncher;
+
+    function initialize(launcher as PreStartLauncher) {
+        ConfirmationDelegate.initialize();
+        _launcher = launcher;
+    }
+
+    function onResponse(response as WatchUi.Confirm) as Boolean {
+        if (response == WatchUi.CONFIRM_YES) {
+            _launcher.resumed();
+        }
+        return true;
     }
 }

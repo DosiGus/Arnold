@@ -7,10 +7,16 @@ import Toybox.Test;
 (:test)
 class RecordingOpener extends PreStartLauncher {
     var requests as Array<PreStartRequest>;
+    var resumes as Number;
 
     function initialize() {
         PreStartLauncher.initialize();
         requests = [] as Array<PreStartRequest>;
+        resumes = 0;
+    }
+
+    function resume() as Void {
+        resumes++;
     }
 
     function open(request as PreStartRequest) as Void {
@@ -530,5 +536,46 @@ function aPlannedRunStartsFromTheStoredPrescriptionWithoutNetwork(logger as Logg
     keys.start();
     Expect.equal(keys.opened(), before);
     Expect.equal(rig.sync.state, RunSync.RUN_LOADING);
+    return true;
+}
+
+// "Resume run?" on the start screen: the row is there while a run is cut off, first and selected, and START asks.
+(:test)
+function anInterruptedRunIsOfferedFirstOnTheStartScreen(logger as Logger) as Boolean {
+    var rig = new RunRig();
+    rig.plan.loadAll();
+    rig.sync.start();
+    rig.plan.pairing.transport.respond(200, rig.upcoming(rig.threeRuns(1), true));
+    rig.answerAll(1);
+    // no journal, or no run in it: no row
+    Test.assert(!rig.home.hasInterruptedRun());
+    var sim = new RunSim(RunSim.prescription([RunSim.timed(60)] as Array, null), 0, false);
+    rig.home.journal = sim.parts.journal;
+    Test.assert(rig.home.hasInterruptedRun());
+    var keys = new RunKeys(rig);
+    keys.delegate = new HomeDelegate(rig.plan.pairing.controller, rig.plan.sync, new SessionPicker(), keys.launcher, rig.home);
+    var rows = rig.home.stops(rig.plan.sync, new SessionPicker());
+    Expect.equal(rows[0].kind, HomeStop.STOP_RUN_RESUME);
+    Expect.equal(rows[1].kind, HomeStop.STOP_STRENGTH);
+    Expect.equal(rig.home.selectedStop(rows, rig.plan.sync).kind, HomeStop.STOP_RUN_RESUME);
+    // START asks "Resume run?", opens no pre-start screen
+    keys.start();
+    Expect.equal(rig.opener.resumes, 1);
+    Expect.equal(keys.opened(), 0);
+    // DOWN twice (past the training) leaves the row; START on the planned run opens the pre-start screen as before
+    keys.down();
+    keys.down();
+    keys.start();
+    Expect.equal(rig.opener.resumes, 1);
+    Expect.equal(keys.opened(), 1);
+    // a saved run is not offered, nor is a damaged one
+    sim.session.save();
+    Test.assert(!rig.home.hasInterruptedRun());
+    var damaged = new RunSim(null, 0, false);
+    rig.home.journal = damaged.parts.journal;
+    Test.assert(rig.home.hasInterruptedRun());
+    var broken = { "v" => 1 } as Dictionary<String, Number>;
+    damaged.store.setValue(StoreKeys.runHead(damaged.session.uuid), broken as Application.Storage.ValueType);
+    Test.assert(!rig.home.hasInterruptedRun());
     return true;
 }

@@ -122,9 +122,11 @@ module HomeScreen {
             }
         }
         var freeHeader = false;
+        var todayHeader = false;
         for (var i = 0; i < rows.size(); i++) {
             var kind = rows[i].kind;
-            if (i == 0) {
+            if (!todayHeader && kind != HomeStop.STOP_RUN_RESUME) {
+                todayHeader = true;
                 out.add(new PairingLine(text(Rez.Strings.HomeToday), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY).skippable());
             }
             if (!freeHeader && (kind == HomeStop.STOP_FREE || kind == HomeStop.STOP_ZONE2)) {
@@ -251,6 +253,7 @@ module HomeFlow {
         var sync = Session.planSync();
         var launcher = Session.launcher();
         var run = new RunHome(Session.runSync(), new PairingClock(), new PreStartLauncher());
+        run.journal = new RunJournal(new KeyValueStore());
         return [new HomeView(Session.pairing(), sync, picker, launcher, run), new HomeDelegate(Session.pairing(), sync, picker, launcher, run)];
     }
 }

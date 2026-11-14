@@ -330,6 +330,11 @@ function startScreenFitsTheDisplayWithRunsPlanAndWithout(logger as Logger) as Bo
     runs.add(many.entry("r9", 0, "Langer Lauf", null, 1));
     Test.assert(many.cache.putUpcoming(many.upcoming(runs, true), many.plan.pairing.clock.now, 0));
     Test.assert(HomeRig.ok(dc, many, "three runs"));
+    // a run that was cut off as the first row, with three runs, long names and the pending line
+    many.home.journal = new RunSim(null, 0, false).parts.journal;
+    var cut = many.home.stops(many.plan.sync, new SessionPicker());
+    Test.assertEqual(cut[0].kind, HomeStop.STOP_RUN_RESUME);
+    Test.assert(HomeRig.ok(dc, many, "resume row"));
     // moving down through every row keeps the screen valid
     var rows = many.home.stops(many.plan.sync, new SessionPicker());
     for (var i = 0; i < rows.size(); i++) {
