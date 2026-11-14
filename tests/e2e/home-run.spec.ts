@@ -351,7 +351,7 @@ test("the plan overview lists the run sessions as Laufeinheit", async ({
   await expect(rows).toContainText("Lockerer Dauerlauf");
   await expect(rows).toContainText("Grundlagenlauf · Dienstag · Aktiv");
   await expect(rows).toContainText("Langer Lauf Laufeinheit");
-  await expect(rows).toContainText("Langer Lauf · Tag frei · Aktiv");
+  await expect(rows).toContainText("Tag frei · Aktiv");
   // Editing stays with the existing button and the chat.
   await expect(
     page.getByRole("button", { name: /Plan bearbeiten|Training ansehen/ }),

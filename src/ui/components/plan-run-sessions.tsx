@@ -26,12 +26,17 @@ export function PlanRunSessions({
             </>
           ),
           value: [
-            RUN_TYPE_LABEL[s.run_type],
+            // A session named like its run type says it once.
+            RUN_TYPE_LABEL[s.run_type] === s.session_name
+              ? ""
+              : RUN_TYPE_LABEL[s.run_type],
             s.preferred_weekday
               ? WEEKDAY_LONG[s.preferred_weekday - 1]
               : "Tag frei",
             s.status === "active" ? "Aktiv" : "Entfernt",
-          ].join(" · "),
+          ]
+            .filter(Boolean)
+            .join(" · "),
         }))}
     />
   );
