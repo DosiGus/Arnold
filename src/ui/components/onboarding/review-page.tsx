@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import {
   Clock,
   Dumbbell,
+  Footprints,
   MapPin,
   Pencil,
   Sparkles,
@@ -26,6 +27,13 @@ import { CardActions, CardNote } from "../cards";
 import { formatNumber } from "../../format";
 import { ICON, TITLE, asksForLoads, type Page } from "./pages";
 
+const RUN_GOAL_LABEL = {
+  fitness: "Fit bleiben",
+  "5k": "5 km",
+  "10k": "10 km",
+  half_marathon: "Halbmarathon",
+} as const;
+
 /**
  * The review in plain words: one sentence for the whole plan, then one row
  * per answer with a way back to change it.
@@ -39,6 +47,7 @@ export function renderReviewPage({
   progress,
   canWritePlan,
   onRequestPlan,
+  withRun = false,
   onEdit,
 }: {
   head: ReactNode;
@@ -49,6 +58,8 @@ export function renderReviewPage({
   progress: OnboardingProgress;
   canWritePlan: boolean;
   onRequestPlan: () => void;
+  /** A running goal is set: the run details get a row of their own. */
+  withRun?: boolean;
   /** Opens a page as an edit that returns to the review. */
   onEdit: (page: Page) => void;
 }) {
@@ -102,6 +113,14 @@ export function renderReviewPage({
     .filter(([key]) => known[key] !== undefined)
     .map(([key, name]) => `${name} ${formatNumber(known[key]!, 1)} kg`)
     .join(" · ");
+  const run = training.run;
+  const runText = run
+    ? [
+        RUN_GOAL_LABEL[run.goal],
+        `${run.runs_per_week} ${run.runs_per_week === 1 ? "Lauf" : "Läufe"} pro Woche`,
+        `${run.base_minutes_per_week} Min. pro Woche`,
+      ].join(" · ")
+    : "Noch offen";
   const rows: {
     key: string;
     icon: ReactNode;
@@ -152,6 +171,17 @@ export function renderReviewPage({
             label: "Deine Gewichte",
             value: knownText || "Arnold schätzt",
             edit: "loads" as Page,
+          },
+        ]
+      : []),
+    ...(withRun
+      ? [
+          {
+            key: "run",
+            icon: <Footprints size={ICON} />,
+            label: "Laufen",
+            value: runText,
+            edit: "run" as Page,
           },
         ]
       : []),
@@ -225,7 +255,11 @@ export function renderReviewPage({
         ))}
       </ul>
       {!progress.can_request_plan && (
-        <CardNote>Es fehlen noch Angaben für deinen Plan.</CardNote>
+        <CardNote>
+          {withRun && !run
+            ? "Es fehlen noch deine Laufangaben."
+            : "Es fehlen noch Angaben für deinen Plan."}
+        </CardNote>
       )}
       <CardActions
         primary={{

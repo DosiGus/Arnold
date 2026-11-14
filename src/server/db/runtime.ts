@@ -34,6 +34,7 @@ import {
 } from "../workout/service.js";
 import { RunService } from "../run/service.js";
 import { logStartWeight } from "../workout/start-weight.js";
+import { recordSetupRunProfile } from "../onboarding/run-profile.js";
 import type { StoredDataItem } from "../../shared/account-contract.js";
 import type { Database } from "./database.js";
 import type { PostgresIdentityRepository } from "./identity.js";
@@ -326,6 +327,8 @@ export class DatabaseUserRuntime {
       setupFinishAvailable: true,
       recordStartWeight: (weightKg, requestId, context) =>
         logStartWeight(this.service, weightKg, requestId, context),
+      recordRunProfile: (run, sessionId, context) =>
+        recordSetupRunProfile(this.runs, run, sessionId, context),
     });
     const loggingOptions: LoggingOptions = {
       mode: "database",

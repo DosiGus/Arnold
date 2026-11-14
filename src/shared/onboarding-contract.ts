@@ -59,6 +59,12 @@ import {
   TrainingSessionInputSchema,
   CustomExerciseInputSchema,
 } from "./plan-contract.js";
+import {
+  RUN_LIMITS,
+  RunEnvironmentSchema,
+  RunGoalSchema,
+  RunReferenceSourceSchema,
+} from "./run-contract.js";
 
 export {
   EQUIPMENT,
@@ -213,6 +219,8 @@ export const TRAINING_GOALS = [
   "strength",
   "fat_loss",
   "general_fitness",
+  /** Added with the running feature; profiles without it stay valid. */
+  "endurance_running",
 ] as const;
 export const TrainingGoalSchema = z.enum(TRAINING_GOALS);
 export type TrainingGoal = z.infer<typeof TrainingGoalSchema>;
@@ -359,6 +367,35 @@ export const PERSON_BASICS = [
 ] as const;
 
 /**
+ * The run details of a running goal ("Ausdauer und Laufen").
+ *
+ * Field names are those of the run profile (`update_run_profile`). The
+ * setup keeps them with the other answers and hands them to the run service
+ * when it finishes; the run profile itself cannot be written before an
+ * account is set up. Weekly minutes and the longest run are required: a
+ * plan with runs cannot be built without them, and unknown is not 0.
+ * Race date, target time and reference are optional.
+ */
+export const OnboardingRunSchema = z.strictObject({
+  goal: RunGoalSchema,
+  race_date: z.iso.date().optional(),
+  target_time_s: positiveInt.max(RUN_LIMITS.maxSeconds).optional(),
+  reference: z
+    .strictObject({
+      distance_m: positiveInt.max(RUN_LIMITS.maxMeters),
+      time_s: positiveInt.max(RUN_LIMITS.maxSeconds),
+      date: z.iso.date(),
+      source: RunReferenceSourceSchema,
+    })
+    .optional(),
+  runs_per_week: z.number().int().min(1).max(7),
+  base_minutes_per_week: z.number().int().min(0).max(3000),
+  longest_run_4w_min: z.number().int().min(0).max(600),
+  preferred_environment: RunEnvironmentSchema,
+});
+export type OnboardingRun = z.infer<typeof OnboardingRunSchema>;
+
+/**
  * The Training card.
  *
  * The required answers are nullable, because the card exists from the first
@@ -385,6 +422,8 @@ export const TrainingSchema = z.strictObject({
   avoided_exercise_ids: z.array(StarterExerciseIdSchema).max(40).optional(),
   /** Weights the user knows; the start weights of the plan follow them. */
   known_loads: KnownLoadsSchema.optional(),
+  /** Only with the goal "Ausdauer und Laufen"; see OnboardingRunSchema. */
+  run: OnboardingRunSchema.optional(),
   /** Verbatim user text. Data, never an instruction. */
   notes: freeText.optional(),
 });
@@ -466,6 +505,7 @@ export const TrainingPatchSchema = z
     preferred_exercise_ids: z.array(StarterExerciseIdSchema).max(40).optional(),
     avoided_exercise_ids: z.array(StarterExerciseIdSchema).max(40).optional(),
     known_loads: KnownLoadsSchema.nullable().optional(),
+    run: OnboardingRunSchema.nullable().optional(),
     notes: freeText.nullable().optional(),
   })
   .refine(
@@ -749,6 +789,8 @@ export const OnboardingBriefSchema = z.strictObject({
   focus_muscle_groups: z.array(MuscleGroupSchema),
   preferred_exercises: z.array(BriefExerciseRefSchema),
   avoided_exercises: z.array(BriefExerciseRefSchema),
+  /** The run details of a running goal; user answers, not Arnold's numbers. */
+  running: OnboardingRunSchema.optional(),
   /** Verbatim user text, explicitly marked as data and not as an instruction. */
   user_statements: z.array(
     z.strictObject({ field: z.string(), text: z.string() }),
@@ -825,6 +867,14 @@ export const OnboardingStateSchema = z.strictObject({
       }),
     )
     .default([]),
+  /**
+   * The run details a running goal needs. `required` follows the goals
+   * ("Ausdauer und Laufen" chosen); `ready` is true once the run profile
+   * holds them. Absent in older states: nothing required.
+   */
+  run_setup: z
+    .strictObject({ required: z.boolean(), ready: z.boolean() })
+    .default({ required: false, ready: true }),
   /** `production` when the setup belongs to a verified account. */
   mode: z.enum(["fixture", "production"]),
   setup_finish_available: z.boolean().default(false),
@@ -1048,6 +1098,7 @@ export const GOAL_LABEL: Record<TrainingGoal, string> = {
   strength: "Stärker werden",
   fat_loss: "Abnehmen und straffen",
   general_fitness: "Fit und gesund bleiben",
+  endurance_running: "Ausdauer und Laufen",
 };
 
 export const GOAL_HINT: Record<TrainingGoal, string> = {
@@ -1056,6 +1107,7 @@ export const GOAL_HINT: Record<TrainingGoal, string> = {
   fat_loss: "Muskeln halten und Körperfett reduzieren.",
   general_fitness:
     "Gesund und regelmäßig trainieren, ohne festes Leistungsziel.",
+  endurance_running: "Laufen aufbauen: Fitness, 5 km, 10 km oder Halbmarathon.",
 };
 
 export const EXPERIENCE_LABEL: Record<ExperienceLevel, string> = {

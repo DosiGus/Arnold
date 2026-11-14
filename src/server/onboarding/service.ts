@@ -51,6 +51,7 @@ import {
   type OnboardingErrorCode,
   type OnboardingHandoff,
   type OnboardingProfile,
+  type OnboardingRun,
   type OnboardingProfilePatch,
   type OnboardingResponse,
   type OnboardingState,
@@ -84,6 +85,8 @@ import {
   firstOpenStep,
   validateProfile,
   validateProposalAgainstProfile,
+  runSetupState,
+  wantsRunning,
 } from "./profile.js";
 import {
   RepositoryConflictError,
@@ -145,6 +148,16 @@ export interface OnboardingServiceOptions {
   recordStartWeight?: (
     weightKg: number,
     requestId: string,
+    context: unknown,
+  ) => Promise<void>;
+  /**
+   * Hands the run details of a running goal to the run service once the
+   * setup is finished (the run profile cannot be written before). Throws when
+   * the run service refused. Absent where a deployment keeps no run data.
+   */
+  recordRunProfile?: (
+    run: OnboardingRun,
+    sessionId: string,
     context: unknown,
   ) => Promise<void>;
   clock?: () => Date;
@@ -558,6 +571,20 @@ export class OnboardingService {
     };
   }
 
+  /** Whether the run details a running goal needs have been answered. */
+  private runSetup(profile: OnboardingProfile) {
+    return runSetupState(profile.training);
+  }
+
+  private assertRunReady(profile: OnboardingProfile) {
+    if (this.runSetup(profile).ready) return;
+    throw fail(
+      "PROFILE_INCOMPLETE",
+      "Für „Ausdauer und Laufen“ fehlen noch die Laufangaben (Ziel, Läufe und Minuten pro Woche, längster Lauf, Umfeld). Der Nutzer trägt sie in der Einrichtung beim Schritt Laufangaben ein.",
+      ["run_profile: Laufangaben fehlen"],
+    );
+  }
+
   /** One onboarding state, as every caller sees it. */
   private async project(record: OnboardingRecord): Promise<OnboardingState> {
     const expired =
@@ -570,6 +597,7 @@ export class OnboardingService {
       ? { ...record.session, status: "EXPIRED" as const }
       : record.session;
     const complete = isProfileComplete(session.profile);
+    const runSetup = this.runSetup(session.profile);
     return OnboardingStateSchema.parse({
       onboarding_contract: ONBOARDING_CONTRACT,
       session: {
@@ -582,6 +610,7 @@ export class OnboardingService {
         step: session.current_step,
         can_request_plan:
           complete &&
+          runSetup.ready &&
           !expired &&
           allowedEvents(machine).includes("REQUEST_PLAN"),
         can_confirm_plan:
@@ -599,6 +628,7 @@ export class OnboardingService {
         ? loadEstimates(plan, session.profile, await this.catalog())
         : [],
       split_options: splitsForDays(session.profile.training.days_per_week),
+      run_setup: runSetup,
       mode: this.mode,
       setup_finish_available: this.options.setupFinishAvailable ?? false,
       can_write_plan: Boolean(this.options.plans),
@@ -986,6 +1016,7 @@ export class OnboardingService {
         "Für einen Planvorschlag fehlen noch Pflichtangaben.",
         validation.errors.map((issue) => `${issue.code}: ${issue.message}`),
       );
+    this.assertRunReady(profile);
     return buildBrief(profile, {
       onboarding_session_id: record.session.onboarding_session_id,
       exercises: await this.catalog(),
@@ -1009,6 +1040,7 @@ export class OnboardingService {
           replayed: true,
         };
       this.assertRevision(record, input.expected_revision, input.request_id);
+      this.assertRunReady(record.session.profile);
       const stored = await this.commit(
         record,
         { type: "REQUEST_PLAN" },
@@ -1061,6 +1093,7 @@ export class OnboardingService {
           "PROFILE_INCOMPLETE",
           "Ein Planvorschlag setzt vollständige Pflichtangaben voraus.",
         );
+      this.assertRunReady(record.session.profile);
 
       // Does the proposal answer what the user asked for? Structural validity
       // is the plan service's job and is checked right after.
@@ -1462,12 +1495,15 @@ export class OnboardingService {
         );
       const opened = await this.open(input, context);
       let record = opened.record;
-      if (record.session.status === "COMPLETED")
+      if (record.session.status === "COMPLETED") {
+        // A finish whose run hand-over failed is repeated until it holds.
+        await this.applyRunProfile(record.session, context);
         return {
           state: await this.project(record),
           token: null,
           replayed: true,
         };
+      }
       const confirmed = record.session.confirmed_plan_reference;
       if (!confirmed)
         throw fail(
@@ -1543,6 +1579,9 @@ export class OnboardingService {
           }),
         },
       );
+      // The user asked for runs: unlike the start weight, losing these
+      // answers silently would leave a plan with runs and no run profile.
+      await this.applyRunProfile(done.session, context);
       const weight = done.session.profile.person.body_weight_kg;
       if (weight !== undefined && this.options.recordStartWeight)
         // A convenience on top of a finished setup: the setup is stored and
@@ -1557,6 +1596,32 @@ export class OnboardingService {
           .catch(() => undefined);
       return { state: await this.project(done), token: null };
     });
+  }
+
+  /**
+   * Hands the run details to the run service. The service's own request id
+   * rules make this safe to repeat. A refusal is reported, not swallowed.
+   */
+  private async applyRunProfile(
+    session: OnboardingRecord["session"],
+    context: unknown,
+  ) {
+    const run = session.profile.training.run;
+    if (!run || !wantsRunning(session.profile.training)) return;
+    if (!this.options.recordRunProfile) return;
+    try {
+      await this.options.recordRunProfile(
+        run,
+        session.onboarding_session_id,
+        context,
+      );
+    } catch {
+      throw new OnboardingError(
+        "PLAN_WRITE_UNAVAILABLE",
+        "Dein Plan ist aktiv, aber die Laufangaben konnten noch nicht gespeichert werden. Tippe noch einmal auf „Einrichtung abschließen“.",
+        true,
+      );
+    }
   }
 
   /** Ends a setup deliberately. Always possible, never an error. */

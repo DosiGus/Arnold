@@ -49,6 +49,26 @@ import {
 } from "./onboarding-contract.js";
 import { exercisesFor, starterExercise } from "./exercise-starter-catalog.js";
 
+/** Whether "Ausdauer und Laufen" is a main or a further goal. */
+export function wantsRunning(training: OnboardingProfile["training"]): boolean {
+  return (
+    training.primary_goal === "endurance_running" ||
+    (training.secondary_goals ?? []).includes("endurance_running")
+  );
+}
+
+/**
+ * The run details a running goal needs before a plan can be asked for. They
+ * are required answers of the run step; unknown is unknown, never 0.
+ */
+export function runSetupState(training: OnboardingProfile["training"]): {
+  required: boolean;
+  ready: boolean;
+} {
+  const required = wantsRunning(training);
+  return { required, ready: !required || training.run !== undefined };
+}
+
 /** The value behind a required field name. */
 function valueOf(profile: OnboardingProfile, field: RequiredProfileField) {
   if (field === "path") return profile.path;
@@ -361,11 +381,14 @@ export function buildBrief(
   if (training.notes)
     statements.push({ field: "training.notes", text: training.notes });
 
+  const runs = wantsRunning(training);
   const shared = [
     "Jede Trainingseinheit braucht mindestens eine Übung.",
     "Nur exercise_id-Werte aus exercise_catalog verwenden.",
     "Satzanzahl zwischen 1 und 20, Wiederholungsbereich mit rep_min <= rep_max und beides zwischen 1 und 100.",
-    "Ausschließlich Krafttraining. Kein Cardio, keine Ernährung, keine medizinischen Hinweise.",
+    runs
+      ? "Der Vorschlag enthält nur den Kraftanteil. Keine Ernährung, keine medizinischen Hinweise. Laufen kommt nicht als Übung hinein, sondern als Laufeinheit (siehe unten)."
+      : "Ausschließlich Krafttraining. Kein Cardio, keine Ernährung, keine medizinischen Hinweise.",
   ];
   if (protect.length)
     shared.push(
@@ -478,6 +501,12 @@ export function buildBrief(
     constraints.push(
       `Hauptziel ist ${GOAL_LABEL[goal]}. Zusätzlich gewünscht: ${secondaryGoals.map((g) => GOAL_LABEL[g]).join(", ")}. Diese Ziele mit berücksichtigen, aber dem Hauptziel unterordnen.`,
     );
+  if (runs)
+    constraints.push(
+      "Der Nutzer hat „Ausdauer und Laufen“ gewählt und seine Laufangaben in der Einrichtung gemacht. Sie stehen im Feld running (Ziel, Läufe pro Woche, Minuten pro Woche, längster Lauf, Umfeld, optional Wettkampf, Zielzeit, Referenz) und werden beim Abschluss der Einrichtung ins Laufprofil übernommen. Nicht noch einmal abfragen.",
+      "Nach dem Kraftvorschlag Laufeinheiten in denselben Entwurf legen: update_plan_draft mit add_run_session (session_name, run_type, optional preferred_weekday). Anzahl der Läufe = Läufe pro Woche aus dem Laufprofil, im Zweifel eher weniger; höchstens zwei harte Läufe pro Woche. Kraft- und Lauftage so verteilen, dass sie zu den gewählten Trainingstagen passen.",
+      "Tempi, Pulszonen, Streckenlängen und Steigerungen nie selbst festlegen oder nennen: Das berechnet Arnold aus dem Laufprofil. Keine Wettkampfzeit versprechen.",
+    );
   if (training.focus_muscle_groups?.length)
     constraints.push(
       `Schwerpunkt auf ${training.focus_muscle_groups.map((group) => MUSCLE_GROUP_LABEL[group]).join(", ")}: diese Muskelgruppen etwas häufiger oder mit mehr Sätzen trainieren, ohne die übrigen zu vernachlässigen.`,
@@ -494,6 +523,7 @@ export function buildBrief(
   return {
     ...base,
     path: "arnold_plan",
+    ...(runs && training.run ? { running: training.run } : {}),
     task: "Aus diesen Angaben einen Trainingsplan erstellen und mit submit_onboarding_plan_proposal (origin ai_proposal) als Entwurf übergeben.",
     goal: {
       primary: goal,
