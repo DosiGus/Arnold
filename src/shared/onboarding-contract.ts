@@ -1107,8 +1107,7 @@ export const GOAL_HINT: Record<TrainingGoal, string> = {
   fat_loss: "Muskeln halten und Körperfett reduzieren.",
   general_fitness:
     "Gesund und regelmäßig trainieren, ohne festes Leistungsziel.",
-  endurance_running:
-    "Laufen aufbauen: Fitness, 5 km, 10 km oder Halbmarathon.",
+  endurance_running: "Laufen aufbauen: Fitness, 5 km, 10 km oder Halbmarathon.",
 };
 
 export const EXPERIENCE_LABEL: Record<ExperienceLevel, string> = {
