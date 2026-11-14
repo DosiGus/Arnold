@@ -146,6 +146,7 @@ export function ProfileStep({
     minutes >= SESSION_MINUTES_MIN &&
     minutes <= SESSION_MINUTES_MAX;
 
+  const runResult = runFromDraft(runDraft);
   const answered =
     page === "goal"
       ? goals.length > 0
@@ -155,7 +156,9 @@ export function ProfileStep({
           ? days !== undefined && minutesOk
           : page === "environment"
             ? !!environment
-            : true;
+            : page === "run"
+              ? runResult.run !== undefined
+              : true;
 
   // Asked on the strength of the answers on screen, saved or not yet.
   const withLoads = asksForLoads(
@@ -168,7 +171,6 @@ export function ProfileStep({
     page === "goal"
       ? goals.includes("endurance_running")
       : wantsRunning(training);
-  const runResult = runFromDraft(runDraft);
 
   const go = (next: Page, edit = false) => {
     setFromReview(edit);

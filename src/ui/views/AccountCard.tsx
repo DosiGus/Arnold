@@ -20,6 +20,19 @@ export function AccountCard({
   const [cancelled, setCancelled] = useState(false);
   const [now, setNow] = useState(Date.now());
   const guard = useRef(false);
+  // The run button shows only for someone without a run profile; a failed
+  // read hides it rather than offering a setup that may already exist.
+  const [noRunProfile, setNoRunProfile] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    client
+      .runProfile()
+      .then((r) => alive && setNoRunProfile(r.profile === null))
+      .catch(() => alive && setNoRunProfile(false));
+    return () => {
+      alive = false;
+    };
+  }, [client]);
   useEffect(() => {
     setResponse(initial);
     setFailure(undefined);
@@ -110,6 +123,22 @@ export function AccountCard({
           <CardNote>
             Deine Trainingspläne und Trainings sind danach nicht mehr abrufbar.
           </CardNote>
+          {noRunProfile && response.stage === "confirm" && (
+            <div data-block="run-offer">
+              <h3 className="ac-section-title">Du willst auch laufen?</h3>
+              <p className="ac-caption">
+                Arnold plant Läufe und zeichnet sie auf. Richte dein Laufprofil
+                ein, ohne etwas zu löschen.
+              </p>
+              <CardActions
+                primary={{
+                  label: "Ich will auch laufen",
+                  onClick: () => void client.openRun("run_setup"),
+                  disabled: busy,
+                }}
+              />
+            </div>
+          )}
           <CardActions
             primary={{
               label: busy

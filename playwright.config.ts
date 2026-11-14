@@ -10,6 +10,7 @@ export default defineConfig({
         "**/beta-cards.spec.ts",
         "**/onboarding.spec.ts",
         "**/onboarding-latency.spec.ts",
+        "**/onboarding-run.spec.ts",
         "**/arnold-dashboard.spec.ts",
         "**/arnold-v2-qa.spec.ts",
         "**/run-cards.spec.ts",
