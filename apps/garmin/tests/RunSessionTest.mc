@@ -455,7 +455,10 @@ module ThreeHours {
 
     function check(run as RunSim, logger as Logger) as Void {
         logger.debug("3 h: peak memory " + peakUsed + " of " + total + " bytes = " + (peakUsed * 100 / total) + " % (before the run " + baseline + ", the run added " + (peakUsed - baseline) + ")");
-        Test.assertMessage(peakUsed * 100 / total < 70, "peak " + peakUsed + " of " + total);
+        // The test build carries the code of all tests (the watch app is about 45 % smaller: 404 KB against 733 KB of the
+        // test file on the fr255), so the run's own growth is what is limited tightly; the whole stays under 90 %.
+        Test.assertMessage(peakUsed - baseline < total * 6 / 100, "the run added " + (peakUsed - baseline) + " bytes");
+        Test.assertMessage(peakUsed * 100 / total < 90, "peak " + peakUsed + " of " + total);
         Test.assertEqual(run.session.calc.timerS, 10800);
         Test.assert(run.session.isPlanDone());
         Test.assertEqual(run.backend.lapSegments.size() >= 80 ? 80 : 0, 80);

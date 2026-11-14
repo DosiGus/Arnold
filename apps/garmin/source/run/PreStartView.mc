@@ -180,13 +180,33 @@ class RunStarter {
     // The services of a real run.
     function parts() as RunParts {
         var store = new KeyValueStore();
-        return new RunParts(new RunJournal(store), new PairingClock(), new Settings(store), new ActivityRunSource(), new FitRunBackend(), _sensors, RunZones.fromProfile());
+        var runParts = new RunParts(new RunJournal(store), new PairingClock(), new Settings(store), new ActivityRunSource(), new FitRunBackend(), _sensors, RunZones.fromProfile());
+        runParts.health = healthCapture(store);
+        return runParts;
+    }
+
+    // The heart rate series of the run for Arnold: the existing health path (HealthCapture, HealthSender). The consent is what
+    // the server said with the list of planned runs; without it (or unknown) the capture collects nothing.
+    hidden function healthCapture(store as KeyValueStore) as HealthCapture or Null {
+        try {
+            var sender = Session.launcher().sender().health();
+            if (sender == null) {
+                return null;
+            }
+            var said = new RunCache(store).healthConsent();
+            if (said != null) {
+                (sender as HealthSender).consent().set(said as Boolean, new PairingClock().nowSeconds());
+            }
+            return (sender as HealthSender).newCapture("");
+        } catch (e) {
+            return null;   // no health values; the run does not depend on them
+        }
     }
 
     // `afterPreStart`: the pre-start screen lies below the run display and leaves with it.
     function open(session as RunSession, afterPreStart as Boolean) as Void {
         var view = new RunView(session);
-        var controller = new RunController(session, _nav, afterPreStart, view.ticker());
+        var controller = new RunController(session, _nav, afterPreStart, view.ticker()).useEnd(Session.runSender(), new KeyValueStore());
         WatchUi.pushView(view, new RunDelegate(controller, view), WatchUi.SLIDE_LEFT);
     }
 }

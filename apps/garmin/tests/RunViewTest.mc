@@ -24,8 +24,11 @@ class FakeRunNav extends RunNav {
         choices.add(list);
     }
 
-    function toSummary(saved as Boolean, afterPreStart as Boolean) as Void {
-        calls.add("summary:" + saved + ":" + afterPreStart);
+    var flows as Array<RunEndFlow> = [] as Array<RunEndFlow>;
+
+    function show(flow as RunEndFlow) as Void {
+        flows.add(flow);
+        calls.add("show:" + flow.step + ":" + flow.saved + ":" + flow.afterPreStart);
     }
 
     function leave(afterPreStart as Boolean) as Void {
@@ -335,7 +338,7 @@ function saveEndsTheRunAndLeadsToTheSummary(logger as Logger) as Boolean {
     nav.last().onChoose(1);
     Test.assertEqual(rig.backend.saves, 1);
     Test.assertEqual(rig.session.state, RunSession.STATE_FINISHED);
-    Test.assertEqual(nav.said(), "open,pop,summary:true:true");
+    Test.assertEqual(nav.said(), "open,pop,show:" + RunEndFlow.STEP_EFFORT + ":true:true");
     Test.assert(!rig.parts.journal.hasInterrupted());          // saved: nothing to continue
     keys.onStart();                                            // a saved run does not open the menu again
     Test.assertEqual(nav.choices.size(), 1);
@@ -539,7 +542,7 @@ function theEnergySavingPictureIsDarkSmallAndMoves(logger as Logger) as Boolean 
 function drawingTheRunTwiceASecondForAMinuteLeavesNothingBehind(logger as Logger) as Boolean {
     var dc = LayoutRig.dc();
     var rig = new RunSim(ViewRig.body(6, [ViewRig.seg(1, 1, 3600, 2, 270, 285)] as Array, null), 0, false);
-    rig.seconds(5);
+    rig.seconds(35);                                 // past the first write of the journal: it adds its keys once
     var view = new RunView(rig.session);
     for (var warm = 0; warm < 5; warm++) {
         view.onUpdate(dc);

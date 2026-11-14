@@ -9,6 +9,8 @@ class RunReading {
     var heartRate as Number or Null;
     var cadence as Number or Null;      // steps per minute
     var ascentM as Number or Null;      // metres climbed in this recording
+    var calories as Number or Null;     // kcal of this recording (RUN-018)
+    var effect10 as Number or Null;     // aerobic training effect in tenths, as the watch has it (RUN-018)
 
     function initialize() {
         clear();
@@ -21,6 +23,8 @@ class RunReading {
         heartRate = null;
         cadence = null;
         ascentM = null;
+        calories = null;
+        effect10 = null;
     }
 }
 

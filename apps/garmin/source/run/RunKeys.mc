@@ -4,7 +4,7 @@ import Toybox.WatchUi;
 // What the keys of the run display do (RUN-016). The logic lives here, without WatchUi, so tests press the keys
 // and look at what the session and the navigation did; RunDelegate only passes the keys on.
 //
-//   START/STOP   pauses the run and opens the pause menu (Continue, Save, Discard with a question)
+//   START/STOP   pauses the run and opens the pause menu (Continue, Save, Discard with a question); Save leads to RunEndFlow
 //   LAP (BACK)   a lap or the next segment; a timed or distance segment is ended only after a question
 //   UP, DOWN     pages (RunView)
 //   UP long      run settings (alarms muted, auto pause)
@@ -13,12 +13,23 @@ class RunController {
     private var _nav as RunNav;
     private var _afterPreStart as Boolean;
     private var _ticker as RunTicker or Null;
+    private var _sender as RunSender or Null;
+    private var _consentStore as KeyValueStore or Null;
 
     function initialize(runSession as RunSession, nav as RunNav, afterPreStart as Boolean, ticker as RunTicker or Null) {
         session = runSession;
         _nav = nav;
         _afterPreStart = afterPreStart;
         _ticker = ticker;
+        _sender = null;
+        _consentStore = null;
+    }
+
+    // The outbox the result goes to and the storage that says whether the heart rate may go with it (RUN-018).
+    function useEnd(sender as RunSender or Null, store as KeyValueStore or Null) as RunController {
+        _sender = sender;
+        _consentStore = store;
+        return self;
     }
 
     function onStart() as Void {
@@ -47,12 +58,14 @@ class RunController {
         _nav.openChoices(new RunSettingsChoices(self, _nav));
     }
 
-    // SAVE: the watch saves the activity, the summary takes over.
+    // SAVE: the watch saves the activity; then the distance (treadmill), the effort and the summary (RunEndFlow).
     function save() as Void {
         var saved = session.save();
         stopTicker();
         _nav.pop();                                   // the pause menu
-        _nav.toSummary(saved, _afterPreStart);
+        var store = _consentStore;
+        var consent = store != null && RunConsent.isOn(store as KeyValueStore);
+        new RunEndFlow(session, saved, _afterPreStart, _sender, consent).begin(_nav);
     }
 
     // Yes to "Discard?": the run and its journal are gone, back to the start screen.

@@ -128,9 +128,9 @@ class RunNav {
         WatchUi.pushView(view, new RunChoiceDelegate(choices, view), WatchUi.SLIDE_UP);
     }
 
-    // After SAVE: the run display gives way to the summary (RUN-018 builds it; until then a note).
-    function toSummary(saved as Boolean, afterPreStart as Boolean) as Void {
-        WatchUi.switchToView(new RunSummaryView(saved), new RunSummaryDelegate(afterPreStart, self), WatchUi.SLIDE_IMMEDIATE);
+    // After SAVE: the run display gives way to the next step of the end (distance, effort, summary; RUN-018).
+    function show(flow as RunEndFlow) as Void {
+        WatchUi.switchToView(new RunEndView(flow), new RunEndDelegate(flow, self), WatchUi.SLIDE_IMMEDIATE);
     }
 
     // Closes the view on top and what was opened before the run display (the pre-start screen), back to the start screen.
@@ -139,45 +139,5 @@ class RunNav {
         if (afterPreStart) {
             pop();
         }
-    }
-}
-
-// The stand-in of the summary (RUN-018): says that it follows, BACK or START return to the start screen.
-class RunSummaryView extends WatchUi.View {
-    private var _saved as Boolean;
-
-    function initialize(saved as Boolean) {
-        View.initialize();
-        _saved = saved;
-    }
-
-    function onUpdate(dc as Dc) as Void {
-        var out = [] as Array<PairingLine>;
-        out.add(new PairingLine(HomeScreen.text(Rez.Strings.RunSummarySoon), Graphics.FONT_MEDIUM, Graphics.COLOR_WHITE));
-        if (!_saved) {
-            out.add(new PairingLine(HomeScreen.text(Rez.Strings.RunSaveFailed), Graphics.FONT_TINY, Graphics.COLOR_ORANGE));
-        }
-        PairingLayout.draw(dc, out);
-    }
-}
-
-class RunSummaryDelegate extends WatchUi.BehaviorDelegate {
-    private var _afterPreStart as Boolean;
-    private var _nav as RunNav;
-
-    function initialize(afterPreStart as Boolean, nav as RunNav) {
-        BehaviorDelegate.initialize();
-        _afterPreStart = afterPreStart;
-        _nav = nav;
-    }
-
-    function onSelect() as Boolean {
-        _nav.leave(_afterPreStart);
-        return true;
-    }
-
-    function onBack() as Boolean {
-        _nav.leave(_afterPreStart);
-        return true;
     }
 }

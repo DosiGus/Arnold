@@ -32,6 +32,7 @@ class HomeView extends WatchUi.View {
         syncIfNeeded();
         if (_controller.isPaired()) {
             _launcher.sender().sendAll();   // workouts that are still waiting go out when the app opens
+            RunHandover.recoverOnOpen();    // runs that are still waiting go out too (RUN-018)
             SyncPrompts.check(_launcher.sender());
             SyncPrompts.checkStale(_launcher.sender(), _clock.nowSeconds());
         }
