@@ -303,8 +303,12 @@ describe("run week tools", () => {
         data.planRunSessions.find((s) => s.session_id === level.session_id)!
           .template.level,
       ).toBe(level.to);
+    // The calendar week that holds the scheduled runs: on a Sunday the next
+    // seven days lie almost entirely in the following week.
+    const runDay = result.days.find((d) => d.runs.length > 0)!.date;
     const view = RunWeekResponseSchema.parse(
-      (await call("get_run_week", { timezone: tz })).structuredContent,
+      (await call("get_run_week", { timezone: tz, date: runDay }))
+        .structuredContent,
     );
     expect(view.sessions).toHaveLength(3);
     expect(view.summary.runs_planned).toBeGreaterThan(0);
