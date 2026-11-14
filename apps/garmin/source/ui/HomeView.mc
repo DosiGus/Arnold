@@ -113,6 +113,14 @@ module HomeScreen {
         }
         var rows = run.stops(sync, picker);
         var selected = run.selectedIndex(rows, sync);
+        // One font for all rows: the smaller one when a row would be cut in the larger one
+        // (wide fonts such as on the AMOLED watches), so the minutes stay readable.
+        var rowFont = Graphics.FONT_TINY;
+        for (var r = 0; r < rows.size(); r++) {
+            if (dc.getTextWidthInPixels(text(Rez.Strings.HomeMarker) + " " + rows[r].text, Graphics.FONT_TINY) > PairingLayout.textWidth(dc)) {
+                rowFont = Graphics.FONT_XTINY;
+            }
+        }
         var freeHeader = false;
         for (var i = 0; i < rows.size(); i++) {
             var kind = rows[i].kind;
@@ -125,7 +133,7 @@ module HomeScreen {
             }
             var chosen = i == selected;
             var row = chosen ? text(Rez.Strings.HomeMarker) + " " + rows[i].text : rows[i].text;
-            out.add(PairingLayout.lowerNameLine(dc, row, chosen ? Graphics.COLOR_WHITE : Graphics.COLOR_LT_GRAY));
+            out.add(new PairingLine(PairingLayout.ellipsize(dc, row, rowFont, PairingLayout.textWidth(dc)), rowFont, chosen ? Graphics.COLOR_WHITE : Graphics.COLOR_LT_GRAY));
         }
         return out;
     }

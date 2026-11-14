@@ -335,6 +335,7 @@ function startScreenShowsTodaysRunNextToTheTraining(logger as Logger) as Boolean
     rig.plan.loadAll();
     Test.assert(rig.cache.putUpcoming(rig.upcoming(rig.threeRuns(1), true), rig.plan.pairing.clock.now, 0));
     var texts = rig.texts(dc);
+    logger.debug(dc.getWidth() + " px, text width " + PairingLayout.textWidth(dc) + ": " + texts);
     Test.assert(texts.find("Heute") != null || texts.find("Today") != null);
     Test.assert(texts.find("Zone 2 · 45") != null);
     Test.assert(texts.find("Day d2") != null);                         // the training is there too
