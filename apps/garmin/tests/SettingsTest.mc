@@ -113,7 +113,10 @@ function settingsMenuShowsTheStoredSwitches(logger as Logger) as Boolean {
     Test.assertEqual(0, menu.findItemById(Settings.VIBRATION));
     Test.assertEqual(1, menu.findItemById(Settings.TONE));
     Test.assertEqual(2, menu.findItemById(Settings.WARNING));
-    Test.assert(menu.getItem(3) == null);
+    Test.assertEqual(3, menu.findItemById(Settings.KM_SIGNAL));
+    Test.assertEqual(4, menu.findItemById(Settings.AUTO_PAUSE));
+    Test.assertEqual(5, menu.findItemById(Settings.HR_ALARMS));
+    Test.assert(menu.getItem(6) == null);
     var vib = menu.getItem(0) as WatchUi.ToggleMenuItem;
     var tone = menu.getItem(1) as WatchUi.ToggleMenuItem;
     var warn = menu.getItem(2) as WatchUi.ToggleMenuItem;
@@ -136,5 +139,70 @@ function settingsDelegateSavesAPressedSwitch(logger as Logger) as Boolean {
     tone.setEnabled(true);
     new SettingsDelegate(settings).onSelect(tone);
     Test.assert(new Settings(store).isOn(Settings.TONE));
+    return true;
+}
+
+(:test)
+function runSettingsHaveTheirOwnDefaults(logger as Logger) as Boolean {
+    // kilometre signal on, auto pause off, heart rate alarms on: without any stored entry, with none at all, and in the menu
+    var settings = new Settings(new MemoryStore());
+    Test.assert(settings.isOn(Settings.KM_SIGNAL));
+    Test.assert(!settings.isOn(Settings.AUTO_PAUSE));
+    Test.assert(settings.isOn(Settings.HR_ALARMS));
+    Test.assert(!new Settings(null).isOn(Settings.AUTO_PAUSE));
+    Test.assert(new Settings(null).isOn(Settings.KM_SIGNAL));
+    var menu = SettingsMenu.build(settings);
+    Test.assert((menu.getItem(3) as WatchUi.ToggleMenuItem).isEnabled());
+    Test.assert(!(menu.getItem(4) as WatchUi.ToggleMenuItem).isEnabled());
+    Test.assert((menu.getItem(5) as WatchUi.ToggleMenuItem).isEnabled());
+    return true;
+}
+
+(:test)
+function runSettingsAreSavedAndReadAgain(logger as Logger) as Boolean {
+    var store = new MemoryStore();
+    var settings = new Settings(store);
+    settings.set(Settings.AUTO_PAUSE, true);
+    settings.set(Settings.KM_SIGNAL, false);
+    settings.set(Settings.HR_ALARMS, false);
+    var again = new Settings(store);                             // read from the storage, as after a restart
+    Test.assert(again.isOn(Settings.AUTO_PAUSE));
+    Test.assert(!again.isOn(Settings.KM_SIGNAL));
+    Test.assert(!again.isOn(Settings.HR_ALARMS));
+    Test.assert(again.isOn(Settings.VIBRATION));                  // the strength switches stay as they were
+    Test.assert(again.isOn(Settings.TONE));
+    Test.assert(again.isOn(Settings.WARNING));
+    settings.set(Settings.TONE, false);                           // a strength switch keeps the run switches
+    Test.assert(new Settings(store).isOn(Settings.AUTO_PAUSE));
+    Test.assert(!new Settings(store).isOn(Settings.KM_SIGNAL));
+    settings.set(Settings.AUTO_PAUSE, false);
+    Test.assert(!new Settings(store).isOn(Settings.AUTO_PAUSE));
+    return true;
+}
+
+(:test)
+function runSettingsFallBackToTheirDefaultWhenDamaged(logger as Logger) as Boolean {
+    var store = new MemoryStore();
+    store.setValue(StoreKeys.SETTINGS, { "vib" => false, "km" => "x", "ap" => 1, "hra" => null });
+    var settings = new Settings(store);
+    Test.assert(!settings.isOn(Settings.VIBRATION));
+    Test.assert(settings.isOn(Settings.KM_SIGNAL));               // damaged: on
+    Test.assert(!settings.isOn(Settings.AUTO_PAUSE));             // damaged: off, its default
+    Test.assert(settings.isOn(Settings.HR_ALARMS));
+    store.setValue(StoreKeys.SETTINGS, "kaputt");
+    Test.assert(!settings.isOn(Settings.AUTO_PAUSE));
+    return true;
+}
+
+(:test)
+function settingsDelegateSavesAPressedRunSwitch(logger as Logger) as Boolean {
+    var store = new MemoryStore();
+    var settings = new Settings(store);
+    var menu = SettingsMenu.build(settings);
+    var pause = menu.getItem(4) as WatchUi.ToggleMenuItem;
+    pause.setEnabled(true);
+    new SettingsDelegate(settings).onSelect(pause);
+    Test.assert(new Settings(store).isOn(Settings.AUTO_PAUSE));
+    Test.assert(new Settings(store).isOn(Settings.KM_SIGNAL));
     return true;
 }

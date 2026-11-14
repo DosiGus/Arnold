@@ -1,5 +1,6 @@
 import Toybox.Graphics;
 import Toybox.Lang;
+import Toybox.Position;
 import Toybox.System;
 import Toybox.Test;
 
@@ -383,5 +384,58 @@ function startScreenHasNoLargeLitArea(logger as Logger) as Boolean {
     var share = LayoutRig.litShare(dc, HomeRig.lines(dc, rig));
     logger.debug("start screen on " + dc.getWidth() + " px: lit " + share + " %");
     Test.assertMessage(share <= 35, "lit " + share + " %");
+    return true;
+}
+
+// The pre-start screen (RUN-025) on every display: all lines at their longest (24-character name, the
+// longest run type, battery warning) still fit, in each environment and for each GPS quality.
+(:test)
+function thePreStartScreenFitsOnEveryDisplay(logger as Logger) as Boolean {
+    var dc = LayoutRig.dc();
+    var body = { "k" => 5, "n" => "Schwellenintervalle 6x6m", "e" => 0, "s" => PreStartRig.threeSegments() };
+    var qualities = [Position.QUALITY_NOT_AVAILABLE, Position.QUALITY_LAST_KNOWN, Position.QUALITY_POOR, Position.QUALITY_USABLE, Position.QUALITY_GOOD] as Array<Number>;
+    for (var e = 0; e < 3; e++) {
+        for (var q = 0; q < qualities.size(); q++) {
+            var request = new PreStartRequest(PreStartRequest.MODE_PLANNED, "r1", body).with(300, true);
+            var model = new PreStartModel(request);
+            model.environment = e;
+            var lines = PreStartScreen.lines(dc, model, qualities[q], 187, 5);   // 5 % battery: the warning is there
+            var message = "env " + e + " quality " + qualities[q] + " on " + dc.getHeight() + " px";
+            Test.assertMessage(LayoutRig.fits(dc, lines), message);
+            Test.assertMessage(LayoutRig.litShare(dc, lines) <= 60, message + " lit " + LayoutRig.litShare(dc, lines));
+            // the essentials are never dropped: name, environment, GPS, heart rate, battery
+            var drawn = PairingLayout.arrange(dc, lines);
+            var text = "";
+            for (var i = 0; i < drawn.size(); i++) {
+                text += drawn[i].text + "|";
+            }
+            Test.assertMessage(text.find(PreStartScreen.environmentText(e)) != null, message + " env text");
+            Test.assertMessage(text.find(PreStartScreen.gpsText(model, qualities[q])) != null, message + " gps text");
+            Test.assertMessage(text.find("187") != null, message + " heart rate");
+            Test.assertMessage(text.find(HomeScreen.text(Rez.Strings.PreBattery).substring(0, 4) as String) != null, message + " battery");
+            // the screen and the ring draw without an error
+            PairingLayout.draw(dc, lines);
+            if (model.usesGps()) {
+                PreStartScreen.drawRing(dc, qualities[q]);
+            }
+        }
+    }
+    // a free run in the shortest form
+    var free = new PreStartModel(PreStartRig.free());
+    Test.assert(LayoutRig.fits(dc, PreStartScreen.lines(dc, free, Position.QUALITY_NOT_AVAILABLE, null, 100)));
+    // the placeholder after START
+    Test.assert(LayoutRig.fits(dc, [new PairingLine(HomeScreen.text(Rez.Strings.RecPlaceholder), Graphics.FONT_MEDIUM, Graphics.COLOR_WHITE)] as Array<PairingLine>));
+    return true;
+}
+
+// The settings menu shows all six switches on every display (the menu scrolls: the count is what counts).
+(:test)
+function theSettingsMenuHasAllSixSwitches(logger as Logger) as Boolean {
+    var menu = SettingsMenu.build(new Settings(new MemoryStore()));
+    var count = 0;
+    while (menu.getItem(count) != null) {
+        count++;
+    }
+    Test.assertEqual(count, 6);
     return true;
 }
