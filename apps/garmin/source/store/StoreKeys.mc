@@ -29,6 +29,11 @@ module StoreKeys {
         return "run:" + runUuid + ":s" + chunk.toString();
     }
 
+    // What the summary needs besides the head: the finished segments, pauses, end of the run, the corrected distance (RUN-018).
+    function runExtra(runUuid as String) as String {
+        return "run:" + runUuid + ":g";
+    }
+
     // The prescription of one planned run, stored on its own like a plan day.
     function runPrescription(runId as String) as String {
         return "run:p:" + runId;
@@ -57,6 +62,13 @@ module StoreKeys {
     // A frozen upload request.
     function outbox(id as String) as String {
         return "out:" + id;
+    }
+
+    const RUN_OUTBOX_INDEX as String = "rout:index";   // ids of the run results waiting to be sent, oldest first (RUN-018)
+
+    // A finished run waiting to be sent: the frozen request and what follows it (RUN-018).
+    function runOutbox(id as String) as String {
+        return "rout:" + id;
     }
 
     const HEALTH_CONSENT as String = "health:consent";   // { "v": consent of the account, "t": asked at }

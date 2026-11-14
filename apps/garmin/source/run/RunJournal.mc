@@ -8,6 +8,7 @@ import Toybox.Lang;
 //   run:<uuid>:h        head: state, segment, totals, zone seconds, counters, checksum
 //   run:<uuid>:p        copy of the prescription (a plan change later does not touch the run)
 //   run:<uuid>:s<k>     100 m splits, chunk k of 60 (tenths of a second of the timer)
+//   run:<uuid>:g        finished segments, pauses, end, corrected distance, calories, effect (RUN-018)
 //
 // The head is one value written in one go, with a checksum: a half-written head is ignored and the run
 // is not offered for continuing. The head is written every 30 s and at every end of a segment or lap.
@@ -107,6 +108,27 @@ class RunJournal {
         }
     }
 
+    // What the summary needs besides the head (finished segments, pauses, end of the run, corrected distance, calories,
+    // training effect); null when nothing was written yet or it is damaged.
+    function readExtra(uuid as String) as Dictionary or Null {
+        var raw = _store.getValue(StoreKeys.runExtra(uuid));
+        if (!(raw instanceof Dictionary)) {
+            return null;
+        }
+        var extra = raw as Dictionary;
+        var numbers = ["pc", "e", "cm", "kc", "te"];
+        for (var i = 0; i < numbers.size(); i++) {
+            if (!(extra[numbers[i]] instanceof Number)) {
+                return null;
+            }
+        }
+        return extra["r"] instanceof Array ? extra : null;
+    }
+
+    function saveExtra(uuid as String, extra as Dictionary) as Void {
+        _store.setValue(StoreKeys.runExtra(uuid), extra as Application.Storage.ValueType);
+    }
+
     // Removes everything of a run.
     function discard(uuid as String) as Void {
         var head = readHead(uuid);
@@ -116,6 +138,7 @@ class RunJournal {
         }
         _store.deleteValue(StoreKeys.runHead(uuid));
         _store.deleteValue(StoreKeys.runCopy(uuid));
+        _store.deleteValue(StoreKeys.runExtra(uuid));
         var active = activeId();
         if (active != null && (active as String).equals(uuid)) {
             _store.deleteValue(StoreKeys.RUN_ACTIVE);

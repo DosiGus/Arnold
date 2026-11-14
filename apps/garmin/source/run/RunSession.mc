@@ -133,6 +133,12 @@ class ActivityRunSource extends RunSource {
         if (info has :totalAscent && info.totalAscent != null) {
             into.ascentM = (info.totalAscent as Float).toNumber();
         }
+        if (info has :calories && info.calories != null) {
+            into.calories = info.calories as Number;
+        }
+        if (info has :trainingEffect && info.trainingEffect != null) {
+            into.effect10 = ((info.trainingEffect as Float) * 10).toNumber();
+        }
     }
 }
 
@@ -156,6 +162,7 @@ class RunParts {
     var backend as RunBackend;
     var sensors as RunSensors or Null;
     var zones as Array<Number> or Null;
+    var health as HealthCapture or Null = null;   // the heart rate series of the run for Arnold (only with the consent), RUN-018
 
     function initialize(runJournal as RunJournal, pairingClock as PairingClock, userSettings as Settings,
                         readings as RunSource, recording as RunBackend, runSensors as RunSensors or Null, hrZones as Array<Number> or Null) {
@@ -215,6 +222,13 @@ class RunSession {
     var plan as RunSegments;
     var calc as RunTick;
     var reading as RunReading;
+    var results as Array<Array<Number>>;   // finished segments: [kind, status, seconds, metres, seconds in target or -1, heart avg or 0, heart max or 0, round or 0]
+    var pauses as Number;
+    var effort as Number;          // the effort the user gave, 1 to 10, 0 = none (RUN-018)
+    var endedAt as Number;         // when the run was saved (0 before)
+    var correctedCm as Number;     // the distance the user corrected, -1 without one (RUN-018)
+    var calories as Number;        // -1 = the watch does not know
+    var effect10 as Number;        // aerobic training effect in tenths, -1 = unknown
     var alerts as RunAlertLink;    // the alarms of the run (RUN-017); muted via setMuted/isMuted (run settings, RUN-016)
 
     private var _parts as RunParts;
@@ -224,6 +238,10 @@ class RunSession {
     private var _since as Number;  // seconds since the journal was written
     private var _savedSplits as Number;
     private var _closed as Boolean;
+    private var _gHrSum as Number;     // heart rate and seconds in target of the segment being run
+    private var _gHrN as Number;
+    private var _gHrMax as Number;
+    private var _gBand as Number;
 
     function initialize(runUuid as String, id as String, startMode as Number, env as Number, body as Dictionary or Null, runParts as RunParts) {
         uuid = runUuid;
@@ -247,6 +265,14 @@ class RunSession {
         _since = 0;
         _savedSplits = 0;
         _closed = false;
+        results = [] as Array<Array<Number>>;
+        pauses = 0;
+        effort = 0;
+        endedAt = 0;
+        correctedCm = -1;
+        calories = -1;
+        effect10 = -1;
+        resetSegmentSums();
     }
 
     // Starts a run from the pre-start screen. Null if the watch refuses the recording (nothing is left behind).
@@ -289,6 +315,29 @@ class RunSession {
         return session;
     }
 
+    // A run that was saved, but whose result has not gone into the run outbox yet (the watch stopped between SAVE and the
+    // outbox): the same run again, only to be built into a request. Null when there is none. No recording is opened.
+    static function reopenSaved(runParts as RunParts) as RunSession or Null {
+        var journal = runParts.journal;
+        var id = journal.activeId();
+        if (id == null) {
+            return null;
+        }
+        var head = journal.readHead(id as String);
+        if (head == null || ((head as Dictionary)["st"] as Number) != STATE_FINISHED) {
+            return null;
+        }
+        var entry = head as Dictionary;
+        var session = new RunSession(id as String, entry["rid"] as String, entry["md"] as Number, entry["en"] as Number, journal.readPrescription(id as String), runParts);
+        session.take(entry);
+        journal.readSplits(id as String, session.calc, session.calc.splitCount);
+        session.state = STATE_FINISHED;
+        if (session.endedAt <= 0) {
+            session.endedAt = session.startedAt + session.calc.timerS;   // the end was not written: the timer is what is known
+        }
+        return session;
+    }
+
     function take(head as Dictionary) as Void {
         calc.restore(head);
         ordinal = head["o"] as Number;
@@ -301,6 +350,16 @@ class RunSession {
         _savedSplits = calc.splitCount;
         if (ordinal > plan.count()) {
             ordinal = plan.count();
+        }
+        var extra = _parts.journal.readExtra(uuid);
+        if (extra != null) {
+            var e = extra as Dictionary;
+            results = e["r"] as Array<Array<Number>>;
+            pauses = e["pc"] as Number;
+            endedAt = e["e"] as Number;
+            correctedCm = e["cm"] as Number;
+            calories = e["kc"] as Number;
+            effect10 = e["te"] as Number;
         }
     }
 
@@ -316,6 +375,7 @@ class RunSession {
         if (sensors != null) {
             (sensors as RunSensors).start(environment != PreStartModel.ENV_TREADMILL);
         }
+        withHealth(:resume);
         return true;
     }
 
@@ -468,10 +528,13 @@ class RunSession {
             var step = calc.autoPause(reading.speedCmS, state == STATE_AUTO_PAUSED);
             if (step == RunTick.AUTO_PAUSE) {
                 guarded(:stop);
+                withHealth(:pause);
+                pauses++;
                 state = STATE_AUTO_PAUSED;
                 writeJournal();
             } else if (step == RunTick.AUTO_RESUME) {
                 guarded(:start);
+                withHealth(:resume);
                 state = STATE_RUNNING;
                 writeJournal();
             }
@@ -479,6 +542,8 @@ class RunSession {
         if (state != STATE_RUNNING) {
             return;
         }
+        sumSegment();
+        withHealth(:tick);
         follow();
         alerts.second(self);
         _since++;
@@ -512,6 +577,10 @@ class RunSession {
             return;
         }
         guarded(:stop);
+        withHealth(:pause);
+        if (state == STATE_RUNNING) {
+            pauses++;
+        }
         state = STATE_PAUSED;
         calc.resetAutoPause();
         writeJournal();
@@ -522,6 +591,7 @@ class RunSession {
             return;
         }
         guarded(:start);
+        withHealth(:resume);
         state = STATE_RUNNING;
         calc.resetAutoPause();
         writeJournal();
@@ -534,6 +604,15 @@ class RunSession {
             return false;
         }
         var saved = false;
+        endedAt = _parts.clock.nowSeconds();
+        if (reading.calories != null) {
+            calories = reading.calories as Number;
+        }
+        if (reading.effect10 != null) {
+            effect10 = reading.effect10 as Number;
+        }
+        recordLast();
+        withHealth(:finish);   // before the recording ends: the watch still has the values
         try {
             if (state == STATE_RUNNING) {
                 _parts.backend.stop();
@@ -561,6 +640,7 @@ class RunSession {
         } catch (e) {
             // the watch drops an unsaved recording itself
         }
+        withHealth(:discard);
         _parts.journal.discard(uuid);
         _closed = true;
         releaseSensors();
@@ -596,6 +676,7 @@ class RunSession {
             var changed = false;
             while (calc.distanceCm >= (_kmLaps + 1) * KM_CM) {
                 lap(0);
+                recordSegment(LAP_KIND, 0, 0, changed);
                 _kmLaps++;
                 changed = true;
             }
@@ -628,6 +709,10 @@ class RunSession {
     hidden function endSegment(manual as Boolean) as Void {
         var type = plan.durationType(ordinal);
         var value = plan.durationValue(ordinal);
+        var round = plan.roundOf(ordinal);
+        var early = manual && type != RunSegments.DURATION_OPEN;
+        var seconds = calc.timerS - _segT;
+        recordSegment(plan.kindOf(ordinal), early ? (seconds <= 1 ? 1 : 2) : 0, round == null ? 0 : (round as Array<Number>)[0], false);
         lap(ordinal + 1);
         ordinal++;
         if (ordinal >= plan.count()) {
@@ -656,6 +741,104 @@ class RunSession {
         }
     }
 
+    const LAP_KIND as Number = 5;       // segment kind of a km lap (wire code of RUN_SEGMENT_KINDS)
+    const MAX_RESULTS as Number = 80;
+
+    hidden function resetSegmentSums() as Void {
+        _gHrSum = 0;
+        _gHrN = 0;
+        _gHrMax = 0;
+        _gBand = 0;
+    }
+
+    // One more second of the segment being run: heart rate and the time the target was met.
+    hidden function sumSegment() as Void {
+        var hr = heartRate();
+        if (hr != null) {
+            _gHrSum += hr as Number;
+            _gHrN++;
+            if ((hr as Number) > _gHrMax) {
+                _gHrMax = hr as Number;
+            }
+        }
+        var type = ordinal < plan.count() ? plan.targetType(ordinal) : 0;
+        if (type >= 1 && type <= 3 && targetFit() == FIT_OK) {
+            _gBand++;
+        }
+    }
+
+    // Adds the segment that just ended to the results. `repeat` continues a km lap that ended in the same second
+    // (several km in one tick are laps of zero time).
+    hidden function recordSegment(kind as Number, status as Number, round as Number, repeat as Boolean) as Void {
+        if (results.size() >= MAX_RESULTS) {
+            resetSegmentSums();
+            return;
+        }
+        var seconds = repeat ? 0 : calc.timerS - _segT;
+        var cm = repeat ? KM_CM : calc.distanceCm - _segD;
+        var type = ordinal < plan.count() && kind != LAP_KIND ? plan.targetType(ordinal) : 0;
+        var band = type >= 1 && type <= 3 ? (_gBand > seconds ? seconds : _gBand) : -1;
+        results.add([kind, status, seconds < 0 ? 0 : seconds, cm < 0 ? 0 : cm / 100, band,
+            _gHrN > 0 ? _gHrSum / _gHrN : 0, _gHrMax, round]);
+        resetSegmentSums();
+    }
+
+    // The segment (or km) that was running when the run was saved.
+    hidden function recordLast() as Void {
+        if (calc.timerS - _segT <= 0 && calc.distanceCm - _segD <= 0) {
+            return;
+        }
+        if (ordinal < plan.count()) {
+            var round = plan.roundOf(ordinal);
+            recordSegment(plan.kindOf(ordinal), 2, round == null ? 0 : (round as Array<Number>)[0], false);
+        } else {
+            recordSegment(LAP_KIND, 0, 0, false);
+        }
+    }
+
+    // The distance the user corrected on the treadmill (cm); -1 takes the correction back.
+    function correctDistance(cm as Number) as Void {
+        correctedCm = cm;
+        try {
+            _parts.journal.saveExtra(uuid, extra());
+        } catch (e) {
+            // the correction is lost only if the watch is shut down before the result is made
+        }
+    }
+
+    function extra() as Dictionary {
+        return { "r" => results, "pc" => pauses, "e" => endedAt, "cm" => correctedCm, "kc" => calories, "te" => effect10 };
+    }
+
+    // The distance of the result in cm: the corrected one, else the watch's.
+    function resultDistanceCm() as Number {
+        return correctedCm >= 0 ? correctedCm : calc.distanceCm;
+    }
+
+    // start(), stop() ... of the health capture; it never stops the run.
+    hidden function withHealth(which as Symbol) as Void {
+        var capture = _parts.health;
+        if (capture == null) {
+            return;
+        }
+        try {
+            var c = capture as HealthCapture;
+            if (which == :tick) {
+                c.tick();
+            } else if (which == :resume) {
+                c.resume();
+            } else if (which == :pause) {
+                c.pause();
+            } else if (which == :finish) {
+                c.finish();
+            } else {
+                c.discard();
+            }
+        } catch (e) {
+            // health values are not worth the run
+        }
+    }
+
     // The state as the journal keeps it.
     function head() as Dictionary {
         return {
@@ -674,6 +857,7 @@ class RunSession {
             _parts.journal.saveSplits(uuid, calc, _savedSplits, calc.splitCount);
             _savedSplits = calc.splitCount;
             _parts.journal.saveHead(uuid, head());
+            _parts.journal.saveExtra(uuid, extra());
         } catch (e) {
             // storage is full or failing: the run goes on, the next write tries again
         }
