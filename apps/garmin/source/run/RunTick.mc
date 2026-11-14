@@ -222,6 +222,23 @@ class RunTick {
         return 100000 / (speed as Number);
     }
 
+    // Average pace of the whole run in seconds per km, or null before 10 m are run.
+    function paceAverage() as Number or Null {
+        if (distanceCm < 1000 || timerS <= 0) {
+            return null;
+        }
+        return timerS * 100000 / distanceCm;
+    }
+
+    // Seconds the last full km took (the last ten splits), null before the first km.
+    function lastKmSeconds() as Number or Null {
+        if (splitCount < 10) {
+            return null;
+        }
+        var from = splitCount > 10 ? _splits[splitCount - 11] : 0;
+        return (_splits[splitCount - 1] - from) / 10;
+    }
+
     function paceDisplay() as Number or Null {
         return paceOver(DISPLAY_S);
     }

@@ -27,6 +27,16 @@ class RunJournal {
         return id instanceof String && Uuid.isV4(id as String) ? id as String : null;
     }
 
+    // Whether a run waits to be continued: an active run that is not saved and whose head is intact.
+    function hasInterrupted() as Boolean {
+        var id = activeId();
+        if (id == null) {
+            return false;
+        }
+        var head = readHead(id as String);
+        return head != null && ((head as Dictionary)["st"] as Number) != RunSession.STATE_FINISHED;
+    }
+
     // Creates a run: copy and head first, the active marker last.
     function begin(uuid as String, head as Dictionary, prescription as Dictionary or Null) as Void {
         if (prescription != null) {

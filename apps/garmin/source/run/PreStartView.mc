@@ -122,20 +122,53 @@ class PreStartQuestion extends WatchUi.ConfirmationDelegate {
 }
 
 // Where START leads: the recording of the run (RUN-015) and its display. Without a recording (the watch refuses)
-// nothing opens and the pre-start screen stays.
+// nothing opens and the pre-start screen stays. If an interrupted run waits in the journal, START asks first:
+// continue it or discard it (a new run would overwrite its marker).
 class RunStarter {
     private var _sensors as RunSensors or Null;
+    private var _nav as RunNav;
 
     function initialize(runSensors as RunSensors or Null) {
         _sensors = runSensors;
+        _nav = new RunNav();
     }
 
     function start(model as PreStartModel) as Void {
-        var session = RunSession.start(model, parts());
+        var runParts = parts();
+        if (runParts.journal.hasInterrupted()) {
+            _nav.openChoices(new RunInterruptedChoices(self, model, _nav));
+            return;
+        }
+        begin(model, runParts);
+    }
+
+    // The new run, after the question (or without one).
+    function begin(model as PreStartModel, runParts as RunParts) as Void {
+        var session = RunSession.start(model, runParts);
         if (session == null) {
             return;
         }
-        open(session as RunSession);
+        open(session as RunSession, true);
+    }
+
+    // The interrupted run from the journal on the run display (paused: the user starts it with START).
+    function continueInterrupted() as Boolean {
+        var session = RunSession.restore(parts());
+        if (session == null) {
+            return false;
+        }
+        open(session as RunSession, true);
+        return true;
+    }
+
+    // Throws the interrupted run away and starts the new one.
+    function discardInterruptedAndStart(model as PreStartModel) as Void {
+        var runParts = parts();
+        var id = runParts.journal.activeId();
+        if (id != null) {
+            runParts.journal.discard(id as String);
+        }
+        begin(model, runParts);
     }
 
     // The services of a real run.
@@ -144,8 +177,40 @@ class RunStarter {
         return new RunParts(new RunJournal(store), new PairingClock(), new Settings(store), new ActivityRunSource(), new FitRunBackend(), _sensors, RunZones.fromProfile());
     }
 
-    function open(session as RunSession) as Void {
-        WatchUi.pushView(new RunView(session), new RunDelegate(session), WatchUi.SLIDE_LEFT);
+    // `afterPreStart`: the pre-start screen lies below the run display and leaves with it.
+    function open(session as RunSession, afterPreStart as Boolean) as Void {
+        var view = new RunView(session);
+        var controller = new RunController(session, _nav, afterPreStart, view.ticker());
+        WatchUi.pushView(view, new RunDelegate(controller, view), WatchUi.SLIDE_LEFT);
+    }
+}
+
+// "Continue the interrupted run or discard it?" (the pre-start screen asks before it starts a new run).
+class RunInterruptedChoices extends RunChoices {
+    private var _starter as RunStarter;
+    private var _model as PreStartModel;
+
+    function initialize(starter as RunStarter, model as PreStartModel, nav as RunNav) {
+        RunChoices.initialize(nav);
+        _starter = starter;
+        _model = model;
+    }
+
+    function title() as String {
+        return HomeScreen.text(Rez.Strings.RunAskInterrupted);
+    }
+
+    function labels() as Array<String> {
+        return [HomeScreen.text(Rez.Strings.RunResumeIt), HomeScreen.text(Rez.Strings.RunDiscard)] as Array<String>;
+    }
+
+    function onChoose(index as Number) as Void {
+        _nav.pop();
+        if (index == 0) {
+            _starter.continueInterrupted();
+        } else {
+            _starter.discardInterruptedAndStart(_model);
+        }
     }
 }
 

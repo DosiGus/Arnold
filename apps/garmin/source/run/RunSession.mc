@@ -184,6 +184,22 @@ class RunSession {
         STATE_FINISHED         // saved
     }
 
+    // How the heart rate or pace compares with the target of the segment (targetFit).
+    enum TargetFit {
+        FIT_NONE,      // no target, or no value to compare
+        FIT_OK,
+        FIT_BELOW,     // under the range (pace: faster than asked)
+        FIT_ABOVE      // over the range (pace: slower than asked)
+    }
+
+    // What the lap key does at this moment (lapAction).
+    enum LapAction {
+        LAP_NONE,      // nothing: the run stands still
+        LAP_MANUAL,    // a lap without segments (free run, plan done)
+        LAP_OPEN,      // ends an open segment
+        LAP_SKIP       // ends a timed or distance segment early: the screen asks first
+    }
+
     const JOURNAL_EVERY_S as Number = 30;
     const KM_CM as Number = 100000;
 
@@ -199,6 +215,7 @@ class RunSession {
     var plan as RunSegments;
     var calc as RunTick;
     var reading as RunReading;
+    var muted as Boolean;          // alarms off for this run (set in the run settings, read by the alarms of RUN-017)
 
     private var _parts as RunParts;
     private var _segT as Number;   // timer at the start of the segment (seconds, whole run)
@@ -223,6 +240,7 @@ class RunSession {
         calc = new RunTick();
         calc.setZones(runParts.zones);
         reading = new RunReading();
+        muted = false;
         _segT = 0;
         _segD = 0;
         _kmLaps = 0;
@@ -330,6 +348,113 @@ class RunSession {
 
     function segmentMeters() as Number {
         return (calc.distanceCm - _segD) / 100;
+    }
+
+    // Seconds left in a timed segment, null for any other. Never below 0.
+    function segmentRemainingSeconds() as Number or Null {
+        if (ordinal >= plan.count() || plan.durationType(ordinal) != RunSegments.DURATION_SECONDS) {
+            return null;
+        }
+        var left = plan.durationValue(ordinal) - segmentSeconds();
+        return left < 0 ? 0 : left;
+    }
+
+    // Metres left in a distance segment, null for any other. Never below 0.
+    function segmentRemainingMeters() as Number or Null {
+        if (ordinal >= plan.count() || plan.durationType(ordinal) != RunSegments.DURATION_METERS) {
+            return null;
+        }
+        var left = plan.durationValue(ordinal) - segmentMeters();
+        return left < 0 ? 0 : left;
+    }
+
+    // Pace of the segment (lap) so far in seconds per km, null before 10 m.
+    function segmentPace() as Number or Null {
+        var cm = calc.distanceCm - _segD;
+        if (cm < 1000 || segmentSeconds() <= 0) {
+            return null;
+        }
+        return segmentSeconds() * 100000 / cm;
+    }
+
+    // The last heart rate the watch reported, null without one.
+    function heartRate() as Number or Null {
+        var hr = reading.heartRate;
+        return hr != null && (hr as Number) > 0 ? hr : null;
+    }
+
+    // Heart rate zone 1 to 5 now; 0 without a heart rate or without zones.
+    function heartZone() as Number {
+        var hr = heartRate();
+        return hr == null ? 0 : calc.zoneOf(hr as Number);
+    }
+
+    // The value the target of the segment is about: zone, pace (s/km) or bpm; null without one (effort has none).
+    function targetActual() as Number or Null {
+        if (ordinal >= plan.count()) {
+            return null;
+        }
+        var type = plan.targetType(ordinal);
+        if (type == 1) {
+            var zone = heartZone();
+            return zone > 0 ? zone : null;
+        }
+        if (type == 2) {
+            return calc.paceDisplay();
+        }
+        if (type == 3) {
+            return heartRate();
+        }
+        return null;
+    }
+
+    function targetFit() as Number {
+        var actual = targetActual();
+        if (actual == null) {
+            return FIT_NONE;
+        }
+        var low = plan.targetLow(ordinal);
+        var high = plan.targetHigh(ordinal);
+        if ((actual as Number) < low) {
+            return FIT_BELOW;
+        }
+        return (actual as Number) > high ? FIT_ABOVE : FIT_OK;
+    }
+
+    // What the lap key would do now.
+    function lapAction() as Number {
+        if (state != STATE_RUNNING) {
+            return LAP_NONE;
+        }
+        if (ordinal >= plan.count()) {
+            return LAP_MANUAL;
+        }
+        return plan.durationType(ordinal) == RunSegments.DURATION_OPEN ? LAP_OPEN : LAP_SKIP;
+    }
+
+    // The lap key: the next segment, or a plain lap where there are none. False when the run stands still.
+    function lapKey() as Boolean {
+        if (state != STATE_RUNNING) {
+            return false;
+        }
+        if (ordinal < plan.count()) {
+            return nextSegment();
+        }
+        lap(0);
+        _segT = calc.timerS;
+        _segD = calc.distanceCm;
+        writeJournal();
+        return true;
+    }
+
+    // Auto pause as the settings have it, and its switch (run settings).
+    function autoPauseOn() as Boolean {
+        return _parts.settings.isOn(Settings.AUTO_PAUSE);
+    }
+
+    function setAutoPause(on as Boolean) as Void {
+        _parts.settings.set(Settings.AUTO_PAUSE, on);
+        calc.resetAutoPause();
     }
 
     // Every second: read, count, follow the segments, write the journal. The screen is drawn after it, once.
@@ -463,6 +588,10 @@ class RunSession {
                 lap(0);
                 _kmLaps++;
                 changed = true;
+            }
+            if (changed) {
+                _segT = calc.timerS;       // the lap shown on the display starts again
+                _segD = calc.distanceCm;
             }
             if (changed) {
                 writeJournal();

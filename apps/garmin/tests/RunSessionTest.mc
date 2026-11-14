@@ -471,29 +471,3 @@ module ThreeHours {
 function threeHoursOfARun(logger as Logger) as Boolean {
     return ThreeHours.part(0, logger);
 }
-
-// The stand-in display of a run fits on every display (RUN-015): free, planned, paused, auto pause, treadmill, past three hours.
-(:test)
-function theRunScreenFitsOnEveryDisplay(logger as Logger) as Boolean {
-    var dc = LayoutRig.dc();
-    var planned = new RunSim(RunSim.prescription([RunSim.timed(600), RunSim.metres(400)] as Array, [[0, 1, 5]] as Array), 0, true);
-    planned.seconds(3);
-    Test.assertMessage(LayoutRig.fits(dc, RunScreen.lines(dc, planned.session)), "planned");
-    planned.session.pause();
-    Test.assertMessage(LayoutRig.fits(dc, RunScreen.lines(dc, planned.session)), "paused");
-    var free = new RunSim(null, 0, true);
-    free.source.speed = 0;
-    free.seconds(8);   // auto pause
-    Test.assertEqual(free.session.state, RunSession.STATE_AUTO_PAUSED);
-    Test.assertMessage(LayoutRig.fits(dc, RunScreen.lines(dc, free.session)), "auto pause");
-    var treadmill = new RunSim(null, PreStartModel.ENV_TREADMILL, false);
-    treadmill.source.speed = 1000;
-    treadmill.seconds(300);
-    var long = RunScreen.lines(dc, treadmill.session);
-    Test.assertMessage(LayoutRig.fits(dc, long), "treadmill " + RunText.distance(treadmill.session.calc.distanceCm, true));
-    Test.assertMessage(LayoutRig.mainNumbersAreBig(dc, long), "main number");
-    Test.assert(RunText.clock(10799).equals("2:59:59") && RunText.clock(65).equals("01:05"));
-    Test.assert(RunText.km(542000).equals("5" + HomeScreen.text(Rez.Strings.RunSep) + "42"));
-    PairingLayout.draw(dc, RunScreen.lines(dc, planned.session));
-    return true;
-}
