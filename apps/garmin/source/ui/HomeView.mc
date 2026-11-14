@@ -129,7 +129,7 @@ module HomeScreen {
                 todayHeader = true;
                 out.add(new PairingLine(text(Rez.Strings.HomeToday), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY).skippable());
             }
-            if (!freeHeader && (kind == HomeStop.STOP_FREE || kind == HomeStop.STOP_ZONE2)) {
+            if (!freeHeader && !rows[i].labeled && (kind == HomeStop.STOP_FREE || kind == HomeStop.STOP_ZONE2)) {
                 freeHeader = true;
                 out.add(new PairingLine(text(Rez.Strings.HomeFreeRun), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY).skippable());
             }

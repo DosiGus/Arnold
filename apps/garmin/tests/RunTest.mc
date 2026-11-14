@@ -347,10 +347,14 @@ function startScreenShowsTodaysRunNextToTheTraining(logger as Logger) as Boolean
     Test.assert(texts.find("Day d2") != null);                         // the training is there too
     Test.assert(texts.find("Intervalle") == null);                      // tomorrow's run is not "today"
     var rows = rig.home.stops(rig.plan.sync, new SessionPicker());
-    Expect.equal(rows.size(), 4);                                       // training, run, free, zone 2
+    Expect.equal(rows.size(), 4);                                       // training, free run, run, zone 2 (the free runs flank the run)
     Expect.equal(rows[0].kind, HomeStop.STOP_STRENGTH);
-    Expect.equal(rows[1].kind, HomeStop.STOP_RUN);
-    Expect.equal(rig.home.selectedIndex(rows, rig.plan.sync), 1);
+    Expect.equal(rows[1].kind, HomeStop.STOP_FREE);
+    Expect.equal(rows[2].kind, HomeStop.STOP_RUN);
+    Expect.equal(rows[3].kind, HomeStop.STOP_ZONE2);
+    Expect.equal(rig.home.selectedIndex(rows, rig.plan.sync), 2);
+    Test.assert(rows[1].labeled && rows[3].labeled && !rows[2].labeled);   // the free rows name themselves: no section header between them
+    Test.assert(texts.find("Free run · Open") != null || texts.find("Freier Lauf · Frei") != null);
     Test.assert(texts.find("> ") != null);
     // minutes unknown stay unknown, never "0"
     Test.assert(rig.cache.putUpcoming(rig.upcoming([rig.entry("r9", 0, "Langer Lauf", null, 1)] as Array, true), rig.plan.pairing.clock.now, 0));
@@ -388,7 +392,7 @@ function startScreenKeepsItsSelectionWhenTheRunsRefresh(logger as Logger) as Boo
     var picker = new SessionPicker();
     Test.assert(rig.cache.putUpcoming(rig.upcoming(rig.threeRuns(1), true), rig.plan.pairing.clock.now, 0));
     var rows = rig.home.stops(rig.plan.sync, picker);
-    rig.home.move(rows, rig.plan.sync, 1);                              // DOWN: free run
+    rig.home.move(rows, rig.plan.sync, -1);                             // UP: free run (it sits above the run)
     Expect.equal(rig.home.selectedStop(rows, rig.plan.sync).kind, HomeStop.STOP_FREE);
     // new list without a run today: the selection stays on the free run
     Test.assert(rig.cache.putUpcoming(rig.upcoming([rig.entry("r2", 1, "Intervalle", 50, 1)] as Array, true), rig.plan.pairing.clock.now, 0));
@@ -444,7 +448,7 @@ class RunKeys {
 // From opening the app to the pre-start screen, answers from the stub: the plan and the runs are loaded as
 // the app does when it opens; the keys then lead to the screen.
 (:test)
-function aPlannedRunIsOneKeyAwayAndAFreeRunAtMostTwo(logger as Logger) as Boolean {
+function aPlannedRunIsOneKeyAwayAndEachFreeRunTwo(logger as Logger) as Boolean {
     // run planned today, plan loaded: START opens the run
     var rig = new RunRig();
     rig.plan.loadAll();
@@ -458,20 +462,20 @@ function aPlannedRunIsOneKeyAwayAndAFreeRunAtMostTwo(logger as Logger) as Boolea
     Expect.equal(keys.last().runId, "r1");
     Expect.equal((keys.last().prescription as Dictionary)["n"] as String, "Zone 2");
     Expect.equal(keys.presses, 1);
-    // free run: DOWN, START
+    // free run: UP, START; free run in zone 2: DOWN, START (RUN-027: one key away each, so three keys to the start)
     var free = new RunKeys(rig);
-    free.down();
-    free.down();
+    free.up();
     free.start();
-    Expect.equal(free.last().mode, PreStartRequest.MODE_ZONE2);
-    Expect.equal(free.presses, 3);
-    var open = new RunKeys(rig);
-    open.down();
-    open.start();
-    Expect.equal(open.last().mode, PreStartRequest.MODE_FREE);
-    Expect.equal(open.presses, 2);
-    // the training of the plan is UP, START away and starts as before
+    Expect.equal(free.last().mode, PreStartRequest.MODE_FREE);
+    Expect.equal(free.presses, 2);
+    var zone = new RunKeys(rig);
+    zone.down();
+    zone.start();
+    Expect.equal(zone.last().mode, PreStartRequest.MODE_ZONE2);
+    Expect.equal(zone.presses, 2);
+    // the training of the plan is UP, UP, START away and starts as before
     var strength = new RunKeys(rig);
+    strength.up();
     strength.up();
     strength.start();
     Expect.equal(strength.opened(), 3);                                 // (no further run screen)
@@ -562,12 +566,14 @@ function anInterruptedRunIsOfferedFirstOnTheStartScreen(logger as Logger) as Boo
     keys.start();
     Expect.equal(rig.opener.resumes, 1);
     Expect.equal(keys.opened(), 0);
-    // DOWN twice (past the training) leaves the row; START on the planned run opens the pre-start screen as before
+    // DOWN three times (past the training and the free run) leaves the row; START on the planned run opens the pre-start screen as before
+    keys.down();
     keys.down();
     keys.down();
     keys.start();
     Expect.equal(rig.opener.resumes, 1);
     Expect.equal(keys.opened(), 1);
+    Expect.equal(keys.last().mode, PreStartRequest.MODE_PLANNED);
     // a saved run is not offered, nor is a damaged one
     sim.session.save();
     Test.assert(!rig.home.hasInterruptedRun());
