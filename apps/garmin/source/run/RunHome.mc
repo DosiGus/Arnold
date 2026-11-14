@@ -137,21 +137,35 @@ class PreStartRequest {
     var mode as Number;
     var runId as String;               // planned run, else ""
     var prescription as Dictionary or Null;
+    var minutes as Number or Null;     // planned duration from the list ("m"), null if the plan names none
+    var consent as Boolean or Null;    // heart rate consent as the server last said it, null before the first list
 
     function initialize(requestMode as Number, id as String, body as Dictionary or Null) {
         mode = requestMode;
         runId = id;
         prescription = body;
+        minutes = null;
+        consent = null;
+    }
+
+    // The same request with the facts the pre-start screen shows besides the prescription.
+    function with(plannedMinutes as Number or Null, heartConsent as Boolean or Null) as PreStartRequest {
+        minutes = plannedMinutes;
+        consent = heartConsent;
+        return self;
     }
 }
 
-// Opens the pre-start screen. RUN-025 replaces the placeholder behind it; tests record the request.
+// Opens the pre-start screen (RUN-025); tests record the request instead.
 class PreStartLauncher {
 
     function initialize() {
     }
 
     function open(request as PreStartRequest) as Void {
-        WatchUi.pushView(new PreStartView(request), new PreStartDelegate(), WatchUi.SLIDE_LEFT);
+        var model = new PreStartModel(request);
+        var sensors = new RunSensors(new GpsCapability());
+        var view = new PreStartView(model, sensors);
+        WatchUi.pushView(view, new PreStartDelegate(model, sensors, new RunStarter()), WatchUi.SLIDE_LEFT);
     }
 }

@@ -51,13 +51,15 @@ class HomeDelegate extends PairingDelegate {
     // prescription (without it the runs are loaded again).
     hidden function startRun(stop as HomeStop) as Void {
         if (stop.kind == HomeStop.STOP_FREE) {
-            _run.opener().open(new PreStartRequest(PreStartRequest.MODE_FREE, "", null));
+            _run.opener().open(new PreStartRequest(PreStartRequest.MODE_FREE, "", null).with(null, _run.sync.cache.healthConsent()));
         } else if (stop.kind == HomeStop.STOP_ZONE2) {
-            _run.opener().open(new PreStartRequest(PreStartRequest.MODE_ZONE2, "", null));
+            _run.opener().open(new PreStartRequest(PreStartRequest.MODE_ZONE2, "", null).with(null, _run.sync.cache.healthConsent()));
         } else {
             var body = _run.sync.cache.prescription(stop.id);
             if (body != null) {
-                _run.opener().open(new PreStartRequest(PreStartRequest.MODE_PLANNED, stop.id, body));
+                var entry = _run.sync.cache.entry(stop.id);
+                var minutes = entry == null ? null : (entry as Dictionary)["m"] as Object or Null;
+                _run.opener().open(new PreStartRequest(PreStartRequest.MODE_PLANNED, stop.id, body).with(minutes instanceof Number ? minutes as Number : null, _run.sync.cache.healthConsent()));
             } else {
                 _run.sync.start();
             }

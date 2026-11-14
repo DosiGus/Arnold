@@ -1,8 +1,9 @@
 import Toybox.Lang;
 import Toybox.WatchUi;
 
-// Settings on the watch (GAR-B3-08): vibration, tone and the warning before the end of a
-// rest, each on or off. A switch is saved the moment it is pressed.
+// Settings on the watch (GAR-B3-08, RUN-025): vibration, tone and the warning before the end of a
+// rest, then the kilometre signal, auto pause and heart rate alarms of runs, each on or off.
+// A switch is saved the moment it is pressed.
 module SettingsMenu {
     function build(settings as Settings) as WatchUi.Menu2 {
         var menu = new WatchUi.Menu2({ :title => WatchUi.loadResource(Rez.Strings.MenuSettings) as String });
@@ -10,6 +11,9 @@ module SettingsMenu {
         menu.addItem(new WatchUi.ToggleMenuItem(WatchUi.loadResource(Rez.Strings.SetVibration) as String, { :enabled => labels[:on], :disabled => labels[:off] }, Settings.VIBRATION, settings.isOn(Settings.VIBRATION), null));
         menu.addItem(new WatchUi.ToggleMenuItem(WatchUi.loadResource(Rez.Strings.SetTone) as String, { :enabled => labels[:on], :disabled => labels[:off] }, Settings.TONE, settings.isOn(Settings.TONE), null));
         menu.addItem(new WatchUi.ToggleMenuItem(WatchUi.loadResource(Rez.Strings.SetWarning) as String, { :enabled => labels[:on], :disabled => labels[:off] }, Settings.WARNING, settings.isOn(Settings.WARNING), null));
+        menu.addItem(new WatchUi.ToggleMenuItem(WatchUi.loadResource(Rez.Strings.SetKmSignal) as String, { :enabled => labels[:on], :disabled => labels[:off] }, Settings.KM_SIGNAL, settings.isOn(Settings.KM_SIGNAL), null));
+        menu.addItem(new WatchUi.ToggleMenuItem(WatchUi.loadResource(Rez.Strings.SetAutoPause) as String, { :enabled => labels[:on], :disabled => labels[:off] }, Settings.AUTO_PAUSE, settings.isOn(Settings.AUTO_PAUSE), null));
+        menu.addItem(new WatchUi.ToggleMenuItem(WatchUi.loadResource(Rez.Strings.SetHrAlarms) as String, { :enabled => labels[:on], :disabled => labels[:off] }, Settings.HR_ALARMS, settings.isOn(Settings.HR_ALARMS), null));
         return menu;
     }
 
