@@ -9,4 +9,9 @@ class PairingClock {
     function nowSeconds() as Number {
         return Clock.nowUtcSeconds();
     }
+
+    // Offset of the watch's local time to UTC in minutes (counts the local calendar day).
+    function utcOffsetMinutes() as Number {
+        return Clock.utcOffsetMinutes();
+    }
 }

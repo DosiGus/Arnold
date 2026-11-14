@@ -42,6 +42,16 @@ module Session {
         return _plan as PlanSync;
     }
 
+    var _runs as RunSync or Null = null;
+
+    // The planned runs on the watch and their loader (RUN-012).
+    function runSync() as RunSync {
+        if (_runs == null) {
+            _runs = new RunSync(client(), new RunCache(new KeyValueStore()), new PairingClock(), pairing().method(:onAuthRejected));
+        }
+        return _runs as RunSync;
+    }
+
     var _launcher as TrainingLauncher or Null = null;
 
     // Starts and continues workouts.
@@ -55,28 +65,31 @@ module Session {
             var consent = new HealthConsent(store);
             var healthOutbox = new HealthOutbox(store);
             sender.setHealth(new HealthSender(client(), healthOutbox, outbox, consent, clock, pairing().method(:onAuthRejected)));
-            pairing().setWipeHook(new AccountWipe(planSync().cache, consent, healthOutbox).method(:wipe));
+            pairing().setWipeHook(new AccountWipe(planSync().cache, runSync().cache, consent, healthOutbox).method(:wipe));
             _launcher = new TrainingLauncher(journal, clock, new Signals(store), sender);
         }
         return _launcher as TrainingLauncher;
     }
 }
 
-// Signing out (or connecting again): the plan, the consent and the health values of
+// Signing out (or connecting again): the plan, the planned runs, the consent and the health values of
 // the old account do not stay on the watch.
 class AccountWipe {
     private var _plan as PlanCache;
+    private var _runs as RunCache;
     private var _consent as HealthConsent;
     private var _health as HealthOutbox;
 
-    function initialize(plan as PlanCache, consent as HealthConsent, health as HealthOutbox) {
+    function initialize(plan as PlanCache, runs as RunCache, consent as HealthConsent, health as HealthOutbox) {
         _plan = plan;
+        _runs = runs;
         _consent = consent;
         _health = health;
     }
 
     function wipe() as Void {
         _plan.clear();
+        _runs.clear();
         _consent.clear();
         _health.clear();
     }

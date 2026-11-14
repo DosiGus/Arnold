@@ -20,6 +20,10 @@
  *     "plan:8192" returns a valid nested 8KiB plan fixture on a session route.
  *     count = how many requests it hits (default: until cleared); route = only that route.
  *   DELETE /__mock/fault   clear;  GET /__mock/log   request log;  POST /__mock/reset   all state
+ *
+ * Planned runs (RUN-012): GET /runs/upcoming (today and the next six days, relative to the current
+ * UTC date) and GET /runs/:id (prescription, ETag `"<tag>"`; the list carries the tag without quotes,
+ * as the server does). Both with If-None-Match, like the plan routes.
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
@@ -119,6 +123,50 @@ const fail = (code: string, message = code): Reply => ({
   body: errorBody(code, message),
 });
 
+/** Synthetic planned runs: today, tomorrow and in six days (no minutes: a long run set by nothing). */
+function mockRuns() {
+  const day = (offset: number) =>
+    new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+  const make = (
+    id: string,
+    offset: number,
+    name: string,
+    minutes: number | null,
+    work: number[],
+  ) => {
+    const p = {
+      k: 1,
+      n: name,
+      e: 0,
+      s: [[0, 1, 300, 0, 0, 0], work, [3, 1, 300, 0, 0, 0]],
+    };
+    // Same tag as the server: first 12 characters of the base64url SHA-256 of the prescription.
+    const tag = createHash("sha256")
+      .update(JSON.stringify(p))
+      .digest("base64url")
+      .slice(0, 12);
+    return {
+      entry: {
+        id,
+        d: day(offset),
+        n: name,
+        k: 1,
+        m: minutes,
+        dm: null,
+        e: 0,
+        tag,
+      },
+      detail: { ...envelope, id, p },
+      etag: `"${tag}"`,
+    };
+  };
+  return [
+    make("run_mock_1", 0, "Zone 2", 45, [1, 1, 1200, 1, 2, 2]),
+    make("run_mock_2", 1, "Intervalle", 50, [1, 1, 900, 1, 4, 5]),
+    make("run_mock_3", 6, "Langer Lauf", null, [1, 0, 0, 0, 0, 0]),
+  ];
+}
+
 export function createMockState(fixtures: ReturnType<typeof loadFixtures>) {
   const days = fixtures.directory.days as Json[];
   // Day bodies: the next day is the typical fixture, the second the extreme one,
@@ -154,6 +202,7 @@ export function createMockState(fixtures: ReturnType<typeof loadFixtures>) {
     token: null as string | null,
     deviceId: null as string | null,
     healthConsent: true,
+    runs: mockRuns(),
     workouts: new Map<
       string,
       { hash: string; response: Json; count: number }
@@ -239,7 +288,7 @@ function route(
   }
 
   const isWatchRoute =
-    /^\/(device|plan|plan\/recent|plan\/sessions\/[^/]+|workouts|workouts\/[^/]+\/health)$/.test(
+    /^\/(device|plan|plan\/recent|plan\/sessions\/[^/]+|runs\/[^/]+|workouts|workouts\/[^/]+\/health)$/.test(
       path,
     );
   if (!isWatchRoute) return null;
@@ -278,6 +327,33 @@ function route(
           status: 404,
           body: errorBody("VALIDATION_ERROR", "Unbekannter Tag."),
         };
+  }
+  if (method === "GET" && path === "/runs/upcoming") {
+    const body = {
+      ...envelope,
+      d: new Date().toISOString().slice(0, 10),
+      hc: state.healthConsent,
+      runs: state.runs.map((run) => run.entry),
+      next: null,
+    };
+    const tag = etagOf(body);
+    return headers["if-none-match"] === tag
+      ? { status: 304, headers: { ETag: tag } }
+      : { status: 200, body, headers: { ETag: tag } };
+  }
+  const run = /^\/runs\/([^/]+)$/.exec(path);
+  if (method === "GET" && run) {
+    const found = state.runs.find(
+      (r) => r.entry.id === decodeURIComponent(run[1]!),
+    );
+    if (!found)
+      return {
+        status: 404,
+        body: errorBody("VALIDATION_ERROR", "Unbekannter Lauf."),
+      };
+    return headers["if-none-match"] === found.etag
+      ? { status: 304, headers: { ETag: found.etag } }
+      : { status: 200, body: found.detail, headers: { ETag: found.etag } };
   }
   if (method === "POST" && path === "/workouts") {
     const requestId = body?.request_id;
@@ -332,6 +408,7 @@ function route(
 function routeName(method: string, path: string) {
   return `${method} ${path
     .replace(/^\/plan\/sessions\/[^/]+$/, "/plan/sessions/:session_id")
+    .replace(/^\/runs\/(?!upcoming$)[^/]+$/, "/runs/:id")
     .replace(/^\/workouts\/[^/]+\/health$/, "/workouts/:session_uuid/health")}`;
 }
 
@@ -635,6 +712,53 @@ async function selfTest(port: number, fixturesDir: string) {
   check(
     "recent",
     (await call("GET", `${BASE}/plan/recent`, undefined, auth)).status === 200,
+  );
+  const upcoming = await call("GET", `${BASE}/runs/upcoming`, undefined, auth);
+  const upRuns = (upcoming.body?.runs ?? []) as Json[];
+  check(
+    "Läufe: Liste mit heute und Tag in sechs Tagen",
+    upcoming.status === 200 &&
+      upRuns.length === 3 &&
+      upRuns[0]!.d === upcoming.body?.d &&
+      upcoming.body?.hc === true,
+  );
+  check(
+    "Läufe: Liste 304",
+    (
+      await call("GET", `${BASE}/runs/upcoming`, undefined, {
+        ...auth,
+        "If-None-Match": upcoming.etag ?? "",
+      })
+    ).status === 304,
+  );
+  const runDetail = await call(
+    "GET",
+    `${BASE}/runs/${String(upRuns[0]!.id)}`,
+    undefined,
+    auth,
+  );
+  check(
+    "Lauf: Vorgabe mit ETag in Anführungszeichen = tag der Liste",
+    runDetail.status === 200 &&
+      runDetail.etag === `"${String(upRuns[0]!.tag)}"` &&
+      Array.isArray((runDetail.body?.p as Json | undefined)?.s),
+  );
+  check(
+    "Lauf: 304 mit If-None-Match",
+    (
+      await call("GET", `${BASE}/runs/${String(upRuns[0]!.id)}`, undefined, {
+        ...auth,
+        "If-None-Match": runDetail.etag ?? "",
+      })
+    ).status === 304,
+  );
+  check(
+    "Lauf: unbekannt 404, upcoming ist keine Id",
+    (await call("GET", `${BASE}/runs/nope`, undefined, auth)).status === 404,
+  );
+  check(
+    "Läufe: ohne Token 401",
+    (await call("GET", `${BASE}/runs/upcoming`)).status === 401,
   );
   const sessionUuid = randomUUID();
   const workout = {

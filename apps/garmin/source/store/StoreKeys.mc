@@ -11,6 +11,13 @@ module StoreKeys {
     const ACTIVE_SESSION as String = "sess:active";   // uuid of the workout in progress, if any
     const OUTBOX_INDEX as String = "out:index";       // ids of the frozen upload requests, oldest first
 
+    const RUN_UPCOMING as String = "run:up";   // planned runs of today and the next six days (RUN-012)
+
+    // The prescription of one planned run, stored on its own like a plan day.
+    function runPrescription(runId as String) as String {
+        return "run:p:" + runId;
+    }
+
     // One training day of the plan, stored on its own (07 D-22).
     function planDay(sessionId as String) as String {
         return "plan:day:" + sessionId;
