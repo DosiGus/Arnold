@@ -263,14 +263,15 @@ function dialogsDuringTheWorkoutNameTheExercise(logger as Logger) as Boolean {
     Test.assert(preview.find("Bankdrücken") == null);
     rig.toFirstSet();
     var set = TrainingText.asking(rig.session, Rez.Strings.PromptEnd);
-    Test.assert(set.find("Bankdrücken\n") == 0);
-    Test.assert(set.length() > "Bankdrücken\n".length());
+    Test.assert(set.find("\nBankdrücken") != null);
+    Test.assert(set.find("\n") != 0 && set.find("Bankdrücken") != 0);   // the question first
     rig.session.confirmSet();
-    Test.assert(TrainingText.asking(rig.session, Rez.Strings.TrPausePrompt).find("Bankdrücken\n") == 0);
+    Test.assert(TrainingText.asking(rig.session, Rez.Strings.TrPausePrompt).find(TrainingText.text(Rez.Strings.TrPausePrompt) + "\n") == 0);
     var longNamed = NameRig.rig(NameRig.LONG, "Rudern");
     longNamed.toFirstSet();
     var asked = TrainingText.asking(longNamed.session, Rez.Strings.PromptDiscard);
-    Test.assert((asked.substring(0, asked.find("\n") as Number) as String).length() <= 26);
+    Test.assert(asked.find(TrainingText.text(Rez.Strings.PromptDiscard) + "\n") == 0);   // the question is not pushed out by the name
+    Test.assert((asked.substring((asked.find("\n") as Number) + 1, asked.length()) as String).length() <= 20);
     return true;
 }
 

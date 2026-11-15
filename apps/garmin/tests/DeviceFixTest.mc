@@ -50,3 +50,19 @@ function theSummaryScrollsWithinItsLines(logger as Logger) as Boolean {
     SummaryScroll.first = 0;
     return true;
 }
+
+// RUN-029: the first question of discarding a workout must not open the second one inside onResponse (the
+// question closes itself afterwards and would close the second with it: the same hang as RUN-028). The second
+// question comes a moment later through RunLater; NO does nothing.
+(:test)
+function theFirstDiscardQuestionAsksTheSecondAfterItHasClosed(logger as Logger) as Boolean {
+    var rig = new PlayerRig(false);
+    RunLater.timer = null;
+    var first = new DiscardConfirmDelegate(rig.session, 1, 1);
+    Test.assert(first.onResponse(WatchUi.CONFIRM_NO));
+    Test.assert(RunLater.timer == null);              // NO schedules nothing
+    Test.assert(first.onResponse(WatchUi.CONFIRM_YES));
+    Test.assert(RunLater.timer != null);              // the second question is scheduled, not pushed now
+    RunLater.timer = null;
+    return true;
+}

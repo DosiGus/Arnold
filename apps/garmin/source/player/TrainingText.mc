@@ -72,14 +72,17 @@ module TrainingText {
         return (name.substring(0, maxChars - 3) as String) + "...";
     }
 
-    // The question of a dialog during the workout with the exercise it is about on top:
-    // "Bankdrücken" newline "End workout?". Without an exercise on screen (preview, summary) the question alone.
+    // The question of a dialog during the workout with the exercise it is about below:
+    // "End workout?" newline "Bankdrücken". Without an exercise on screen (preview, summary) the question alone.
+    // The question comes first: the system dialog cuts a long text after two lines (seen in the simulator, a
+    // long exercise name pushed the question out: only "Überzüge am Kabelzug..." was visible), so what is cut
+    // must be the name, never the question.
     function asking(session as TrainingSession, question as ResourceId) as String {
         var prompt = text(question);
         if (session.state != TrainingSession.STATE_SET && session.state != TrainingSession.STATE_REST) {
             return prompt;
         }
-        return shortName(session.exercise().name, 26) + "\n" + prompt;
+        return prompt + "\n" + shortName(session.exercise().name, 20);
     }
 
     // "2:05"
