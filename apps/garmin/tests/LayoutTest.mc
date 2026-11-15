@@ -63,6 +63,27 @@ function mainNumbersTakeAThirdOfTheDisplay(logger as Logger) as Boolean {
 }
 
 (:test)
+function bigLinesWithAUnitUseATextFont(logger as Logger) as Boolean {
+    var dc = LayoutRig.dc();
+    var numberFonts = [Graphics.FONT_NUMBER_MILD, Graphics.FONT_NUMBER_MEDIUM, Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_THAI_HOT] as Array<Graphics.FontType>;
+    var values = [RunText.distance(1234, false), RunText.distance(0, false), RunText.distance(12345678, true), "5 km", "(geschätzt)"];
+    for (var i = 0; i < values.size(); i++) {
+        var font = PairingLayout.bigFont(dc, values[i]);
+        var message = values[i] + " on " + dc.getHeight() + " px";
+        logger.debug(message);
+        for (var f = 0; f < numberFonts.size(); f++) {
+            Test.assertMessage(font != numberFonts[f], message + " uses a number font");
+        }
+        Test.assertMessage(dc.getTextWidthInPixels(values[i], font) <= PairingLayout.bigWidth(dc) || font == Graphics.FONT_TINY, message);
+    }
+    // plain numbers keep the number fonts
+    Test.assert(PairingLayout.numeralOnly("12,5"));
+    Test.assert(PairingLayout.numeralOnly("2:05"));
+    Test.assert(!PairingLayout.numeralOnly("12,5 km"));
+    return true;
+}
+
+(:test)
 function setRestAndEditScreensAreBigAndFit(logger as Logger) as Boolean {
     var dc = LayoutRig.dc();
     var rig = new PlayerRig(true);
