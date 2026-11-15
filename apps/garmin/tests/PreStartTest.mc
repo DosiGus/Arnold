@@ -401,22 +401,25 @@ function withoutARunTodayEveryFreeRunNeedsAtMostThreeKeysToStart(logger as Logge
 // RUN-027: counts every key from opening the app to the start of the run, for every start screen:
 // the planned run at most two, free run and free run in zone 2 at most three, with and without a run today.
 // moves: -1 = UP, +1 = DOWN; the last two keys are START on the start screen and START in the pre-start screen.
-function keysToStart(rig as RunRig, moves as Array<Number>, mode as Number) as Number {
-    var keys = new RunKeys(rig);
-    for (var i = 0; i < moves.size(); i++) {
-        if (moves[i] < 0) {
-            keys.up();
-        } else {
-            keys.down();
+(:test)
+module KeyCount {
+    function keysToStart(rig as RunRig, moves as Array<Number>, mode as Number) as Number {
+        var keys = new RunKeys(rig);
+        for (var i = 0; i < moves.size(); i++) {
+            if (moves[i] < 0) {
+                keys.up();
+            } else {
+                keys.down();
+            }
         }
+        keys.start();
+        var screen = new PreStartRig(keys.last());
+        screen.sensors.quality = Position.QUALITY_GOOD;
+        screen.delegate.onSelect();
+        Expect.equal(screen.starter.started.size(), 1);
+        Expect.equal(screen.starter.started[0].request.mode, mode);
+        return keys.presses + 1;
     }
-    keys.start();
-    var screen = new PreStartRig(keys.last());
-    screen.sensors.quality = Position.QUALITY_GOOD;
-    screen.delegate.onSelect();
-    Expect.equal(screen.starter.started.size(), 1);
-    Expect.equal(screen.starter.started[0].request.mode, mode);
-    return keys.presses + 1;
 }
 
 (:test)
@@ -427,9 +430,9 @@ function everyRunStartsInTheKeyCountOfItsRow(logger as Logger) as Boolean {
     today.sync.start();
     today.plan.pairing.transport.respond(200, today.upcoming(today.threeRuns(1), true));
     today.answerAll(1);
-    var planned = keysToStart(today, [] as Array<Number>, PreStartRequest.MODE_PLANNED);
-    var free = keysToStart(today, [-1] as Array<Number>, PreStartRequest.MODE_FREE);
-    var zone = keysToStart(today, [1] as Array<Number>, PreStartRequest.MODE_ZONE2);
+    var planned = KeyCount.keysToStart(today, [] as Array<Number>, PreStartRequest.MODE_PLANNED);
+    var free = KeyCount.keysToStart(today, [-1] as Array<Number>, PreStartRequest.MODE_FREE);
+    var zone = KeyCount.keysToStart(today, [1] as Array<Number>, PreStartRequest.MODE_ZONE2);
     logger.debug("run today: planned " + planned + ", free " + free + ", zone 2 " + zone);
     Test.assertMessage(planned <= 2, "planned run: " + planned);
     Test.assertMessage(free <= 3, "free run, run today: " + free);
@@ -444,8 +447,8 @@ function everyRunStartsInTheKeyCountOfItsRow(logger as Logger) as Boolean {
     // no run today: training, free run, zone 2; the training is selected
     var none = new RunRig();
     none.plan.loadAll();
-    var freeNone = keysToStart(none, [1] as Array<Number>, PreStartRequest.MODE_FREE);
-    var zoneNone = keysToStart(none, [-1] as Array<Number>, PreStartRequest.MODE_ZONE2);
+    var freeNone = KeyCount.keysToStart(none, [1] as Array<Number>, PreStartRequest.MODE_FREE);
+    var zoneNone = KeyCount.keysToStart(none, [-1] as Array<Number>, PreStartRequest.MODE_ZONE2);
     logger.debug("no run today: free " + freeNone + ", zone 2 " + zoneNone);
     Test.assertMessage(freeNone <= 3, "free run, no run today: " + freeNone);
     Test.assertMessage(zoneNone <= 3, "zone 2, no run today: " + zoneNone);
@@ -453,8 +456,8 @@ function everyRunStartsInTheKeyCountOfItsRow(logger as Logger) as Boolean {
     var offline = new RunRig();
     offline.plan.begin();
     offline.plan.exhaustRetries();
-    var freeOffline = keysToStart(offline, [] as Array<Number>, PreStartRequest.MODE_FREE);
-    var zoneOffline = keysToStart(offline, [1] as Array<Number>, PreStartRequest.MODE_ZONE2);
+    var freeOffline = KeyCount.keysToStart(offline, [] as Array<Number>, PreStartRequest.MODE_FREE);
+    var zoneOffline = KeyCount.keysToStart(offline, [1] as Array<Number>, PreStartRequest.MODE_ZONE2);
     Test.assertMessage(freeOffline <= 3 && zoneOffline <= 3, "offline: " + freeOffline + ", " + zoneOffline);
     return true;
 }
