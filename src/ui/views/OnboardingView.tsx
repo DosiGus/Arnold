@@ -15,7 +15,6 @@ import {
 } from "../components/cards";
 import { RecoveryNotice, RecoveryCard } from "../components/recovery";
 import { TrainingPlanEditorView } from "./TrainingPlanEditorView";
-import { asFailure } from "../recovery";
 
 export function OnboardingView({
   client,

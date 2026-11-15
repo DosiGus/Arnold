@@ -10,7 +10,7 @@ import { GarminCard } from "./views/GarminCard";
 import { RunCardApp } from "./run/RunCardApp";
 import { CardSkeleton } from "./components/cards";
 import { RecoveryCard } from "./components/recovery";
-import { asFailure, type UiFailure } from "./recovery";
+import type { UiFailure } from "./recovery";
 import { parseCard, type CardId } from "./cards";
 
 /**

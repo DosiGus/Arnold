@@ -146,7 +146,6 @@ service_hosts() {
 HOSTS="$(service_hosts)"
 env_vars() {
   local vars=(
-    ARNOLD_ENV=development
     AUTH_MODE=oidc
     "ARNOLD_PUBLIC_BASE_URL=$URL"
     "AUTH_ISSUER=$ISSUER"
@@ -158,13 +157,18 @@ env_vars() {
     "ALLOWED_HOSTS=$1"
   )
   if [[ "$PROFILE" == database ]]; then
+    # production switches on the strict start checks in src/server/auth/config.ts
+    # (https everywhere, identities only in Postgres, no open mode).
     vars+=(
+      ARNOLD_ENV=production
       STORAGE_MODE=arnold_database
       ARNOLD_WRITE_MODE=disabled
       IDENTITY_STORE=postgres
     )
   else
-    vars+=(STORAGE_MODE=arnold_fixture ARNOLD_WRITE_MODE=fixture IDENTITY_STORE=memory)
+    # The synthetic profile keeps identities in memory, which production
+    # refuses; staging still forbids an open endpoint.
+    vars+=(ARNOLD_ENV=staging STORAGE_MODE=arnold_fixture ARNOLD_WRITE_MODE=fixture IDENTITY_STORE=memory)
   fi
   # '^@^' switches gcloud's list separator to '@' so ALLOWED_HOSTS keeps commas.
   local IFS=@

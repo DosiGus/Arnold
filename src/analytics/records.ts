@@ -2,7 +2,6 @@ import type { PreparedInput } from "./eligibility.js";
 import type { SetLoadAnalysis } from "./load.js";
 import {
   addFinite,
-  compareTuple,
   freezeReasons,
   round,
   safeCount,

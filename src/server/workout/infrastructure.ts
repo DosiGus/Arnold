@@ -28,7 +28,6 @@ import {
 } from "../../shared/arnold-schema-v1.js";
 import {
   WriteResultSchema,
-  type WriteResult,
   type WriteErrorCode,
 } from "../../shared/workout-contract.js";
 import { PlanWriteResultSchema } from "../../shared/plan-contract.js";

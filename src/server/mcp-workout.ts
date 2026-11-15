@@ -120,7 +120,7 @@ export function registerWorkoutTools(
           ],
           structuredContent: payload,
         };
-      } catch (error) {
+      } catch {
         return {
           isError: true,
           content: [

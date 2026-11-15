@@ -24,6 +24,7 @@
     "inspector": "npx @modelcontextprotocol/inspector@latest",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "lint": "eslint .",
     "garmin:check": "bash apps/garmin/scripts/build.sh && bash apps/garmin/scripts/test.sh"
   },
   "dependencies": {
@@ -51,9 +52,12 @@
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^6.0.0",
     "embedded-postgres": "^17.10.0-beta.17",
+    "eslint": "^10.15.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "prettier": "^3.9.10",
     "tsx": "^4.20.0",
     "typescript": "^6.0.0",
+    "typescript-eslint": "^8.72.2",
     "vite": "8.3.5",
     "vite-plugin-singlefile": "^2.3.0",
     "vitest": "5.0.5"

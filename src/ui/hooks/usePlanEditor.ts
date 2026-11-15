@@ -33,7 +33,6 @@ import type {
   PlanVersionComparison,
   PlanWriteOperation,
   PlanWriteResponse,
-  TrainingPlanVersion,
   TrainingSession,
 } from "../../shared/plan-contract";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";

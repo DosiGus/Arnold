@@ -12,7 +12,6 @@ import { PLAN_STATUS_LABEL } from "./format";
 /** The read-only plan, as shown before editing starts. */
 export function PlanOverview({
   plan,
-  isActive,
   children,
 }: {
   plan: TrainingPlanVersion;

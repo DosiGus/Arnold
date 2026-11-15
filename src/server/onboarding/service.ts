@@ -52,7 +52,6 @@ import {
   type OnboardingHandoff,
   type OnboardingProfile,
   type OnboardingRun,
-  type OnboardingProfilePatch,
   type OnboardingResponse,
   type OnboardingState,
   type OnboardingStep,
