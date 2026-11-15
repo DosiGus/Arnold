@@ -126,11 +126,9 @@ class DiscardConfirmDelegate extends WatchUi.ConfirmationDelegate {
             return true;
         }
         if (_step == 1) {
-            WatchUi.pushView(
-                new WatchUi.Confirmation(TrainingText.asking(_session, Rez.Strings.PromptDiscard2)),
-                new DiscardConfirmDelegate(_session, 2, _extraPops),
-                WatchUi.SLIDE_UP
-            );
+            // Not here: the question closes itself after this returns and would close the second one with it
+            // (the same hang as RUN-028, seen on a Forerunner 255). The second question comes after (RunLater).
+            RunLater.call(method(:askAgain));
         } else {
             _session.discard();
             for (var i = 0; i <= _extraPops; i++) {
@@ -138,6 +136,15 @@ class DiscardConfirmDelegate extends WatchUi.ConfirmationDelegate {
             }
         }
         return true;
+    }
+
+    // The second question of discarding (RunLater needs a method without a result).
+    function askAgain() as Void {
+        WatchUi.pushView(
+            new WatchUi.Confirmation(TrainingText.text(Rez.Strings.PromptDiscard2)),
+            new DiscardConfirmDelegate(_session, 2, _extraPops),
+            WatchUi.SLIDE_UP
+        );
     }
 }
 
