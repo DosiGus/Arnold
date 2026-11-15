@@ -43,6 +43,25 @@ class LayoutRig {
         return found;
     }
 
+    // The text of the first line marked to stay on one line (PairingLine.shrinks) that was wrapped or dropped
+    // anyway; "" if none. Other lines (main values, error sentences) may wrap on purpose.
+    static function wrapped(dc as Dc, lines as Array<PairingLine>) as String {
+        var drawn = PairingLayout.arrange(dc, lines);
+        for (var j = 0; j < lines.size(); j++) {
+            if (lines[j].smaller == null) {
+                continue;
+            }
+            var found = false;
+            for (var i = 0; i < drawn.size(); i++) {
+                found = found || drawn[i].text.equals(lines[j].text);
+            }
+            if (!found) {
+                return lines[j].text;
+            }
+        }
+        return "";
+    }
+
     static function fits(dc as Dc, lines as Array<PairingLine>) as Boolean {
         return PairingLayout.blockHeight(dc, PairingLayout.arrange(dc, lines)) <= PairingLayout.maxBlockHeight(dc);
     }

@@ -8,6 +8,7 @@ class PairingLine {
     var color as Graphics.ColorType;
     var wide as Boolean = false;      // the main number: may use more of the width (it sits in the middle)
     var optional as Boolean = false;  // dropped, last first, when the lines do not fit the display
+    var smaller as Graphics.FontType or Null = null;   // used when the text does not fit one line in `font` but does in this one
 
     function initialize(lineText as String, lineFont as Graphics.FontType, lineColor as Graphics.ColorType) {
         text = lineText;
@@ -17,6 +18,12 @@ class PairingLine {
 
     function big() as PairingLine {
         wide = true;
+        return self;
+    }
+
+    // A longer text (a language with longer words) keeps one line in this smaller font instead of wrapping.
+    function shrinks(fallback as Graphics.FontType) as PairingLine {
+        smaller = fallback;
         return self;
     }
 
@@ -180,9 +187,14 @@ module PairingLayout {
         var drawn = [] as Array<PairingLine>;
         for (var i = 0; i < lines.size(); i++) {
             var width = lines[i].wide ? bigWidth(dc) : textWidth(dc);
-            var parts = wrap(dc, lines[i].text, lines[i].font, width);
+            var font = lines[i].font;
+            var fallback = lines[i].smaller;
+            if (fallback != null && dc.getTextWidthInPixels(lines[i].text, font) > width && dc.getTextWidthInPixels(lines[i].text, fallback) <= width) {
+                font = fallback;
+            }
+            var parts = wrap(dc, lines[i].text, font, width);
             for (var j = 0; j < parts.size(); j++) {
-                drawn.add(new PairingLine(parts[j], lines[i].font, lines[i].color));
+                drawn.add(new PairingLine(parts[j], font, lines[i].color));
             }
         }
         return drawn;

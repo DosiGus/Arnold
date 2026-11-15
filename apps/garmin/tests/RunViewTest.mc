@@ -108,6 +108,9 @@ module ViewRig {
             var page = RunPages.build(dc, session, p);
             var message = label + " page " + (p + 1);
             Test.assertMessage(LayoutRig.fits(dc, page.lines), message + " fits: " + ViewRig.heights(dc, page.lines));
+            if (p < 3) {    // the three pages of the run keep every line on one line, in either language (RUN-030)
+                Test.assertMessage(LayoutRig.wrapped(dc, page.lines).length() == 0, message + " wraps '" + LayoutRig.wrapped(dc, page.lines) + "': " + ViewRig.heights(dc, page.lines));
+            }
             var drawn = PairingLayout.arrange(dc, page.lines);
             for (var i = 0; i < drawn.size(); i++) {
                 Test.assertMessage(dc.getTextWidthInPixels(drawn[i].text, drawn[i].font) <= dc.getWidth(), message + " width of '" + drawn[i].text + "'");

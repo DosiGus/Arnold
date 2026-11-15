@@ -378,6 +378,9 @@ module EndRigCheck {
     function lines(dc as Dc, flow as RunEndFlow, label as String) as Void {
         var lines = RunEndScreens.lines(dc, flow);
         Test.assertMessage(LayoutRig.fits(dc, lines), label + " fits: " + ViewRig.heights(dc, lines));
+        if (label.find(" page ") != null) {    // the summary pages keep every line on one line, in either language (RUN-030)
+            Test.assertMessage(LayoutRig.wrapped(dc, lines).length() == 0, label + " wraps '" + LayoutRig.wrapped(dc, lines) + "': " + ViewRig.heights(dc, lines));
+        }
         var drawn = PairingLayout.arrange(dc, lines);
         for (var i = 0; i < drawn.size(); i++) {
             Test.assertMessage(dc.getTextWidthInPixels(drawn[i].text, drawn[i].font) <= dc.getWidth(), label + " width of '" + drawn[i].text + "'");

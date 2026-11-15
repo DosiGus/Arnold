@@ -250,22 +250,22 @@ module RunEndScreens {
         }
         out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumHeart), [calc.heartSum / calc.heartN, calc.heartMax]), Graphics.FONT_MEDIUM, Graphics.COLOR_WHITE));
         var z = calc.zoneSeconds;
-        out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumZonesA), [z[0] / 60, z[1] / 60, z[2] / 60]), Graphics.FONT_SMALL, Graphics.COLOR_LT_GRAY));
-        out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumZonesB), [z[3] / 60, z[4] / 60]), Graphics.FONT_SMALL, Graphics.COLOR_LT_GRAY));
+        out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumZonesA), [z[0] / 60, z[1] / 60, z[2] / 60]), Graphics.FONT_SMALL, Graphics.COLOR_LT_GRAY).shrinks(Graphics.FONT_XTINY));
+        out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumZonesB), [z[3] / 60, z[4] / 60]), Graphics.FONT_SMALL, Graphics.COLOR_LT_GRAY).shrinks(Graphics.FONT_XTINY));
     }
 
     function segments(session as RunSession, out as Array<PairingLine>) as Void {
         var work = RunSummary.stats(session, RunSummary.KIND_WORK);
         if (work[0] > 0) {
             out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumWork), [work[0], RunText.pace(work[2] > 0 ? work[1] * 1000 / work[2] : null)]), Graphics.FONT_MEDIUM, Graphics.COLOR_WHITE));
-            out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumBest), [RunText.pace(work[3])]), Graphics.FONT_SMALL, Graphics.COLOR_LT_GRAY));
+            out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumBest), [RunText.pace(work[3])]), Graphics.FONT_SMALL, Graphics.COLOR_LT_GRAY).shrinks(Graphics.FONT_XTINY));
             out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumSegments), [session.results.size()]), Graphics.FONT_XTINY, Graphics.COLOR_DK_GRAY).skippable());
             return;
         }
         var km = RunSummary.stats(session, RunSummary.KIND_LAP);
         out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumKms), [km[0]]), Graphics.FONT_MEDIUM, Graphics.COLOR_WHITE));
-        out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumKmFast), [RunText.pace(km[3])]), Graphics.FONT_SMALL, Graphics.COLOR_LT_GRAY));
-        out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumKmSlow), [RunText.pace(km[4])]), Graphics.FONT_SMALL, Graphics.COLOR_LT_GRAY));
+        out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumKmFast), [RunText.pace(km[3])]), Graphics.FONT_SMALL, Graphics.COLOR_LT_GRAY).shrinks(Graphics.FONT_XTINY));
+        out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumKmSlow), [RunText.pace(km[4])]), Graphics.FONT_SMALL, Graphics.COLOR_LT_GRAY).shrinks(Graphics.FONT_XTINY));
     }
 
     // "An Arnold gesendet", "Wird gesendet, sobald das Handy verbunden ist", ... (nothing without a sender).

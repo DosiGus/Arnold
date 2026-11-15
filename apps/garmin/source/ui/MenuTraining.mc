@@ -81,7 +81,7 @@ module TrainingMenu {
         var menu = new WatchUi.Menu2({ :title => TrainingText.text(Rez.Strings.MenuAddExercise) });
         for (var i = 0; i < recent.size(); i++) {
             var entry = recent[i] as Dictionary;
-            menu.addItem(new WatchUi.MenuItem(entry["n"] as String, proposal(session.plan, entry), i, null));
+            menu.addItem(new WatchUi.MenuItem(TrainingText.shortName(entry["n"] as String, 20), proposal(session.plan, entry), i, null));
         }
         return menu;
     }
