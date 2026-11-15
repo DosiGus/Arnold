@@ -207,6 +207,11 @@ class PreStartLauncher {
         WatchUi.pushView(new WatchUi.Confirmation(HomeScreen.text(Rez.Strings.RunResumeAsk)), new RunResumeQuestion(self), WatchUi.SLIDE_UP);
     }
 
+    // RunLater needs a method without a result.
+    function resumeNow() as Void {
+        resumed();
+    }
+
     // The answer was yes: the run from the journal on the run screen. Without a run (damaged, refused) nothing opens.
     function resumed() as Boolean {
         var starter = new RunStarter(new RunSensors(new GpsCapability()));
@@ -229,7 +234,8 @@ class RunResumeQuestion extends WatchUi.ConfirmationDelegate {
 
     function onResponse(response as WatchUi.Confirm) as Boolean {
         if (response == WatchUi.CONFIRM_YES) {
-            _launcher.resumed();
+            // After the question has closed itself (see RunLater).
+            RunLater.call(_launcher.method(:resumeNow));
         }
         return true;
     }

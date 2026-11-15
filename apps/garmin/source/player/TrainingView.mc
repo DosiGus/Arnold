@@ -46,7 +46,23 @@ class TrainingView extends WatchUi.View {
     }
 
     function onUpdate(dc as Dc) as Void {
-        PairingLayout.draw(dc, TrainingScreen.lines(dc, _session, LiveHeart.current(), _sender));
+        var lines = TrainingScreen.lines(dc, _session, LiveHeart.current(), _sender);
+        if (_session.isFinished()) {
+            // The summary can be longer than the display: UP and DOWN scroll it (TrainingDelegate).
+            SummaryScroll.first = PairingLayout.drawFrom(dc, lines, SummaryScroll.first);
+        } else {
+            SummaryScroll.first = 0;
+            PairingLayout.draw(dc, lines);
+        }
+    }
+}
+
+// Where the summary after a workout is scrolled to (first line shown). Reset while the workout runs.
+module SummaryScroll {
+    var first as Number = 0;
+
+    function by(delta as Number) as Void {
+        first = first + delta < 0 ? 0 : first + delta;   // the view holds it below the end when it draws
     }
 }
 

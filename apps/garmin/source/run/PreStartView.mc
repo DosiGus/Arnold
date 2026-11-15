@@ -115,7 +115,8 @@ class PreStartQuestion extends WatchUi.ConfirmationDelegate {
 
     function onResponse(response as WatchUi.Confirm) as Boolean {
         if (response == WatchUi.CONFIRM_YES) {
-            _delegate.confirmed();
+            // Not here: the question closes itself after this returns and would take the run display with it.
+            RunLater.call(_delegate.method(:confirmed));
         }
         return true;
     }
