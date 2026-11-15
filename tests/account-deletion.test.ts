@@ -9,7 +9,7 @@ import {
 
 describe("deletion confirmation token", () => {
   it("works once, for its own user, before it expires", () => {
-    let now = 1_000_000;
+    const now = 1_000_000;
     const tokens = new DeletionTokens(() => now);
     const { token, expiresAt } = tokens.issue("usr_a");
     expect(Date.parse(expiresAt)).toBe(now + DELETION_TOKEN_TTL_MS);

@@ -7,14 +7,8 @@
  * shapes of the tools. A value that is not known stays null, never 0. Calendar
  * days always come from `workout_date_local` and the user's time zone.
  */
+import { addDays, compareDate, daysBetween } from "../../analytics/period.js";
 import {
-  addDays,
-  compareDate,
-  daysBetween,
-  weekStart,
-} from "../../analytics/period.js";
-import {
-  isLegMuscle,
   referenceTempoZones,
   scheduleRunWeek,
   strengthDays,

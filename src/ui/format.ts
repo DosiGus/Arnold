@@ -5,11 +5,7 @@
  * only adds date formatting and the rule for rendering a `ViewMetric`. No
  * component formats a weight on its own.
  */
-import {
-  formatNumber,
-  LOAD_BASIS_LABEL,
-  UNKNOWN,
-} from "../shared/arnold-format";
+import { formatNumber, UNKNOWN } from "../shared/arnold-format";
 import type { ViewMetric } from "../shared/arnold-view";
 
 export {

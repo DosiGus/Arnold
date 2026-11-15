@@ -1,4 +1,4 @@
-import { useEffect, useState, useId, type ReactNode } from "react";
+import { useState, useId, type ReactNode } from "react";
 import { AlertCircle, Minus, Plus } from "lucide-react";
 
 /**

@@ -1,9 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Recovery } from "../../shared/write-recovery";
-import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
-import { RECOVERY_COPY, type UiFailure } from "../recovery";
+import { RECOVERY_COPY } from "../recovery";
 import { ArnoldCard, CardActions, CardNote } from "./cards";
-import { useModelContext } from "../hooks/useModelContext";
 
 export function RecoveryCard({
   recovery,

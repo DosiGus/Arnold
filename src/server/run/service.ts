@@ -713,7 +713,7 @@ export class RunService {
         input.environment !== before.run.environment);
     let plan: Extract<RunPlan, { ok: true }> | null = null;
     let environment = input.environment ?? before.run.environment;
-    let runType = input.run_type ?? before.run.run_type;
+    const runType = input.run_type ?? before.run.run_type;
     if (rebuild) {
       let length = { minutes: input.minutes, meters: input.meters };
       if (length.minutes === undefined && length.meters === undefined) {

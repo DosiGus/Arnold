@@ -1,0 +1,19 @@
+# Weekly update pull requests for npm packages and GitHub Actions.
+# Minor and patch updates come as one grouped pull request per ecosystem;
+# major updates stay separate so each one is reviewed on its own.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
