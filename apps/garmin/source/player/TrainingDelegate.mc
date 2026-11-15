@@ -46,6 +46,11 @@ class TrainingDelegate extends WatchUi.BehaviorDelegate {
     }
 
     function onNextPage() as Boolean {
+        if (_session.isFinished()) {
+            SummaryScroll.by(1);   // the summary scrolls (found on a Forerunner 255, 15.11.2026)
+            WatchUi.requestUpdate();
+            return true;
+        }
         if (_session.state == TrainingSession.STATE_SET) {
             EditLauncher.open(_session);
             return true;
@@ -54,6 +59,11 @@ class TrainingDelegate extends WatchUi.BehaviorDelegate {
     }
 
     function onPreviousPage() as Boolean {
+        if (_session.isFinished()) {
+            SummaryScroll.by(-1);
+            WatchUi.requestUpdate();
+            return true;
+        }
         if (_session.state == TrainingSession.STATE_SET) {
             SetList.open(_session);
             return true;

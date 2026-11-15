@@ -179,6 +179,44 @@ module PairingLayout {
         return total;
     }
 
+    // A long screen that the user scrolls with UP and DOWN (the summary after a workout): every line is kept,
+    // the block starts at line `first` (after wrapping) and shows as many lines as fit between the margins of a
+    // round display. When everything fits it looks exactly like draw(). Returns `first`, held within the lines,
+    // so the caller keeps a valid position.
+    function drawFrom(dc as Dc, lines as Array<PairingLine>, first as Number) as Number {
+        var h = dc.getHeight();
+        var all = wrapAll(dc, lines);
+        var margin = h / 8;
+        if (blockHeight(dc, all) <= h - 2 * margin) {
+            draw(dc, lines);
+            return 0;
+        }
+        var lastFirst = all.size() - 1;
+        var tail = 0;
+        for (var i = all.size() - 1; i >= 0; i--) {
+            tail += dc.getFontHeight(all[i].font);
+            if (tail > h - 2 * margin) {
+                break;
+            }
+            lastFirst = i;
+        }
+        var start = first < 0 ? 0 : (first > lastFirst ? lastFirst : first);
+        var w = dc.getWidth();
+        dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
+        dc.clear();
+        var y = margin;
+        for (var k = start; k < all.size(); k++) {
+            var lineHeight = dc.getFontHeight(all[k].font);
+            if (y + lineHeight > h - margin) {
+                break;
+            }
+            dc.setColor(all[k].color, Graphics.COLOR_BLACK);
+            dc.drawText(w / 2, y, all[k].font, all[k].text, Graphics.TEXT_JUSTIFY_CENTER);
+            y += lineHeight;
+        }
+        return start;
+    }
+
     // Draws the lines as one block, centred on the display, on black (AMOLED: no lit areas).
     function draw(dc as Dc, lines as Array<PairingLine>) as Void {
         var w = dc.getWidth();
