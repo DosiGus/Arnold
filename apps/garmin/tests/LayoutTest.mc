@@ -43,6 +43,25 @@ class LayoutRig {
         return found;
     }
 
+    // The text of the first line marked to stay on one line (PairingLine.shrinks) that was wrapped or dropped
+    // anyway; "" if none. Other lines (main values, error sentences) may wrap on purpose.
+    static function wrapped(dc as Dc, lines as Array<PairingLine>) as String {
+        var drawn = PairingLayout.arrange(dc, lines);
+        for (var j = 0; j < lines.size(); j++) {
+            if (lines[j].smaller == null) {
+                continue;
+            }
+            var found = false;
+            for (var i = 0; i < drawn.size(); i++) {
+                found = found || drawn[i].text.equals(lines[j].text);
+            }
+            if (!found) {
+                return lines[j].text;
+            }
+        }
+        return "";
+    }
+
     static function fits(dc as Dc, lines as Array<PairingLine>) as Boolean {
         return PairingLayout.blockHeight(dc, PairingLayout.arrange(dc, lines)) <= PairingLayout.maxBlockHeight(dc);
     }
@@ -59,6 +78,27 @@ function mainNumbersTakeAThirdOfTheDisplay(logger as Logger) as Boolean {
         Test.assertMessage(PairingLayout.isBig(dc, font), message);
         Test.assertMessage(dc.getTextWidthInPixels(values[i], font) <= PairingLayout.bigWidth(dc), message);
     }
+    return true;
+}
+
+(:test)
+function bigLinesWithAUnitUseATextFont(logger as Logger) as Boolean {
+    var dc = LayoutRig.dc();
+    var numberFonts = [Graphics.FONT_NUMBER_MILD, Graphics.FONT_NUMBER_MEDIUM, Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_THAI_HOT] as Array<Graphics.FontType>;
+    var values = [RunText.distance(1234, false), RunText.distance(0, false), RunText.distance(12345678, true), "5 km", "(geschätzt)"];
+    for (var i = 0; i < values.size(); i++) {
+        var font = PairingLayout.bigFont(dc, values[i]);
+        var message = values[i] + " on " + dc.getHeight() + " px";
+        logger.debug(message);
+        for (var f = 0; f < numberFonts.size(); f++) {
+            Test.assertMessage(font != numberFonts[f], message + " uses a number font");
+        }
+        Test.assertMessage(dc.getTextWidthInPixels(values[i], font) <= PairingLayout.bigWidth(dc) || font == Graphics.FONT_TINY, message);
+    }
+    // plain numbers keep the number fonts
+    Test.assert(PairingLayout.numeralOnly("12,5"));
+    Test.assert(PairingLayout.numeralOnly("2:05"));
+    Test.assert(!PairingLayout.numeralOnly("12,5 km"));
     return true;
 }
 

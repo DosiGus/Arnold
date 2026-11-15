@@ -294,9 +294,16 @@ function theBatteryWarnsWhenThePlannedRunIsLongerThanTheCharge(logger as Logger)
 function theScreenShowsRunKindContentEnvironmentGpsAndHeartRate(logger as Logger) as Boolean {
     var dc = LayoutRig.dc();
     var model = new PreStartModel(PreStartRig.planned(2, "Intervalle", 40, PreStartRig.threeSegments()));
-    var text = PlanScreens.joined(PreStartScreen.lines(dc, model, Position.QUALITY_GOOD, 64, 80));
+    var lines = PreStartScreen.lines(dc, model, Position.QUALITY_GOOD, 64, 80);
+    var text = PlanScreens.joined(lines);
     Test.assertMessage(text.find("Intervalle") != null, text);
-    Test.assertMessage(text.find("40 min") != null, text);
+    Test.assertMessage(text.find("40 ") != null, text);
+    // every line fits the display, in either language (RUN-030)
+    var drawn = PairingLayout.arrange(dc, lines);
+    Test.assertMessage(LayoutRig.fits(dc, lines), text + " fits: " + ViewRig.heights(dc, lines));
+    for (var i = 0; i < drawn.size(); i++) {
+        Test.assertMessage(dc.getTextWidthInPixels(drawn[i].text, drawn[i].font) <= PairingLayout.textWidth(dc), "'" + drawn[i].text + "' is too wide on " + dc.getWidth() + " px");
+    }
     Test.assertMessage(text.find(PreStartScreen.environmentText(PreStartModel.ENV_TRACK)) != null, text);
     Test.assertMessage(text.find(PreStartScreen.gpsText(model, Position.QUALITY_GOOD)) != null, text);
     Test.assertMessage(text.find("64") != null, text);

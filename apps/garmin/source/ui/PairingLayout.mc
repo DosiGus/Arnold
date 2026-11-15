@@ -8,6 +8,7 @@ class PairingLine {
     var color as Graphics.ColorType;
     var wide as Boolean = false;      // the main number: may use more of the width (it sits in the middle)
     var optional as Boolean = false;  // dropped, last first, when the lines do not fit the display
+    var smaller as Graphics.FontType or Null = null;   // used when the text does not fit one line in `font` but does in this one
 
     function initialize(lineText as String, lineFont as Graphics.FontType, lineColor as Graphics.ColorType) {
         text = lineText;
@@ -17,6 +18,12 @@ class PairingLine {
 
     function big() as PairingLine {
         wide = true;
+        return self;
+    }
+
+    // A longer text (a language with longer words) keeps one line in this smaller font instead of wrapping.
+    function shrinks(fallback as Graphics.FontType) as PairingLine {
+        smaller = fallback;
         return self;
     }
 
@@ -107,6 +114,11 @@ module PairingLayout {
     // (PRD 7). The smallest number font that is tall enough and fits the width (the bigger one only
     // where the first is too small, e.g. fr955); for very long values the biggest that fits.
     function bigFont(dc as Dc, text as String) as Graphics.FontType {
+        if (!numeralOnly(text)) {
+            // The number fonts hold digits and a few signs only; a unit or a word would draw as empty boxes.
+            var words = [Graphics.FONT_LARGE, Graphics.FONT_MEDIUM, Graphics.FONT_SMALL, Graphics.FONT_TINY] as Array<Graphics.FontType>;
+            return fitFont(dc, text, bigWidth(dc), words);
+        }
         var tall = [Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_THAI_HOT] as Array<Graphics.FontType>;
         for (var i = 0; i < tall.size(); i++) {
             if (isBig(dc, tall[i]) && dc.getTextWidthInPixels(text, tall[i]) <= bigWidth(dc)) {
@@ -115,6 +127,18 @@ module PairingLayout {
         }
         var fonts = [Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_MEDIUM, Graphics.FONT_NUMBER_MILD, Graphics.FONT_LARGE] as Array<Graphics.FontType>;
         return fitFont(dc, text, bigWidth(dc), fonts);
+    }
+
+    // True if the text has only characters a number font draws: digits, colon, comma, point, minus, space.
+    function numeralOnly(text as String) as Boolean {
+        var chars = text.toCharArray();
+        for (var i = 0; i < chars.size(); i++) {
+            var c = chars[i];
+            if (!((c >= '0' && c <= '9') || c == ':' || c == ',' || c == '.' || c == '-' || c == ' ')) {
+                return false;
+            }
+        }
+        return true;
     }
 
     function bigLine(dc as Dc, text as String, color as Graphics.ColorType) as PairingLine {
@@ -163,9 +187,14 @@ module PairingLayout {
         var drawn = [] as Array<PairingLine>;
         for (var i = 0; i < lines.size(); i++) {
             var width = lines[i].wide ? bigWidth(dc) : textWidth(dc);
-            var parts = wrap(dc, lines[i].text, lines[i].font, width);
+            var font = lines[i].font;
+            var fallback = lines[i].smaller;
+            if (fallback != null && dc.getTextWidthInPixels(lines[i].text, font) > width && dc.getTextWidthInPixels(lines[i].text, fallback) <= width) {
+                font = fallback;
+            }
+            var parts = wrap(dc, lines[i].text, font, width);
             for (var j = 0; j < parts.size(); j++) {
-                drawn.add(new PairingLine(parts[j], lines[i].font, lines[i].color));
+                drawn.add(new PairingLine(parts[j], font, lines[i].color));
             }
         }
         return drawn;

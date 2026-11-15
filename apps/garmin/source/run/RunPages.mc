@@ -124,7 +124,7 @@ module RunPages {
             out.add(PairingLayout.bigLine(dc, hr == null ? RunText.NONE : (hr as Number).toString(), Graphics.COLOR_WHITE));
             out.add(bar());
             out.add(new PairingLine(RunText.paceLine(session.calc.paceDisplay()), Graphics.FONT_MEDIUM, Graphics.COLOR_WHITE));
-            out.add(new PairingLine(RunText.distance(session.calc.distanceCm, session.distanceIsEstimated()) + " · " + RunText.clock(session.calc.timerS), Graphics.FONT_TINY, Graphics.COLOR_LT_GRAY));
+            out.add(new PairingLine(RunText.distance(session.calc.distanceCm, session.distanceIsEstimated()) + " · " + RunText.clock(session.calc.timerS), Graphics.FONT_TINY, Graphics.COLOR_LT_GRAY).shrinks(Graphics.FONT_XTINY));
             return session.heartZone();
         }
         if (style == STYLE_SEGMENT) {
@@ -145,7 +145,7 @@ module RunPages {
         out.add(PairingLayout.bigLine(dc, remaining(session), Graphics.COLOR_WHITE));
         var type = plan.targetType(o);
         if (type != 0) {
-            out.add(dim(RunText.target(type, plan.targetLow(o), plan.targetHigh(o))).skippable());
+            out.add(dim(RunText.target(type, plan.targetLow(o), plan.targetHigh(o))).shrinks(Graphics.FONT_XTINY).skippable());
             var actual = actualText(session, type);
             if (actual != null) {
                 out.add(new PairingLine(actual as String, Graphics.FONT_MEDIUM, fitColor(session.targetFit())));
@@ -226,7 +226,7 @@ module RunPages {
     function third(session as RunSession, out as Array<PairingLine>) as Void {
         var km = session.calc.lastKmSeconds();
         out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunLastKm), [RunText.pace(km)]), Graphics.FONT_MEDIUM, Graphics.COLOR_WHITE));
-        out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunLapLine), [session.laps + 1, RunText.clock(session.segmentSeconds())]), Graphics.FONT_MEDIUM, Graphics.COLOR_WHITE));
+        out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunLapLine), [session.laps + 1, RunText.clock(session.segmentSeconds())]), Graphics.FONT_MEDIUM, Graphics.COLOR_WHITE).shrinks(Graphics.FONT_TINY));
         var climb = session.distanceIsEstimated() ? RunText.NONE : session.calc.ascentM.toString();
         out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunAscent), [climb]), Graphics.FONT_MEDIUM, Graphics.COLOR_LT_GRAY));
     }
@@ -246,7 +246,7 @@ module RunPages {
             out.add(k == 0 ? line : line.skippable());
             var type = plan.targetType(o);
             if (type != 0) {
-                out.add(dim(RunText.target(type, plan.targetLow(o), plan.targetHigh(o))).skippable());
+                out.add(dim(RunText.target(type, plan.targetLow(o), plan.targetHigh(o))).shrinks(Graphics.FONT_XTINY).skippable());
             }
         }
     }

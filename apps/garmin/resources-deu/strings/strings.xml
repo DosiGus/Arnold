@@ -104,7 +104,7 @@
     <string id="MenuSettings">Einstellungen</string>
     <string id="SetVibration">Vibration</string>
     <string id="SetTone">Ton</string>
-    <string id="SetWarning">Vorwarnung Pause</string>
+    <string id="SetWarning">Pausenwarnung</string>
     <string id="SetOn">An</string>
     <string id="SetOff">Aus</string>
     <string id="MenuSendNow">Jetzt senden</string>
@@ -123,7 +123,7 @@
     <string id="EditNextHint">START: weiter</string>
     <string id="EditDoneHint">START: fertig</string>
     <string id="MenuSets">Sätze</string>
-    <string id="MenuUndo">Letzten Satz rückgängig</string>
+    <string id="MenuUndo">Satz rückgängig</string>
     <string id="ListDone">erledigt</string>
     <string id="ListOpen">offen</string>
     <string id="ListNow">jetzt</string>
@@ -153,7 +153,7 @@
     <string id="RecFieldSegment">Abschnitt</string>
     <string id="RunSep">,</string>
     <string id="RunKm">$1$ km</string>
-    <string id="RunKmEst">$1$ km (geschätzt)</string>
+    <string id="RunKmEst">$1$ km (ca.)</string>
     <string id="RunSegmentOf">Abschnitt $1$/$2$</string>
     <string id="RunPlanDone">Plan fertig</string>
     <string id="RunPaused">Pausiert</string>
@@ -251,7 +251,7 @@
     <string id="RunAlHrLow">Etwas schneller</string>
     <string id="RunAlFaster">Schneller</string>
     <string id="RunAlSlower">Langsamer</string>
-    <string id="RunAlNext">Gleich: $1$</string>
+    <string id="RunAlNext">Dann: $1$</string>
     <string id="RunAlNow">Jetzt: $1$</string>
     <string id="RunAlEnd">Ende</string>
     <string id="RunAlKm">km $1$ · $2$</string>
