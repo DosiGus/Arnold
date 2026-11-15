@@ -11,12 +11,15 @@ targets=("$@")
 [[ ${#targets[@]} -eq 0 ]] && targets=("${DEVICES[@]}")
 
 simulator_running() { pgrep -f 'ConnectIQ.app/Contents/MacOS/simulator' >/dev/null; }
-if ! simulator_running; then
-  open -g -a "$CIQ_SDK_HOME/bin/ConnectIQ.app"
-  for _ in $(seq 1 30); do simulator_running && break; sleep 1; done
-  simulator_running || { echo "Simulator startet nicht." >&2; exit 1; }
-  sleep 3
-fi
+start_simulator() {
+  if ! simulator_running; then
+    open -g -a "$CIQ_SDK_HOME/bin/ConnectIQ.app"
+    for _ in $(seq 1 30); do simulator_running && break; sleep 1; done
+    simulator_running || { echo "Simulator startet nicht." >&2; exit 1; }
+    sleep 3
+  fi
+}
+start_simulator
 
 langs=(${ARNOLD_SIM_LANGS:-eng deu})
 for lang in "${langs[@]}"; do
@@ -41,6 +44,11 @@ for lang in "${langs[@]}"; do
     for attempt in 1 2 3; do
       out="$("$MONKEYDO" "$prg" "$device" -t 2>&1 || true)"
       grep -qE '^(PASSED|FAILED) \(' <<<"$out" && break
+      if grep -q 'Unable to connect to simulator' <<<"$out"; then
+        # The simulator quit: start it again and set the language once more.
+        start_simulator
+        bash "$(dirname "$0")/sim-language.sh" "$lang" "$prg" "$device" >/dev/null 2>&1 || true
+      fi
       sleep 3
     done
     summary="$(grep -E '^(PASSED|FAILED) \(' <<<"$out" || true)"
