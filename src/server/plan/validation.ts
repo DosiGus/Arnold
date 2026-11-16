@@ -55,6 +55,13 @@ const MAX_SETS = 50;
 const MAX_REPS = 1000;
 const MAX_REST_SECONDS = 86_400;
 const MAX_LOAD_KG = 1000;
+/**
+ * Sensible ceilings, stated in the onboarding brief ("1 bis 20 Sätze, 1 bis
+ * 100 Wiederholungen"). Above them the value is almost surely a typo, but a
+ * stored plan must not become unusable, so they warn instead of blocking.
+ */
+const SENSIBLE_SETS = 20;
+const SENSIBLE_REPS = 100;
 
 /**
  * Checks one planned exercise in isolation.
@@ -106,6 +113,20 @@ export function validatePlannedExercise(
         field: "target_sets",
       }),
     );
+  if (
+    target_sets !== null &&
+    Number.isInteger(target_sets) &&
+    target_sets > SENSIBLE_SETS &&
+    target_sets <= MAX_SETS
+  )
+    found.push(
+      issue("warning", {
+        ...where,
+        code: "INVALID_SET_COUNT",
+        message: `${target_sets} Sätze bei "${exercise.exercise_name}" sind ungewöhnlich viel (üblich sind 2 bis 5, höchstens ${SENSIBLE_SETS}). Bitte prüfen, ob das so gewollt ist.`,
+        field: "target_sets",
+      }),
+    );
   if (target_sets === null)
     found.push(
       issue("warning", {
@@ -139,6 +160,24 @@ export function validatePlannedExercise(
           ...where,
           code: "INVALID_REP_RANGE",
           message: `Der Wiederholungswert muss eine ganze Zahl zwischen 0 und ${MAX_REPS} sein.`,
+          field,
+        }),
+      );
+  for (const [field, value] of [
+    ["rep_min", rep_min],
+    ["rep_max", rep_max],
+  ] as const)
+    if (
+      value !== null &&
+      Number.isInteger(value) &&
+      value > SENSIBLE_REPS &&
+      value <= MAX_REPS
+    )
+      found.push(
+        issue("warning", {
+          ...where,
+          code: "INVALID_REP_RANGE",
+          message: `${value} Wiederholungen bei "${exercise.exercise_name}" sind ungewöhnlich viel (höchstens ${SENSIBLE_REPS}). Bitte prüfen, ob das so gewollt ist.`,
           field,
         }),
       );
@@ -343,6 +382,47 @@ function validateSession(session: TrainingSession): PlanValidationIssue[] {
 }
 
 /**
+ * Findings that only make sense across a whole plan, as one message each so a
+ * plan entered without pauses does not drown in one line per exercise. All are
+ * warnings: they name something that makes the plan work worse (no progression
+ * without a rep range, the watch guessing the pause), never something that makes it wrong.
+ */
+function planWideHints(
+  activeSessions: readonly TrainingSession[],
+): PlanValidationIssue[] {
+  const found: PlanValidationIssue[] = [];
+  const items = activeSessions.flatMap((session) =>
+    session.exercises.filter((exercise) => exercise.status === "active"),
+  );
+
+  const noRange = items.filter((e) => e.rep_min === null && e.rep_max === null);
+  if (noRange.length)
+    found.push(
+      issue("warning", {
+        code: "INVALID_REP_RANGE",
+        message: `Bei ${noRange.length} ${noRange.length === 1 ? "Übung" : "Übungen"} fehlt der Wiederholungsbereich (zum Beispiel ${noRange[0].exercise_name}). Ohne Bereich kann Arnold keine Steigerung vorschlagen.`,
+        plan_item_id: noRange[0].plan_item_id,
+        exercise_id: noRange[0].exercise_id,
+        field: "rep_min",
+      }),
+    );
+
+  const noRest = items.filter((e) => e.rest_seconds === null);
+  if (noRest.length)
+    found.push(
+      issue("warning", {
+        code: "INVALID_REST",
+        message: `Bei ${noRest.length} ${noRest.length === 1 ? "Übung" : "Übungen"} fehlt die Pause zwischen den Sätzen (zum Beispiel ${noRest[0].exercise_name}). Die Uhr nimmt dann pauschal 120 Sekunden.`,
+        plan_item_id: noRest[0].plan_item_id,
+        exercise_id: noRest[0].exercise_id,
+        field: "rest_seconds",
+      }),
+    );
+
+  return found;
+}
+
+/**
  * Validates a projected version.
  *
  * Takes the projection rather than a dataset so the editor can check a
@@ -445,6 +525,8 @@ export function validateProjection(
       );
     }
   }
+
+  found.push(...planWideHints(activeSessions));
 
   // Training guidance, explicitly non-blocking.
   if (
