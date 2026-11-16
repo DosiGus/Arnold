@@ -63,6 +63,8 @@ export function ProfileStep({
   onReload,
   suppressIssues = false,
   onQuestion,
+  initialPage,
+  onReturn,
 }: {
   profile: OnboardingProfile;
   progress: OnboardingProgress;
@@ -79,8 +81,14 @@ export function ProfileStep({
   sessionKey?: string;
   suppressIssues?: boolean;
   onQuestion?: (title: string) => void;
+  /** Opens this page first (a tap on a row of "Das habe ich verstanden"). */
+  initialPage?: Page;
+  /** With `initialPage`: where to go after that single page is saved. */
+  onReturn?: () => void;
 }) {
-  const [page, setPage] = useState<Page>(() => initialProfileQuestion(profile));
+  const [page, setPage] = useState<Page>(
+    () => initialPage ?? initialProfileQuestion(profile),
+  );
   const [fromReview, setFromReview] = useState(false);
   const [error, setError] = useState("");
   const guard = useRef(false);
@@ -270,12 +278,14 @@ export function ProfileStep({
         const patch = patchFor(page);
         if (patch && !(await onSave(patch))) return;
       }
-      go(nextPage(page, fromReview, withLoads, withRun));
+      if (onReturn && initialPage && page === initialPage) onReturn();
+      else go(nextPage(page, fromReview, withLoads, withRun));
     } finally {
       guard.current = false;
     }
   }
   const back = () => {
+    if (onReturn && initialPage && page === initialPage) return onReturn();
     if (fromReview) return go("review");
     const previous = previousPage(page, withLoads, withRun);
     if (previous) go(previous);

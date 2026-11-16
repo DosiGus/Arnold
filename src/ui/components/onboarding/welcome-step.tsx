@@ -2,6 +2,14 @@ import { useId } from "react";
 import { ChevronRight, FileText, Sparkles } from "lucide-react";
 import type { OnboardingPath } from "../../../shared/onboarding-contract";
 import { CardNote } from "../cards";
+import { SayHint } from "../conversation-cards";
+
+/** The three keywords of the welcome card. */
+export const WELCOME_KEYWORDS = [
+  "Ziel und Erfahrung",
+  "Tage und Dauer",
+  "Ort und Geräte",
+] as const;
 
 export function WelcomeStep({
   onChoose,
@@ -19,9 +27,18 @@ export function WelcomeStep({
       <div>
         <h2 className="ac-title">Willkommen bei Arnold</h2>
         <p className="ac-sub">
-          Dein Trainingsbegleiter im Chat: ein Plan, schnelle Satzeingabe und
-          dein Fortschritt an einem Ort. Wie möchtest du starten?
+          Erzähl mir von dir, per Sprache oder Text. Arnold ordnet es ein und
+          fragt nur nach, was noch fehlt.
         </p>
+        <ul className="cc-chips" aria-label="Erzähl mir von dir">
+          {WELCOME_KEYWORDS.map((word) => (
+            <li key={word}>{word}</li>
+          ))}
+        </ul>
+        <SayHint>
+          Ich will Muskeln aufbauen, trainiere seit zwei Jahren, dreimal pro
+          Woche im Studio
+        </SayHint>
       </div>
       {!canWritePlan && (
         <CardNote>
@@ -44,7 +61,7 @@ export function WelcomeStep({
           <span className="ac-path-text">
             <strong>Plan mit Arnold erstellen</strong>
             <span id={`${ids}-arnold`}>
-              4 kurze Fragen und deine Wünsche, etwa 2 Minuten
+              Lieber Schritt für Schritt: 4 kurze Fragen, etwa 2 Minuten
             </span>
           </span>
           <ChevronRight size={16} aria-hidden="true" />
