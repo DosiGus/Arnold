@@ -135,3 +135,10 @@ createHttpApp({
   ...common,
   workoutRuntime: createFixtureOnboarding({ sessionTtlMs: 1500 }),
 }).listen(8802, "127.0.0.1");
+
+/** UX-005, the plan change card: one writable tracker per browser project. */
+for (const port of [8830, 8831])
+  createHttpApp({ ...common, workoutRuntime: createFixturePlanning() }).listen(
+    port,
+    "127.0.0.1",
+  );

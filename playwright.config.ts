@@ -17,6 +17,7 @@ export default defineConfig({
         "**/home-run.spec.ts",
         "**/home-card.spec.ts",
         "**/conversation-cards.spec.ts",
+        "**/plan-change.spec.ts",
       ],
     },
   ],
@@ -35,7 +36,7 @@ export default defineConfig({
       // Arnold schema v1 mode: 8792 with history, 8793 empty, 8794 failing,
       // 8795 writable workout logger, 8796 plan editor, 8797 plan first run,
       // 8798/8799 plan activation and conflict, 8800-8803 onboarding,
-      // 8804 start screen with invented history and goals, 8805 plan change
+      // 8804 start screen with invented history and goals, 8830/8831 plan change card (UX-005), 8805 plan change
       // from the training card, 8806 setup with the starter catalog.
       command: "npx tsx tests/fixtures/arnold-server.ts",
       url: "http://127.0.0.1:8792/health",
