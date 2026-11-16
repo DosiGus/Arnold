@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { callTool } from "./helpers";
 import type { ArnoldDashboardView } from "../../src/shared/arnold-view";
+import { berlinToday } from "../fixtures/berlin-today";
 
 /**
  * The recap after a workout (UX-006): "Geschafft: …" at the top of the
@@ -14,7 +15,7 @@ import type { ArnoldDashboardView } from "../../src/shared/arnold-view";
  */
 const baseFor = (project: string) =>
   project === "webkit" ? "http://127.0.0.1:8833" : "http://127.0.0.1:8832";
-const today = () => new Intl.DateTimeFormat("en-CA").format(new Date());
+const today = () => berlinToday();
 let n = 0;
 
 /** A completed workout from the plan's proposal, so there is something new. */

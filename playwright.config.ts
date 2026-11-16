@@ -29,6 +29,7 @@ export default defineConfig({
   timeout: 30000,
   use: {
     baseURL: "http://127.0.0.1:8792",
+    timezoneId: "Europe/Berlin",
     headless: true,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",

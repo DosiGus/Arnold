@@ -67,10 +67,16 @@ export function HomeCard({
   const panelId = useId();
   const noRunProfile = useNoRunProfile(client);
   const home = view.home;
-  const today = new Intl.DateTimeFormat("en-CA").format(new Date());
-  const doneToday = view.recent_workouts.find(
-    (w) => w.status === "completed" && w.date === today,
-  );
+  // The server decides which day is "today" (UX-016). Without a known time
+  // zone it names none, and the card marks nothing rather than guessing.
+  const today =
+    view.reference?.source === "timezone" ? view.reference.date : null;
+  const doneToday =
+    today === null
+      ? undefined
+      : view.recent_workouts.find(
+          (w) => w.status === "completed" && w.date === today,
+        );
   const week = view.weeks.find((w) => w.is_current_week);
   const weekStart =
     week?.week_start ??

@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { callTool } from "./helpers";
 import type { ArnoldDashboardView } from "../../src/shared/arnold-view";
+import { berlinToday } from "../fixtures/berlin-today";
 
 /**
  * The start card: header line, four tiles whose detail opens in the card, and
@@ -22,7 +23,7 @@ const SENTENCES = {
 const tile = (page: Page, name: string) =>
   page.getByRole("button", { name: new RegExp(`^${name}`) });
 const main = (page: Page) => page.locator("main");
-const today = () => new Intl.DateTimeFormat("en-CA").format(new Date());
+const today = () => berlinToday();
 
 const reply = (route: Route, value: unknown) =>
   route.fulfill({
