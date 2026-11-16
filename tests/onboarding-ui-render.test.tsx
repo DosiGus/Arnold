@@ -59,7 +59,7 @@ describe("question-card onboarding with real server states", () => {
       <WelcomeStep onChoose={noop} busy={false} canWritePlan />,
     );
     expect(html).toContain("Willkommen bei Arnold");
-    expect(html).toContain("Trainingsbegleiter");
+    expect(html).toContain("Erzähl mir von dir");
     expect(html.match(/class="ac-btn /g)).toHaveLength(2);
     expect(html).not.toContain("onb-");
     expect(html).not.toContain("brand-icon");

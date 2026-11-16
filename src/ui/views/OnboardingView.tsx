@@ -64,6 +64,10 @@ export function OnboardingView({
       setOpening(false);
     }
   };
+  // A new or cancelled setup starts at the welcome again.
+  useEffect(() => {
+    setFormPage(undefined);
+  }, [session?.onboarding_session_id, onb.cancelled]);
   useEffect(() => {
     if (session?.status === "READY_TO_FINISH") onFinishedHandoff?.();
   }, [session?.status, onFinishedHandoff]);
@@ -550,6 +554,7 @@ export function OnboardingView({
         canWritePlan={state.can_write_plan}
         busy={blocked}
         onChoose={(path) => {
+          if (path === "arnold_plan") setFormPage("auto");
           if (path === session.profile.path)
             onb.goToStep(path === "own_plan" ? "own_plan" : "profile");
           else void onb.choosePath(path);

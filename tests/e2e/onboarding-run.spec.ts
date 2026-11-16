@@ -139,8 +139,15 @@ test("the plan cannot be asked for without the run answers, a reload keeps them"
     request_id: crypto.randomUUID(),
   });
   expect(JSON.stringify(refused)).toContain("PROFILE_INCOMPLETE");
-  // After a reload the setup resumes on the run page, not past it.
+  // After a reload the card shows the run answers as a gap; a tap on the row
+  // opens the run page, not the review.
   await page.reload();
+  await expect(
+    wizard(page).getByRole("heading", { name: "Das habe ich verstanden" }),
+  ).toBeVisible();
+  await wizard(page)
+    .getByRole("button", { name: "Laufen ändern", exact: true })
+    .click();
   await expect(
     wizard(page).getByRole("heading", { name: "Deine Laufangaben" }),
   ).toBeVisible();

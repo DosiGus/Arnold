@@ -11,6 +11,7 @@ export default defineConfig({
         "**/onboarding.spec.ts",
         "**/onboarding-latency.spec.ts",
         "**/onboarding-run.spec.ts",
+        "**/onboarding-voice.spec.ts",
         "**/arnold-dashboard.spec.ts",
         "**/arnold-v2-qa.spec.ts",
         "**/run-cards.spec.ts",
