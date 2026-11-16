@@ -8,7 +8,14 @@
     "url": "https://arnold-789221393068.europe-west1.run.app/support"
   },
   "homepage": "https://arnold-789221393068.europe-west1.run.app/support",
-  "keywords": ["krafttraining", "laufen", "trainingsplan", "fitness", "coach", "garmin"],
+  "keywords": [
+    "krafttraining",
+    "laufen",
+    "trainingsplan",
+    "fitness",
+    "coach",
+    "garmin"
+  ],
   "extensions": {
     "com.openai": {
       "interface": {
