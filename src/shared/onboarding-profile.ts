@@ -602,7 +602,107 @@ export function validateProposalAgainstProfile(
       }),
     );
 
+  if (profile.path === "arnold_plan" && sessions.length)
+    found.push(...proposalFitIssues(profile, sessions));
+
   return result(found);
+}
+
+/** The exercise ids a session names; rows without a readable id are skipped. */
+function plannedIds(session: TrainingSessionInputLike): string[] {
+  const ids: string[] = [];
+  for (const row of session.exercises ?? []) {
+    const id = (row as { exercise_id?: unknown } | null)?.exercise_id;
+    if (typeof id === "string") ids.push(id);
+  }
+  return ids;
+}
+
+const nameOf = (id: string) => starterExercise(id)?.name_de ?? null;
+const listOf = (names: readonly string[]) =>
+  names.length > 1
+    ? `${names.slice(0, -1).join(", ")} und ${names[names.length - 1]}`
+    : names[0];
+
+/**
+ * Three checks of a proposal against what the user said about themselves.
+ *
+ * - An exercise the user wants to avoid is refused (error): it contradicts an
+ *   explicit answer.
+ * - A starter-catalog exercise that needs equipment the user does not have, and
+ *   more exercises than fit into the stated minutes, are only noted (warning):
+ *   the user may train elsewhere sometimes or accept a longer session.
+ *
+ * What the profile does not say is not assumed: no environment (or home and
+ * outdoor without any listed equipment) means no equipment finding, and no
+ * session length means no time finding. Exercises outside the starter catalog,
+ * such as the user's own, are never judged.
+ */
+export function proposalFitIssues(
+  profile: OnboardingProfile,
+  sessions: readonly TrainingSessionInputLike[],
+): OnboardingValidationIssue[] {
+  const found: OnboardingValidationIssue[] = [];
+  const training = profile.training;
+
+  const avoided = new Set(training.avoided_exercise_ids ?? []);
+  if (avoided.size) {
+    const hits = unique(
+      sessions.flatMap(plannedIds).filter((id) => avoided.has(id)),
+    );
+    if (hits.length)
+      found.push(
+        issue("error", {
+          code: "PROPOSAL_AVOIDED_EXERCISE",
+          message: `Der Vorschlag enthält ${listOf(hits.map((id) => nameOf(id) ?? "eine Übung, die du vermeiden möchtest"))}, die du ausgeschlossen hast. Bitte einen Vorschlag ohne ${hits.length === 1 ? "diese Übung" : "diese Übungen"} machen.`,
+          field: "sessions",
+          step: "plan_review",
+        }),
+      );
+  }
+
+  const owned = training.equipment ?? [];
+  const equipmentKnown =
+    training.environment === "gym" ||
+    training.environment === "mixed" ||
+    ((training.environment === "home" || training.environment === "outdoor") &&
+      owned.length > 0);
+  if (equipmentKnown) {
+    const possible = new Set(
+      exercisesFor(training.environment, owned).map((e) => e.exercise_id),
+    );
+    const missing = unique(
+      sessions
+        .flatMap(plannedIds)
+        .filter((id) => starterExercise(id) && !possible.has(id)),
+    );
+    if (missing.length)
+      found.push(
+        issue("warning", {
+          code: "PROPOSAL_EQUIPMENT_MISSING",
+          message: `${listOf(missing.map((id) => nameOf(id)!))} ${missing.length === 1 ? "braucht" : "brauchen"} Geräte, die du nicht angegeben hast. Im Editor lässt sich ${missing.length === 1 ? "die Übung" : "das"} ersetzen.`,
+          field: "sessions",
+          step: "plan_review",
+        }),
+      );
+  }
+
+  const minutes = training.session_minutes;
+  if (minutes !== null && minutes !== undefined) {
+    const { max } = exerciseBudget(minutes);
+    const long = sessions.filter((s) => plannedIds(s).length > max);
+    if (long.length)
+      found.push(
+        issue("warning", {
+          code: "PROPOSAL_OVER_TIME_BUDGET",
+          message: `${long.length === 1 ? `Die Einheit "${long[0].session_name}" hat` : `Die Einheiten ${listOf(long.map((s) => `"${s.session_name}"`))} haben`} mehr Übungen, als in ${minutes} Minuten sinnvoll Platz haben (höchstens ${max}). Im Editor lässt sich das kürzen.`,
+          field: "sessions",
+          step: "plan_review",
+        }),
+      );
+  }
+
+  return found;
 }
 
 const ordered = <T extends string>(values: readonly T[], order: readonly T[]) =>

@@ -19,6 +19,7 @@ import { randomUUID } from "node:crypto";
 import type { Server } from "node:http";
 import { createHttpApp } from "../src/server/http";
 import { createFixtureOnboarding } from "../src/server/onboarding/fixture";
+import { newTrackerDataset } from "../src/server/account/catalog";
 import { planFixtureDataset } from "../src/server/plan/fixture";
 import {
   ONBOARDING_CONTRACT,
@@ -64,8 +65,10 @@ const TRAINING = {
 } as const;
 const COMPLETE = { path: "arnold_plan", training: TRAINING } as const;
 
-async function listen() {
-  runtime = createFixtureOnboarding({ dataset: planFixtureDataset("empty") });
+async function listen(
+  dataset: ReturnType<typeof planFixtureDataset> = planFixtureDataset("empty"),
+) {
+  runtime = createFixtureOnboarding({ dataset });
   http = createHttpApp({
     workoutRuntime: runtime,
     allowedHosts: ["127.0.0.1", "localhost"],
@@ -809,6 +812,97 @@ describe("cancelling over MCP", () => {
     expect(restarted.ok).toBe(true);
     expect(restarted.state!.session.onboarding_session_id).not.toBe(
       claim.onboarding_session_id,
+    );
+  });
+});
+
+describe("proposal against the profile over MCP (UX-012)", () => {
+  // The starter catalog, so the exercise ids are the ones the rules know.
+  beforeEach(async () => {
+    await client.close();
+    await new Promise<void>((resolve) => http.close(() => resolve()));
+    await listen(newTrackerDataset("trk_ux012"));
+  });
+  async function ready(training: Record<string, unknown>) {
+    const claim = await startSetup();
+    await write("update_onboarding_profile", {
+      request_id: rid(),
+      ...claim,
+      profile: {
+        path: "arnold_plan",
+        training: { ...TRAINING, days_per_week: 1, ...training },
+      },
+    });
+    await write("request_onboarding_plan", { request_id: rid(), ...claim });
+    return claim;
+  }
+  const propose = (claim: Awaited<ReturnType<typeof ready>>, ids: string[]) =>
+    write("submit_onboarding_plan_proposal", {
+      request_id: rid(),
+      ...claim,
+      name: "Test",
+      origin: "ai_proposal",
+      sessions: [
+        {
+          session_name: "Tag",
+          exercises: ids.map((exercise_id) => ({
+            exercise_id,
+            target_sets: 3,
+            rep_min: 8,
+            rep_max: 12,
+          })),
+        },
+      ],
+    });
+
+  it("refuses an avoided exercise and saves no draft", async () => {
+    const claim = await ready({ avoided_exercise_ids: ["deadlift"] });
+    const refused = await propose(claim, ["squat", "deadlift"]);
+    expect(refused.ok).toBe(false);
+    expect(refused.error?.code).toBe("PLAN_PROPOSAL_INVALID");
+    expect(refused.error?.message).toContain("Kreuzheben");
+    expect(refused.error?.details?.join(" ")).toContain(
+      "PROPOSAL_AVOIDED_EXERCISE",
+    );
+    const state = OnboardingStateSchema.parse(
+      (await call("get_onboarding_state", claim)).structuredContent,
+    );
+    expect(state.plan).toBeNull();
+
+    // the same call without it goes through
+    expect((await propose(claim, ["squat", "leg-press"])).ok).toBe(true);
+  });
+
+  it("stores a plan with a missing-equipment hint and shows the hint", async () => {
+    const claim = await ready({
+      environment: "home",
+      equipment: ["dumbbells"],
+    });
+    const response = await propose(claim, ["leg-press"]);
+    expect(response.ok, response.error?.message).toBe(true);
+    const codes = response.state!.validation.warnings.map((w) => w.code);
+    expect(codes).toContain("PROPOSAL_EQUIPMENT_MISSING");
+    expect(response.state!.plan).not.toBeNull();
+  });
+
+  it("stores a plan over the time budget with a hint, and none within it", async () => {
+    const claim = await ready({ session_minutes: 30 });
+    const response = await propose(claim, [
+      "squat",
+      "bench-press",
+      "lat-pulldown",
+      "leg-curl",
+    ]);
+    expect(response.ok, response.error?.message).toBe(true);
+    expect(response.state!.validation.warnings.map((w) => w.code)).toContain(
+      "PROPOSAL_OVER_TIME_BUDGET",
+    );
+
+    const quiet = await ready({ session_minutes: 30 });
+    const fine = await propose(quiet, ["squat", "bench-press", "lat-pulldown"]);
+    expect(fine.ok).toBe(true);
+    expect(fine.state!.validation.warnings.map((w) => w.code)).not.toContain(
+      "PROPOSAL_OVER_TIME_BUDGET",
     );
   });
 });

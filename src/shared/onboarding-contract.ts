@@ -549,6 +549,10 @@ export const ONBOARDING_VALIDATION_CODES = [
   "PROPOSAL_DAYS_MISMATCH",
   "PROPOSAL_NO_SESSION",
   "PROPOSAL_EMPTY_SESSION",
+  // Added with UX-012. Append only: codes are never renamed or removed.
+  "PROPOSAL_AVOIDED_EXERCISE",
+  "PROPOSAL_EQUIPMENT_MISSING",
+  "PROPOSAL_OVER_TIME_BUDGET",
 ] as const;
 export const OnboardingValidationCodeSchema = z.enum(
   ONBOARDING_VALIDATION_CODES,
