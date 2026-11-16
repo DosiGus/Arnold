@@ -74,3 +74,10 @@ export {
   type ProgressionResult,
 } from "./progression.js";
 export * from "./types.js";
+export {
+  dailyHealthRecovery,
+  RESTING_HR_WINDOW_DAYS,
+  type DailyHealthInput,
+  type DailyHealthRecovery,
+  type DatedValue,
+} from "./health-daily.js";

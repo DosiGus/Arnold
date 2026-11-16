@@ -178,11 +178,14 @@ it("reports 503 with a generic body when the private embedded database is stoppe
     release: "health-test",
     auth: "oidc",
     source: "arnold_database",
+    // UX-015: the daily Garmin values are off without configuration.
+    garmin_daily: "off",
   });
   expect(Object.keys(body).sort()).toEqual([
     "app",
     "auth",
     "database",
+    "garmin_daily",
     "release",
     "source",
     "status",
