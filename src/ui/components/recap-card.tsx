@@ -56,7 +56,7 @@ export function RecapBanner({
   const watch = recap.from_watch ? " · Von der Uhr" : "";
   return (
     <section className="ac-recap" aria-label="Rückblick auf dein Training">
-      <CardTag icon={<Check size={13} />}>Geschafft</CardTag>
+      <CardTag icon={<Check size={13} />}>Rückblick</CardTag>
       <h3>Geschafft: {recap.title}</h3>
       <p className="ac-caption">
         {recap.exercise_count}{" "}

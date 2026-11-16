@@ -99,7 +99,7 @@ describe("recap selection", () => {
         .flatMap((p) => p.exercises)
         .find((e) => e.exercise_id === core.suggestion!.exercise_id)!;
       expect(proposal.source).toBe("progression");
-      expect(core.suggestion.next_reps).toBe(proposal.sets[0].reps);
+      expect(core.suggestion!.next_reps).toBe(proposal.sets[0].reps);
     }
     // Without progression there is no suggestion.
     const bare = computeRecap(dataset, view.home, [], TODAY)!;

@@ -12,8 +12,7 @@ import {
   isStrengthWorkout,
   type ArnoldDataset,
 } from "../shared/arnold-schema-v1.js";
-import type { SessionProposal } from "../shared/workout-contract.js";
-import type { ArnoldRecap } from "../shared/recap-contract.js";
+import type { ArnoldLoadBasis } from "../shared/arnold-schema-v1.js";
 import type { HomeAnalytics } from "./home.js";
 import { addDays, compareDate, weekStart } from "./period.js";
 
@@ -21,16 +20,56 @@ import { addDays, compareDate, weekStart } from "./period.js";
 export const RECAP_MAX_AGE_DAYS = 7;
 const MAX_RECORDS = 3;
 
-/** What the engine knows about the new workout; the presenter adds its title and counts. */
-export type RecapCore = Pick<
-  ArnoldRecap,
-  | "workout_id"
-  | "date"
-  | "records"
-  | "week_goal"
-  | "suggestion"
-  | "next_session_id"
->;
+export type RecapRecord = Readonly<{
+  exercise_id: string;
+  exercise_name: string;
+  metric: "max_load" | "max_reps_at_load" | "max_reps_bodyweight";
+  value: number;
+  previous_value: number;
+  load_kg: number | null;
+  reps: number | null;
+  load_basis: ArnoldLoadBasis;
+}>;
+
+export type RecapSuggestion = Readonly<{
+  exercise_id: string;
+  exercise_name: string;
+  decision: "increase" | "more_reps" | "reduce";
+  load_basis: ArnoldLoadBasis;
+  next_load_kg: number | null;
+  last_load_kg: number | null;
+  next_reps: number;
+  last_reps: number;
+}>;
+
+/**
+ * What the engine knows about the new workout; the presenter adds its title
+ * and counts. Structurally the same as the fields of the dashboard contract.
+ */
+export type RecapCore = Readonly<{
+  workout_id: string;
+  date: string;
+  records: RecapRecord[];
+  week_goal: { goal: number; training_days: number } | null;
+  suggestion: RecapSuggestion | null;
+  next_session_id: string | null;
+}>;
+
+/** The part of the server's session proposal the recap reads. */
+export type RecapProposal = Readonly<{
+  session_id: string;
+  exercises: readonly Readonly<{
+    exercise_id: string;
+    exercise_name: string;
+    source: string;
+    conventions: { load_basis: ArnoldLoadBasis };
+    sets: readonly { reps: number; load_kg: number | null }[];
+    progression?: Readonly<{
+      decision: "increase" | "more_reps" | "top_reached" | "reduce";
+      last_sets: readonly { reps: number; load_kg: number | null }[];
+    }>;
+  }>[];
+}>;
 
 /** The most recent completed strength workout, if it is recent enough. */
 export function newestWorkout(
@@ -63,7 +102,7 @@ const DECISION_RANK = { increase: 0, reduce: 1, more_reps: 2 } as const;
 export function computeRecap(
   dataset: Pick<ArnoldDataset, "workouts" | "sets" | "exercises">,
   home: Pick<HomeAnalytics, "records" | "streak" | "next_session">,
-  proposals: readonly SessionProposal[],
+  proposals: readonly RecapProposal[],
   referenceDate: string | null,
 ): RecapCore | null {
   const workout = newestWorkout(dataset, referenceDate);
@@ -71,7 +110,7 @@ export function computeRecap(
   const name = (exerciseId: string) =>
     dataset.exercises.find((e) => e.exercise_id === exerciseId)?.name_de;
 
-  const records: ArnoldRecap["records"] = [];
+  const records: RecapRecord[] = [];
   for (const r of home.records) {
     if (r.workout_id !== workout.workout_id) continue;
     const exercise_name = name(r.exercise_id);
