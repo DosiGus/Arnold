@@ -269,6 +269,16 @@ export class PostgresArnoldStore implements ArnoldStore {
     );
   }
 
+  async hasOperation(requestId: string): Promise<boolean> {
+    const found = await this.db.asUser(this.userId, (client) =>
+      client.query(
+        "select 1 from arnold.operations where user_id = $1 and request_id = $2",
+        [this.userId, requestId],
+      ),
+    );
+    return found.rowCount === 1;
+  }
+
   async write<T>(work: (tx: ArnoldTransaction) => Promise<T>): Promise<T> {
     const { userId, trackerId } = this;
     try {

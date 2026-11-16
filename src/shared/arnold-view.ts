@@ -23,6 +23,7 @@ import {
   ArnoldLoadBasisSchema,
 } from "./arnold-schema-v1.js";
 import { DASHBOARD_CARDS } from "./dashboard-cards.js";
+import { ArnoldRecapSchema } from "./recap-contract.js";
 import {
   AnalyticsReasonSchema,
   ComparabilitySchema,
@@ -527,6 +528,11 @@ export const ArnoldDashboardViewSchema = z.object({
   data_quality: ViewDataQualitySchema,
   /** Start screen and its three detail views. */
   home: ArnoldHomeSchema,
+  /**
+   * Rückblick auf das neue Training (UX-006). Only set when there is a real,
+   * not yet seen workout; absent or null otherwise.
+   */
+  recap: ArnoldRecapSchema.nullable().optional(),
   totals: z.object({
     workouts_in_history: count,
     workouts_in_period: count,

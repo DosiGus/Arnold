@@ -86,6 +86,7 @@ function faulty(
     kind: "fixture",
     audit: memory.audit,
     read: () => memory.read(),
+    hasOperation: (id) => memory.hasOperation(id),
     async write(work) {
       writes++;
       const failing = pending;
@@ -964,6 +965,7 @@ describe("additional safety boundaries", () => {
       kind: "fixture",
       audit: empty.audit,
       read: () => empty.read(),
+      hasOperation: (id) => empty.hasOperation(id),
       write: (work) =>
         empty.write((tx) =>
           work({

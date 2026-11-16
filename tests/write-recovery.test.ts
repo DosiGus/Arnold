@@ -49,6 +49,7 @@ function setup() {
     kind: "fixture",
     audit: memory.audit,
     read: () => memory.read(),
+    hasOperation: (id) => memory.hasOperation(id),
     async write(work) {
       const next = fault;
       fault = undefined;
