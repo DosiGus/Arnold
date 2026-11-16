@@ -113,6 +113,26 @@ export function understoodRows(
   return rows;
 }
 
+/** One example sentence per row: what to say to fill exactly that gap. */
+const SAY_EXAMPLE: Record<string, string> = {
+  goal: "Ich möchte Muskeln aufbauen",
+  experience: "Ich trainiere seit etwa einem Jahr",
+  scope: "Ich trainiere dreimal pro Woche, 60 Minuten",
+  place: "Ich trainiere im Fitnessstudio",
+  run: "Ich laufe zweimal pro Woche, ungefähr 5 Kilometer",
+};
+
+/**
+ * The example sentence for the first row that is still a gap, in asking
+ * order. Which rows are gaps comes from the server; nothing is guessed here.
+ */
+export function sayExample(items: readonly UnderstoodItem[]): string | null {
+  const gap = items.find(
+    (row) => row.value === undefined || row.value === null,
+  );
+  return gap ? (SAY_EXAMPLE[gap.key] ?? null) : null;
+}
+
 export function UnderstoodStep({
   profile,
   progress,
@@ -136,6 +156,7 @@ export function UnderstoodStep({
   const gaps = rows.filter(
     (row) => row.value === undefined || row.value === null,
   ).length;
+  const example = sayExample(rows);
   const ready = gaps === 0 && progress.can_request_plan && canWritePlan;
   return (
     <ArnoldCard
@@ -149,9 +170,7 @@ export function UnderstoodStep({
     >
       <CardTag icon={<PencilLine size={13} />}>Aus deinem Gespräch</CardTag>
       <UnderstoodRows items={rows} />
-      {gaps > 0 && (
-        <SayHint>Ich trainiere dreimal pro Woche, 60 Minuten</SayHint>
-      )}
+      {example && <SayHint>{example}</SayHint>}
       <CardActions
         primary={
           ready
