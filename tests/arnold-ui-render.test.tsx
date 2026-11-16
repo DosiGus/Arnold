@@ -44,13 +44,14 @@ const noop = () => {};
 describe("start screen renders an engine payload", () => {
   const view = buildDashboardView(fullDataset(), CONTEXT);
 
-  it("shows the week status and one main action in the training tile", () => {
+  it("shows the week status and one main action button under the card", () => {
     const markup = render(<HomeCard view={view} canWrite onOpen={noop} />);
     const output = text(<HomeCard view={view} canWrite onOpen={noop} />);
     expect(markup).toContain(
       `${view.home.streak.current_week_training_days} von ${view.home.streak.weekly_goal} Trainingstagen`,
     );
-    expect(markup.match(/class="ac-btn /g)).toHaveLength(1);
+    expect(markup.match(/class="ac-btn primary"/g)).toHaveLength(1);
+    expect(markup.match(/class="ac-btn /g)).toHaveLength(4);
     expect(output).toContain("Training bearbeiten");
     expect(output).toContain("Plan bearbeiten");
   });
@@ -66,7 +67,12 @@ describe("start screen renders an engine payload", () => {
     payload.home.streak.current_week_training_days = 2;
     payload.home.streak.weekly_goal = 3;
     const markup = render(
-      <HomeCard view={payload} canWrite={false} onOpen={noop} />,
+      <HomeCard
+        view={payload}
+        canWrite={false}
+        onOpen={noop}
+        defaultOpen="week"
+      />,
     );
     expect(markup).toContain("2 von 3 Trainingstagen");
     expect(markup.match(/class="done\s*"/g)).toHaveLength(1);

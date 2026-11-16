@@ -15,6 +15,7 @@ export default defineConfig({
         "**/arnold-v2-qa.spec.ts",
         "**/run-cards.spec.ts",
         "**/home-run.spec.ts",
+        "**/home-card.spec.ts",
         "**/conversation-cards.spec.ts",
       ],
     },

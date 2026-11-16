@@ -23,7 +23,7 @@ Jede Karte trägt oben ein kleines Etikett (`CardTag`), das sagt, was sie ist: �
 
 ## Layout
 
-Chat-Karte höchstens 44rem breit, Vollbildeditoren 64rem. Die Übersicht ist ein Sechs-Spalten-Raster: Training (vier Spalten, zwei Zeilen), Woche und Demo-Scores (je zwei), darunter Ziele (vier) und Rekorde (zwei). Bis 36rem zweispaltig, bis 21rem einspaltig. Keine Liste „Letzte Trainings“ auf der Übersicht; „Trainingsentwicklung ansehen“ bleibt eine ruhige Aktion unter dem Raster.
+Chat-Karte höchstens 44rem breit, Vollbildeditoren 64rem. Die Übersicht ist eine einzige Karte: oben die schmale Kopfzeile „Als Nächstes“, darunter vier gleich große Kacheln (Woche, Scores, Ziele, Rekorde), darunter bei geöffneter Kachel ihr Detail, am Ende die vier Aktionsknöpfe unter der Karte. Die Kacheln stehen ab 36rem in einer Reihe, darunter zu zwei Spalten, bei 375 px ohne horizontales Scrollen. Keine Liste „Letzte Trainings“ auf der Übersicht; „Trainingsentwicklung ansehen“ bleibt eine ruhige Aktion unter den Kacheln.
 
 ## Bausteine
 
@@ -36,13 +36,13 @@ Chat-Karte höchstens 44rem breit, Vollbildeditoren 64rem. Die Übersicht ist ei
 
 ## Übersicht
 
-Die Übersicht öffnet sich immer zuerst, wenn der Nutzer nur „@Arnold“ sagt, und bietet vier Aktionsknöpfe. Das nächste Training steht als Kopfzeile; darunter Woche, Scores, Ziele und Rekorde. Details klappen in der Karte auf, statt eine neue Karte zu öffnen. (Umbau: Paket UX-002.)
+Die Übersicht öffnet sich immer zuerst, wenn der Nutzer nur „@Arnold“ sagt. Das nächste Training steht als schmale Kopfzeile, darunter die vier Kacheln. Tippen auf eine Kachel klappt ihr Detail in derselben Karte auf (immer nur eine offen, erneutes Tippen schließt; `aria-expanded`, per Tastatur bedienbar). Das Detail zeigt nur, was der View liefert, dazu einen Sag-Hinweis und einen ruhigen Textlink in die tiefe Ansicht. Unter der Karte stehen vier Aktionsknöpfe (einer als Hauptknopf): „Nächstes Training“, „Plan ändern“, „Urlaub oder Ausnahme“, „Ziel anpassen“. Jeder schickt wörtlich einen festen Satz in den Chat; nimmt der Chat ihn nicht an, öffnet der Knopf die passende Karte, bei „Urlaub oder Ausnahme“ erscheint ein Hinweis. Wer kein Laufprofil hat, sieht zusätzlich die ruhige Zeile „Ich will auch laufen“.
 
-- **Training:** nächstes Training mit Vorschlägen und bis zu vier Übungszeilen, sonst ehrlicher Leerzustand; nach Abschluss die gespeicherte Einheit. „Noch ein Training“ startet bewusst frisch.
-- **Woche:** echte Trainingstage und Wochenziel; zwei Einheiten an einem Tag zählen als ein Trainingstag.
-- **Demo-Scores:** feste, illustrative Werte (Konstanz 92, Recovery 72, Progress 77). Titel, jedes Label und die Beschreibung nennen „Demo“; nie als berechnet darstellen.
-- **Ziele:** die ersten vier mit Fortschritt, Ist- und Zielwert. Null-Fortschritt und unbekannter Fortschritt sind verschieden.
-- **Rekorde:** Karussell der drei neuesten, Hauptzahl mit Lastdefinition, Datum und Position; ein neuer Rekord darf grün markiert sein.
+- **Kopfzeile:** nächstes Training (Name, Übungszahl, „Arnolds Vorschlag“) und nächster Lauf, sonst ehrlicher Leerzustand; nach Abschluss die gespeicherte Einheit. Kein Uhr-Status, solange es keinen belegten gibt. „Noch ein Training“ startet bewusst frisch.
+- **Woche:** Kachel mit Ring; Detail mit den Wochentagen. Echte Trainingstage und Wochenziel; zwei Einheiten an einem Tag zählen als ein Trainingstag.
+- **Scores:** feste, illustrative Werte (Konstanz 92, Recovery 72, Progress 77). Titel, jedes Label und die Beschreibung nennen „Demo“; nie als berechnet darstellen.
+- **Ziele:** Kachel mit Anzahl; Detail mit den ersten vier mit Fortschritt, Ist- und Zielwert, jedes öffnet exakt sein Ziel. Null-Fortschritt und unbekannter Fortschritt sind verschieden.
+- **Rekorde:** Kachel mit dem neuesten; Detail mit den drei neuesten samt Lastdefinition und Datum, jede Zeile öffnet exakt ihr Training; ohne Rekorde „Noch keine Rekorde“. Ein neuer Rekord darf grün markiert sein.
 
 ## Detailkarten (die Semantik der Daten bleibt unverändert)
 

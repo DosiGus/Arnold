@@ -37,6 +37,7 @@ test("T3-06: the workout list does not change the start screen", async ({
     .locator(".ac-widget-week-total .ac-widget-ring")
     .getAttribute("aria-label");
   // Start screen → Rekorde → the record's training, opened in the list.
+  await page.getByRole("button", { name: /^Rekorde/ }).click();
   await page.getByRole("button", { name: /^Alle Rekorde ansehen/ }).click();
   await page.getByRole("button", { name: "Training ansehen" }).click();
   await expect(
@@ -49,6 +50,7 @@ test("T3-06: the workout list does not change the start screen", async ({
     page.locator(".ac-widget-week-total .ac-widget-ring"),
   ).toHaveAttribute("aria-label", status!);
   // The start screen leads to the list as well.
+  await page.getByRole("button", { name: /^Woche/ }).click();
   await page
     .getByRole("button", { name: "Alle Einheiten", exact: true })
     .click();
