@@ -6,6 +6,7 @@
  * without an explicit yes (W2), "yesterday" is the local calendar day (M5),
  * and the descriptions carry the rules the corpus expects.
  */
+import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   Client,
@@ -206,5 +207,23 @@ describe("UX-003: the start view and the buttons", () => {
       "Ich möchte ein Ziel anpassen.",
     ])
       expect(ARNOLD_INSTRUCTIONS).toContain(`„${sentence}“`);
+  });
+});
+
+describe("UX-013: the plan change ends in the card", () => {
+  it("shows plan_change after the comparison, in the server text and in both skill flows", () => {
+    const skill = readFileSync(
+      "plugins/arnold/skills/arnold-trainingsplan/SKILL.md",
+      "utf8",
+    );
+    expect(ARNOLD_INSTRUCTIONS).toContain("Karte plan_change");
+    const after = skill
+      .split("\n")
+      .filter((line) => line.includes("compare_plan_versions"));
+    expect(after.length).toBeGreaterThanOrEqual(2);
+    for (const line of after) {
+      expect(line).toContain("plan_change");
+      expect(line).toContain("activate_training_plan");
+    }
   });
 });

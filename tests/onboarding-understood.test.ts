@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { buildProgress } from "../src/server/onboarding/profile";
 import {
   hasUnderstood,
+  sayExample,
   understoodRows,
 } from "../src/ui/components/onboarding/understood-step";
 import type { OnboardingProfile } from "../src/shared/onboarding-contract";
@@ -93,5 +94,44 @@ describe("understood card", () => {
       understoodRows(running, [], () => []).find((row) => row.key === "scope")
         ?.value,
     ).toBe("3 Tage · 60 Min.");
+  });
+});
+
+describe("example sentence", () => {
+  const hint = (
+    training: Partial<OnboardingProfile["training"]>,
+  ): string | null => {
+    const profile = base("arnold_plan", training);
+    const progress = buildProgress(profile, {
+      step: "profile",
+      can_request_plan: false,
+      can_confirm_plan: false,
+    });
+    return sayExample(
+      understoodRows(profile, progress.missing_fields, () => {}),
+    );
+  };
+  const full = {
+    primary_goal: "muscle_gain",
+    experience: "intermediate",
+    days_per_week: 3,
+    session_minutes: 60,
+    environment: "gym",
+  } as const;
+
+  it("names the first gap that is actually missing", () => {
+    expect(hint({ ...full, primary_goal: null })).toContain("Muskeln");
+    expect(hint({ ...full, experience: null })).toContain("seit");
+    expect(hint({ ...full, session_minutes: null })).toContain("pro Woche");
+    expect(hint({ ...full, environment: null })).toContain("Fitnessstudio");
+    // Several gaps: the first in asking order wins, no fixed sentence.
+    expect(hint({ primary_goal: "muscle_gain" })).toContain("seit");
+  });
+
+  it("asks for the run when it is required and missing, and stays silent without a gap", () => {
+    expect(
+      hint({ ...full, primary_goal: "endurance_running" } as never),
+    ).toContain("laufe");
+    expect(hint(full)).toBeNull();
   });
 });

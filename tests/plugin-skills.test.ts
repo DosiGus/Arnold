@@ -142,6 +142,7 @@ describe("skills", () => {
         if (
           TOOL_VERBS.test(name) &&
           !/_ids?$/.test(name) &&
+          name !== "plan_change" && // card name of show_arnold_dashboard, not a tool
           !(name in TOOL_ACCESS) &&
           !PLAN_EDITS.has(name)
         )
@@ -477,6 +478,7 @@ describe("server instructions (RUN-011)", () => {
         (name) =>
           TOOL_VERBS.test(name) &&
           !/_ids?$/.test(name) &&
+          name !== "plan_change" && // card name of show_arnold_dashboard, not a tool
           !(name in TOOL_ACCESS) &&
           !PLAN_EDITS.has(name),
       );
@@ -529,6 +531,9 @@ describe("start view buttons and chat tone (UX-003)", () => {
     expect(change).toContain("Plan ändern");
     expect(change).toContain("validate_training_plan");
     expect(change).toContain("compare_plan_versions");
+    expect(change).toContain("plan_change");
+    expect(change).toContain("per Knopf");
+    expect(change).toContain("nie ohne Ja oder Klick");
     expect(change).toContain("nie selbst bestätigen oder aktivieren");
     expect(exception).toContain("höchstens eine Rückfrage");
     expect(exception).toContain("noch nicht");
