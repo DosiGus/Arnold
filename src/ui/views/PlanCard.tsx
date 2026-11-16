@@ -57,7 +57,7 @@ function PlanChangeCard({
   const close = () => {
     void client.displayMode("inline");
     setEditing(false);
-    reload();
+    void reload();
     onChanged();
   };
   useModelContext(
