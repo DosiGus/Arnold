@@ -142,3 +142,12 @@ for (const port of [8830, 8831])
     port,
     "127.0.0.1",
   );
+
+/** UX-006, the recap after a workout: one writable tracker per browser project. */
+for (const port of [8832, 8833])
+  createHttpApp({
+    ...common,
+    workoutRuntime: createFixturePlanning(
+      demoHistoryDataset(new Date().toISOString().slice(0, 10)),
+    ),
+  }).listen(port, "127.0.0.1");
