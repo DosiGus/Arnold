@@ -540,8 +540,12 @@ describe("rollback script 004 → 3 → 4", () => {
         )
       ).rows.map((r) => r.table_name as string);
     try {
-      expect(await migrate(url.toString())).toEqual([1, 2, 3, 4]);
-      const before3 = (await columns()).filter((t) => !RUN_TABLES.includes(t));
+      expect(await migrate(url.toString())).toEqual([1, 2, 3, 4, 5]);
+      // 005 sits on top of 004 and is undone first (db/rollback/005_down.sql).
+      const LATER = ["health_daily", "health_daily_sync"];
+      const before3 = (await columns()).filter(
+        (t) => !RUN_TABLES.includes(t) && !LATER.includes(t),
+      );
       // Data on both sides of the line: a strength workout stays, a run goes.
       await exec("insert into arnold.users (user_id) values ($1)", [userId]);
       const strength = randomUUID();
@@ -570,6 +574,7 @@ describe("rollback script 004 → 3 → 4", () => {
         ],
       );
 
+      await exec(await readFile("db/rollback/005_down.sql", "utf8"));
       await exec(await readFile("db/rollback/004_down.sql", "utf8"));
 
       expect(
@@ -608,7 +613,7 @@ describe("rollback script 004 → 3 → 4", () => {
         exec(await readFile("db/rollback/004_down.sql", "utf8")),
       ).rejects.toThrow(/not applied/);
 
-      expect(await migrate(url.toString())).toEqual([4]);
+      expect(await migrate(url.toString())).toEqual([4, 5]);
       expect(
         (await exec("select activity_type from arnold.workouts")).rows,
       ).toEqual([{ activity_type: "strength" }]);
