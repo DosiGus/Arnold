@@ -179,7 +179,7 @@ export function finishMessage(input: {
 export function homeContext(view: ArnoldDashboardView) {
   const home = view.home;
   const parts = [
-    "Arnold zeigt gerade die Startansicht mit den Widgets Training, Woche, Demo-Scores, Ziele und Rekorde. Die drei Demo-Scores sind frei gewählte Platzhalter; ihre Berechnung und eine Geräteanbindung gibt es noch nicht. Die übrigen Werte stammen aus den Trainingsdaten.",
+    "Arnold zeigt gerade die Startansicht: oben das nächste Training, darunter die Kacheln Woche, Scores, Ziele und Rekorde, unter der Karte vier Aktionsknöpfe. Die drei Demo-Scores sind frei gewählte Platzhalter; ihre Berechnung und eine Geräteanbindung gibt es noch nicht. Die übrigen Werte stammen aus den Trainingsdaten.",
     home.next_session
       ? `Als Nächstes im Plan: „${home.next_session.session_name}“.`
       : "",

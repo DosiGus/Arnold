@@ -9,9 +9,9 @@ import type { ArnoldDashboardView } from "../../src/shared/arnold-view";
 /**
  * The start card: header line, four tiles whose detail opens in the card, and
  * four action buttons that send one fixed sentence into the chat. Read-only
- * on the fixture with history (8792) and the empty one (8793).
+ * on the fixture with history (8804) and the empty one (8793).
  */
-const BASE = "http://127.0.0.1:8792";
+const BASE = "http://127.0.0.1:8804";
 const EMPTY = "http://127.0.0.1:8793";
 const SENTENCES = {
   "Nächstes Training": "Zeig mir mein nächstes Training.",
