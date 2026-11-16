@@ -650,3 +650,6 @@ body:has(.arnold-cards) {
   border-radius: 62.4375rem;
   font-size: 0.8125rem;
 }
+.ac-rows > li:has(.cc-row-edit) {
+  align-items: center;
+}
