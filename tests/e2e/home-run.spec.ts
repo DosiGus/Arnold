@@ -162,8 +162,7 @@ async function mock(page: Page, card: string, mocks: Mocks) {
 
 const training = (page: Page) =>
   page.getByRole("region", { name: "Dein Training", exact: true });
-const week = (page: Page) =>
-  page.getByRole("region", { name: "Deine Woche", exact: true });
+const weekTile = (page: Page) => page.getByRole("button", { name: /^Woche/ });
 
 async function openHome(page: Page) {
   await page.goto(`${BASE}/preview?card=home`);
@@ -264,7 +263,7 @@ test("a failed run read shows a notice and no run figures", async ({
   await expect(training(page).getByText("Nächster Lauf")).toHaveCount(0);
   await expect(training(page).getByText(/Min\./)).toHaveCount(0);
   // The rest of the start screen is unaffected.
-  await expect(week(page)).toBeVisible();
+  await expect(weekTile(page)).toBeVisible();
 });
 
 test("the week shows the training days the server sent, runs included", async ({
@@ -291,21 +290,21 @@ test("the week shows the training days the server sent, runs included", async ({
     },
   });
   await openHome(page);
-  const ring = week(page).locator(".ac-widget-ring").first();
+  const ring = weekTile(page).locator(".ac-widget-ring");
   await expect(ring).toHaveAttribute(
     "aria-label",
     new RegExp(`^${ringBefore + 1} (von \\d+ )?Trainingstage`),
   );
+  await weekTile(page).click();
+  const days = page.getByRole("region", { name: "Woche im Detail" });
   await expect(
-    week(page).locator(
+    days.locator(
       `.ac-widget-week-days [aria-label$=", trainiert"], .ac-widget-week-days [aria-label*=", trainiert,"]`,
     ),
   ).not.toHaveCount(0);
   const day = Number(runDate.slice(-2));
   await expect(
-    week(page)
-      .locator(".ac-widget-week-days .done")
-      .filter({ hasText: String(day) }),
+    days.locator(".ac-widget-week-days .done").filter({ hasText: String(day) }),
   ).toHaveCount(1);
 });
 

@@ -59,7 +59,7 @@ export function HomeActions({
     setHint(false);
     let ok = false;
     try {
-      ok = client ? await client.sendChatMessage(message) : false;
+      ok = client ? await client.askChat(message) : false;
     } finally {
       sending.current = false;
       setBusy(undefined);

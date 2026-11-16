@@ -31,7 +31,7 @@ test("an older chat asking for the week card gets the start screen", async ({
 }) => {
   await page.goto("http://127.0.0.1:8792/preview?card=week");
   await expect(page.locator('main[data-card="home"]')).toBeVisible();
-  await expect(page.locator(".ac-widget")).toHaveCount(5);
+  await expect(page.locator(".ac-home-tile")).toHaveCount(4);
 });
 
 test("a read-only today card never offers an unavailable write", async ({
@@ -90,6 +90,7 @@ test("empty and failed reads never turn into example numbers", async ({
   await expect(page.locator(".ac-dashboard")).toContainText(
     "Dein erstes Training ist der Anfang.",
   );
+  await page.getByRole("button", { name: /^Woche/ }).click();
   await expect(page.locator(".ac-widget-week-days .done")).toHaveCount(0);
   await page.goto("http://127.0.0.1:8794/preview");
   await expect(page.getByRole("alert")).toBeVisible();

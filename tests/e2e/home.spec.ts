@@ -19,15 +19,14 @@ test("Arnold opens on the monochrome widget overview", async ({ page }) => {
       exact: true,
     }),
   ).toBeVisible();
-  await expect(page.locator(".ac-widget")).toHaveCount(5);
-  for (const name of [
-    "Dein Training",
-    "Deine Woche",
-    "Demo-Scores",
-    "Deine Ziele",
-    "Deine Rekorde",
-  ])
-    await expect(page.getByRole("region", { name, exact: true })).toBeVisible();
+  await expect(page.locator(".ac-home-tile")).toHaveCount(4);
+  await expect(
+    page.getByRole("region", { name: "Dein Training", exact: true }),
+  ).toBeVisible();
+  for (const name of ["Woche", "Scores", "Ziele", "Rekorde"])
+    await expect(
+      page.getByRole("button", { name: new RegExp(`^${name}`) }),
+    ).toBeVisible();
   // The invented history may hold a workout today: then the tile opens it.
   await expect(
     page
@@ -55,6 +54,7 @@ test("every tile opens its view and the back button returns", async ({
   await page.getByRole("button", { name: "Zurück zur Übersicht" }).click();
   await expect(main(page)).toHaveAttribute("data-card", "home");
 
+  await page.getByRole("button", { name: /^Rekorde/ }).click();
   await page.getByRole("button", { name: /^Alle Rekorde ansehen/ }).click();
   await expect(main(page)).toHaveAttribute("data-card", "records");
   await expect(

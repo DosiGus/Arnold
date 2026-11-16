@@ -28,27 +28,49 @@ describe("start screen with history", () => {
     reference_date: "2026-11-03",
   });
 
-  it("shows the five approved widgets with server figures and labelled demo scores", () => {
+  it("shows header, four tiles and four actions, with demo scores labelled", () => {
     const output = text(<HomeCard view={view} canWrite onOpen={noop} />);
+    for (const tile of ["Woche", "Scores", "Ziele", "Rekorde"])
+      expect(output).toContain(tile);
+    for (const action of [
+      "Nächstes Training",
+      "Plan ändern",
+      "Urlaub oder Ausnahme",
+      "Ziel anpassen",
+    ])
+      expect(output).toContain(action);
+    expect(output).toContain("Demo-Werte");
     expect(output).toContain("Training");
     expect(output).toContain("Als Nächstes");
     expect(output).toContain("Training bearbeiten");
     expect(output).toContain("Plan bearbeiten");
     expect(output).not.toMatch(/Guten (Morgen|Abend)|Hallo/);
     expect(output).toContain("Dein Überblick");
-    expect(output).toContain("Demo-Scores");
-    expect(output).toContain("Konstanz");
-    expect(output).toContain("Recovery");
-    expect(output).toContain("Progress");
     expect(output).toContain(
       `${view.home.streak.current_week_training_days} / ${view.home.streak.weekly_goal}`,
     );
-    expect(output).toContain("Körpergewicht");
-    expect(output).toContain(`1 / ${Math.min(3, view.home.records.length)}`);
     expect(output).toContain(view.home.records[0].exercise_name);
-    for (const goal of view.home.goals.slice(0, 4))
-      expect(output).toContain(goal.name);
     expect(output).not.toMatch(/NaN|undefined|null/);
+    // Details show only what the view delivers.
+    const scores = text(
+      <HomeCard view={view} canWrite onOpen={noop} defaultOpen="scores" />,
+    );
+    for (const name of ["Konstanz", "Recovery", "Progress"])
+      expect(scores).toContain(name);
+    expect(scores).toContain("frei gewählte Demo-Werte");
+    const goals = text(
+      <HomeCard view={view} canWrite onOpen={noop} defaultOpen="goals" />,
+    );
+    expect(goals).toContain("Körpergewicht");
+    for (const goal of view.home.goals.slice(0, 4))
+      expect(goals).toContain(goal.name);
+    const records = text(
+      <HomeCard view={view} canWrite onOpen={noop} defaultOpen="records" />,
+    );
+    for (const record of view.home.records.slice(0, 3))
+      expect(records).toContain(record.exercise_name);
+    expect(records).toContain("Sag zum Beispiel");
+    expect(records).not.toMatch(/NaN|undefined|null/);
   });
 
   it("renders the three views without inventing numbers", () => {
@@ -102,7 +124,12 @@ describe("start screen of a new account", () => {
     expect(view.home.strength_change.percent).toBeNull();
     const output = text(<HomeCard view={view} canWrite onOpen={noop} />);
     expect(output).toContain("Dein erstes Training ist der Anfang.");
-    expect(output).toContain("Setz dir ein Ziel");
+    expect(output).toContain("Noch keine Ziele");
+    expect(output).toContain("Noch keine Rekorde");
+    const goals = text(
+      <HomeCard view={view} canWrite onOpen={noop} defaultOpen="goals" />,
+    );
+    expect(goals).toContain("Setz dir ein Ziel");
     expect(output).not.toMatch(/NaN|undefined/);
     const stats = text(<StatsView view={view} onOpen={noop} />);
     expect(stats).toContain("–");

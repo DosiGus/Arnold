@@ -15,15 +15,19 @@ test("demo scores are explicitly illustrative and never write training data", as
     if (name && !/^(get_|show_|ui\/)/.test(name)) writes.push(name);
   });
   await openCard(page, "home", BASE);
-  const scores = page.getByRole("region", { name: "Demo-Scores", exact: true });
+  await page.getByRole("button", { name: /^Scores/ }).click();
+  const scores = page.getByRole("region", {
+    name: "Demo-Scores im Detail",
+    exact: true,
+  });
   await expect(scores.getByRole("img")).toHaveCount(3);
   await expect(scores.getByText("Demo", { exact: true })).toHaveCount(3);
-  await scores.getByRole("button", { name: "Über die Demo-Scores" }).click();
   await expect(scores).toContainText("frei gewählte Demo-Werte");
   await expect(scores).toContainText("kein Health-Gerät angebunden");
+  await page.getByRole("button", { name: /^Woche/ }).click();
   await expect(
     page
-      .getByRole("region", { name: "Deine Woche", exact: true })
+      .getByRole("region", { name: "Woche im Detail", exact: true })
       .getByRole("button", { name: "Alle Einheiten" }),
   ).toBeVisible();
   expect(writes).toEqual([]);
@@ -55,23 +59,26 @@ test("the overview reads the same next-session proposals as the training editor"
       training.getByRole("button", { name: "Training ansehen" }),
     ).toBeVisible();
   } else {
-    for (const exercise of proposal!.exercises.slice(0, 4))
-      await expect(
-        training.getByRole("list", { name: "Nächstes Training" }),
-      ).toContainText(exercise.exercise_name);
+    await expect(training.getByRole("heading")).toHaveText(
+      view.home.next_session!.session_name,
+    );
+    await expect(training).toContainText(
+      `${view.home.next_session!.exercise_count} `,
+    );
+    await expect(training).toContainText("Arnolds Vorschlag");
   }
   await training
     .getByRole("button", { name: /^Training (bearbeiten|ansehen)$/ })
     .click();
   await expect(page.locator('main[data-card="today"]')).toBeVisible();
-  await expect(page.locator(".ac-widget-grid")).toHaveCount(0);
+  await expect(page.locator(".ac-home-tiles")).toHaveCount(0);
   await page
     .getByRole("button", { name: "Zurück zur Übersicht", exact: true })
     .click();
-  await expect(page.locator(".ac-widget")).toHaveCount(5);
+  await expect(page.locator(".ac-home-tile")).toHaveCount(4);
 });
 
-test("record arrows preserve the exact server record and open its own workout", async ({
+test("record rows keep the exact server record and open its own workout", async ({
   page,
 }) => {
   await openCard(page, "home", BASE);
@@ -82,17 +89,18 @@ test("record arrows preserve the exact server record and open its own workout", 
   )) as ArnoldDashboardView;
   const records = view.home.records.slice(0, 3);
   expect(records.length).toBe(3);
-  const card = page.getByRole("region", { name: "Deine Rekorde", exact: true });
-  await card.getByRole("button", { name: "Nächster Rekord" }).click();
-  await expect(card.locator(".ac-widget-record-name")).toHaveText(
-    records[1].exercise_name,
-  );
-  await expect(card).toContainText("2 / 3");
-  await card.getByRole("button", { name: "Vorheriger Rekord" }).click();
-  await expect(card.locator(".ac-widget-record-name")).toHaveText(
-    records[0].exercise_name,
-  );
-  await card.getByRole("button", { name: "Training ansehen" }).click();
+  await page.getByRole("button", { name: /^Rekorde/ }).click();
+  const card = page.getByRole("region", {
+    name: "Rekorde im Detail",
+    exact: true,
+  });
+  const rows = card.locator("li");
+  await expect(rows).toHaveCount(3);
+  for (const [i, r] of records.entries())
+    await expect(rows.nth(i)).toContainText(r.exercise_name);
+  await rows.nth(1).getByRole("button", { name: "Training ansehen" }).click();
+  // The second row opens the second record's workout.
+  records.unshift(records.splice(1, 1)[0]);
   await expect(page.locator('main[data-card="history"]')).toBeVisible();
   const expanded = page.locator('.ac-history-row[aria-expanded="true"]');
   await expect(expanded).toHaveCount(1);
@@ -113,11 +121,13 @@ test("dashboard goals open their selected server goal and the add action opens c
   )) as ArnoldDashboardView;
   const goal = view.home.goals[0];
   expect(goal).toBeDefined();
+  await page.getByRole("button", { name: /^Ziele/ }).click();
   await page.locator(".ac-widget-goal").first().click();
   await expect(
     page.getByRole("region", { name: `Ziel ${goal.name}`, exact: true }),
   ).toBeVisible();
   await page.goto(`${BASE}/preview?card=home`);
+  await page.getByRole("button", { name: /^Ziele/ }).click();
   await page
     .getByRole("button", { name: "Ziel hinzufügen", exact: true })
     .click();
