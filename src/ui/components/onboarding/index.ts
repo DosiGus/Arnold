@@ -9,3 +9,4 @@ export { MultiChoice } from "./controls";
 export { initialProfileQuestion } from "./pages";
 export { WelcomeStep } from "./welcome-step";
 export { ProfileStep } from "./profile-step";
+export { UnderstoodStep, hasUnderstood } from "./understood-step";

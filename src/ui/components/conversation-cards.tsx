@@ -37,6 +37,8 @@ export type UnderstoodItem = {
   label: string;
   /** `undefined`, `null` or an empty string mean: not known yet. */
   value?: ReactNode;
+  /** When set, the value is a button: a tap opens the field behind the row. */
+  onSelect?: () => void;
 };
 
 /** Label and value rows. A missing value shows the mark "fehlt noch". */
@@ -50,21 +52,34 @@ export function UnderstoodRows({
   return (
     <Rows
       label={label}
-      items={items.map((item) => ({
-        key: item.key,
-        label: item.label,
-        value:
-          item.value === undefined ||
-          item.value === null ||
-          item.value === "" ? (
-            <span className="cc-missing">
-              <TriangleAlert size={13} aria-hidden="true" />
-              fehlt noch
-            </span>
+      items={items.map((item) => {
+        const missing =
+          item.value === undefined || item.value === null || item.value === "";
+        const shown = missing ? (
+          <span className="cc-missing">
+            <TriangleAlert size={13} aria-hidden="true" />
+            fehlt noch
+          </span>
+        ) : (
+          item.value
+        );
+        return {
+          key: item.key,
+          label: item.label,
+          value: item.onSelect ? (
+            <button
+              type="button"
+              className="cc-row-edit"
+              aria-label={`${item.label} ändern`}
+              onClick={item.onSelect}
+            >
+              {shown}
+            </button>
           ) : (
-            item.value
+            shown
           ),
-      }))}
+        };
+      })}
     />
   );
 }

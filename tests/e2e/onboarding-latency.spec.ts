@@ -139,6 +139,14 @@ test("answers entered before the background batch starts survive a page reload",
     }),
   ).toBeVisible({ timeout: 500 });
   await page.reload();
+  // The stored answer is shown as understood; the form is one tap away.
+  await expect(
+    page.getByRole("heading", { name: "Das habe ich verstanden" }),
+  ).toBeVisible();
+  await expect(wizard(page)).toContainText("Stärker werden");
+  await wizard(page)
+    .getByRole("button", { name: "Formular öffnen", exact: true })
+    .click();
   await expect(
     page.getByRole("heading", {
       name: "Wie lange trainierst du schon?",

@@ -169,10 +169,20 @@ test("resumes at the next unanswered question and adopts answers from chat", asy
     },
   });
   await page.reload();
+  // What the chat saved is shown as understood, the rest as "fehlt noch".
+  await expect(
+    page.getByRole("heading", { name: "Das habe ich verstanden" }),
+  ).toBeVisible();
+  await expect(wizard(page)).toContainText("Stärker werden");
+  await expect(wizard(page)).toContainText("Anfänger");
+  await expect(wizard(page).locator(".cc-missing")).toHaveCount(2);
+  // A tap on a row opens that field; the stored 4 days stay.
+  await wizard(page)
+    .getByRole("button", { name: "Umfang ändern", exact: true })
+    .click();
   await expect(
     page.getByRole("heading", { name: "Wie oft und wie lange?" }),
   ).toBeVisible();
-  // The stored 4 days stay; minutes start at 60 and go down in steps of 15.
   await expect(
     wizard(page)
       .getByRole("group", { name: "Tage pro Woche", exact: true })
@@ -180,9 +190,12 @@ test("resumes at the next unanswered question and adopts answers from chat", asy
   ).toHaveText("4");
   await stepTo(page, "Minuten pro Training", 45);
   await next(page);
+  // After the one field the card is back; only the place is still open.
   await expect(
-    page.getByRole("heading", { name: "Wo trainierst du?" }),
+    page.getByRole("heading", { name: "Das habe ich verstanden" }),
   ).toBeVisible();
+  await expect(wizard(page)).toContainText("4 Tage · 45 Min.");
+  await expect(wizard(page).locator(".cc-missing")).toHaveCount(1);
   await expect(wizard(page)).toHaveAttribute("data-profile-save", "saved");
   await callTool(page, "update_onboarding_profile", {
     ...claim,
@@ -191,7 +204,7 @@ test("resumes at the next unanswered question and adopts answers from chat", asy
   });
   await setupMenu(page, "Stand neu laden");
   await expect(
-    page.getByRole("heading", { name: "So wird dein Plan" }),
+    wizard(page).getByRole("button", { name: "Plan erstellen", exact: true }),
   ).toBeVisible();
   await expect(wizard(page)).toContainText("Zuhause");
 });
@@ -319,8 +332,9 @@ test("an unconfirmed profile write survives reload and retries the same request"
     .click();
   expect(new Set(ids).size).toBe(1);
   await expect(
-    page.getByRole("heading", { name: "Wie lange trainierst du schon?" }),
+    page.getByRole("heading", { name: "Das habe ich verstanden" }),
   ).toBeVisible();
+  await expect(wizard(page)).toContainText("Muskeln aufbauen");
 });
 
 test("cancellation is explicit and offers a controlled restart", async ({
