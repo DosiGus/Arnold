@@ -7,9 +7,9 @@ test("the start screen leads to the plan and progress without an app frame", asy
 }) => {
   await openCard(page, "home");
   const card = page.locator(".ac").first();
-  await expect(
-    page.getByRole("region", { name: "Deine Woche", exact: true }),
-  ).toContainText("Trainingstag");
+  await expect(page.getByRole("button", { name: /^Woche/ })).toContainText(
+    "Trainingstag",
+  );
   await expect(page.getByRole("navigation")).toHaveCount(0);
   await expect(page.locator("h1")).toHaveCount(0);
   await card
