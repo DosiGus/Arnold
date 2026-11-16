@@ -11,9 +11,89 @@ import {
 } from "../components/cards";
 import { RecoveryCard } from "../components/recovery";
 import { PlanRunSessions } from "../components/plan-run-sessions";
+import { PlanChangeView } from "../components/plan/change-card";
+import { usePlanChange } from "../hooks/usePlanChange";
 import { TrainingPlanEditorView } from "./TrainingPlanEditorView";
 
+/**
+ * `plan` shows the plan overview. `plan_change` shows only what an open draft
+ * changes against the active plan, with one button to take it over.
+ */
 export function PlanCard({
+  client,
+  onChanged,
+  dashboard,
+  change = false,
+}: {
+  client: ArnoldMcpClient;
+  onChanged: () => void;
+  dashboard: ArnoldDashboardView;
+  change?: boolean;
+}) {
+  return change ? (
+    <PlanChangeCard client={client} onChanged={onChanged} />
+  ) : (
+    <PlanOverviewCard
+      client={client}
+      onChanged={onChanged}
+      dashboard={dashboard}
+    />
+  );
+}
+
+function PlanChangeCard({
+  client,
+  onChanged,
+}: {
+  client: ArnoldMcpClient;
+  onChanged: () => void;
+}) {
+  const { state, apply, decline, reload } = usePlanChange(client, onChanged);
+  const [editing, setEditing] = useState(false);
+  const open = () => {
+    void client.displayMode("fullscreen");
+    setEditing(true);
+  };
+  const close = () => {
+    void client.displayMode("inline");
+    setEditing(false);
+    reload();
+    onChanged();
+  };
+  useModelContext(
+    client,
+    state.kind === "ready" || state.kind === "stale" || state.kind === "error"
+      ? `Arnold zeigt die Planänderung als Unterschied: Entwurf „${state.draft.name}“, Version ${state.draft.version_no}, Revision ${state.draft.row_revision}, plan_version_id ${state.draft.plan_version_id}; ${state.rows.length} Änderungen, ${state.openDrafts} offene Entwürfe. Der Entwurf ist noch nicht aktiv; der Nutzer übernimmt ihn selbst mit dem Knopf „Übernehmen“. Nie selbst aktivieren.`
+      : state.kind === "confirmed"
+        ? `Der Nutzer hat den Entwurf „${state.draft.name}“, Version ${state.draft.version_no}, übernommen; er ist jetzt der aktive Plan.`
+        : state.kind === "declined"
+          ? `Der Nutzer hat den Entwurf „${state.draft.name}“ nicht übernommen; er ist archiviert, der Plan bleibt wie er war.`
+          : undefined,
+  );
+  if (editing)
+    return (
+      <section className="ac-fullscreen">
+        <div className="ac-fullscreen-head">
+          <h2>Plan bearbeiten</h2>
+          <button className="ac-link" onClick={close}>
+            Zurück zur Änderung
+          </button>
+        </div>
+        <TrainingPlanEditorView client={client} onChanged={onChanged} />
+      </section>
+    );
+  return (
+    <PlanChangeView
+      state={state}
+      onApply={() => void apply()}
+      onDecline={() => void decline()}
+      onReload={reload}
+      onOpenEditor={open}
+    />
+  );
+}
+
+function PlanOverviewCard({
   client,
   onChanged,
   dashboard,

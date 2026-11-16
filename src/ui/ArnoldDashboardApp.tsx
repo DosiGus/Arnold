@@ -251,11 +251,12 @@ export function ArnoldDashboardApp({
           onBack={goBack}
         />
       )}
-      {card === "plan" && (
+      {(card === "plan" || card === "plan_change") && (
         <PlanCard
           client={client}
           dashboard={view}
           onChanged={dashboard.reload}
+          change={card === "plan_change"}
         />
       )}
     </main>

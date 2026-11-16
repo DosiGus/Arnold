@@ -12,6 +12,8 @@ export const DASHBOARD_CARDS = [
   "progress",
   "history",
   "plan",
+  // The difference between the active plan and an open draft, with one button.
+  "plan_change",
   "stats",
   "goals",
   "records",
@@ -21,5 +23,5 @@ export type DashboardCard = (typeof DASHBOARD_CARDS)[number];
 export const DashboardCardSchema = z
   .enum(DASHBOARD_CARDS)
   .describe(
-    "Welche Karte gezeigt wird: home = Startansicht mit Training, Fortschritt, Zielen und Rekorden (Standard, wenn der Nutzer Arnold einfach öffnet), today = heutiges Training starten und Sätze eintragen, week = wie home (ältere Bezeichnung), stats = Fortschritt mit Serie, Jahreszahlen und Muskelgruppen, goals = Ziele mit Körpergewicht und Übungszielen, records = alle Rekorde, progress = Verlauf einer einzelnen Übung, history = vergangene Trainings, plan = Trainingsplan ansehen und bearbeiten.",
+    "Welche Karte gezeigt wird: home = Startansicht mit Training, Fortschritt, Zielen und Rekorden (Standard, wenn der Nutzer Arnold einfach öffnet), today = heutiges Training starten und Sätze eintragen, week = wie home (ältere Bezeichnung), stats = Fortschritt mit Serie, Jahreszahlen und Muskelgruppen, goals = Ziele mit Körpergewicht und Übungszielen, records = alle Rekorde, progress = Verlauf einer einzelnen Übung, history = vergangene Trainings, plan = Trainingsplan ansehen und bearbeiten, plan_change = nach einer gewünschten Planänderung (Entwurf angelegt) nur die Unterschiede zum aktiven Plan mit dem Knopf „Übernehmen“.",
   );
