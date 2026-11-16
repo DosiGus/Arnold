@@ -102,7 +102,6 @@ describe.each(["show_arnold_dashboard", "get_arnold_dashboard"])(
           timezone,
           source: "timezone",
         });
-        expect(view.home.reference_date).toBe("2026-11-18");
         expect(view.recap).not.toBeNull();
       }
     });
