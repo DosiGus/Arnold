@@ -94,6 +94,8 @@ export const CONFIRMATION_RULES: Readonly<Record<string, ConfirmationEntry>> = {
   update_set: log,
   complete_workout: log,
   log_workout: log,
+  // UX-006: Gesehen-Merker der Übersichtskarte; keine Trainingsdaten.
+  mark_recap_seen: log,
   create_exercise: log,
   create_training_goal: {
     rule: "direct",

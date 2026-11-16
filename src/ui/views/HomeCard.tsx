@@ -9,7 +9,8 @@ import { HomeActions } from "../components/home-actions";
 import { HomeNextRun } from "../components/home-run";
 import { useNoRunProfile } from "../components/run-offer";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
-import { dateLabel, formatNumber } from "../format";
+import { dateLabel, recordValue } from "../format";
+import { RecapBanner } from "../components/recap-card";
 import type { CardId } from "../cards";
 
 export type HomeFocus = {
@@ -177,6 +178,13 @@ export function HomeCard({
         </header>
         {empty && (
           <p className="ac-text">Dein erstes Training ist der Anfang.</p>
+        )}
+        {view.recap && (
+          <RecapBanner
+            recap={view.recap}
+            client={client}
+            onNext={() => onOpen("today")}
+          />
         )}
         <section className="ac-home-next" aria-label="Dein Training">
           <CardTag>
@@ -480,20 +488,4 @@ export function HomeCard({
   );
 }
 
-/** "85 kg × 8", "24 kg pro Hantel × 12", "7 Wdh.". */
-export function recordValue(record: {
-  metric: string;
-  value: number;
-  load_kg: number | null;
-  reps: number | null;
-  load_basis: string;
-}): string {
-  if (record.metric === "max_reps_bodyweight")
-    return `${formatNumber(record.value, 0)} Wdh.`;
-  const load =
-    record.load_kg === null ? "–" : `${formatNumber(record.load_kg, 2)} kg`;
-  const basis = record.load_basis === "per_implement" ? " pro Hantel" : "";
-  return record.reps === null
-    ? `${load}${basis}`
-    : `${load}${basis} × ${formatNumber(record.reps, 0)}`;
-}
+export { recordValue };

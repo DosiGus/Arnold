@@ -24,7 +24,12 @@ const MAX_RECORDS = 3;
 /** What the engine knows about the new workout; the presenter adds its title and counts. */
 export type RecapCore = Pick<
   ArnoldRecap,
-  "workout_id" | "date" | "records" | "week_goal" | "suggestion" | "next_session_id"
+  | "workout_id"
+  | "date"
+  | "records"
+  | "week_goal"
+  | "suggestion"
+  | "next_session_id"
 >;
 
 /** The most recent completed strength workout, if it is recent enough. */
@@ -56,10 +61,7 @@ export function newestWorkout(
 const DECISION_RANK = { increase: 0, reduce: 1, more_reps: 2 } as const;
 
 export function computeRecap(
-  dataset: Pick<
-    ArnoldDataset,
-    "workouts" | "sets" | "exercises"
-  >,
+  dataset: Pick<ArnoldDataset, "workouts" | "sets" | "exercises">,
   home: Pick<HomeAnalytics, "records" | "streak" | "next_session">,
   proposals: readonly SessionProposal[],
   referenceDate: string | null,
@@ -102,8 +104,7 @@ export function computeRecap(
         w.workout_date_local === workout.workout_date_local,
     );
     const before = week.training_days - (sameDayOther ? 0 : 1);
-    if (before < goal)
-      week_goal = { goal, training_days: week.training_days };
+    if (before < goal) week_goal = { goal, training_days: week.training_days };
   }
 
   const trained = new Set(

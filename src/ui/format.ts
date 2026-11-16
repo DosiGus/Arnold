@@ -79,3 +79,21 @@ export function metricDisplay(metric: ViewMetric): {
       : formatNumber(metric.value, digits);
   return { value, unit: UNIT_LABEL[metric.unit] ?? "", known: true };
 }
+
+/** "85 kg × 8", "24 kg pro Hantel × 12", "7 Wdh.". */
+export function recordValue(record: {
+  metric: string;
+  value: number;
+  load_kg: number | null;
+  reps: number | null;
+  load_basis: string;
+}): string {
+  if (record.metric === "max_reps_bodyweight")
+    return `${formatNumber(record.value, 0)} Wdh.`;
+  const load =
+    record.load_kg === null ? "–" : `${formatNumber(record.load_kg, 2)} kg`;
+  const basis = record.load_basis === "per_implement" ? " pro Hantel" : "";
+  return record.reps === null
+    ? `${load}${basis}`
+    : `${load}${basis} × ${formatNumber(record.reps, 0)}`;
+}

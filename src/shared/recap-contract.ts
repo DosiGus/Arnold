@@ -1,8 +1,5 @@
 import { z } from "zod";
-import {
-  ArnoldIdSchema,
-  ArnoldLoadBasisSchema,
-} from "./arnold-schema-v1.js";
+import { ArnoldIdSchema, ArnoldLoadBasisSchema } from "./arnold-schema-v1.js";
 
 /**
  * Rückblick nach dem Training (UX-006).

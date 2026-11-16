@@ -1,3 +1,4 @@
+import { MarkRecapSeenOutputSchema } from "../../shared/recap-contract";
 import type { DashboardCard } from "../../shared/dashboard-cards";
 import type { RunCard } from "../../shared/run-card-contract";
 import { OnboardingProfileBuffer } from "./OnboardingProfileBuffer";
@@ -524,6 +525,12 @@ export class ArnoldMcpClient {
   async workout(workout_id?: string) {
     return WorkoutContextSchema.parse(
       await this.client.call("get_workout", workout_id ? { workout_id } : {}),
+    );
+  }
+  /** Marks the recap of a workout as seen (receipt on the server, no training data). */
+  async markRecapSeen(workout_id: string) {
+    return MarkRecapSeenOutputSchema.parse(
+      await this.client.call("mark_recap_seen", { workout_id }),
     );
   }
   async write(operation: WriteOperation, input: Record<string, unknown>) {
