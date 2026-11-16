@@ -11,6 +11,7 @@ import { RunCardApp } from "./run/RunCardApp";
 import { CardSkeleton } from "./components/cards";
 import { RecoveryCard } from "./components/recovery";
 import type { UiFailure } from "./recovery";
+import { ConversationCardsKit } from "./components/conversation-cards-kit";
 import { parseCard, type CardId } from "./cards";
 
 /**
@@ -119,4 +120,8 @@ function Boot() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(<Boot />);
+// `?kit=1` shows the example page of the conversation cards (tests, sign-off).
+const showKit = new URLSearchParams(location.search).has("kit");
+createRoot(document.getElementById("root")!).render(
+  showKit ? <ConversationCardsKit /> : <Boot />,
+);

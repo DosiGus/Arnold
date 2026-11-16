@@ -1,14 +1,25 @@
 # Design: Arnold
 
-Neutraler Trainingsbegleiter im ChatGPT-Chat: klare Aktionen, echter Fortschritt. Einsteiger werden geführt, Erfahrene erfassen schnell. Chat und Sprache tragen Wünsche und Änderungen; Karten machen nächste Aktion, Ziele und Verlauf greifbar. Dies ist die einzige Designquelle; kein zweites Design-Dokument anlegen. Die Werte (Farben, Schrift, Radien, Abstände) stehen als CSS-Variablen in `src/ui/styles/base.css`, `cards.css` und `dashboard.css` (gebündelt in `src/ui/style.css`) und werden nicht hier wiederholt.
+Neutraler Trainingsbegleiter im ChatGPT-Chat: klare Aktionen, echter Fortschritt. Einsteiger werden geführt, Erfahrene erfassen schnell. Das Gespräch ist das Zentrum: Wünsche und Änderungen laufen über Chat und Sprache, Karten erscheinen nur, wenn sie etwas zeigen oder bestätigen. Dies ist die einzige Designquelle; kein zweites Design-Dokument anlegen. Die Werte (Farben, Schrift, Radien, Abstände) stehen als CSS-Variablen in `src/ui/styles/base.css`, `cards.css` und `dashboard.css` (gebündelt in `src/ui/style.css`) und werden nicht hier wiederholt.
 
 ## Grundsätze
 
-- **Monochrom.** Nur Graustufen, in beiden Host-Themes. Erfolg, Warnung, Auswahl und Fortschritt entstehen aus Text, Symbol, Kontur und Füllung, nie aus Buntfarbe.
+- **Gespräch zuerst.** Eine Karte hat immer eine Aufgabe: etwas zeigen oder etwas bestätigen. Was sich im Chat sagen lässt, braucht keine Karte.
+- **Graustufen plus eine Akzentfarbe.** Grün (`--ac-ok-*`) steht ausschließlich für Erfolg, einen neuen Rekord und positiven Status. Ein Warnton (`--ac-warn-*`) steht nur für „fehlt noch“ und „noch nicht auf deiner Uhr“. Alles andere bleibt grau. Keine weiteren Buntfarben, keine Flammen, keine Trophäen. Farbe trägt nie allein die Bedeutung: Text oder Symbol stehen immer dabei.
 - **Flach.** Deckende Karten mit feiner Kontur, kein Schatten, kein Blur, keine Glasflächen. Hierarchie durch Raster, Abstand und Typografie. Einzige Ausnahme: der modale Plan-Dialog.
-- **Eine Frage pro Karte.** Die Übersicht gibt der nächsten Handlung den meisten Raum; Detailkarten behandeln eine Aufgabe mit sichtbarem Rückweg („Zur Übersicht“). Keine App-Shell, keine globalen Tabs, keine inneren Scrollflächen.
+- **Eine Frage pro Karte.** Detailkarten behandeln eine Aufgabe mit sichtbarem Rückweg („Zur Übersicht“). Keine App-Shell, keine globalen Tabs, keine inneren Scrollflächen.
 - **Hell/Dunkel vom Host.** Kein Theme-Schalter, keine externen Schriften oder Bilder: ein Bundle, ein HTML-Dokument. Systemschrift, mittleres Gewicht für Titel und Kontrollen, große Zahlen leichter.
 - **Ehrliche Daten.** Einheiten und Lastdefinition stehen bei der Zahl („20 kg pro Hantel“). Unbekannt ist nicht 0. Dezimalkomma, deutsche Datumsformate („7. Apr.“, „7. April 2026“), tabellarische Ziffern. Die UI rechnet nichts nach.
+
+## Vier Kartenarten
+
+Jede Karte trägt oben ein kleines Etikett (`CardTag`), das sagt, was sie ist: „Verstanden“, „Vorschlag“, „Änderung“, „Anpassung auf Zeit“ oder „Status“. Bausteine liegen in `src/ui/components/conversation-cards.tsx`; eine Beispielseite mit allen Zuständen öffnet sich lokal unter `/preview?kit=1` und dient Tests und Abnahme, nicht den Nutzern.
+
+- **Verstanden** (`UnderstoodRows`): Arnold gibt wieder, was er verstanden hat, als Zeilen Label und Wert. Fehlt etwas, zeigt die Zeile sichtbar „fehlt noch“ (Warnton); Screenreader hören es genauso. Lücken werden nie geraten oder aufgefüllt.
+- **Vorschlag und Änderung** (`ChangeRow`): Bei Änderungen steht nur der Unterschied: alter Wert durchgestrichen, Pfeil, neuer Wert („vorher …“, „jetzt …“ für Screenreader), darunter „Alles andere bleibt gleich.“ Ein neuer Vorschlag zeigt seine Zeilen ohne Gegenüberstellung.
+- **Bestätigen** (`ConfirmAction`): höchstens ein Hauptknopf, optional ein ruhiger zweiter. Erst der Klick löst aus; vorher ist nichts gespeichert. Zustände: bereit, läuft, „Bestätigt“, „Nicht übernommen“, Fehler. „Bestätigt“ erscheint erst, wenn der Aufrufer Erfolg meldet, also nach der Antwort des Servers.
+- **Status** (`StatusLines`): zwei getrennte Zeilen. „Gespeichert“ steht nur, wenn das Schreiben bestätigt ist. Die Uhrzeile steht nur, wenn sie wahr ist: „Auf deiner Uhr angekommen“ (Grün) oder „Noch nicht auf deiner Uhr“ (Warnton). Ist keine Uhr verbunden oder der Stand unbekannt, gibt es keine Uhrzeile; „angekommen“ erscheint nie ohne Beleg.
+- **Sag-Hinweis** (`SayHint`): eine ruhige Zeile „Sag zum Beispiel: „…““ unter einer Karte, die zeigt, wie man im Gespräch weitermacht.
 
 ## Layout
 
@@ -16,20 +27,22 @@ Chat-Karte höchstens 44rem breit, Vollbildeditoren 64rem. Die Übersicht ist ei
 
 ## Bausteine
 
-- **Knöpfe:** pro Karte höchstens eine Hauptaktion (Ink auf On-Ink, Pille) und eine zweite (Soft); weitere Wege als Textlinks. Mindestens 2,75rem hoch, Icon-Knöpfe ebenso breit. Sofortige Druckrückmeldung. „Gespeichert“ erscheint erst nach bestätigtem Schreiben.
+- **Knöpfe:** pro Karte höchstens eine Hauptaktion (Ink auf On-Ink, Pille) und eine zweite (Soft); weitere Wege als Textlinks. Mindestens 2,75rem hoch, Icon-Knöpfe ebenso breit. Sofortige Druckrückmeldung. „Gespeichert“ und „Bestätigt“ erscheinen erst nach bestätigtem Schreiben.
 - **Chips:** Kontur im Normalzustand, ausgewählt Ink; `aria-pressed` oder beschriftetes natives Feld; dürfen umbrechen.
-- **Karten:** `ArnoldCard`, `CardActions`, `ChipGroup`, `Stepper`, `Rows`, `CardNote`, `CardSkeleton` sind die gemeinsamen Bausteine.
+- **Karten:** `ArnoldCard`, `CardActions`, `ChipGroup`, `Stepper`, `Rows`, `CardNote`, `CardSkeleton` sind die gemeinsamen Grundbausteine, die vier Kartenarten bauen darauf auf.
 - **Felder:** beschriftete native Inputs. Zahlen direkt eintippbar (Plus/Minus ergänzt nur). Fehlertexte in Alltagssprache, Eingaben bleiben erhalten.
 - **Navigation:** Widget-Titel, Zeilen und Aktionen öffnen die Detailkarte. Ein Rekord öffnet exakt sein Training (`workout_id`), ein Ziel exakt sein Detail (`goal_id`); Anfrage und angezeigte Einheit dürfen nie auseinanderfallen.
 - **Bewegung:** nur als Bestätigung einer Aktion; `prefers-reduced-motion` gilt. Keine Eintrittsanimation beim Wiederöffnen, keine künstlichen Wartezeiten.
 
 ## Übersicht
 
+Die Übersicht öffnet sich immer zuerst, wenn der Nutzer nur „@Arnold“ sagt, und bietet vier Aktionsknöpfe. Das nächste Training steht als Kopfzeile; darunter Woche, Scores, Ziele und Rekorde. Details klappen in der Karte auf, statt eine neue Karte zu öffnen. (Umbau: Paket UX-002.)
+
 - **Training:** nächstes Training mit Vorschlägen und bis zu vier Übungszeilen, sonst ehrlicher Leerzustand; nach Abschluss die gespeicherte Einheit. „Noch ein Training“ startet bewusst frisch.
 - **Woche:** echte Trainingstage und Wochenziel; zwei Einheiten an einem Tag zählen als ein Trainingstag.
 - **Demo-Scores:** feste, illustrative Werte (Konstanz 92, Recovery 72, Progress 77). Titel, jedes Label und die Beschreibung nennen „Demo“; nie als berechnet darstellen.
 - **Ziele:** die ersten vier mit Fortschritt, Ist- und Zielwert. Null-Fortschritt und unbekannter Fortschritt sind verschieden.
-- **Rekorde:** Karussell der drei neuesten, Hauptzahl mit Lastdefinition, Datum und Position.
+- **Rekorde:** Karussell der drei neuesten, Hauptzahl mit Lastdefinition, Datum und Position; ein neuer Rekord darf grün markiert sein.
 
 ## Detailkarten (die Semantik der Daten bleibt unverändert)
 
@@ -51,11 +64,11 @@ Chat-Karte höchstens 44rem breit, Vollbildeditoren 64rem. Die Übersicht ist ei
 
 ## Barrierefreiheit und Sprache
 
-Native Beschriftungen, sichtbarer Fokus (2px Kontur, 3px Abstand), `role="switch"` mit `aria-checked`, angekündigte Fehler und Statuswechsel, Diagramme für Screenreader zugänglich, Dialoge halten den Fokus und schließen mit Escape. Du-Form, kurze Sätze, konkrete Aktionen. Begriffe: Training (eine Einheit), Trainingstag (ein Kalendertag), Satz, Arbeitssatz, Aufwärmsatz, Übung, Plan, Entwurf. Keine technischen Details im normalen Bedienfluss.
+Native Beschriftungen, sichtbarer Fokus (2px Kontur, 3px Abstand), `role="switch"` mit `aria-checked`, angekündigte Fehler und Statuswechsel, Diagramme für Screenreader zugänglich, Dialoge halten den Fokus und schließen mit Escape. Grün und Warnton erreichen in Hell und Dunkel ausreichend Kontrast und stehen nie ohne Text. Du-Form, kurze Sätze, konkrete Aktionen. Begriffe: Training (eine Einheit), Trainingstag (ein Kalendertag), Satz, Arbeitssatz, Aufwärmsatz, Übung, Plan, Entwurf. Keine technischen Details im normalen Bedienfluss.
 
 ## Do und Don't
 
-- Do: vorhandene Tokens und flache Karten verwenden; Einheiten, Lastdefinition und unbekannte Werte ehrlich zeigen; Trainings-, Ziel- und Rekordidentität bei jeder Navigation erhalten; Hell/Dunkel, schmale Ansicht, 720px, Tastatur und reduzierte Bewegung am gerenderten Ergebnis prüfen.
-- Don't: farbige Akzente, Glasflächen, Flammen oder Trophäen; Demo-Scores als echte Werte; Backend-Vergleiche, Vorschläge oder Schreibsemantik für eine optische Vereinfachung ändern; technische IDs oder Tokens zeigen; einen Schreibvorgang vor der Serverantwort bestätigen.
+- Do: vorhandene Tokens und flache Karten verwenden; Etikett an jede Karte; Lücken als „fehlt noch“ zeigen; bei Änderungen nur den Unterschied; Einheiten, Lastdefinition und unbekannte Werte ehrlich zeigen; Trainings-, Ziel- und Rekordidentität bei jeder Navigation erhalten; Hell/Dunkel, schmale Ansicht, 720px, Tastatur und reduzierte Bewegung am gerenderten Ergebnis prüfen.
+- Don't: Farbe außer der einen Akzentfarbe für Erfolg/Rekord/Status und dem Warnton für Lücken und fehlende Uhr; Glasflächen, Flammen oder Trophäen; „Gespeichert“, „Bestätigt“ oder „Auf deiner Uhr angekommen“ ohne Beleg; Demo-Scores als echte Werte; Backend-Vergleiche, Vorschläge oder Schreibsemantik für eine optische Vereinfachung ändern; technische IDs oder Tokens zeigen.
 
 Browser- und AppBridge-Prüfungen ersetzen keine Abnahme auf einem iPhone in der ChatGPT-App.
