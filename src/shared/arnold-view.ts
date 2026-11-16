@@ -533,6 +533,18 @@ export const ArnoldDashboardViewSchema = z.object({
    * not yet seen workout; absent or null otherwise.
    */
   recap: ArnoldRecapSchema.nullable().optional(),
+  /**
+   * Which calendar day "today" is for this view (UX-016). `timezone` when the
+   * request named the user's zone; `fallback` (UTC day, no "today" marker)
+   * when it did not. The UI never works out the day itself.
+   */
+  reference: z
+    .object({
+      date: z.iso.date(),
+      timezone: z.string().nullable(),
+      source: z.enum(["timezone", "fallback"]),
+    })
+    .optional(),
   totals: z.object({
     workouts_in_history: count,
     workouts_in_period: count,

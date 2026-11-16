@@ -7,6 +7,11 @@ import {
 import { registerWorkoutTools } from "./mcp-workout.js";
 import { registerRecapTool } from "./mcp-recap.js";
 import { withRecap } from "./workout/recap.js";
+import {
+  isTimeZone,
+  referenceDay,
+  type ReferenceDay,
+} from "./reference-day.js";
 import { registerPlanTools } from "./mcp-plan.js";
 import { registerRunTools } from "./mcp-run.js";
 import { registerRunCardTool } from "./mcp-run-cards.js";
@@ -68,6 +73,15 @@ const readOnly = {
 const isoDate = z.iso
   .date()
   .describe("Kalenderdatum YYYY-MM-DD. Zeitgrenzen sind inklusive.");
+const timezoneInput = z
+  .string()
+  .min(1)
+  .max(64)
+  .refine(isTimeZone, "Unbekannte Zeitzone (IANA, z. B. Europe/Berlin).")
+  .optional()
+  .describe(
+    "Zeitzone des Nutzers (IANA, z. B. Europe/Berlin). „Heute“ wird in dieser Zone bestimmt; ohne Angabe nimmt Arnold den UTC-Tag und markiert nichts als heute. Die Karte schickt sie selbst mit.",
+  );
 const idList = z.array(z.string().min(1)).min(1);
 
 const periodShape = {
@@ -77,6 +91,7 @@ const periodShape = {
 
 const DashboardInputSchema = z.object({
   ...periodShape,
+  timezone: timezoneInput,
   plan_version_ids: idList
     .optional()
     .describe("Nur Einheiten dieser Planversionen auswerten."),
@@ -149,6 +164,7 @@ const ProgressInputSchema = z.object({
 /** B17: open a card directly on one exercise or one workout. */
 const ShowDashboardInputSchema = z.object({
   card: DashboardCardSchema.optional(),
+  timezone: timezoneInput,
   exercise_id: z
     .string()
     .min(1)
@@ -243,8 +259,17 @@ const result = (data: Record<string, unknown>, message: string) => ({
 /** Server clock, injectable so tests stay deterministic. */
 export type ArnoldServerClock = () => Date;
 
+/** Day anchor for views without a time zone (UTC; see `referenceDay`). */
 function today(clock: ArnoldServerClock): string {
-  return clock().toISOString().slice(0, 10);
+  return referenceDay(clock()).date;
+}
+
+/** The view with the day it was calculated for (UX-016). */
+function withReference<T extends object>(view: T, day: ReferenceDay) {
+  return {
+    ...view,
+    reference: { date: day.date, timezone: day.timezone, source: day.source },
+  };
 }
 
 /**
@@ -282,10 +307,13 @@ export const ARNOLD_INSTRUCTIONS = [
  */
 function welcomeHint(
   view: ReturnType<typeof buildDashboardView>,
-  date: string,
+  day: ReferenceDay,
 ): string {
   const next = view.home.next_session?.session_name;
-  const trainedToday = view.weeks.some((w) => w.trained_dates.includes(date));
+  // Without a known zone nothing counts as "today".
+  const trainedToday =
+    day.source === "timezone" &&
+    view.weeks.some((w) => w.trained_dates.includes(day.date));
   const lead =
     "Startansicht geöffnet. Begrüße den Nutzer in höchstens zwei kurzen, vorlesbaren Sätzen, per du, ohne Liste, ohne Zahlen aus der Karte und ohne Knöpfe oder Kacheln zu erklären.";
   if (view.state === "empty_history" || view.state === "empty_catalog")
@@ -396,13 +424,17 @@ export function createArnoldMcpServer(
             "Dieses Training gibt es in deinen Daten nicht. Trainings-ID aus get_arnold_workouts nehmen oder die Karte history ohne workout_id öffnen.",
             "reload_then_retry",
           );
-        const base = await withRecap(
-          snapshot.dataset,
-          buildDashboardView(snapshot.dataset, context(snapshot), {
-            reference_date: today(clock),
-          }),
-          today(clock),
-          logging,
+        const day = referenceDay(clock(), input.timezone);
+        const base = withReference(
+          await withRecap(
+            snapshot.dataset,
+            buildDashboardView(snapshot.dataset, context(snapshot), {
+              reference_date: day.date,
+            }),
+            day.recap_until,
+            logging,
+          ),
+          day,
         );
         const view = input.card
           ? {
@@ -423,7 +455,7 @@ export function createArnoldMcpServer(
             : view.state === "master_template"
               ? `${sourceLabel}: Master-Vorlage ohne persönliche Trainingsdaten.`
               : `${sourceLabel}: ${workouts ?? 0} Trainingseinheiten im Zeitraum.${
-                  input.card ? "" : ` ${welcomeHint(view, today(clock))}`
+                  input.card ? "" : ` ${welcomeHint(view, day)}`
                 }`,
         );
       } catch (error) {
@@ -444,21 +476,26 @@ export function createArnoldMcpServer(
     async (input) => {
       try {
         const snapshot = await load();
-        const view = await withRecap(
-          snapshot.dataset,
-          buildDashboardView(snapshot.dataset, context(snapshot), {
-            filter: {
-              from: input.from ?? null,
-              to: input.to ?? null,
-              plan_version_ids: input.plan_version_ids ?? null,
-              session_ids: input.session_ids ?? null,
-              exercise_ids: input.exercise_ids ?? null,
-            },
-            reference_date: today(clock),
-            weekly_goal_training_days: input.weekly_goal_training_days ?? null,
-          }),
-          today(clock),
-          logging,
+        const day = referenceDay(clock(), input.timezone);
+        const view = withReference(
+          await withRecap(
+            snapshot.dataset,
+            buildDashboardView(snapshot.dataset, context(snapshot), {
+              filter: {
+                from: input.from ?? null,
+                to: input.to ?? null,
+                plan_version_ids: input.plan_version_ids ?? null,
+                session_ids: input.session_ids ?? null,
+                exercise_ids: input.exercise_ids ?? null,
+              },
+              reference_date: day.date,
+              weekly_goal_training_days:
+                input.weekly_goal_training_days ?? null,
+            }),
+            day.recap_until,
+            logging,
+          ),
+          day,
         );
         const volume = view.kpis.find((k) => k.key === "nominal_volume");
         return result(
