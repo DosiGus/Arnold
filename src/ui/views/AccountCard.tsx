@@ -5,6 +5,7 @@ import { ArnoldCard, CardActions, CardNote } from "../components/cards";
 import { RecoveryCard } from "../components/recovery";
 import { asFailure, type UiFailure } from "../recovery";
 import { useModelContext } from "../hooks/useModelContext";
+import { useNoRunProfile } from "../components/run-offer";
 
 /** The confirmation stays in app memory; it is never placed in model context. */
 export function AccountCard({
@@ -20,19 +21,8 @@ export function AccountCard({
   const [cancelled, setCancelled] = useState(false);
   const [now, setNow] = useState(Date.now());
   const guard = useRef(false);
-  // The run button shows only for someone without a run profile; a failed
-  // read hides it rather than offering a setup that may already exist.
-  const [noRunProfile, setNoRunProfile] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    client
-      .runProfile()
-      .then((r) => alive && setNoRunProfile(r.profile === null))
-      .catch(() => alive && setNoRunProfile(false));
-    return () => {
-      alive = false;
-    };
-  }, [client]);
+  // The run button shows only for someone without a run profile.
+  const noRunProfile = useNoRunProfile(client);
   useEffect(() => {
     setResponse(initial);
     setFailure(undefined);
