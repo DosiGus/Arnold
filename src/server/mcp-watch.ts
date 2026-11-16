@@ -400,7 +400,7 @@ export function registerWatchTools(
       title: "Einwilligung für Messwerte der Garmin-Uhr",
       inputSchema: SetGarminHealthConsentInputSchema,
       outputSchema: SetGarminHealthConsentResponseSchema,
-      description: `Erteilt oder widerruft die Einwilligung, dass Arnold Messwerte der Garmin-Uhr (Puls, Kalorien, Body Battery, Stress und Ähnliches) zu Trainings speichert. Nur auf ausdrücklichen Wunsch des Nutzers. Ein Widerruf löscht alle gespeicherten Messwerte sofort; die Trainings selbst bleiben. Ohne Einwilligung speichert Arnold keine Messwerte. Aktuelle Textversion: ${HEALTH_CONSENT_TEXT_VERSION}.`,
+      description: `Erteilt oder widerruft die Einwilligung, dass Arnold Messwerte der Garmin-Uhr (Puls, Kalorien, Body Battery, Stress und Ähnliches) zu Trainings speichert. Nur auf ausdrücklichen Wunsch des Nutzers. Ein Widerruf löscht alle gespeicherten Messwerte sofort, auch die täglichen Gesundheitswerte aus Garmin Connect; die Trainings selbst bleiben. Ohne Einwilligung speichert Arnold keine Messwerte. Aktuelle Textversion: ${HEALTH_CONSENT_TEXT_VERSION}.`,
       annotations: {
         readOnlyHint: false,
         destructiveHint: true,
@@ -432,6 +432,16 @@ export function registerWatchTools(
               );
               return 0;
             }
+            // Daily health values from Garmin Connect (UX-015). Deleted
+            // here to count them; the trigger on the revocation below also
+            // removes any that arrive in between.
+            const daily =
+              (
+                await c.query(
+                  "delete from arnold.health_daily where user_id = $1",
+                  [caller.userId],
+                )
+              ).rowCount ?? 0;
             // Waits for an upload holding the consent row, then nothing
             // more can be stored; the stored values go in the same step.
             await c.query(
@@ -450,7 +460,7 @@ export function registerWatchTools(
             const runs = await c.query<{ erased: number }>(
               "select arnold.erase_run_health() as erased",
             );
-            return strength + (runs.rows[0]?.erased ?? 0);
+            return strength + daily + (runs.rows[0]?.erased ?? 0);
           },
         );
         const data = SetGarminHealthConsentResponseSchema.parse({

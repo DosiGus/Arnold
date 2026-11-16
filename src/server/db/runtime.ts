@@ -40,6 +40,7 @@ import type { Database } from "./database.js";
 import type { PostgresIdentityRepository } from "./identity.js";
 import { PostgresOnboardingRepository } from "./onboarding.js";
 import { PostgresArnoldStore } from "./store.js";
+import type { DailyHealthSync } from "../health/sync.js";
 
 export interface DatabaseRuntimeOptions {
   db: Database;
@@ -49,6 +50,10 @@ export interface DatabaseRuntimeOptions {
   retentionDays: number;
   /** Clock for deletion tokens; injectable for tests. */
   now?: () => number;
+  /** Daily health values (UX-015); absent when the feature is off. */
+  dailyHealth?: DailyHealthSync;
+  /** Status label of the daily health values for /health. */
+  dailyHealthStatus?: string;
 }
 
 /** How many users' services one instance keeps ready. */

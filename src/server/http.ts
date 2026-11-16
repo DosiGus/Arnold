@@ -109,6 +109,25 @@ export function releaseFrom(env: NodeJS.ProcessEnv): string | null {
   return raw;
 }
 
+/**
+ * Whether a JSON-RPC body opens the overview: show_arnold_dashboard without
+ * a card. Only the tool name and the absence of `card` are looked at.
+ */
+export function opensOverview(body: unknown): boolean {
+  const calls = Array.isArray(body) ? body : [body];
+  return calls.some((call) => {
+    const message = call as {
+      method?: unknown;
+      params?: { name?: unknown; arguments?: { card?: unknown } };
+    } | null;
+    return (
+      message?.method === "tools/call" &&
+      message.params?.name === "show_arnold_dashboard" &&
+      (message.params.arguments?.card ?? null) === null
+    );
+  });
+}
+
 export function createHttpApp(options: ServerOptions = {}) {
   const root = options.root ?? process.cwd();
   const env = withDefaultProfile(options);
@@ -249,6 +268,8 @@ export function createHttpApp(options: ServerOptions = {}) {
           ? "ok"
           : "unavailable"
         : "not_configured",
+      // Garmin daily values (UX-015): off, unavailable:<reason> or active.
+      garmin_daily: options.database?.options.dailyHealthStatus ?? "off",
       app: "arnold",
       auth: auth.summary.mode,
       // Whether this instance serves made-up data. That is the source's own
@@ -310,7 +331,14 @@ export function createHttpApp(options: ServerOptions = {}) {
     logProtocolStep(req.body);
     const handle = async () => {
       const userRuntime = options.database
-        ? await options.database.forUser(await auth.resolveRequest(req))
+        ? await (async (database) => {
+            const caller = await auth.resolveRequest(req);
+            // UX-015: opening the overview may start a background fetch of
+            // the daily health values. Never awaited, never fails the call.
+            if (database.options.dailyHealth && opensOverview(req.body))
+              database.options.dailyHealth.onOverviewOpened(caller.userId);
+            return database.forUser(caller);
+          })(options.database)
         : sandboxes
           ? await sandboxes.forUser(await auth.resolveRequest(req))
           : runtime;

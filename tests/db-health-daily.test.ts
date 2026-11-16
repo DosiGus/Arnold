@@ -9,6 +9,12 @@ import { readFile } from "node:fs/promises";
 import pg from "pg";
 import { afterAll, describe, expect, inject, it } from "vitest";
 import { migrate } from "../src/server/db/migrate";
+import { opensOverview } from "../src/server/http";
+import { DailyHealthSync, readDailyHealth } from "../src/server/health/sync";
+import type {
+  DailyHealthFetchResult,
+  DailyHealthPullSource,
+} from "../src/server/health/source";
 import { appDatabase, asOwner, newAccount } from "./fixtures/arnold-db.js";
 
 const db = appDatabase();
@@ -224,5 +230,173 @@ describe("rollback script 005 → 4 → 5", () => {
     } finally {
       await asOwner((c) => c.query(`drop database ${name} with (force)`));
     }
+  });
+});
+
+describe("DailyHealthSync (fetch and store, invented supplier)", () => {
+  const day = (local_date: string, resting: number | null) => ({
+    local_date,
+    resting_hr_bpm: resting,
+    stress_avg: null,
+    body_battery_high: 80,
+    body_battery_end_of_day: null,
+    sleep_seconds: null,
+    sleep_score: null,
+    hrv_last_night_ms: null,
+    hrv_status: null,
+  });
+  const NOW = Date.parse("2026-11-16T08:00:00Z");
+
+  function setup(account: Account, results: DailyHealthFetchResult[]) {
+    const ranges: [string, string][] = [];
+    const lines: string[] = [];
+    let now = NOW;
+    const source: DailyHealthPullSource = {
+      kind: "garmin_personal",
+      fetchDays: async (from, to) => {
+        ranges.push([from, to]);
+        return results.shift() ?? { ok: true, days: [] };
+      },
+    };
+    const sync = new DailyHealthSync({
+      db,
+      source,
+      config: {
+        state: "active",
+        source: "garmin_personal",
+        apiKey: "unused-in-this-test",
+        userId: account.userId,
+        refreshHours: 6,
+      },
+      now: () => now,
+      log: (line) => lines.push(line),
+    });
+    return {
+      sync,
+      ranges,
+      lines,
+      advance: (hours: number) => (now += hours * 3600_000),
+    };
+  }
+
+  it("fetches only the configured user, only with consent, 35 days first, then the missing days", async () => {
+    const alice = await newAccount(db);
+    const bob = await newAccount(db);
+    const t = setup(alice, [
+      { ok: true, days: [day("2026-11-14", 52), day("2026-11-15", 53)] },
+      { ok: true, days: [day("2026-11-15", null), day("2026-11-16", 51)] },
+    ]);
+    expect(await t.sync.refresh(bob.userId)).toEqual({
+      ran: false,
+      why: "other_user",
+    });
+    expect(await t.sync.refresh(alice.userId)).toEqual({
+      ran: false,
+      why: "no_consent",
+    });
+    await grantConsent(alice);
+    expect(await t.sync.refresh(alice.userId)).toEqual({
+      ran: true,
+      outcome: "ok",
+      days: 2,
+    });
+    expect(t.ranges[0]).toEqual(["2026-10-13", "2026-11-16"]);
+    // Within the refresh interval nothing is fetched.
+    t.advance(5);
+    expect(await t.sync.refresh(alice.userId)).toEqual({
+      ran: false,
+      why: "recent",
+    });
+    t.advance(2);
+    await t.sync.refresh(alice.userId);
+    expect(t.ranges[1]).toEqual(["2026-11-15", "2026-11-16"]);
+    const stored = await readDailyHealth(db, alice.userId, "2026-01-01");
+    // A value Garmin no longer sends is kept, unknown stays null.
+    expect(stored.map((d) => [d.local_date, d.resting_hr_bpm])).toEqual([
+      ["2026-11-14", 52],
+      ["2026-11-15", 53],
+      ["2026-11-16", 51],
+    ]);
+    expect(stored[0].sleep_score).toBeNull();
+    expect(await count(bob.userId, "health_daily")).toBe(0);
+    expect(t.lines.every((l) => !l.includes(alice.userId))).toBe(true);
+  });
+
+  it("records an expired key as its own state and keeps the stored days", async () => {
+    const alice = await newAccount(db);
+    await grantConsent(alice);
+    const t = setup(alice, [
+      { ok: true, days: [day("2026-11-15", 52)] },
+      { ok: false, failure: "key_expired" },
+    ]);
+    await t.sync.refresh(alice.userId);
+    t.advance(7);
+    expect(await t.sync.refresh(alice.userId)).toEqual({
+      ran: true,
+      outcome: "key_expired",
+      days: 0,
+    });
+    const sync = await db.asUser(
+      alice.userId,
+      async (c) =>
+        (
+          await c.query<{ last_outcome: string; last_success_at: Date }>(
+            "select last_outcome, last_success_at from arnold.health_daily_sync",
+          )
+        ).rows[0],
+    );
+    expect(sync.last_outcome).toBe("key_expired");
+    expect(sync.last_success_at.getTime()).toBe(NOW);
+    expect(await count(alice.userId, "health_daily")).toBe(1);
+    expect(t.lines.at(-1)).toContain('"outcome":"key_expired"');
+  });
+
+  it("never lets the overview wait or fail, and runs one fetch at a time", async () => {
+    const alice = await newAccount(db);
+    await grantConsent(alice);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let calls = 0;
+    const sync = new DailyHealthSync({
+      db,
+      config: {
+        state: "active",
+        source: "garmin_personal",
+        apiKey: "unused-in-this-test",
+        userId: alice.userId,
+        refreshHours: 6,
+      },
+      source: {
+        kind: "garmin_personal",
+        fetchDays: async () => {
+          calls++;
+          await gate;
+          throw new Error("supplier broke");
+        },
+      },
+      log: () => {},
+    });
+    expect(() => sync.onOverviewOpened(alice.userId)).not.toThrow();
+    await new Promise((r) => setTimeout(r, 200));
+    expect(await sync.refresh(alice.userId)).toEqual({
+      ran: false,
+      why: "running",
+    });
+    release();
+    await new Promise((r) => setTimeout(r, 100));
+    expect(calls).toBe(1);
+  });
+
+  it("opens the fetch only for the overview, not for other cards", () => {
+    const call = (args: object) => ({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: { name: "show_arnold_dashboard", arguments: args },
+    });
+    expect(opensOverview(call({}))).toBe(true);
+    expect(opensOverview([call({ card: null })])).toBe(true);
+    expect(opensOverview(call({ card: "today" }))).toBe(false);
+    expect(opensOverview({ method: "tools/list" })).toBe(false);
+    expect(opensOverview(undefined)).toBe(false);
   });
 });
