@@ -194,3 +194,17 @@ describe("descriptions follow the corpus", () => {
     );
   });
 });
+
+describe("UX-003: the start view and the buttons", () => {
+  it("opens the start view for a bare '@Arnold' and names the four buttons", () => {
+    expect(ARNOLD_INSTRUCTIONS).toContain("„@Arnold“");
+    expect(ARNOLD_INSTRUCTIONS).toContain("immer die Startansicht zeigen");
+    for (const sentence of [
+      "Zeig mir mein nächstes Training.",
+      "Ich möchte meinen Plan ändern.",
+      "Ich habe eine Ausnahme, zum Beispiel Urlaub.",
+      "Ich möchte ein Ziel anpassen.",
+    ])
+      expect(ARNOLD_INSTRUCTIONS).toContain(`„${sentence}“`);
+  });
+});

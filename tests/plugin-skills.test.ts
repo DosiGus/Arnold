@@ -495,3 +495,102 @@ describe("server instructions (RUN-011)", () => {
     );
   });
 });
+
+/** UX-003: the four action buttons of the start view and the new chat tone. */
+describe("start view buttons and chat tone (UX-003)", () => {
+  const coach = read(join(SKILLS, "arnold-coach", "SKILL.md"));
+  const planSkill = read(join(SKILLS, "arnold-trainingsplan", "SKILL.md"));
+  const BUTTONS = [
+    "Zeig mir mein nächstes Training.",
+    "Ich möchte meinen Plan ändern.",
+    "Ich habe eine Ausnahme, zum Beispiel Urlaub.",
+    "Ich möchte ein Ziel anpassen.",
+  ];
+
+  it("names each button sentence word for word in the instructions", () => {
+    for (const sentence of BUTTONS)
+      expect(ARNOLD_INSTRUCTIONS, sentence).toContain(`„${sentence}“`);
+  });
+
+  it("sends each button to the right tool or flow", () => {
+    const part = (sentence: string) => {
+      const from = ARNOLD_INSTRUCTIONS.indexOf(`„${sentence}“:`);
+      expect(from, sentence).toBeGreaterThan(-1);
+      const rest = ARNOLD_INSTRUCTIONS.slice(from + sentence.length + 3);
+      const next = BUTTONS.map((b) => rest.indexOf(`„${b}“:`)).filter(
+        (i) => i > -1,
+      );
+      return next.length ? rest.slice(0, Math.min(...next)) : rest;
+    };
+    const [next, change, exception, goal] = BUTTONS.map(part);
+    expect(next).toContain("show_arnold_dashboard");
+    expect(next).toContain("today");
+    expect(next).toContain("show_arnold_run");
+    expect(change).toContain("Plan ändern");
+    expect(change).toContain("validate_training_plan");
+    expect(change).toContain("compare_plan_versions");
+    expect(change).toContain("nie selbst bestätigen oder aktivieren");
+    expect(exception).toContain("höchstens eine Rückfrage");
+    expect(exception).toContain("noch nicht");
+    expect(exception).toContain("zurückwechseln");
+    expect(goal).toContain("update_training_goal");
+    expect(goal).toContain("create_training_goal");
+    expect(goal).toContain("nie schätzen");
+  });
+
+  it("keeps '@Arnold' on the start view and the chat short and readable", () => {
+    expect(ARNOLD_INSTRUCTIONS).toContain("Ruft der Nutzer Arnold nur auf");
+    expect(ARNOLD_INSTRUCTIONS).toContain("„@Arnold“");
+    expect(ARNOLD_INSTRUCTIONS).toContain(
+      "immer die Startansicht zeigen – nie eine einzelne Karte",
+    );
+    expect(ARNOLD_INSTRUCTIONS).toContain("höchstens zwei kurze");
+    expect(ARNOLD_INSTRUCTIONS).toContain("vorlesbar");
+    expect(ARNOLD_INSTRUCTIONS).toContain(
+      "Arnold bereitet Entscheidungen vor, der Nutzer gibt sie frei",
+    );
+    expect(ARNOLD_INSTRUCTIONS).toContain("nur den Unterschied nennen");
+  });
+
+  it("names the buttons in both skills and tells the exception honestly", () => {
+    // The plan skill owns the three buttons that change something.
+    for (const sentence of BUTTONS.slice(1))
+      expect(planSkill, sentence).toContain(sentence);
+    for (const sentence of BUTTONS) expect(coach, sentence).toContain(sentence);
+    for (const text of [planSkill, coach]) {
+      expect(text).toContain("noch nicht");
+      expect(text.toLowerCase()).toContain("nichts versprechen");
+    }
+    expect(planSkill).toContain("zurückwechseln");
+    expect(planSkill).toContain("Nur heute");
+    expect(planSkill).toContain("vorlesbar");
+    expect(coach).toContain("vorlesbar");
+  });
+
+  it("invents no tool for temporary changes", () => {
+    const texts = [ARNOLD_INSTRUCTIONS, planSkill, coach];
+    const names = (text: string) =>
+      [...text.matchAll(/\b[a-z]+(?:_[a-z]+)+\b/g)].map(([n]) => n);
+    for (const text of texts)
+      expect(
+        names(text).filter((n) =>
+          /temporary|vacation|holiday|exception|override|pause|travel/.test(n),
+        ),
+      ).toEqual([]);
+  });
+
+  it("describes the plugin for strength, running and the watch", () => {
+    const manifest = json(join(PLUGIN, "plugin.json"));
+    const ui = manifest.extensions["com.openai"].interface;
+    const text = JSON.stringify([
+      manifest.description,
+      manifest.keywords,
+      ui.shortDescription,
+      ui.longDescription,
+    ]).toLowerCase();
+    for (const word of ["krafttraining", "laufen", "garmin"])
+      expect(text, word).toContain(word);
+    expect(ui.defaultPrompt).toHaveLength(3);
+    expect(text).not.toMatch(/optimal|garantiert/);
+  });
+});
