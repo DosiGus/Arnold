@@ -33,7 +33,11 @@ export type DefectKind =
   | "no_rep_range"
   | "no_rest"
   | "duplicate_names"
-  | "inverted_range";
+  | "inverted_range"
+  // UX-012: three rules against what the profile says
+  | "avoided_exercise"
+  | "missing_equipment"
+  | "over_time_budget";
 
 export type QualityProfile = {
   key: string;
@@ -283,7 +287,7 @@ export const QUALITY_PROFILES: QualityProfile[] = [
       environment: "home",
       equipment: ["dumbbells", "bench"],
     },
-    "too_many_sets",
+    "missing_equipment",
   ),
   P(
     "p05",
@@ -337,8 +341,9 @@ export const QUALITY_PROFILES: QualityProfile[] = [
       secondary_goals: ["endurance_running"],
       session_minutes: 45,
       environment: "gym",
+      avoided_exercise_ids: ["deadlift"],
     },
-    "unknown_exercise",
+    "avoided_exercise",
   ),
   P(
     "p10",
@@ -437,7 +442,7 @@ export const QUALITY_PROFILES: QualityProfile[] = [
     "advanced",
     ["fb1", "fb2"],
     { primary_goal: "strength", session_minutes: 30, environment: "gym" },
-    "empty_session",
+    "over_time_budget",
   ),
   P(
     "p19",
@@ -510,6 +515,17 @@ export function flawedPlan(p: QualityProfile): Sess[] {
       plan[0].exercises[0].rep_min = 12;
       plan[0].exercises[0].rep_max = 6;
       break;
+    case "avoided_exercise":
+      plan[0].exercises[1].exercise_id = p.training.avoided_exercise_ids![0];
+      break;
+    case "missing_equipment":
+      // a machine exercise for someone who trains at home with dumbbells
+      plan[0].exercises[1].exercise_id = "leg-press";
+      break;
+    case "over_time_budget":
+      for (const id of ["crunch", "face-pull"])
+        plan[0].exercises.push({ ...plan[0].exercises[1], exercise_id: id });
+      break;
   }
   return plan;
 }
@@ -533,6 +549,9 @@ export const EXPECTED: Record<
     refused: "VALIDATION_ERROR",
     says: "bereits eine Trainingseinheit",
   },
+  avoided_exercise: { fitError: "PROPOSAL_AVOIDED_EXERCISE" },
+  missing_equipment: { fitWarning: "PROPOSAL_EQUIPMENT_MISSING" },
+  over_time_budget: { fitWarning: "PROPOSAL_OVER_TIME_BUDGET" },
 };
 
 /** Ids a person can do where they train (for checking the test data itself). */

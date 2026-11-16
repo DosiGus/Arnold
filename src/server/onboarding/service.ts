@@ -56,6 +56,7 @@ import {
   type OnboardingState,
   type OnboardingStep,
   type OnboardingToolName,
+  type OnboardingValidationResult,
 } from "../../shared/onboarding-contract.js";
 import type {
   PlanValidationResult,
@@ -83,6 +84,7 @@ import {
   isProfileComplete,
   firstOpenStep,
   validateProfile,
+  proposalFitIssues,
   validateProposalAgainstProfile,
   runSetupState,
   wantsRunning,
@@ -617,7 +619,11 @@ export class OnboardingService {
           allowedEvents(machine).includes("CONFIRM_PLAN") &&
           (validation?.valid ?? false),
       }),
-      validation: validateProfile(session.profile),
+      validation: withProposalHints(
+        validateProfile(session.profile),
+        session.profile,
+        plan,
+      ),
       plan,
       plan_validation: validation,
       handoff,
@@ -1817,3 +1823,23 @@ export class OnboardingService {
 /** The handoff statuses Task 007 may act on. Everything else must be refused. */
 export const ACTIONABLE_HANDOFF_STATUSES: readonly HandoffStatus[] =
   HANDOFF_STATUSES.filter((status) => status === "ready_to_finish");
+
+/**
+ * Adds the two proposal hints (missing equipment, too many exercises for the
+ * time) to the profile findings, recomputed from the draft as it is now.
+ * Warnings only: they never block, and a draft changed in the editor is
+ * judged again on the next read.
+ */
+function withProposalHints(
+  validation: OnboardingValidationResult,
+  profile: OnboardingProfile,
+  plan: TrainingPlanVersion | null,
+): OnboardingValidationResult {
+  if (!plan || profile.path !== "arnold_plan") return validation;
+  const hints = proposalFitIssues(profile, plan.sessions).filter(
+    (issue) => issue.severity === "warning",
+  );
+  return hints.length
+    ? { ...validation, warnings: [...validation.warnings, ...hints] }
+    : validation;
+}

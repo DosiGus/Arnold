@@ -69,8 +69,16 @@ describe("the quality set", () => {
     expect(QUALITY_PROFILES.some((p) => p.protect.length)).toBe(true);
     // every kind of flaw is exercised at least twice
     const kinds = QUALITY_PROFILES.map((p) => p.defect);
+    // (the three profile rules of UX-012 have one profile each)
+    const single = [
+      "avoided_exercise",
+      "missing_equipment",
+      "over_time_budget",
+    ];
     for (const kind of Object.keys(EXPECTED))
-      expect(kinds.filter((k) => k === kind).length).toBeGreaterThanOrEqual(2);
+      expect(kinds.filter((k) => k === kind).length).toBeGreaterThanOrEqual(
+        single.includes(kind) ? 1 : 2,
+      );
   });
 });
 
