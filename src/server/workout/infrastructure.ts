@@ -251,6 +251,8 @@ export const AuditEventSchema = z.object({
     "GOAL_ARCHIVED",
     "BODY_WEIGHT_LOGGED",
     "BODY_WEIGHT_VOIDED",
+    // The recap after a workout was acknowledged (UX-006). No data changes.
+    "RECAP_SEEN",
     // Running (RUN-007). Values and status only, never free text or heart rate.
     "RUN_PROFILE_UPDATED",
     "RUN_CREATED",
@@ -353,6 +355,11 @@ export interface ArnoldStore {
   readonly kind: "fixture" | "database";
   read(): Promise<ArnoldDataset>;
   write<T>(work: (tx: ArnoldTransaction) => Promise<T>): Promise<T>;
+  /**
+   * True when a receipt with this request id exists for this user. Read only;
+   * a failing read throws, it never answers "no".
+   */
+  hasOperation(requestId: string): Promise<boolean>;
   /** Audit events that belong to no data write (the setup conversation). */
   readonly audit: AuditLogRepository;
 }
@@ -370,6 +377,9 @@ export class InMemoryArnoldStore implements ArnoldStore {
   }
   async read() {
     return structuredClone(this.dataset);
+  }
+  async hasOperation(requestId: string) {
+    return this.operations.has(requestId);
   }
   write<T>(work: (tx: ArnoldTransaction) => Promise<T>): Promise<T> {
     return this.queue.exclusive("store", async () => {

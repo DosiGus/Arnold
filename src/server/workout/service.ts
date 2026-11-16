@@ -38,6 +38,11 @@ import {
   type Permission,
   type WriteMode,
 } from "./infrastructure.js";
+import {
+  MarkRecapSeenInputSchema,
+  recapSeenRequestId,
+  type MarkRecapSeenOutput,
+} from "../../shared/recap-contract.js";
 import { buildGoalChange, isGoalOperation } from "./goals.js";
 import { proposeSession } from "./proposal.js";
 import { MISSING_LABEL, applyChanges } from "./log-workout.js";
@@ -241,6 +246,112 @@ export class WorkoutLoggingService {
         "Keine Berechtigung für diesen Tracker oder Vorgang.",
       );
     return actor;
+  }
+  /**
+   * True when the recap of this workout was acknowledged. Reads the receipt
+   * only; a failing read throws, so the caller shows nothing instead of
+   * showing the recap again.
+   */
+  async isRecapSeen(workoutId: string): Promise<boolean> {
+    return this.options.store.hasOperation(recapSeenRequestId(workoutId));
+  }
+  /**
+   * Marks the recap of a completed workout as seen (UX-006). The marker is a
+   * receipt without data changes under a key derived from the workout, so it
+   * is the same on every device and a repeat changes nothing. The user comes
+   * from the verified token, the workout must be the user's own and completed.
+   */
+  async markRecapSeen(
+    raw: unknown,
+    context?: unknown,
+  ): Promise<MarkRecapSeenOutput> {
+    const workoutId =
+      raw &&
+      typeof raw === "object" &&
+      "workout_id" in raw &&
+      typeof raw.workout_id === "string"
+        ? raw.workout_id
+        : "";
+    try {
+      const actor = await this.actor(context);
+      const input = MarkRecapSeenInputSchema.parse(raw);
+      const requestId = recapSeenRequestId(input.workout_id);
+      const outcome = await commitWrite<WriteResult>({
+        trackerId: this.options.trackerId,
+        store: this.options.store,
+        requestId,
+        fingerprint: fingerprint({
+          operation: "mark_recap_seen",
+          workout_id: input.workout_id,
+        }),
+        actorSubject: actor.subject,
+        clock: this.options.clock ?? (() => new Date()),
+        build: (dataset, now) => {
+          const workout = dataset.workouts.find(
+            (w) => w.workout_id === input.workout_id,
+          );
+          if (!workout)
+            throw new WriteError(
+              "WORKOUT_NOT_FOUND",
+              "Dieses Training gibt es in deinen Daten nicht.",
+            );
+          if (workout.status !== "completed")
+            throw new WriteError(
+              "INVALID_STATUS_TRANSITION",
+              "Nur ein abgeschlossenes Training hat einen Rückblick.",
+            );
+          return {
+            changes: [],
+            result: { workout, sets: [], exercise: null, warnings: [] },
+            audit: [
+              {
+                operation_id: requestId,
+                event_type: "RECAP_SEEN",
+                entity_id: workout.workout_id,
+                at: now,
+                actor: actor.subject,
+                previous_revision: workout.row_revision,
+                new_revision: workout.row_revision,
+                result: "verified",
+                changed_fields: [],
+                correction_reason: null,
+                changes: {},
+              },
+            ],
+          };
+        },
+      });
+      return {
+        ok: true,
+        workout_id: input.workout_id,
+        replayed: outcome.replayed,
+        error: null,
+      };
+    } catch (error) {
+      const failure =
+        error instanceof WriteError
+          ? error
+          : error instanceof z.ZodError
+            ? new WriteError(
+                "VALIDATION_ERROR",
+                "Eingaben sind nicht eindeutig oder ungültig.",
+              )
+            : new WriteError(
+                "STORAGE_UNAVAILABLE",
+                STORAGE_RETRY_MESSAGE,
+                true,
+              );
+      return {
+        ok: false,
+        workout_id: workoutId,
+        replayed: false,
+        error: {
+          code: failure.code,
+          message: failure.message,
+          retryable: failure.retryable,
+        },
+      };
+    }
   }
   async execute(
     operation: WriteOperation,

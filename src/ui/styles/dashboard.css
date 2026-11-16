@@ -475,3 +475,37 @@
 .ac-home-run-note {
   margin: 0 0 0.75rem;
 }
+
+/* Rückblick nach dem Training (UX-006): ruhig, Grün nur für Rekord und Ziel. */
+.ac-recap {
+  display: grid;
+  gap: 0.5rem;
+  padding-bottom: 0.875rem;
+  border-bottom: 1px solid var(--border);
+  min-width: 0;
+}
+.ac-recap h3 {
+  font-size: 1.375rem;
+  font-weight: 400;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  overflow-wrap: anywhere;
+}
+.ac-recap-lines {
+  margin: 0.125rem 0;
+}
+.ac-recap .cc-line {
+  align-items: flex-start;
+}
+.ac-recap .cc-line svg {
+  margin-top: 0.1875rem;
+  flex: none;
+}
+.ac-recap-next {
+  margin: 0;
+}
+.ac-recap-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}

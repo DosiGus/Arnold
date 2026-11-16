@@ -5,6 +5,8 @@ import {
   type Recovery,
 } from "../shared/write-recovery.js";
 import { registerWorkoutTools } from "./mcp-workout.js";
+import { registerRecapTool } from "./mcp-recap.js";
+import { withRecap } from "./workout/recap.js";
 import { registerPlanTools } from "./mcp-plan.js";
 import { registerRunTools } from "./mcp-run.js";
 import { registerRunCardTool } from "./mcp-run-cards.js";
@@ -394,9 +396,14 @@ export function createArnoldMcpServer(
             "Dieses Training gibt es in deinen Daten nicht. Trainings-ID aus get_arnold_workouts nehmen oder die Karte history ohne workout_id öffnen.",
             "reload_then_retry",
           );
-        const base = buildDashboardView(snapshot.dataset, context(snapshot), {
-          reference_date: today(clock),
-        });
+        const base = await withRecap(
+          snapshot.dataset,
+          buildDashboardView(snapshot.dataset, context(snapshot), {
+            reference_date: today(clock),
+          }),
+          today(clock),
+          logging,
+        );
         const view = input.card
           ? {
               ...base,
@@ -437,17 +444,22 @@ export function createArnoldMcpServer(
     async (input) => {
       try {
         const snapshot = await load();
-        const view = buildDashboardView(snapshot.dataset, context(snapshot), {
-          filter: {
-            from: input.from ?? null,
-            to: input.to ?? null,
-            plan_version_ids: input.plan_version_ids ?? null,
-            session_ids: input.session_ids ?? null,
-            exercise_ids: input.exercise_ids ?? null,
-          },
-          reference_date: today(clock),
-          weekly_goal_training_days: input.weekly_goal_training_days ?? null,
-        });
+        const view = await withRecap(
+          snapshot.dataset,
+          buildDashboardView(snapshot.dataset, context(snapshot), {
+            filter: {
+              from: input.from ?? null,
+              to: input.to ?? null,
+              plan_version_ids: input.plan_version_ids ?? null,
+              session_ids: input.session_ids ?? null,
+              exercise_ids: input.exercise_ids ?? null,
+            },
+            reference_date: today(clock),
+            weekly_goal_training_days: input.weekly_goal_training_days ?? null,
+          }),
+          today(clock),
+          logging,
+        );
         const volume = view.kpis.find((k) => k.key === "nominal_volume");
         return result(
           view,
@@ -547,6 +559,7 @@ export function createArnoldMcpServer(
   );
 
   registerWorkoutTools(server, source, logging, actorContext);
+  registerRecapTool(server, logging, actorContext);
   registerPlanTools(server, plans, actorContext);
   registerRunTools(server, runs, actorContext);
   registerRunCardTool(server, runs, resourceUri);

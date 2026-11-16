@@ -74,6 +74,8 @@ export const TOOL_ACCESS: Readonly<Record<string, ToolAccessClass>> = {
   complete_workout: "AUTHENTICATED_WRITE",
   cancel_workout: "AUTHENTICATED_WRITE",
   log_workout: "AUTHENTICATED_WRITE",
+  // UX-006: only the overview card calls it; writes one receipt, no training data.
+  mark_recap_seen: "AUTHENTICATED_WRITE",
   void_workout: "AUTHENTICATED_WRITE",
   // A custom exercise is training content, not plan structure, so it rides
   // with the workout write scope rather than the plan one.
