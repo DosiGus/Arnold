@@ -15,6 +15,7 @@ import {
 } from "../analytics/activity.js";
 import type { Recovery } from "../shared/write-recovery.js";
 import type { ArnoldDataset } from "../shared/arnold-schema-v1.js";
+import type { WatchDelivery } from "../shared/watch-contract.js";
 import type { ArnoldStore } from "./workout/infrastructure.js";
 
 /** Why a dataset could not be produced, in terms the UI can act on. */
@@ -74,6 +75,12 @@ export interface ArnoldDataSource {
   watchRecordings?(
     clientSessionIds: readonly string[],
   ): Promise<readonly WatchRecordingData[]>;
+  /**
+   * UX-007: whether this dataset's plan is on the user's watch, from the
+   * marks the watches confirmed. Only a database source has watches; never
+   * throws (a failure is `unknown`).
+   */
+  watchDelivery?(dataset: ArnoldDataset): Promise<WatchDelivery>;
 }
 
 /** One watch recording as stored (UMSETZUNG §3.3, §3.4); gaps stay null. */

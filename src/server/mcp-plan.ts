@@ -32,6 +32,7 @@ import {
 } from "../shared/plan-contract.js";
 import { toPlanError } from "./plan/errors.js";
 import type { TrainingPlanService } from "./plan/service.js";
+import type { WatchDelivery } from "../shared/watch-contract.js";
 
 const readOnly = {
   readOnlyHint: true,
@@ -88,6 +89,8 @@ export function registerPlanTools(
   server: McpServer,
   plans?: TrainingPlanService,
   actorContext?: unknown,
+  /** UX-007: whether the active plan is on the watch; never throws. */
+  watchDelivery?: () => Promise<WatchDelivery>,
 ) {
   if (!plans) return;
 
@@ -296,7 +299,13 @@ export function registerPlanTools(
         },
       },
       async (input: unknown) => {
-        const payload = await plans.execute(operation, input, actorContext);
+        const executed = await plans.execute(operation, input, actorContext);
+        // UX-007: answer-time status of the plan now active; not stored with
+        // the operation, so a replay never shows an outdated status.
+        const payload =
+          executed.ok && operation === "activate_training_plan" && watchDelivery
+            ? { ...executed, watch_delivery: await watchDelivery() }
+            : executed;
         const version = payload.result?.plan?.version;
         return {
           isError: !payload.ok,
