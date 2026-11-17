@@ -25,6 +25,7 @@ import {
 import { DASHBOARD_CARDS } from "./dashboard-cards.js";
 import { ArnoldRecapSchema } from "./recap-contract.js";
 import { ArnoldScoresSchema } from "./scores-contract.js";
+import { WatchDeliverySchema } from "./watch-contract.js";
 import {
   AnalyticsReasonSchema,
   ComparabilitySchema,
@@ -551,6 +552,12 @@ export const ArnoldDashboardViewSchema = z.object({
       source: z.enum(["timezone", "fallback"]),
     })
     .optional(),
+  /**
+   * Whether the current plan is on the user's watch (UX-007). Only set by a
+   * database source; absent means unknown. The UI shows a line only for
+   * delivered and pending.
+   */
+  watch_delivery: WatchDeliverySchema.optional(),
   totals: z.object({
     workouts_in_history: count,
     workouts_in_period: count,

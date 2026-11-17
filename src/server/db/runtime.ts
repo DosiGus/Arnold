@@ -48,6 +48,7 @@ import type { PostgresIdentityRepository } from "./identity.js";
 import { PostgresOnboardingRepository } from "./onboarding.js";
 import { PostgresArnoldStore } from "./store.js";
 import type { DailyHealthSync } from "../health/sync.js";
+import { watchDelivery } from "../watch/delivery.js";
 
 export interface DatabaseRuntimeOptions {
   db: Database;
@@ -307,6 +308,7 @@ export class DatabaseUserRuntime {
           "Deine Trainingsdaten, gespeichert in deinem Arnold-Konto.",
       }),
       watchRecordings: (ids) => watchRecordings(db, userId, ids),
+      watchDelivery: (dataset) => watchDelivery(db, userId, dataset),
       scoreHealth: (referenceDate, now) =>
         readScoreHealth(db, userId, referenceDate, now),
     };

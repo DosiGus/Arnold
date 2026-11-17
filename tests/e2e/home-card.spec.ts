@@ -306,6 +306,47 @@ test("after today's workout the card shows the saved state", async ({
   ).toContainText("Training gespeichert");
 });
 
+// UX-007: the overview header names the watch state only when it is true.
+for (const [delivery, line] of [
+  ["delivered", "Auf deiner Uhr angekommen"],
+  ["pending", "Noch nicht auf deiner Uhr"],
+  ["no_watch", null],
+  ["unknown", null],
+  [undefined, null],
+] as const)
+  test(`the header follows watch_delivery = ${delivery ?? "absent"}`, async ({
+    page,
+  }) => {
+    await page.route("**/mcp", async (route) => {
+      const body = route.request().postDataJSON();
+      if (
+        body?.params?.name !== "show_arnold_dashboard" &&
+        body?.params?.name !== "get_arnold_dashboard"
+      )
+        return route.continue();
+      const response = await route.fetch();
+      const json = await response.json();
+      if (json.result?.structuredContent) {
+        if (delivery) json.result.structuredContent.watch_delivery = delivery;
+        else delete json.result.structuredContent.watch_delivery;
+      }
+      await route.fulfill({ response, json });
+    });
+    await page.goto(`${BASE}/preview?card=home`);
+    const head = page.locator(".ac-dashboard-head");
+    await expect(head).toContainText("Dein Überblick");
+    if (line) {
+      await expect(head.getByRole("status")).toContainText(line);
+    } else {
+      await expect(head.getByRole("status")).toHaveCount(0);
+      await expect(head).not.toContainText("Uhr");
+    }
+    if (delivery !== "delivered")
+      await expect(page.locator("main")).not.toContainText(
+        "Auf deiner Uhr angekommen",
+      );
+  });
+
 test("'Ich will auch laufen' appears only without a run profile", async ({
   page,
 }) => {

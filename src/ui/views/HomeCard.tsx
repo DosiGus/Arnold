@@ -3,7 +3,11 @@ import { ArrowUpRight, Check, ChevronDown, Plus } from "lucide-react";
 import type { ArnoldDashboardView } from "../../shared/arnold-view";
 import type { WorkoutContext } from "../../shared/workout-contract";
 import { ArnoldCard } from "../components/cards";
-import { CardTag, SayHint } from "../components/conversation-cards";
+import {
+  CardTag,
+  SayHint,
+  StatusLines,
+} from "../components/conversation-cards";
 import { ProgressBar, goalValue } from "../components/home";
 import { HomeActions } from "../components/home-actions";
 import { HomeNextRun } from "../components/home-run";
@@ -178,6 +182,8 @@ export function HomeCard({
           {view.source.synthetic && (
             <span className="ac-caption">Beispieldaten</span>
           )}
+          {/* UX-007: only a proven state; unknown and no watch show nothing. */}
+          <StatusLines saved={false} watch={view.watch_delivery ?? "unknown"} />
         </header>
         {empty && (
           <p className="ac-text">Dein erstes Training ist der Anfang.</p>

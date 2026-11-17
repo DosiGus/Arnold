@@ -171,6 +171,8 @@ export const WATCH_ROUTE_ACCESS: Readonly<Record<string, WatchRouteAccess>> = {
   "GET /plan": "WATCH_READ",
   "GET /plan/sessions/:session_id": "WATCH_READ",
   "GET /plan/recent": "WATCH_READ",
+  // UX-007: the watch confirms the plan mark it has completely loaded.
+  "POST /plan/ack": "WATCH_WRITE",
   "POST /workouts": "WATCH_WRITE",
   "PUT /workouts/:session_uuid/health": "WATCH_WRITE",
   "GET /runs/upcoming": "WATCH_READ",

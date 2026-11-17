@@ -22,6 +22,7 @@ import { DashboardCardSchema } from "../shared/dashboard-cards.js";
 import { guardToolRegistrations } from "./auth/guarded-server.js";
 import type { ArnoldToolGuard } from "./auth/tool-guard.js";
 import type { TrainingPlanService } from "./plan/service.js";
+import type { ArnoldDataset } from "../shared/arnold-schema-v1.js";
 import type { OnboardingService } from "./onboarding/service.js";
 import type { WorkoutLoggingService } from "./workout/service.js";
 /**
@@ -361,6 +362,14 @@ export function createArnoldMcpServer(
     : guarded;
   const sourceLabel = source.label;
   const load = (): Promise<DatasetSnapshot> => source.load();
+  // UX-007: only a database source knows the watches; otherwise absent (unknown).
+  const withWatch = async <T extends object>(
+    dataset: ArnoldDataset,
+    view: T,
+  ) =>
+    source.watchDelivery
+      ? { ...view, watch_delivery: await source.watchDelivery(dataset) }
+      : view;
   const context = (snapshot: DatasetSnapshot) => ({
     generatedAt: snapshot.fetchedAt,
     mode: {
@@ -427,23 +436,26 @@ export function createArnoldMcpServer(
           );
         const now = clock();
         const day = referenceDay(now, input.timezone);
-        const base = withReference(
-          await withRecap(
-            snapshot.dataset,
-            buildDashboardView(
+        const base = await withWatch(
+          snapshot.dataset,
+          withReference(
+            await withRecap(
               snapshot.dataset,
-              {
-                ...context(snapshot),
-                scoreHealth: await scoreHealthOf(source, day.date, now),
-              },
-              {
-                reference_date: day.date,
-              },
+              buildDashboardView(
+                snapshot.dataset,
+                {
+                  ...context(snapshot),
+                  scoreHealth: await scoreHealthOf(source, day.date, now),
+                },
+                {
+                  reference_date: day.date,
+                },
+              ),
+              day.recap_until,
+              logging,
             ),
-            day.recap_until,
-            logging,
+            day,
           ),
-          day,
         );
         const view = input.card
           ? {
@@ -487,32 +499,35 @@ export function createArnoldMcpServer(
         const snapshot = await load();
         const now = clock();
         const day = referenceDay(now, input.timezone);
-        const view = withReference(
-          await withRecap(
-            snapshot.dataset,
-            buildDashboardView(
+        const view = await withWatch(
+          snapshot.dataset,
+          withReference(
+            await withRecap(
               snapshot.dataset,
-              {
-                ...context(snapshot),
-                scoreHealth: await scoreHealthOf(source, day.date, now),
-              },
-              {
-                filter: {
-                  from: input.from ?? null,
-                  to: input.to ?? null,
-                  plan_version_ids: input.plan_version_ids ?? null,
-                  session_ids: input.session_ids ?? null,
-                  exercise_ids: input.exercise_ids ?? null,
+              buildDashboardView(
+                snapshot.dataset,
+                {
+                  ...context(snapshot),
+                  scoreHealth: await scoreHealthOf(source, day.date, now),
                 },
-                reference_date: day.date,
-                weekly_goal_training_days:
-                  input.weekly_goal_training_days ?? null,
-              },
+                {
+                  filter: {
+                    from: input.from ?? null,
+                    to: input.to ?? null,
+                    plan_version_ids: input.plan_version_ids ?? null,
+                    session_ids: input.session_ids ?? null,
+                    exercise_ids: input.exercise_ids ?? null,
+                  },
+                  reference_date: day.date,
+                  weekly_goal_training_days:
+                    input.weekly_goal_training_days ?? null,
+                },
+              ),
+              day.recap_until,
+              logging,
             ),
-            day.recap_until,
-            logging,
+            day,
           ),
-          day,
         );
         const volume = view.kpis.find((k) => k.key === "nominal_volume");
         return result(
@@ -614,7 +629,14 @@ export function createArnoldMcpServer(
 
   registerWorkoutTools(server, source, logging, actorContext);
   registerRecapTool(server, logging, actorContext);
-  registerPlanTools(server, plans, actorContext);
+  registerPlanTools(
+    server,
+    plans,
+    actorContext,
+    source.watchDelivery
+      ? async () => source.watchDelivery!((await load()).dataset)
+      : undefined,
+  );
   registerRunTools(server, runs, actorContext);
   registerRunCardTool(server, runs, resourceUri);
   // Onboarding is its own app resource and tool set. Registering it last keeps
