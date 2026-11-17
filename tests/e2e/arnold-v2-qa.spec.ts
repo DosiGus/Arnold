@@ -13,7 +13,9 @@ test("T3-02: navigating and refreshing settle instead of looping", async ({
   });
   await openCard(page, "home");
   await page.waitForTimeout(400);
-  expect(calls.length).toBeLessThanOrEqual(4);
+  // Two more than before: the card asks once with its time zone, and the
+  // refreshed view reloads the workout context (UX-016).
+  expect(calls.length).toBeLessThanOrEqual(6);
   const before = calls.length;
   await page
     .getByRole("button", { name: /^Plan (ansehen|bearbeiten)$/ })

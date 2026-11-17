@@ -69,6 +69,8 @@ import {
 export type { OnboardingClaim };
 
 export type DashboardQuery = {
+  /** The user's IANA zone, so the server can tell which day is today. */
+  timezone?: string;
   from?: string;
   to?: string;
   plan_version_ids?: string[];

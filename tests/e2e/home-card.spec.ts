@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { callTool } from "./helpers";
 import type { ArnoldDashboardView } from "../../src/shared/arnold-view";
+import { berlinToday } from "../fixtures/berlin-today";
 
 /**
  * The start card: header line, four tiles whose detail opens in the card, and
@@ -22,7 +23,7 @@ const SENTENCES = {
 const tile = (page: Page, name: string) =>
   page.getByRole("button", { name: new RegExp(`^${name}`) });
 const main = (page: Page) => page.locator("main");
-const today = () => new Intl.DateTimeFormat("en-CA").format(new Date());
+const today = () => berlinToday();
 
 const reply = (route: Route, value: unknown) =>
   route.fulfill({
@@ -233,7 +234,11 @@ test("after today's workout the card shows the saved state", async ({
 }) => {
   await page.route("**/mcp", async (route) => {
     const body = route.request().postDataJSON();
-    if (body?.params?.name !== "show_arnold_dashboard") return route.continue();
+    if (
+      body?.params?.name !== "show_arnold_dashboard" &&
+      body?.params?.name !== "get_arnold_dashboard"
+    )
+      return route.continue();
     const response = await route.fetch();
     const json = await response.json();
     const recent = json.result?.structuredContent?.recent_workouts;

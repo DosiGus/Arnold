@@ -16,6 +16,7 @@ import { newTrackerDataset } from "../../src/server/account/catalog";
 import { createHttpApp } from "../../src/server/http";
 import { StaticArnoldDataSource } from "../../src/server/arnold-source";
 import { emptyTrackerDataset, fullDataset } from "./arnold-dashboard";
+import { berlinToday, berlinYesterday } from "./berlin-today";
 
 const common = {
   allowedHosts: ["127.0.0.1", "localhost"],
@@ -111,9 +112,7 @@ createHttpApp({
  */
 createHttpApp({
   ...common,
-  workoutRuntime: createFixturePlanning(
-    demoHistoryDataset(new Date().toISOString().slice(0, 10)),
-  ),
+  workoutRuntime: createFixturePlanning(demoHistoryDataset(berlinToday())),
 }).listen(8804, "127.0.0.1");
 
 /** The training card's "Dauerhaft im Plan", on a plan of its own. */
@@ -143,11 +142,13 @@ for (const port of [8830, 8831])
     "127.0.0.1",
   );
 
-/** UX-006, the recap after a workout: one writable tracker per browser project. */
+/**
+ * UX-006, the recap after a workout (history up to yesterday, so a test's
+ * own workout is always the newest, at any time of day): one writable tracker per browser project. */
 for (const port of [8832, 8833])
   createHttpApp({
     ...common,
     workoutRuntime: createFixturePlanning(
-      demoHistoryDataset(new Date().toISOString().slice(0, 10)),
+      demoHistoryDataset(berlinYesterday()),
     ),
   }).listen(port, "127.0.0.1");

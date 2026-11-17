@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ArnoldDashboardView } from "../shared/arnold-view";
 import type { ArnoldMcpClient } from "./client/ArnoldMcpClient";
 import type { WorkoutContext } from "../shared/workout-contract";
@@ -18,6 +18,15 @@ import { dateTimeLabel } from "./format";
 import { parseCard, shownCard, type CardId } from "./cards";
 import { useModelContext } from "./hooks/useModelContext";
 import { homeContext, pageContext } from "./model-context";
+
+/** The device's IANA time zone, if the browser tells it. */
+function deviceTimeZone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 function previewCard(): CardId | undefined {
   if (typeof window === "undefined") return undefined;
@@ -92,7 +101,26 @@ export function ArnoldDashboardApp({
   );
   const back = useCallback(() => setTrail((t) => t.slice(0, -1)), []);
 
-  const dashboard = useDashboardData(client, {}, initial);
+  // The chat opens the card without a time zone; the card asks again once
+  // with the zone of this device so the server can name today (UX-016).
+  const zone = useMemo(deviceTimeZone, []);
+  const needsZone =
+    zone !== undefined &&
+    (initial.reference?.source !== "timezone" ||
+      initial.reference.timezone !== zone);
+  const dashboard = useDashboardData(
+    client,
+    needsZone ? { timezone: zone } : {},
+    initial,
+  );
+  const reloadDashboard = dashboard.reload;
+  const pushed = useRef(initial.source.generated_at);
+  useEffect(() => {
+    // A newer push from the chat replaces the answer that carried the zone.
+    if (pushed.current === initial.source.generated_at) return;
+    pushed.current = initial.source.generated_at;
+    if (needsZone) reloadDashboard();
+  }, [initial.source.generated_at, needsZone, reloadDashboard]);
   // A fresh host push must still win over an older local response.
   const view = useMemo(() => {
     const loaded = dashboard.data;
