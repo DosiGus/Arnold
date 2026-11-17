@@ -11,7 +11,7 @@ module DesignFaces {
     const WARN as Number = 0xFFAA00;
 
     function count() as Number {
-        return 8;
+        return 8 + DesignLines.count();
     }
 
     function at(index as Number) as InstrumentFace {
@@ -127,6 +127,10 @@ class DesignGalleryView extends WatchUi.View {
     }
 
     function onUpdate(dc as Dc) as Void {
+        if (_index >= 8) {
+            PairingLayout.draw(dc, DesignLines.at(dc, _index - 8));
+            return;
+        }
         Instrument.draw(dc, DesignFaces.at(_index));
     }
 }
@@ -149,5 +153,54 @@ class DesignGalleryDelegate extends WatchUi.BehaviorDelegate {
     function onPreviousPage() as Boolean {
         _view.move(-1);
         return true;
+    }
+}
+
+// UHR-05: the screens built from lines (preview, summaries, home, pre-start, run end) with made-up values,
+// using the same fonts and colours as the real screens.
+(:designGallery)
+module DesignLines {
+    function count() as Number {
+        return 5;
+    }
+
+    function at(dc as Dc, index as Number) as Array<PairingLine> {
+        var out = [] as Array<PairingLine>;
+        var white = Graphics.COLOR_WHITE;
+        if (index == 0) {          // start screen
+            out.add(new PairingLine("Plan: vor 5 Min.", Graphics.FONT_XTINY, Instrument.LABEL).skippable());
+            out.add(new PairingLine("Heute", Graphics.FONT_XTINY, Instrument.LABEL).skippable());
+            out.add(new PairingLine("> Push · 52 Min.", Graphics.FONT_TINY, white));
+            out.add(new PairingLine("Freier Lauf", Graphics.FONT_XTINY, Instrument.LABEL).skippable());
+            out.add(new PairingLine("Zone 2", Graphics.FONT_TINY, Instrument.LABEL));
+            out.add(new PairingLine("1 Training wartet", Graphics.FONT_XTINY, Instrument.WARN));
+        } else if (index == 1) {   // exercise preview
+            out.add(new PairingLine("Übung 2 von 6", Graphics.FONT_XTINY, Instrument.LABEL));
+            out.add(new PairingLine("Überzüge am Kabelzug", Graphics.FONT_MEDIUM, white));
+            out.add(new PairingLine("4 Sätze · 8 × 62,5 kg", Graphics.FONT_SMALL, white));
+            out.add(new PairingLine("Pause 1:30", Graphics.FONT_XTINY, Instrument.LABEL));
+            out.add(new PairingLine("Heute 65 kg versuchen", Graphics.FONT_XTINY, white));
+        } else if (index == 2) {   // strength summary
+            out.add(new PairingLine("Training fertig", Graphics.FONT_MEDIUM, white));
+            out.add(new PairingLine("52 min", Graphics.FONT_SMALL, white));
+            out.add(new PairingLine("18 von 20 Sätzen", Graphics.FONT_XTINY, Instrument.LABEL));
+            out.add(new PairingLine("6 Übungen", Graphics.FONT_XTINY, Instrument.LABEL));
+            out.add(new PairingLine("START: speichern", Graphics.FONT_XTINY, white));
+        } else if (index == 3) {   // pre-start of a run
+            out.add(new PairingLine("Grundlage", Graphics.FONT_TINY, Instrument.LABEL).skippable());
+            out.add(new PairingLine("Zone 2 Lauf", Graphics.FONT_SMALL, white));
+            out.add(new PairingLine("45 min · 3 Abschnitte", Graphics.FONT_TINY, Instrument.LABEL).skippable());
+            out.add(new PairingLine("Draußen", Graphics.FONT_MEDIUM, white));
+            out.add(new PairingLine("GPS gut", Graphics.FONT_TINY, Instrument.OK));
+            out.add(new PairingLine("Puls 58", Graphics.FONT_TINY, Instrument.LABEL));
+            out.add(new PairingLine("START drücken", Graphics.FONT_TINY, Instrument.TRACK).skippable());
+        } else {                   // run summary, page 1
+            RunEndScreens.distanceLines(dc, out, 842000, false);
+            out.add(new PairingLine("Zeit 52:41", Graphics.FONT_MEDIUM, white));
+            out.add(new PairingLine("Ø 6:15 /km", Graphics.FONT_SMALL, white));
+            out.add(new PairingLine("An Arnold gesendet", Graphics.FONT_XTINY, Instrument.OK).skippable());
+            out.add(new PairingLine("Seite 1 von 3", Graphics.FONT_XTINY, Instrument.TRACK).skippable());
+        }
+        return out;
     }
 }

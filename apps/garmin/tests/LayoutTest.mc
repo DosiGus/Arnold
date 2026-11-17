@@ -35,7 +35,9 @@ class LayoutRig {
         for (var i = 0; i < lines.size(); i++) {
             if (lines[i].wide) {
                 found = true;
-                if (!PairingLayout.isBig(dc, lines[i].font)) {
+                // The Instrument digit fonts (PairingLayout.numberLine) are the designed main-number size, narrower than a third of the height.
+                var instrument = lines[i].font == Instrument.bigFont() || lines[i].font == Instrument.midFont() || lines[i].font == Instrument.smallFont();
+                if (!instrument && !PairingLayout.isBig(dc, lines[i].font)) {
                     return false;
                 }
             }
