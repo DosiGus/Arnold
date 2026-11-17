@@ -1,0 +1,6 @@
+<fonts>
+    <font id="NumHero" filename="numhero.fnt" antialias="true"/>
+    <font id="NumBig" filename="numbig.fnt" antialias="true"/>
+    <font id="NumMid" filename="nummid.fnt" antialias="true"/>
+    <font id="NumSmall" filename="numsmall.fnt" antialias="true"/>
+</fonts>
