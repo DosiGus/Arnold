@@ -33,7 +33,7 @@ Die registrierte MCP-Verbindung in ChatGPT hat die ID `plugin_asdk_app_6ae4ff061
 
 Nach Änderungen an den Skills den Plugin-Ordner aktualisieren und die App neu starten. Nach Änderungen an Server-Werkzeugen zusätzlich in ChatGPT „Tools aktualisieren“.
 
-Für die Veröffentlichung fehlen noch Logo-Dateien und die Verknüpfung der Skills mit der registrierten MCP-Verbindung (ID oben).
+Für ein hochgeladenes Paket (Plugins → Hinzufügen → „Plugin-Archiv hochladen“) übernimmt ChatGPT die Server-Adresse nicht aus `mcp.json`, sondern nur über `.app.json`: Sie verweist mit `asdk_app_…` auf die registrierte MCP-Verbindung (ID oben ohne `plugin_`), `plugin.json` nennt sie unter `extensions.com.openai.apps`. ZIP aus dem Ordner `plugins/arnold` ohne README, `version` vorher erhöhen. Seit 17.11.2026 läuft Arnold so mit beiden Skills (Version 0.3.3). Für die öffentliche Einreichung (Portal, „With MCP“) darf `.app.json` nicht im ZIP sein; dort fehlen außerdem noch Logo-Dateien.
 
 ## Testfälle
 
