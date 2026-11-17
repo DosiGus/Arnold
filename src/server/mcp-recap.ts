@@ -19,7 +19,7 @@ export function registerRecapTool(
     "mark_recap_seen",
     {
       description:
-        "Nur für die Übersichtskarte: merkt, dass der Rückblick auf ein abgeschlossenes Training gesehen wurde. Ändert keine Trainingsdaten. Nicht vom Chat aus aufrufen.",
+        "Nur für die Übersichtskarte: merkt, dass der Rückblick auf ein abgeschlossenes Training oder einen abgeschlossenen Lauf gesehen wurde. Ändert keine Trainingsdaten. Nicht vom Chat aus aufrufen.",
       inputSchema: MarkRecapSeenInputSchema,
       outputSchema: MarkRecapSeenOutputSchema,
       annotations: {

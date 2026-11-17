@@ -14,6 +14,8 @@ import {
 } from "../shared/arnold-schema-v1.js";
 import type { ArnoldLoadBasis } from "../shared/arnold-schema-v1.js";
 import type { HomeAnalytics } from "./home.js";
+import { paceSecondsPerKm } from "./running/metrics/run.js";
+import { RUN_TYPE_NAMES } from "./running/catalog.js";
 import { addDays, compareDate, weekStart } from "./period.js";
 
 /** A workout older than this is not "new" any more. */
@@ -95,6 +97,91 @@ export function newestWorkout(
     )
     .at(-1);
   return latest ?? null;
+}
+
+/** What the engine knows about a new run; unknown values are null. */
+export type RunRecapCore = Readonly<{
+  workout_id: string;
+  date: string;
+  title: string;
+  from_watch: boolean;
+  distance_m: number | null;
+  duration_s: number | null;
+  pace_s_per_km: number | null;
+}>;
+
+type Ordered = Readonly<{
+  workout_date_local: string;
+  created_at_utc: string;
+  workout_id: string;
+}>;
+const compareOrder = (a: Ordered, b: Ordered) =>
+  compareDate(a.workout_date_local, b.workout_date_local) ||
+  (a.created_at_utc === b.created_at_utc
+    ? 0
+    : a.created_at_utc < b.created_at_utc
+      ? -1
+      : 1) ||
+  (a.workout_id < b.workout_id ? -1 : a.workout_id > b.workout_id ? 1 : 0);
+
+/** The most recent completed run, if it is recent enough (UX-014). */
+export function newestRun(
+  dataset: Pick<ArnoldDataset, "workouts" | "runs">,
+  referenceDate: string | null,
+  maxAgeDays = RECAP_MAX_AGE_DAYS,
+) {
+  if (referenceDate === null) return null;
+  const oldest = addDays(referenceDate, -maxAgeDays);
+  const runs = new Map((dataset.runs ?? []).map((r) => [r.workout_id, r]));
+  const latest = dataset.workouts
+    .filter(
+      (w) =>
+        w.status === "completed" &&
+        w.activity_type === "run" &&
+        runs.has(w.workout_id) &&
+        compareDate(w.workout_date_local, referenceDate) <= 0 &&
+        compareDate(w.workout_date_local, oldest) >= 0,
+    )
+    .sort(compareOrder)
+    .at(-1);
+  return latest ? { workout: latest, run: runs.get(latest.workout_id)! } : null;
+}
+
+/**
+ * Which kind of workout the recap is about: with a new strength workout and a
+ * new run, the younger one. The other one gets no receipt, so it stays unseen.
+ */
+export function recapKind(
+  dataset: Pick<ArnoldDataset, "workouts" | "runs">,
+  referenceDate: string | null,
+): "strength" | "run" | null {
+  const strength = newestWorkout(dataset, referenceDate);
+  const run = newestRun(dataset, referenceDate);
+  if (strength && run)
+    return compareOrder(run.workout, strength) > 0 ? "run" : "strength";
+  return run ? "run" : strength ? "strength" : null;
+}
+
+/** Distance, duration and pace of the newest run; only what is stored. */
+export function computeRunRecap(
+  dataset: Pick<ArnoldDataset, "workouts" | "runs">,
+  referenceDate: string | null,
+): RunRecapCore | null {
+  const found = newestRun(dataset, referenceDate);
+  if (!found) return null;
+  const { workout, run } = found;
+  const pace = paceSecondsPerKm(run.timer_s, run.distance_m).value;
+  return {
+    workout_id: workout.workout_id,
+    date: workout.workout_date_local,
+    title:
+      workout.session_name_snapshot?.trim() || RUN_TYPE_NAMES[run.run_type],
+    from_watch: !!workout.client_session_id,
+    distance_m:
+      run.distance_m !== null && run.distance_m > 0 ? run.distance_m : null,
+    duration_s: run.timer_s !== null && run.timer_s > 0 ? run.timer_s : null,
+    pace_s_per_km: pace,
+  };
 }
 
 const DECISION_RANK = { increase: 0, reduce: 1, more_reps: 2 } as const;

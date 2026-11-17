@@ -434,14 +434,16 @@ export function HomeCard({
             </section>
           )}
         </div>
-        <button
-          type="button"
-          className="ac-link ac-dashboard-progress"
-          onClick={() => onOpen("stats")}
-        >
-          Trainingsentwicklung ansehen
-          <ArrowUpRight size={14} aria-hidden="true" />
-        </button>
+        {open !== "scores" && (
+          <button
+            type="button"
+            className="ac-link ac-dashboard-progress"
+            onClick={() => onOpen("stats")}
+          >
+            Trainingsentwicklung ansehen
+            <ArrowUpRight size={14} aria-hidden="true" />
+          </button>
+        )}
         {client && noRunProfile && (
           <p className="ac-home-runoffer">
             <button
