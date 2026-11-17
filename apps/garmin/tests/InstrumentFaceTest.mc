@@ -145,7 +145,11 @@ function setFaceSecondPageShowsTheHeartRateAndLastTime(logger as Logger) as Bool
     Expect.equal(none.hero, "–");
     Test.assertMessage(!(none.hero as String).equals("0"), "never 0");
     // without a last time: the word "Heart rate" on top
-    var plain = FaceText.rigWith([[1, 8, 60000]] as Array, false);
+    var day = PlayerRig.dayBody(true);
+    PlayerRig.change(day, "items", 0, "l", null);
+    var plain = new PlayerRig(true);
+    plain.session = TrainingSession.start(day, plain.journal, plain.clock, plain.signals);
+    plain.toFirstSet();
     Expect.equal(SetScreen.face(plain.session, 90, 1).top[0], TrainingText.text(Rez.Strings.UhrPulse));
     return true;
 }
