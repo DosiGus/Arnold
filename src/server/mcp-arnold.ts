@@ -52,6 +52,7 @@ import {
 import {
   ArnoldSourceError,
   classifyFailure,
+  scoreHealthOf,
   type ArnoldDataSource,
   type DatasetSnapshot,
 } from "./arnold-source.js";
@@ -433,6 +434,7 @@ export function createArnoldMcpServer(
             "Dieses Training gibt es in deinen Daten nicht. Trainings-ID aus get_arnold_workouts nehmen oder die Karte history ohne workout_id öffnen.",
             "reload_then_retry",
           );
+<<<<<<< HEAD
         const day = referenceDay(clock(), input.timezone);
         const base = await withWatch(
           snapshot.dataset,
@@ -446,6 +448,25 @@ export function createArnoldMcpServer(
               logging,
             ),
             day,
+=======
+        const now = clock();
+        const day = referenceDay(now, input.timezone);
+        const base = withReference(
+          await withRecap(
+            snapshot.dataset,
+            buildDashboardView(
+              snapshot.dataset,
+              {
+                ...context(snapshot),
+                scoreHealth: await scoreHealthOf(source, day.date, now),
+              },
+              {
+                reference_date: day.date,
+              },
+            ),
+            day.recap_until,
+            logging,
+>>>>>>> origin/main
           ),
         );
         const view = input.card
@@ -488,6 +509,7 @@ export function createArnoldMcpServer(
     async (input) => {
       try {
         const snapshot = await load();
+<<<<<<< HEAD
         const day = referenceDay(clock(), input.timezone);
         const view = await withWatch(
           snapshot.dataset,
@@ -495,6 +517,20 @@ export function createArnoldMcpServer(
             await withRecap(
               snapshot.dataset,
               buildDashboardView(snapshot.dataset, context(snapshot), {
+=======
+        const now = clock();
+        const day = referenceDay(now, input.timezone);
+        const view = withReference(
+          await withRecap(
+            snapshot.dataset,
+            buildDashboardView(
+              snapshot.dataset,
+              {
+                ...context(snapshot),
+                scoreHealth: await scoreHealthOf(source, day.date, now),
+              },
+              {
+>>>>>>> origin/main
                 filter: {
                   from: input.from ?? null,
                   to: input.to ?? null,
@@ -505,11 +541,18 @@ export function createArnoldMcpServer(
                 reference_date: day.date,
                 weekly_goal_training_days:
                   input.weekly_goal_training_days ?? null,
+<<<<<<< HEAD
               }),
               day.recap_until,
               logging,
             ),
             day,
+=======
+              },
+            ),
+            day.recap_until,
+            logging,
+>>>>>>> origin/main
           ),
         );
         const volume = view.kpis.find((k) => k.key === "nominal_volume");

@@ -15,6 +15,13 @@ import { prepareAnalyticsInput, type PreparedInput } from "./eligibility.js";
 import { isCalendarDate } from "./period.js";
 import { computePlanAdherence } from "./plans.js";
 import { computeHome, type HomeAnalytics } from "./home.js";
+import {
+  computeScores,
+  scoreInputOf,
+  scoreRunsOf,
+  type ScoreHealthInput,
+  type Scores,
+} from "./scores.js";
 import { computeExerciseProgress } from "./progress.js";
 import { computeDataQuality } from "./quality.js";
 import { computeRecords } from "./records.js";
@@ -172,4 +179,38 @@ export function buildHomeAnalytics(
     (options.reference_date ?? null) !== null,
   );
   return computeHome(input, options.weekly_goal_training_days ?? null, runs);
+}
+
+/**
+ * The three scores of the overview (UX-009). All history, no filter. Runs come
+ * from the dataset itself or, after the strength-only view, from the summaries
+ * the loader carried along.
+ */
+export function buildScores(
+  dataset: ArnoldDataset,
+  options: {
+    reference_date: string | null;
+    weekly_goal_training_days: number | null;
+    health: ScoreHealthInput;
+  },
+): Scores {
+  const carried = dataset as DatasetWithRunDays;
+  const own = scoreRunsOf(dataset);
+  const seen = new Set(own.map((r) => r.workout_id));
+  const runs = [
+    ...own,
+    ...(carried.runScoreInputs ?? []).filter((r) => !seen.has(r.workout_id)),
+  ];
+  const input = prepareAnalytics(strengthTrainingView(dataset), {
+    reference_date: options.reference_date,
+  });
+  return computeScores(
+    scoreInputOf(input, {
+      reference_date: options.reference_date,
+      weekly_goal: options.weekly_goal_training_days,
+      runs,
+      run_dates: runTrainingDatesOf(carried),
+      health: options.health,
+    }),
+  );
 }

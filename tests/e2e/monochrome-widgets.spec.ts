@@ -5,7 +5,7 @@ import type { WorkoutContext } from "../../src/shared/workout-contract";
 
 const BASE = "http://127.0.0.1:8804";
 
-test("demo scores are explicitly illustrative and never write training data", async ({
+test("scores are computed by the server and never write training data", async ({
   page,
 }) => {
   const writes: string[] = [];
@@ -17,13 +17,13 @@ test("demo scores are explicitly illustrative and never write training data", as
   await openCard(page, "home", BASE);
   await page.getByRole("button", { name: /^Scores/ }).click();
   const scores = page.getByRole("region", {
-    name: "Demo-Scores im Detail",
+    name: "Scores im Detail",
     exact: true,
   });
   await expect(scores.getByRole("img")).toHaveCount(3);
-  await expect(scores.getByText("Demo", { exact: true })).toHaveCount(3);
-  await expect(scores).toContainText("frei gewählte Demo-Werte");
-  await expect(scores).toContainText("kein Health-Gerät angebunden");
+  for (const name of ["Konstanz", "Fortschritt", "Erholung"])
+    await expect(scores).toContainText(name);
+  await expect(scores).not.toContainText(/Demo-|Recovery|Progress/);
   await page.getByRole("button", { name: /^Woche/ }).click();
   await expect(
     page

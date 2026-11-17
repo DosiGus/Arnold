@@ -13,6 +13,7 @@ import {
   runTrainingDates,
   type DatasetWithRunDays,
 } from "../analytics/activity.js";
+import { scoreRunsOf, type ScoreHealthInput } from "../analytics/scores.js";
 import type { Recovery } from "../shared/write-recovery.js";
 import type { ArnoldDataset } from "../shared/arnold-schema-v1.js";
 import type { WatchDelivery } from "../shared/watch-contract.js";
@@ -76,11 +77,36 @@ export interface ArnoldDataSource {
     clientSessionIds: readonly string[],
   ): Promise<readonly WatchRecordingData[]>;
   /**
+<<<<<<< HEAD
    * UX-007: whether this dataset's plan is on the user's watch, from the
    * marks the watches confirmed. Only a database source has watches; never
    * throws (a failure is `unknown`).
    */
   watchDelivery?(dataset: ArnoldDataset): Promise<WatchDelivery>;
+=======
+   * Watch values for the recovery score (UX-009), only the caller's own and
+   * only with active consent. Only a database source has them.
+   */
+  scoreHealth?(referenceDate: string, now: Date): Promise<ScoreHealthInput>;
+}
+
+/**
+ * The watch values for the scores, failing safe: a source without them has
+ * no consent to speak of, and a failed read counts as "unavailable" so only
+ * the training part is used. Never a guessed value.
+ */
+export async function scoreHealthOf(
+  source: Pick<ArnoldDataSource, "scoreHealth">,
+  referenceDate: string,
+  now: Date,
+): Promise<ScoreHealthInput> {
+  if (!source.scoreHealth) return { status: "no_consent" };
+  try {
+    return await source.scoreHealth(referenceDate, now);
+  } catch {
+    return { status: "unavailable" };
+  }
+>>>>>>> origin/main
 }
 
 /** One watch recording as stored (UMSETZUNG §3.3, §3.4); gaps stay null. */
@@ -142,9 +168,16 @@ export function storeSource(
       // the dates are read here, from this user's own rows, and travel with
       // the strength-only dataset.
       const runDays = runTrainingDates(parsed.data);
+      // The scores (UX-009) also need distance, duration and type of the
+      // completed runs; nothing else reads these summaries.
+      const runScores = scoreRunsOf(parsed.data);
       const strength = strengthTrainingView(parsed.data);
       const dataset: DatasetWithRunDays = runDays.length
-        ? { ...strength, runTrainingDates: runDays }
+        ? {
+            ...strength,
+            runTrainingDates: runDays,
+            ...(runScores.length ? { runScoreInputs: runScores } : {}),
+          }
         : strength;
       return {
         // Dashboard, analytics and workout lists read strength training

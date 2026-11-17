@@ -24,6 +24,7 @@ import {
 } from "./arnold-schema-v1.js";
 import { DASHBOARD_CARDS } from "./dashboard-cards.js";
 import { ArnoldRecapSchema } from "./recap-contract.js";
+import { ArnoldScoresSchema } from "./scores-contract.js";
 import { WatchDeliverySchema } from "./watch-contract.js";
 import {
   AnalyticsReasonSchema,
@@ -534,6 +535,11 @@ export const ArnoldDashboardViewSchema = z.object({
    * not yet seen workout; absent or null otherwise.
    */
   recap: ArnoldRecapSchema.nullable().optional(),
+  /**
+   * Konstanz, Fortschritt, Erholung (UX-009), from `src/analytics/scores.ts`.
+   * Additive: absent in payloads from before UX-009.
+   */
+  scores: ArnoldScoresSchema.optional(),
   /**
    * Which calendar day "today" is for this view (UX-016). `timezone` when the
    * request named the user's zone; `fallback` (UTC day, no "today" marker)

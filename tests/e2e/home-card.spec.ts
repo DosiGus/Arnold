@@ -113,12 +113,64 @@ test("a tile opens its detail in the same card, only one at a time", async ({
   await tile(page, "Rekorde").click();
   await expect(page.locator(".ac-home-detail")).toHaveCount(0);
   await tile(page, "Scores").click();
-  const scores = page.getByRole("region", { name: "Demo-Scores im Detail" });
-  await expect(scores).toContainText("frei gewählte Demo-Werte");
+  const scores = page.getByRole("region", { name: "Scores im Detail" });
+  await expect(scores).toContainText("Konstanz");
   await tile(page, "Ziele").click();
   await expect(
     page.getByRole("region", { name: "Ziele im Detail" }),
   ).toBeVisible();
+});
+
+test("the scores tile shows the server's values, each with its sentence", async ({
+  page,
+}) => {
+  await page.goto(`${BASE}/preview?card=home`);
+  const view = (await callTool(
+    page,
+    "get_arnold_dashboard",
+    {},
+  )) as ArnoldDashboardView;
+  const s = view.scores!;
+  const shown = [s.consistency, s.progress, s.recovery].map((x) =>
+    x.value === null ? "–" : String(x.value),
+  );
+  await expect(tile(page, "Scores")).toContainText(shown.join(" · "));
+  await expect(tile(page, "Scores")).toContainText(
+    "Konstanz · Fortschritt · Erholung",
+  );
+  await tile(page, "Scores").click();
+  const detail = page.getByRole("region", { name: "Scores im Detail" });
+  const items = detail.getByRole("listitem");
+  await expect(items).toHaveCount(3);
+  await expect(items.nth(0)).toContainText("Konstanz:");
+  await expect(items.nth(1)).toContainText("Fortschritt:");
+  await expect(items.nth(2)).toContainText("Erholung:");
+  if (s.consistency.status === "ok")
+    await expect(items.nth(0)).toContainText(
+      `In ${s.consistency.weeks_goal_met} von ${s.consistency.weeks_counted} Wochen Wochenziel erreicht.`,
+    );
+  // The fixture has no watch: recovery is estimated from training only.
+  if (s.recovery.status === "ok")
+    await expect(items.nth(2)).toContainText(
+      "Nur aus deinem Training geschätzt.",
+    );
+  await expect(detail).not.toContainText(/Demo-|NaN|undefined|null/);
+});
+
+test("a new account sees too little data in the scores, never 0", async ({
+  page,
+}) => {
+  await page.goto(`${EMPTY}/preview?card=home`);
+  await expect(tile(page, "Scores")).toContainText("– · – · –");
+  await tile(page, "Scores").click();
+  const detail = page.getByRole("region", { name: "Scores im Detail" });
+  await expect(detail.getByText("zu wenig Daten", { exact: true })).toHaveCount(
+    3,
+  );
+  await expect(detail).toContainText(
+    "Noch zu wenig Daten: Es gibt noch kein Training.",
+  );
+  await expect(detail).not.toContainText(/\b0 von 100|Demo-/);
 });
 
 test("tiles work by keyboard and show a focus ring", async ({ page }) => {
@@ -344,6 +396,12 @@ for (const theme of ["light", "dark"] as const) {
       await tile(page, "Rekorde").click();
       await page.screenshot({
         path: join(dir, `UX-002-${theme === "light" ? "hell" : "dunkel"}.png`),
+        fullPage: true,
+      });
+      await page.goto(`${BASE}/preview?card=home`);
+      await tile(page, "Scores").click();
+      await page.screenshot({
+        path: join(dir, `UX-009-${theme === "light" ? "hell" : "dunkel"}.png`),
         fullPage: true,
       });
     }
