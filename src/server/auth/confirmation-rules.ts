@@ -147,6 +147,22 @@ export const CONFIRMATION_RULES: Readonly<Record<string, ConfirmationEntry>> = {
     rule: "ask_in_chat",
     reason: "Verwirft einen Planentwurf.",
   },
+  // UX-008 adjustment for a while.
+  get_plan_adjustments: read,
+  create_plan_adjustment: {
+    rule: "direct",
+    reason:
+      "Legt nur einen Entwurf an; er gilt erst nach Klick oder ausdrücklichem Ja.",
+  },
+  confirm_plan_adjustment: {
+    rule: "ask_in_chat",
+    reason:
+      "Ändert für den Zeitraum, wonach trainiert wird; danach gilt wieder der normale Plan.",
+  },
+  cancel_plan_adjustment: {
+    rule: "ask_in_chat",
+    reason: "Sagt die Anpassung ab; ab sofort gilt wieder der normale Plan.",
+  },
 
   // Onboarding
   show_arnold_onboarding: read,

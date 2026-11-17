@@ -1,5 +1,12 @@
 import { useId, useState, type CSSProperties, type ReactNode } from "react";
-import { ArrowUpRight, Check, ChevronDown, Plus } from "lucide-react";
+import {
+  ArrowUpRight,
+  CalendarClock,
+  Check,
+  ChevronDown,
+  Plus,
+} from "lucide-react";
+import { formatShortDay } from "../../shared/arnold-format";
 import type { ArnoldDashboardView } from "../../shared/arnold-view";
 import type { WorkoutContext } from "../../shared/workout-contract";
 import { ArnoldCard } from "../components/cards";
@@ -217,6 +224,24 @@ export function HomeCard({
             <p className="ac-home-saved">
               <Check size={16} aria-hidden="true" />
               Training gespeichert
+            </p>
+          )}
+          {view.adjustment && (
+            <p className="ac-home-adjustment" role="note">
+              <CalendarClock size={16} aria-hidden="true" />
+              <span>
+                Anpassung auf Zeit bis{" "}
+                {formatShortDay(view.adjustment.end_date_local)}. Ab{" "}
+                {formatShortDay(view.adjustment.normal_from)} gilt wieder dein
+                normaler Plan.{" "}
+                <button
+                  type="button"
+                  className="ac-link"
+                  onClick={() => onOpen("plan_adjustment")}
+                >
+                  Ansehen
+                </button>
+              </span>
             </p>
           )}
           {client && (

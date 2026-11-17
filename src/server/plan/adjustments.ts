@@ -40,6 +40,7 @@ import {
   type PlanAdjustmentWriteResponse,
 } from "../../shared/plan-adjustment-contract.js";
 import { recoveryFor } from "../../shared/write-recovery.js";
+import { formatShortDay } from "../../shared/arnold-format.js";
 import { prepareAnalyticsInput } from "../../analytics/eligibility.js";
 import { nextSession } from "../../analytics/home.js";
 import { addDays, daysBetween } from "../../analytics/period.js";
@@ -108,14 +109,8 @@ function toAdjustmentError(error: unknown): AdjustmentError {
   );
 }
 
-/** "Mo., 24.11." — short, readable aloud. */
-export function dayLabel(date: string): string {
-  const [y, m, d] = date.split("-").map(Number) as [number, number, number];
-  const weekday = ["So.", "Mo.", "Di.", "Mi.", "Do.", "Fr.", "Sa."][
-    new Date(Date.UTC(y, m - 1, d)).getUTCDay()
-  ];
-  return `${weekday} ${String(d).padStart(2, "0")}.${String(m).padStart(2, "0")}.`;
-}
+/** "Mo. 24.11." — short, readable aloud (src/shared/arnold-format.ts). */
+export const dayLabel = formatShortDay;
 
 const ALL = {
   from: null,
