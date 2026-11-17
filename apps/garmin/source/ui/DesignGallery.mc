@@ -227,17 +227,42 @@ class GallerySource extends RunSource {
 
 (:designGallery)
 module RunGalleryFaces {
+    const TICKS_PER_FRAME as Number = 4;     // more in one frame trips the watchdog of the simulator
+    var _index as Number = -1;
+    var _session as RunSession or Null = null;
+    var _target as Number = 0;
+    var _ticked as Number = 0;
+
     function count() as Number {
         return 4;
     }
 
     function at(index as Number) as InstrumentFace {
+        if (index != _index || _session == null) {
+            build(index);
+        }
+        var session = _session as RunSession;
+        var n = 0;
+        while (_ticked < _target && n < TICKS_PER_FRAME) {
+            session.tick();
+            _ticked++;
+            n++;
+        }
+        if (_ticked < _target) {
+            WatchUi.requestUpdate();           // the run of the picture is still being made up
+        } else if (index == 3 && !session.isPaused()) {
+            session.pause();
+        }
+        return RunFaces.first(session);
+    }
+
+    function build(index as Number) as Void {
         var source = new GallerySource();
         var store = new GalleryStore();
         var parts = new RunParts(new RunJournal(store), new PairingClock(), new Settings(store), source, new GalleryBackend(), null,
             [100, 120, 140, 160, 180, 200] as Array<Number>);
-        var body = { "k" => 1, "n" => "Zone 2", "e" => 0, "s" => [[1, 1, 2700, 1, 2, 2]] as Array } as Dictionary;
-        var seconds = 738;
+        var body = { "k" => 1, "n" => "Zone 2", "e" => 0, "s" => [[1, 1, 150, 1, 2, 2]] as Array } as Dictionary;
+        var seconds = 41;
         if (index == 0) {
             source.hr = 130;
             source.speed = 274;                  // 6:05 /km
@@ -245,18 +270,14 @@ module RunGalleryFaces {
             source.hr = 162;
             source.speed = 287;                  // 5:48 /km
         } else {
-            body = { "k" => 6, "n" => "Intervalle", "e" => 0, "s" => [[1, 1, 180, 2, 270, 285], [2, 1, 120, 0, 0, 0]] as Array, "rp" => [[0, 1, 6]] as Array } as Dictionary;
+            body = { "k" => 6, "n" => "Intervalle", "e" => 0, "s" => [[1, 1, 20, 2, 270, 285], [2, 1, 15, 0, 0, 0]] as Array, "rp" => [[0, 1, 6]] as Array } as Dictionary;
             source.speed = 363;                  // 4:35 /km
-            seconds = index == 2 ? 2 * 300 + 77 : 300 + 40;
+            seconds = index == 2 ? 2 * 35 + 8 : 35 + 5;
         }
         var model = new PreStartModel(new PreStartRequest(PreStartRequest.MODE_PLANNED, "gallery", body));
-        var session = RunSession.start(model, parts) as RunSession;
-        for (var i = 0; i < seconds; i++) {
-            session.tick();
-        }
-        if (index == 3) {
-            session.pause();
-        }
-        return RunFaces.first(session);
+        _session = RunSession.start(model, parts);
+        _index = index;
+        _target = seconds;
+        _ticked = 0;
     }
 }

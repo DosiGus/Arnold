@@ -85,10 +85,8 @@ module RunFaces {
         if (fit != RunSession.FIT_NONE && fit != RunSession.FIT_OK) {
             face.bottom = word(type, fit);
             face.bottomColor = WARN;
-        } else if (type == 4) {
-            face.bottom = Lang.format(HomeScreen.text(Rez.Strings.RunEffortRange), [low, high]);    // shorter than RunText.target: German must fit
-        } else if (type == 2) {
-            face.bottom = RunText.target(type, low, high);
+        } else if (type == 2 || type == 4) {
+            face.bottom = targetShort(type, low, high);
         } else {
             face.bottom = progressText(session);
         }
@@ -181,10 +179,8 @@ module RunFaces {
         if (fit != RunSession.FIT_NONE && fit != RunSession.FIT_OK) {
             face.bottom = word(type, fit);
             face.bottomColor = WARN;
-        } else if (type == 4) {
-            face.bottom = Lang.format(HomeScreen.text(Rez.Strings.RunEffortRange), [low, high]);
         } else if (type != 0) {
-            face.bottom = RunText.target(type, low, high);
+            face.bottom = targetShort(type, low, high);
         } else {
             face.bottom = Lang.format(HomeScreen.text(Rez.Strings.RunHeartLine), [heartText(session)]);
         }
@@ -253,6 +249,20 @@ module RunFaces {
             face.bottom = (hint as RunAlertHint).text;
             face.bottomColor = Graphics.COLOR_WHITE;
         }
+    }
+
+    // The target in few letters: the bottom line sits where the ring bends in ("Ziel 4:30–4:45", not "... /km").
+    function targetShort(type as Number, low as Number, high as Number) as String {
+        if (type == 2) {
+            return Lang.format(HomeScreen.text(Rez.Strings.RunTargetShort), [pace(low) + "–" + pace(high)]);
+        }
+        if (type == 3) {
+            return Lang.format(HomeScreen.text(Rez.Strings.RunBpmRange), [low, high]);
+        }
+        if (type == 4) {
+            return Lang.format(HomeScreen.text(Rez.Strings.RunEffortRange), [low, high]);
+        }
+        return RunText.target(type, low, high);
     }
 
     // How the value stands against the target; FIT_NONE without a target or without the value.

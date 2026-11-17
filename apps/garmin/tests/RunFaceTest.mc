@@ -100,7 +100,7 @@ function intervalWorkShowsRestPaceTargetAndPartialRing(logger as Logger) as Bool
     Test.assertMessage("2:40".equals(f.left) && FaceRig.text(Rez.Strings.RunUnitLeft).equals(f.leftUnit), f.left + "|" + f.leftUnit);
     Test.assertMessage("4:37".equals(f.right), FaceRig.s(f.right));
     Test.assertEqual(f.rightColor, 0x55FF55);
-    Test.assertMessage(RunText.target(2, 270, 285).equals(f.bottom), FaceRig.s(f.bottom));
+    Test.assertMessage(RunFaces.targetShort(2, 270, 285).equals(f.bottom), FaceRig.s(f.bottom));
     Test.assertEqual(f.bottomColor, Graphics.COLOR_LT_GRAY);
     Test.assertEqual(f.ring, InstrumentFace.RING_SEGMENTS);
     Test.assertEqual(f.segments, 6);

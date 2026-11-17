@@ -131,7 +131,7 @@ module ViewRig {
         Test.assertMessage(dc.getTextWidthInPixels(top, Graphics.FONT_TINY) <= room, label + " top '" + top + "'");
         var bottom = face.bottom;
         if (bottom != null) {
-            Test.assertMessage(dc.getTextWidthInPixels(bottom as String, Graphics.FONT_TINY) <= room, label + " bottom '" + bottom + "'");
+            Test.assertMessage(dc.getTextWidthInPixels(bottom as String, Graphics.FONT_TINY) <= Instrument.scale(dc, 190), label + " bottom '" + bottom + "'");
         }
         Test.assertMessage(face.left != null && face.right != null, label + " has a pair");
         var font = Instrument.smallFont();
