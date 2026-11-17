@@ -14,6 +14,8 @@ export const DASHBOARD_CARDS = [
   "plan",
   // The difference between the active plan and an open draft, with one button.
   "plan_change",
+  // UX-008: the adjustment for a while waiting for its yes, or running.
+  "plan_adjustment",
   "stats",
   "goals",
   "records",
@@ -23,5 +25,5 @@ export type DashboardCard = (typeof DASHBOARD_CARDS)[number];
 export const DashboardCardSchema = z
   .enum(DASHBOARD_CARDS)
   .describe(
-    "Welche Karte gezeigt wird: home = Startansicht mit Training, Fortschritt, Zielen und Rekorden (Standard, wenn der Nutzer Arnold einfach öffnet), today = heutiges Training starten und Sätze eintragen, week = wie home (ältere Bezeichnung), stats = Fortschritt mit Serie, Jahreszahlen und Muskelgruppen, goals = Ziele mit Körpergewicht und Übungszielen, records = alle Rekorde, progress = Verlauf einer einzelnen Übung, history = vergangene Trainings, plan = Trainingsplan ansehen und bearbeiten, plan_change = nach einer gewünschten Planänderung (Entwurf angelegt) nur die Unterschiede zum aktiven Plan mit dem Knopf „Übernehmen“.",
+    "Welche Karte gezeigt wird: home = Startansicht mit Training, Fortschritt, Zielen und Rekorden (Standard, wenn der Nutzer Arnold einfach öffnet), today = heutiges Training starten und Sätze eintragen, week = wie home (ältere Bezeichnung), stats = Fortschritt mit Serie, Jahreszahlen und Muskelgruppen, goals = Ziele mit Körpergewicht und Übungszielen, records = alle Rekorde, progress = Verlauf einer einzelnen Übung, history = vergangene Trainings, plan = Trainingsplan ansehen und bearbeiten, plan_change = nach einer gewünschten Planänderung (Entwurf angelegt) nur die Unterschiede zum aktiven Plan mit dem Knopf „Übernehmen“, plan_adjustment = nach create_plan_adjustment die Anpassung auf Zeit mit Zeitraum, Unterschied alt → neu und dem Knopf „Bestätigen“.",
   );

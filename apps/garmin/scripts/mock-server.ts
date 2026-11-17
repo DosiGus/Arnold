@@ -211,6 +211,7 @@ export function createMockState(fixtures: ReturnType<typeof loadFixtures>) {
     token: null as string | null,
     deviceId: null as string | null,
     healthConsent: true,
+    planAck: null as string | null,
     runs: mockRuns(),
     workouts: new Map<
       string,
@@ -302,7 +303,7 @@ function route(
   }
 
   const isWatchRoute =
-    /^\/(device|plan|plan\/recent|plan\/sessions\/[^/]+|runs|runs\/[^/]+|workouts|workouts\/[^/]+\/health)$/.test(
+    /^\/(device|plan|plan\/recent|plan\/ack|plan\/sessions\/[^/]+|runs|runs\/[^/]+|workouts|workouts\/[^/]+\/health)$/.test(
       path,
     );
   if (!isWatchRoute) return null;
@@ -332,6 +333,17 @@ function route(
   };
   if (method === "GET" && path === "/plan") return cached(state.directory);
   if (method === "GET" && path === "/plan/recent") return cached(state.recent);
+  // UX-007: the watch confirms the plan mark after a complete sync.
+  if (method === "POST" && path === "/plan/ack") {
+    const v = body?.v;
+    if (typeof v !== "string" || !/^[0-9a-f]{16}$/.test(v))
+      return {
+        status: 422,
+        body: errorBody("VALIDATION_ERROR", "Ungültige Marke."),
+      };
+    state.planAck = v;
+    return { status: 200, body: { ...envelope, v } };
+  }
   const day = /^\/plan\/sessions\/([^/]+)$/.exec(path);
   if (method === "GET" && day) {
     const session = state.sessions.get(decodeURIComponent(day[1]!));

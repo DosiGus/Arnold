@@ -37,7 +37,18 @@ export const RecapSuggestionSchema = z.strictObject({
   last_reps: count,
 });
 
+/** Facts of a new run (UX-014); a value the server does not know is left out. */
+export const RecapRunSchema = z.strictObject({
+  distance_m: z.number().positive().finite().nullable(),
+  duration_s: z.number().positive().finite().nullable(),
+  pace_s_per_km: z.number().positive().finite().nullable(),
+});
+
 export const ArnoldRecapSchema = z.strictObject({
+  /** Absent means a strength workout (before UX-014). */
+  kind: z.enum(["strength", "run"]).optional(),
+  /** Only for kind "run"; strength fields are then empty and not shown. */
+  run: RecapRunSchema.optional(),
   workout_id: ArnoldIdSchema,
   date: z.iso.date(),
   title: z.string().min(1),

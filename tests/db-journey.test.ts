@@ -566,6 +566,103 @@ describe("signed-in users with the database", () => {
     ).not.toContain(workout_id);
   });
 
+  it("says the plan is on the watch only after the watch confirmed it (UX-007)", async () => {
+    const carol = `carol-${randomUUID()}`;
+    const dave = `dave-${randomUUID()}`;
+    await setup(carol);
+    await setup(dave);
+    const delivery = async (subject: string) =>
+      (
+        (await call(subject, "get_arnold_dashboard", {})).structuredContent as {
+          watch_delivery?: string;
+        }
+      ).watch_delivery;
+    expect(await delivery(carol)).toBe("no_watch");
+
+    const identities = new PostgresIdentityRepository(db);
+    const userId = (await identities.find(issuer, carol))!.user.user_id;
+    const sha = (v: string) => createHash("sha256").update(v).digest();
+    const device = sha(randomUUID()),
+      code = sha(randomUUID()),
+      token = newWatchToken();
+    await db.query("select * from arnold.start_watch_pairing($1,$2,$3,600)", [
+      device,
+      code,
+      "Forerunner 255",
+    ]);
+    await db.asUser(userId, (c) =>
+      c.query("select * from arnold.approve_watch_pairing($1,$2)", [
+        code,
+        "Europe/Berlin",
+      ]),
+    );
+    await db.query("select * from arnold.redeem_watch_pairing($1,$2,$3)", [
+      device,
+      hashWatchToken(token),
+      `wdv_${randomUUID()}`,
+    ]);
+    const watch = (path: string, version: string, body?: unknown) =>
+      fetch(`${base}/api/watch/v1${path}`, {
+        method: body === undefined ? "GET" : "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "accept-language": "en",
+          "x-arnold-watch": `${version}/006-B3992-00`,
+          ...(body === undefined ? {} : { "content-type": "application/json" }),
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    // An old watch app loads the plan but cannot confirm: unknown.
+    const old = await (await watch("/plan", "0.1.0")).json();
+    expect(old.v).toMatch(/^[0-9a-f]{16}$/);
+    expect(await delivery(carol)).toBe("unknown");
+    // The new app loads (in English) and confirms: delivered.
+    const directory = await (await watch("/plan", "0.2.0")).json();
+    expect(await delivery(carol)).toBe("pending");
+    const ack = await watch("/plan/ack", "0.2.0", { v: directory.v });
+    expect(ack.status, await ack.clone().text()).toBe(200);
+    expect(await delivery(carol)).toBe("delivered");
+    // Dave sees nothing of Carol's watch.
+    expect(await delivery(dave)).toBe("no_watch");
+
+    // A new plan version is activated: the activation answer says pending.
+    const plan = (
+      (await call(carol, "get_training_plan", {})).structuredContent as {
+        plan: { plan_version_id: string };
+      }
+    ).plan;
+    const created = (
+      await call(carol, "create_plan_version", {
+        request_id: randomUUID(),
+        source_plan_version_id: plan.plan_version_id,
+      })
+    ).structuredContent as {
+      result: {
+        plan: { version: { plan_version_id: string; row_revision: number } };
+      };
+    };
+    const draft = created.result.plan.version;
+    const activated = (
+      await call(carol, "activate_training_plan", {
+        request_id: randomUUID(),
+        plan_version_id: draft.plan_version_id,
+        expected_row_revision: draft.row_revision,
+        confirmation: {
+          plan_version_id: draft.plan_version_id,
+          row_revision: draft.row_revision,
+          confirmed: true,
+        },
+      })
+    ).structuredContent as { ok: boolean; watch_delivery?: string };
+    expect(activated.ok).toBe(true);
+    expect(activated.watch_delivery).toBe("pending");
+    expect(await delivery(carol)).toBe("pending");
+    const next = await (await watch("/plan", "0.2.0")).json();
+    expect(next.v).not.toBe(directory.v);
+    await watch("/plan/ack", "0.2.0", { v: next.v });
+    expect(await delivery(carol)).toBe("delivered");
+  });
+
   it("shows a watch training with its recording and health data only to its owner (GAR-B5-02)", async () => {
     await setup(alice);
     await setup(bob);

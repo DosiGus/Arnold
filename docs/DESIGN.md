@@ -42,7 +42,7 @@ Nach einem neuen Training steht oben in der Übersicht einmal der Rückblick: �
 
 - **Kopfzeile:** nächstes Training (Name, Übungszahl, „Arnolds Vorschlag“) und nächster Lauf, sonst ehrlicher Leerzustand; nach Abschluss die gespeicherte Einheit. Kein Uhr-Status, solange es keinen belegten gibt. „Noch ein Training“ startet bewusst frisch.
 - **Woche:** Kachel mit Ring; Detail mit den Wochentagen. Echte Trainingstage und Wochenziel; zwei Einheiten an einem Tag zählen als ein Trainingstag.
-- **Scores:** feste, illustrative Werte (Konstanz 92, Recovery 72, Progress 77). Titel, jedes Label und die Beschreibung nennen „Demo“; nie als berechnet darstellen.
+- **Scores:** Konstanz, Fortschritt und Erholung, berechnet in `src/analytics/scores.ts`. Kachel mit den drei Werten (0–100); Detail mit je einem Ring und genau einem Erklärsatz aus den Bestandteilen, die der Server liefert. Fehlen Daten, steht „–“ und „Noch zu wenig Daten“ mit dem Grund in Alltagssprache, nie eine 0. Ohne Uhrwerte (keine Einwilligung, keine frischen Werte oder Lesefehler) zählt bei der Erholung nur das Training, mit dem Hinweis „Nur aus deinem Training geschätzt“. Die Ringe bleiben grau; Grün nur für positiven Status.
 - **Ziele:** Kachel mit Anzahl; Detail mit den ersten vier mit Fortschritt, Ist- und Zielwert, jedes öffnet exakt sein Ziel. Null-Fortschritt und unbekannter Fortschritt sind verschieden.
 - **Rekorde:** Kachel mit dem neuesten; Detail mit den drei neuesten samt Lastdefinition und Datum, jede Zeile öffnet exakt ihr Training; ohne Rekorde „Noch keine Rekorde“. Ein neuer Rekord darf grün markiert sein.
 
@@ -71,6 +71,6 @@ Native Beschriftungen, sichtbarer Fokus (2px Kontur, 3px Abstand), `role="switch
 ## Do und Don't
 
 - Do: vorhandene Tokens und flache Karten verwenden; Etikett an jede Karte; Lücken als „fehlt noch“ zeigen; bei Änderungen nur den Unterschied; Einheiten, Lastdefinition und unbekannte Werte ehrlich zeigen; Trainings-, Ziel- und Rekordidentität bei jeder Navigation erhalten; Hell/Dunkel, schmale Ansicht, 720px, Tastatur und reduzierte Bewegung am gerenderten Ergebnis prüfen.
-- Don't: Farbe außer der einen Akzentfarbe für Erfolg/Rekord/Status und dem Warnton für Lücken und fehlende Uhr; Glasflächen, Flammen oder Trophäen; „Gespeichert“, „Bestätigt“ oder „Auf deiner Uhr angekommen“ ohne Beleg; Demo-Scores als echte Werte; Backend-Vergleiche, Vorschläge oder Schreibsemantik für eine optische Vereinfachung ändern; technische IDs oder Tokens zeigen.
+- Don't: Farbe außer der einen Akzentfarbe für Erfolg/Rekord/Status und dem Warnton für Lücken und fehlende Uhr; Glasflächen, Flammen oder Trophäen; „Gespeichert“, „Bestätigt“ oder „Auf deiner Uhr angekommen“ ohne Beleg; geratene oder als 0 gezeigte Scores bei zu wenig Daten; Backend-Vergleiche, Vorschläge oder Schreibsemantik für eine optische Vereinfachung ändern; technische IDs oder Tokens zeigen.
 
 Browser- und AppBridge-Prüfungen ersetzen keine Abnahme auf einem iPhone in der ChatGPT-App.

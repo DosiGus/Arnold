@@ -29,6 +29,7 @@ class PlanSync {
     var problem as Number;
     var missingDays as Number;   // days that could not be loaded in the last run
     var cache as PlanCache;
+    var ackCode as Number;       // UX-007: answer to the last POST /plan/ack, 0 = none sent
 
     private var _client as ApiClient;
     private var _clock as PairingClock;
@@ -39,6 +40,7 @@ class PlanSync {
     private var _directory as Dictionary or Null;
     private var _current as ApiRequest or Null;
     private var _restarted as Boolean;       // a vanished day restarts the run once
+    private var _ack as ApiRequest or Null;  // the open confirmation, if any
 
     // `authRejected` is called on a 401 answer (PairingController.onAuthRejected).
     function initialize(client as ApiClient, planCache as PlanCache, clock as PairingClock, authRejected as Method() as Void) {
@@ -52,6 +54,8 @@ class PlanSync {
         _directory = null;
         _current = null;
         _restarted = false;
+        _ack = null;
+        ackCode = 0;
         state = SYNC_IDLE;
         problem = PROBLEM_NONE;
         missingDays = 0;
@@ -290,7 +294,35 @@ class PlanSync {
         _generation++;
         state = missingDays > 0 ? SYNC_FAILED : SYNC_DONE;
         problem = missingDays > 0 ? PROBLEM_INVALID : PROBLEM_NONE;
+        if (state == SYNC_DONE) {
+            acknowledge();
+        }
         changed();
+    }
+
+    // UX-007: tells the server which plan the watch now holds completely
+    // (POST /plan/ack with the mark of the directory). Only after a complete
+    // run; its answer never changes the state of the run, so a failed
+    // confirmation leaves the plan usable and the server says "pending".
+    hidden function acknowledge() as Void {
+        var mark = cache.mark();
+        if (mark == null) {
+            return;   // older server without a mark: nothing to confirm
+        }
+        if (_ack != null) {
+            _client.drop(_ack as ApiRequest);
+        }
+        var handler = new PlanAckHandler(self);
+        _ack = new ApiRequest(Communications.HTTP_REQUEST_METHOD_POST, "/plan/ack", { "v" => mark as String }, handler.method(:onDone));
+        _client.enqueue(_ack as ApiRequest);
+    }
+
+    function onAckDone(code as Number, outcome as Number) as Void {
+        if (outcome == ApiClient.WAITING && _ack != null) {
+            _client.drop(_ack as ApiRequest);   // the next complete run confirms again
+        }
+        _ack = null;
+        ackCode = code;
     }
 
     hidden function changed() as Void {
@@ -329,6 +361,18 @@ class PlanDayHandler {
 
     function onDone(code as Number, data as Dictionary or String or Null, outcome as Number) as Void {
         _owner.onDayDone(_generation, _id, _tag, code, data, outcome);
+    }
+}
+
+class PlanAckHandler {
+    private var _owner as PlanSync;
+
+    function initialize(owner as PlanSync) {
+        _owner = owner;
+    }
+
+    function onDone(code as Number, data as Dictionary or String or Null, outcome as Number) as Void {
+        _owner.onAckDone(code, outcome);
     }
 }
 

@@ -33,6 +33,7 @@ import {
   ArnoldSchemaVersionSchema,
 } from "./arnold-schema-v1.js";
 import { RunSessionTemplateSchema, RunTypeSchema } from "./run-contract.js";
+import { WatchDeliverySchema } from "./watch-contract.js";
 
 export const PLAN_CONTRACT = "arnold.plan/1";
 
@@ -647,6 +648,12 @@ export const PlanWriteResponseSchema = z.strictObject({
   replayed: z.boolean(),
   result: PlanWriteResultSchema.nullable(),
   error: toolErrorSchema(PlanErrorCodeSchema).nullable(),
+  /**
+   * UX-007: after a successful activation, whether the now active plan is on
+   * the user's watch. Computed at answer time, not stored with the operation;
+   * absent means unknown.
+   */
+  watch_delivery: WatchDeliverySchema.optional(),
 });
 export type PlanWriteResponse = z.infer<typeof PlanWriteResponseSchema>;
 

@@ -59,6 +59,11 @@ const TABLES = {
     table: "run_segments",
     columns: ARNOLD_TABLE_HEADERS.RUN_SEGMENTS,
   },
+  // UX-008, adjustments for a while (migration 007).
+  planAdjustments: {
+    table: "plan_adjustments",
+    columns: ARNOLD_TABLE_HEADERS.PLAN_ADJUSTMENTS,
+  },
 } as const satisfies Record<
   EntityChange["table"],
   { table: string; columns: readonly string[] }
@@ -83,6 +88,7 @@ const ID_COLUMN = {
   planRunSessions: "plan_run_session_id",
   runs: "workout_id",
   runSegments: "run_segment_id",
+  planAdjustments: "plan_adjustment_id",
 } as const satisfies Record<EntityChange["table"], string>;
 
 /**
@@ -154,6 +160,7 @@ async function readDataset(
     planRunSessions: rows.planRunSessions,
     runs: rows.runs,
     runSegments: rows.runSegments,
+    planAdjustments: rows.planAdjustments,
   });
   if (!parsed.success)
     throw new WriteError(

@@ -1,9 +1,20 @@
 import { useId, useState, type CSSProperties, type ReactNode } from "react";
-import { ArrowUpRight, Check, ChevronDown, Plus } from "lucide-react";
+import {
+  ArrowUpRight,
+  CalendarClock,
+  Check,
+  ChevronDown,
+  Plus,
+} from "lucide-react";
+import { formatShortDay } from "../../shared/arnold-format";
 import type { ArnoldDashboardView } from "../../shared/arnold-view";
 import type { WorkoutContext } from "../../shared/workout-contract";
 import { ArnoldCard } from "../components/cards";
-import { CardTag, SayHint } from "../components/conversation-cards";
+import {
+  CardTag,
+  SayHint,
+  StatusLines,
+} from "../components/conversation-cards";
 import { ProgressBar, goalValue } from "../components/home";
 import { HomeActions } from "../components/home-actions";
 import { HomeNextRun } from "../components/home-run";
@@ -11,6 +22,11 @@ import { useNoRunProfile } from "../components/run-offer";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
 import { dateLabel, recordValue } from "../format";
 import { RecapBanner } from "../components/recap-card";
+import {
+  ScoresDetail,
+  ScoresFigure,
+  scoreLines,
+} from "../components/home-scores";
 import type { CardId } from "../cards";
 
 export type HomeFocus = {
@@ -22,11 +38,6 @@ export type HomeFocus = {
 export type HomeTile = "week" | "scores" | "goals" | "records";
 
 const DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
-const DEMO_SCORES = [
-  { name: "Konstanz", value: 92 },
-  { name: "Recovery", value: 72 },
-  { name: "Progress", value: 77 },
-];
 function addDays(iso: string, days: number) {
   const date = new Date(`${iso}T12:00:00Z`);
   date.setUTCDate(date.getUTCDate() + days);
@@ -45,7 +56,7 @@ const basisLabel = (r: { metric: string; load_basis: string }): string =>
             ? "Unterstützung"
             : "Gesamtgewicht";
 
-/** Real server data, with illustrative scores kept explicitly separate. */
+/** The overview; every figure, the scores included, comes from the server. */
 export function HomeCard({
   view,
   canWrite,
@@ -89,6 +100,7 @@ export function HomeCard({
     workoutContext?.proposals.some((p) => p.session_id === next?.session_id),
   );
   const records = home.records.slice(0, 3);
+  const scores = scoreLines(view.scores);
   const goals = home.goals.slice(0, 4);
   const empty =
     view.state === "empty_history" || view.state === "empty_catalog";
@@ -138,12 +150,8 @@ export function HomeCard({
     {
       key: "scores",
       label: "Scores",
-      value: (
-        <span className="ac-home-tile-figure">
-          {DEMO_SCORES.map((s) => s.value).join(" · ")}
-        </span>
-      ),
-      sub: "Demo-Werte",
+      value: <ScoresFigure lines={scores} />,
+      sub: scores ? "Konstanz · Fortschritt · Erholung" : "Noch keine Scores",
     },
     {
       key: "goals",
@@ -181,6 +189,8 @@ export function HomeCard({
           {view.source.synthetic && (
             <span className="ac-caption">Beispieldaten</span>
           )}
+          {/* UX-007: only a proven state; unknown and no watch show nothing. */}
+          <StatusLines saved={false} watch={view.watch_delivery ?? "unknown"} />
         </header>
         {empty && (
           <p className="ac-text">Dein erstes Training ist der Anfang.</p>
@@ -214,6 +224,24 @@ export function HomeCard({
             <p className="ac-home-saved">
               <Check size={16} aria-hidden="true" />
               Training gespeichert
+            </p>
+          )}
+          {view.adjustment && (
+            <p className="ac-home-adjustment" role="note">
+              <CalendarClock size={16} aria-hidden="true" />
+              <span>
+                Anpassung auf Zeit bis{" "}
+                {formatShortDay(view.adjustment.end_date_local)}. Ab{" "}
+                {formatShortDay(view.adjustment.normal_from)} gilt wieder dein
+                normaler Plan.{" "}
+                <button
+                  type="button"
+                  className="ac-link"
+                  onClick={() => onOpen("plan_adjustment")}
+                >
+                  Ansehen
+                </button>
+              </span>
             </p>
           )}
           {client && (
@@ -319,34 +347,8 @@ export function HomeCard({
             </section>
           )}
           {open === "scores" && (
-            <section
-              className="ac-home-detail"
-              aria-label="Demo-Scores im Detail"
-            >
-              <div className="ac-demo-scores">
-                {DEMO_SCORES.map((s) => (
-                  <div className="ac-demo-score" key={s.name}>
-                    <span>{s.name}</span>
-                    <span
-                      className="ac-widget-ring"
-                      style={
-                        {
-                          "--ring-angle": `${s.value * 3.6}deg`,
-                        } as CSSProperties
-                      }
-                      role="img"
-                      aria-label={`${s.name}: ${s.value} von 100, Demo-Wert`}
-                    >
-                      {s.value}
-                    </span>
-                    <small>Demo</small>
-                  </div>
-                ))}
-              </div>
-              <p className="ac-text">
-                Alle drei Scores sind frei gewählte Demo-Werte. Ihre Berechnung
-                folgt später. Es ist noch kein Health-Gerät angebunden.
-              </p>
+            <section className="ac-home-detail" aria-label="Scores im Detail">
+              <ScoresDetail lines={scores} />
               <SayHint>Wie entwickelt sich mein Training?</SayHint>
               <button
                 type="button"
@@ -463,14 +465,16 @@ export function HomeCard({
             </section>
           )}
         </div>
-        <button
-          type="button"
-          className="ac-link ac-dashboard-progress"
-          onClick={() => onOpen("stats")}
-        >
-          Trainingsentwicklung ansehen
-          <ArrowUpRight size={14} aria-hidden="true" />
-        </button>
+        {open !== "scores" && (
+          <button
+            type="button"
+            className="ac-link ac-dashboard-progress"
+            onClick={() => onOpen("stats")}
+          >
+            Trainingsentwicklung ansehen
+            <ArrowUpRight size={14} aria-hidden="true" />
+          </button>
+        )}
         {client && noRunProfile && (
           <p className="ac-home-runoffer">
             <button

@@ -10,7 +10,14 @@ import {
   storeSource,
   type ArnoldDataSource,
   type WatchRecordingData,
+  type WatchSnapshotData,
 } from "../arnold-source.js";
+import {
+  BASELINE_WINDOW_DAYS,
+  type DailyHealthInput,
+  type ScoreHealthInput,
+} from "../../analytics/index.js";
+import { addDays } from "../../analytics/period.js";
 import {
   currentArnoldContext,
   withArnoldContext,
@@ -41,6 +48,7 @@ import type { PostgresIdentityRepository } from "./identity.js";
 import { PostgresOnboardingRepository } from "./onboarding.js";
 import { PostgresArnoldStore } from "./store.js";
 import type { DailyHealthSync } from "../health/sync.js";
+import { watchDelivery } from "../watch/delivery.js";
 
 export interface DatabaseRuntimeOptions {
   db: Database;
@@ -300,6 +308,9 @@ export class DatabaseUserRuntime {
           "Deine Trainingsdaten, gespeichert in deinem Arnold-Konto.",
       }),
       watchRecordings: (ids) => watchRecordings(db, userId, ids),
+      watchDelivery: (dataset) => watchDelivery(db, userId, dataset),
+      scoreHealth: (referenceDate, now) =>
+        readScoreHealth(db, userId, referenceDate, now),
     };
     const authorization: AuthorizationGuard = {
       authorize: async (tracker, _permission, context): Promise<Actor> => {
@@ -425,6 +436,69 @@ export async function ensureStarterCatalog(
       audit: [],
       result: { workout: null, sets: [], exercise: null, warnings: [] },
     });
+  });
+}
+
+/**
+ * Watch values for the recovery score (UX-009), only the caller's own and
+ * only with active consent. Consent and values are read in one transaction,
+ * so a revocation in between cannot leak values. Daily values reach back far
+ * enough for the 28-day basis of yesterday's value; "before" snapshots of
+ * watch workouts as far as their 28-day basis of the 72-hour window needs.
+ */
+export async function readScoreHealth(
+  db: Database,
+  userId: string,
+  referenceDate: string,
+  now: Date,
+): Promise<ScoreHealthInput> {
+  return db.asUser(userId, async (c) => {
+    const consent = await c.query(
+      `select 1 from arnold.health_consents
+        where user_id = $1 and scope = 'garmin_health' and revoked_at is null`,
+      [userId],
+    );
+    if (consent.rowCount !== 1) return { status: "no_consent" };
+    const daily = await c.query<DailyHealthInput>(
+      `select local_date, resting_hr_bpm, body_battery_high,
+              body_battery_end_of_day, sleep_seconds, sleep_score,
+              hrv_last_night_ms
+         from arnold.health_daily
+        where user_id = $1 and local_date >= $2 and local_date <= $3
+        order by local_date`,
+      [
+        userId,
+        addDays(referenceDate, -(BASELINE_WINDOW_DAYS + 2)),
+        referenceDate,
+      ],
+    );
+    const before = await c.query<{ before: WatchSnapshotData | null }>(
+      `select before from arnold.workout_health
+        where user_id = $1 and before is not null and received_at >= $2
+        order by received_at`,
+      [
+        userId,
+        new Date(
+          now.getTime() - (BASELINE_WINDOW_DAYS + 4) * 86_400_000,
+        ).toISOString(),
+      ],
+    );
+    return {
+      status: "consented",
+      daily: daily.rows,
+      before: before.rows.flatMap(({ before: b }) =>
+        b && typeof b.at_utc === "string"
+          ? [
+              {
+                at_utc: b.at_utc,
+                resting_hr: b.resting_hr ?? null,
+                body_battery: b.body_battery ?? null,
+              },
+            ]
+          : [],
+      ),
+      now_utc: now.toISOString(),
+    };
   });
 }
 

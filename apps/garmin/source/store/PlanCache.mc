@@ -57,6 +57,10 @@ class PlanCache {
             "next" => body["next"],
             "days" => body["days"]
         };
+        // UX-007: the plan mark, sent back after a complete sync (PlanSync).
+        if (body["v"] instanceof String) {
+            kept["v"] = body["v"];
+        }
         var old = directory();
         if (old != null) {
             var oldDays = (old as Dictionary)["days"] as Array;
@@ -70,6 +74,16 @@ class PlanCache {
         var entry = { "dir" => kept, "at" => now };
         _store.setValue(StoreKeys.PLAN, entry as Application.Storage.ValueType);
         return true;
+    }
+
+    // The plan mark of the stored directory, or null (older server).
+    function mark() as String or Null {
+        var dir = directory();
+        if (dir == null) {
+            return null;
+        }
+        var v = (dir as Dictionary)["v"];
+        return v instanceof String ? v as String : null;
     }
 
     // How current the stored copy of a day (an entry of the directory) is.
