@@ -62,6 +62,7 @@ import { comparePlanVersions, diffVersions } from "./comparison.js";
 import {
   activePlan,
   draftPlans,
+  hideTemporary,
   exerciseOptions,
   findPlan,
   isReusable,
@@ -71,6 +72,7 @@ import {
   canTransition,
 } from "./domain.js";
 import { PlanError, planError, toPlanError } from "./errors.js";
+import { PlanAdjustmentService } from "./adjustments.js";
 
 /** The user's own exercises created alongside a new plan (B11). */
 interface OwnExercises {
@@ -128,9 +130,17 @@ const CHANGE_EVENT: Partial<
 
 export class TrainingPlanService {
   readonly mode: WriteMode;
+  /** UX-008: adjustments for a while, on the same store and identity. */
+  readonly adjustments: PlanAdjustmentService;
 
   constructor(private options: PlanServiceOptions) {
     this.mode = options.mode;
+    this.adjustments = new PlanAdjustmentService(this, {
+      trackerId: options.trackerId,
+      store: options.store,
+      clock: options.clock,
+      id: options.id,
+    });
     if (this.mode !== "disabled" && this.mode !== options.store.kind)
       throw planError(
         "PERMISSION_DENIED",
@@ -231,7 +241,7 @@ export class TrainingPlanService {
     plan: TrainingPlanVersion;
     validation: PlanValidationResult | null;
   }> {
-    const dataset = await this.options.store.read();
+    const dataset = hideTemporary(await this.options.store.read());
     const plan = input.plan_version_id
       ? findPlan(dataset, input.plan_version_id)
       : (activePlan(dataset) ?? draftPlans(dataset)[0]);
@@ -258,7 +268,7 @@ export class TrainingPlanService {
       plan_family_id?: string;
     } = {},
   ): Promise<TrainingPlanList> {
-    const dataset = await this.options.store.read();
+    const dataset = hideTemporary(await this.options.store.read());
     const families = projectFamilies(dataset)
       .filter(
         (family) =>
@@ -291,7 +301,7 @@ export class TrainingPlanService {
    * Unterschiede zum aktuellen Plan" is actionable, a bare list of dates is not.
    */
   async history(input: { plan_family_id?: string } = {}): Promise<PlanHistory> {
-    const dataset = await this.options.store.read();
+    const dataset = hideTemporary(await this.options.store.read());
     const active = activePlan(dataset);
     const activeProjection = active ? projectVersion(dataset, active) : null;
     const plans = dataset.plans
@@ -324,7 +334,7 @@ export class TrainingPlanService {
     plan_version_id: string;
     timezone?: string;
   }): Promise<PlanValidationResult> {
-    const dataset = await this.options.store.read();
+    const dataset = hideTemporary(await this.options.store.read());
     const result = validatePlanVersion(dataset, input.plan_version_id);
     const plan = findPlan(dataset, input.plan_version_id);
     if (!result || !plan)
@@ -344,7 +354,7 @@ export class TrainingPlanService {
     from_plan_version_id: string;
     to_plan_version_id: string;
   }): Promise<PlanVersionComparison> {
-    const dataset = await this.options.store.read();
+    const dataset = hideTemporary(await this.options.store.read());
     const from = findPlan(dataset, input.from_plan_version_id);
     const to = findPlan(dataset, input.to_plan_version_id);
     if (!from || !to)
@@ -367,7 +377,7 @@ export class TrainingPlanService {
     input: { plan_version_id?: string } = {},
     actorContext?: unknown,
   ): Promise<PlanContext> {
-    const dataset = await this.options.store.read();
+    const dataset = hideTemporary(await this.options.store.read());
     let canWrite = false;
     try {
       await this.actor(actorContext);
@@ -439,7 +449,7 @@ export class TrainingPlanService {
         actorSubject: actor.subject,
         clock: this.options.clock ?? (() => new Date()),
         build: (dataset, now) =>
-          this.build(operation, input, dataset, actor, now),
+          this.build(operation, input, hideTemporary(dataset), actor, now),
       });
       return PlanWriteResponseSchema.parse({
         ok: true,

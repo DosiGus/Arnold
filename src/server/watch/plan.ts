@@ -25,6 +25,8 @@ import type {
   SessionProposal,
 } from "../../shared/workout-contract.js";
 import {
+  WatchPlanAckRequestSchema,
+  WatchPlanAckResponseSchema,
   WatchPlanDirectorySchema,
   WatchPlanRecentSchema,
   WatchPlanSessionSchema,
@@ -34,6 +36,7 @@ import {
 } from "../../shared/watch-contract.js";
 import { prepareAnalyticsInput } from "../../analytics/eligibility.js";
 import { nextSession } from "../../analytics/home.js";
+import { trainingView } from "../plan/adjustment-rules.js";
 import { similarExercises } from "../../analytics/alternatives.js";
 import { weightStep } from "../../analytics/progression.js";
 import { estimateSessionMinutes } from "../../analytics/session-duration.js";
@@ -207,11 +210,8 @@ const ALL = {
   workout_statuses: null,
 } as const;
 
-/** The directory: every day with its own ETag, and the next day. */
-export function buildDirectory(
-  dataset: ArnoldDataset,
-  lang: WatchLanguage,
-): WatchPlanDirectory {
+/** The directory without envelope and mark, in one language. */
+function directoryCore(dataset: ArnoldDataset, lang: WatchLanguage) {
   const { plan, proposals } = activePlan(dataset);
   const next = nextSession(prepareAnalyticsInput(dataset, ALL));
   const days = proposals.map((proposal) => ({
@@ -230,14 +230,41 @@ export function buildDirectory(
     ),
     tag: etagOf(sessionBody(dataset, proposal, lang)),
   }));
-  return WatchPlanDirectorySchema.parse({
-    ...watchEnvelope(),
+  return {
     p: plan.plan_version_id,
     next:
       next && days.some((d) => d.id === next.session_id)
         ? next.session_id
         : days[0]!.id,
     days,
+  };
+}
+
+/**
+ * UX-007: the plan mark over exactly what the watch loads: the directory,
+ * whose per-day tags cover every day's content (exercises, proposals, "last
+ * time"). Always computed in German, so a watch in English confirms the same
+ * mark. Throws `NO_ACTIVE_PLAN` like the directory. Pure: no clock, no I/O.
+ */
+export function planMark(dataset: ArnoldDataset): string {
+  return createHash("sha256")
+    .update(JSON.stringify(directoryCore(dataset, "de")))
+    .digest("hex")
+    .slice(0, 16);
+}
+
+/** The directory: every day with its own ETag, the next day and the mark. */
+export function buildDirectory(
+  dataset: ArnoldDataset,
+  lang: WatchLanguage,
+): WatchPlanDirectory {
+  const core = directoryCore(dataset, lang);
+  return WatchPlanDirectorySchema.parse({
+    ...watchEnvelope(),
+    p: core.p,
+    next: core.next,
+    v: planMark(dataset),
+    days: core.days,
   });
 }
 
@@ -282,13 +309,18 @@ export function buildRecent(dataset: ArnoldDataset, lang: WatchLanguage) {
 }
 
 /** The user's data, after the same setup gate the tools use. */
-async function dataFor(runtime: DatabaseArnoldRuntime, call: WatchCall) {
+export async function dataFor(runtime: DatabaseArnoldRuntime, call: WatchCall) {
   const context = call.principal!.context;
   const user = await runtime.forUser(context);
   if (await user.onboarding.setupRequired(context))
     throw new WatchApiError("SETUP_REQUIRED", 409);
-  // The strength routes never see runs or planned workouts (RUN-003).
-  return strengthTrainingView(await user.store.read());
+  // The strength routes never see runs or planned workouts (RUN-003). A
+  // running adjustment for a while stands in for the plan (UX-008), so its
+  // sessions reach the watch and the plan mark moves with it.
+  const now = runtime.options.now
+    ? new Date(runtime.options.now())
+    : new Date();
+  return trainingView(strengthTrainingView(await user.store.read()), now);
 }
 
 /** 304 when the watch already has exactly this body. */
@@ -297,6 +329,37 @@ function withETag(call: WatchCall, body: unknown): WatchReply {
   const headers = { ETag: tag, Vary: "Accept-Language" };
   const sent = call.headers["if-none-match"];
   return sent === tag ? { status: 304, headers } : { body, headers };
+}
+
+/**
+ * UX-007: the watch confirms the mark of a plan it has completely loaded.
+ * Stored per device (both ids from the token) with the time; any well-formed
+ * mark is kept as sent, so a mark that is no longer current stays "pending".
+ */
+async function acknowledge(
+  runtime: DatabaseArnoldRuntime,
+  call: WatchCall,
+): Promise<WatchReply> {
+  const parsed = WatchPlanAckRequestSchema.safeParse(call.body);
+  if (!parsed.success)
+    throw new WatchApiError("VALIDATION_ERROR", 422, false, {}, "schema");
+  const { userId } = call.principal!.context;
+  const deviceId = call.principal!.deviceId;
+  await runtime.options.db.asUser(userId, (c) =>
+    c.query(
+      `insert into arnold.watch_plan_receipts (user_id, device_id, plan_mark, confirmed_at)
+       values ($1, $2, $3, now())
+       on conflict (user_id, device_id)
+       do update set plan_mark = excluded.plan_mark, confirmed_at = excluded.confirmed_at`,
+      [userId, deviceId, parsed.data.v],
+    ),
+  );
+  return {
+    body: WatchPlanAckResponseSchema.parse({
+      ...watchEnvelope(),
+      v: parsed.data.v,
+    }),
+  };
 }
 
 export function planRoutes(runtime: DatabaseArnoldRuntime): WatchRoute[] {
@@ -325,6 +388,11 @@ export function planRoutes(runtime: DatabaseArnoldRuntime): WatchRoute[] {
       path: "/plan/recent",
       handler: async (call) =>
         withETag(call, buildRecent(await dataFor(runtime, call), call.lang)),
+    },
+    {
+      method: "POST",
+      path: "/plan/ack",
+      handler: (call) => acknowledge(runtime, call),
     },
   ];
 }

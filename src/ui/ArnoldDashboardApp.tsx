@@ -9,6 +9,7 @@ import { TrainingCard } from "./views/TrainingCard";
 import { WorkoutHistoryView } from "./views/WorkoutHistoryView";
 import { ExerciseProgressView } from "./views/ExerciseProgressView";
 import { PlanCard } from "./views/PlanCard";
+import { PlanAdjustmentCard } from "./views/PlanAdjustmentCard";
 import { HomeCard } from "./views/HomeCard";
 import { StatsView } from "./views/StatsView";
 import { GoalsView } from "./views/GoalsView";
@@ -278,6 +279,9 @@ export function ArnoldDashboardApp({
           }
           onBack={goBack}
         />
+      )}
+      {card === "plan_adjustment" && (
+        <PlanAdjustmentCard client={client} onChanged={dashboard.reload} />
       )}
       {(card === "plan" || card === "plan_change") && (
         <PlanCard

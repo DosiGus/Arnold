@@ -609,3 +609,69 @@ describe("watch workouts in the history (GAR-B5-02)", () => {
     });
   });
 });
+
+describe("scores (UX-009)", () => {
+  // Three completed weeks with three training days each against the plan's
+  // goal of three, reference day the Monday after.
+  const days = [
+    "2026-01-05",
+    "2026-01-07",
+    "2026-01-09",
+    "2026-01-12",
+    "2026-01-14",
+    "2026-01-16",
+    "2026-01-19",
+    "2026-01-21",
+    "2026-01-23",
+  ];
+  const data = dataset({
+    exercises: [exercise()],
+    plans: [plan()],
+    workouts: days.map((d, i) =>
+      workout({ workout_id: `w-${i}`, workout_date_local: d }),
+    ),
+    sets: days.map((_, i) =>
+      set({ set_id: `s-${i}`, workout_id: `w-${i}`, load_kg: 60 + i }),
+    ),
+  });
+
+  it("passes the engine's scores through unchanged", () => {
+    const result = view(data, { reference_date: "2026-01-26" });
+    expect(result.scores?.consistency).toEqual({
+      status: "ok",
+      value: 100,
+      reason: null,
+      weekly_goal: 3,
+      weeks_counted: 3,
+      weeks_goal_met: 3,
+    });
+    // Recovery needs 28 days since the first training: honest, not a guess.
+    expect(result.scores?.recovery).toMatchObject({
+      status: "insufficient_data",
+      value: null,
+      reason: "too_short_history",
+      watch: "no_consent",
+    });
+    expect(result.scores?.progress.status).toBe("insufficient_data");
+  });
+
+  it("names a failed watch read and counts only the training part", () => {
+    const result = buildDashboardView(
+      data,
+      { ...CONTEXT, scoreHealth: { status: "unavailable" } },
+      { reference_date: "2026-01-26" },
+    );
+    expect(result.scores?.recovery.watch).toBe("unavailable");
+    expect(result.scores?.recovery.watch_part).toBeNull();
+  });
+
+  it("reports too little data for an empty history, never zero", () => {
+    const result = view(dataset({ exercises: [exercise()] }), {
+      reference_date: "2026-01-26",
+    });
+    for (const score of Object.values(result.scores!)) {
+      expect(score.status).toBe("insufficient_data");
+      expect(score.value).toBeNull();
+    }
+  });
+});

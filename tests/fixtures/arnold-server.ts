@@ -142,6 +142,13 @@ for (const port of [8830, 8831])
     "127.0.0.1",
   );
 
+/** UX-008, the card "Anpassung auf Zeit": one writable tracker per browser project. */
+for (const port of [8834, 8835])
+  createHttpApp({ ...common, workoutRuntime: createFixturePlanning() }).listen(
+    port,
+    "127.0.0.1",
+  );
+
 /**
  * UX-006, the recap after a workout (history up to yesterday, so a test's
  * own workout is always the newest, at any time of day): one writable tracker per browser project. */

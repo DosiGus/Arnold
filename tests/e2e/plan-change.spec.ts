@@ -152,6 +152,40 @@ test.describe("plan change card", () => {
     await expect(page.getByText("Plan übernommen").first()).toBeVisible();
   });
 
+  // UX-007: the second line shows the watch state from the activation answer,
+  // and only when it is proven (delivered) or known to be missing (pending).
+  for (const [delivery, line] of [
+    ["delivered", "Auf deiner Uhr angekommen"],
+    ["pending", "Noch nicht auf deiner Uhr"],
+    ["no_watch", null],
+    ["unknown", null],
+  ] as const)
+    test(`after "Übernehmen" the watch line follows watch_delivery = ${delivery}`, async ({
+      page,
+    }, info) => {
+      const base = baseFor(info.project.name);
+      await page.goto(`${base}/preview?card=home`);
+      await makeDraft(page, swapDays);
+      await page.route("**/mcp", async (route) => {
+        const body = route.request().postDataJSON();
+        if (body?.params?.name !== "activate_training_plan")
+          return route.continue();
+        const response = await route.fetch();
+        const json = await response.json();
+        json.result.structuredContent.watch_delivery = delivery;
+        await route.fulfill({ response, json });
+      });
+      await open(page, base);
+      await apply(page).click();
+      await expect(page.getByText("Plan übernommen").first()).toBeVisible();
+      const status = page.getByRole("status", { name: "Status" });
+      await expect(status).toContainText("Gespeichert");
+      if (line) await expect(status).toContainText(line);
+      else await expect(status).not.toContainText("Uhr");
+      if (delivery !== "delivered")
+        await expect(status).not.toContainText("angekommen");
+    });
+
   test("declining archives the draft and keeps the plan", async ({
     page,
   }, info) => {
