@@ -18,6 +18,7 @@ import type {
 } from "../shared/arnold-view";
 import { dateLabel, formatNumber, formatSetLine, UNKNOWN } from "./format";
 import { progressionForModel } from "./workout-draft";
+import { scoreLines } from "./components/home-scores";
 
 const SEEN =
   "Die Karte zeigt das bereits; im Chat nicht wiederholen, nur kurz einordnen.";
@@ -176,10 +177,23 @@ export function finishMessage(input: {
   return `${parts.join(" · ")}.`;
 }
 
+/** The three scores as the card shows them: value or too little data, with the sentence. */
+function scoresContext(view: ArnoldDashboardView): string {
+  const lines = scoreLines(view.scores);
+  if (!lines) return "";
+  return `Scores: ${lines
+    .map(
+      (l) =>
+        `${l.name} ${l.value === null ? "noch zu wenig Daten" : `${l.value} von 100`} (${l.sentence})`,
+    )
+    .join("; ")}.`;
+}
+
 export function homeContext(view: ArnoldDashboardView) {
   const home = view.home;
   const parts = [
-    "Arnold zeigt gerade die Startansicht: oben das nächste Training, darunter die Kacheln Woche, Scores, Ziele und Rekorde, unter der Karte vier Aktionsknöpfe. Die drei Demo-Scores sind frei gewählte Platzhalter; ihre Berechnung und eine Geräteanbindung gibt es noch nicht. Die übrigen Werte stammen aus den Trainingsdaten.",
+    "Arnold zeigt gerade die Startansicht: oben das nächste Training, darunter die Kacheln Woche, Scores, Ziele und Rekorde, unter der Karte vier Aktionsknöpfe. Alle Werte stammen aus den Trainingsdaten; die Erholung nutzt mit Einwilligung zusätzlich Werte der Garmin-Uhr. Die Scores nie medizinisch deuten.",
+    scoresContext(view),
     home.next_session
       ? `Als Nächstes im Plan: „${home.next_session.session_name}“.`
       : "",
