@@ -1,4 +1,5 @@
 import Toybox.Lang;
+import Toybox.System;
 import Toybox.WatchUi;
 
 // Buttons of the training (UMSETZUNG 7.4, 07 D-32): START confirms, BACK asks
@@ -7,6 +8,9 @@ import Toybox.WatchUi;
 class TrainingDelegate extends WatchUi.BehaviorDelegate {
     private var _session as TrainingSession;
     private var _sender as OutboxSender;
+    private var _downSince as Number = -1;   // when DOWN went down (ms); a long press turns the page
+
+    const LONG_PRESS_MS as Number = 500;
 
     function initialize(session as TrainingSession, sender as OutboxSender) {
         BehaviorDelegate.initialize();
@@ -45,7 +49,40 @@ class TrainingDelegate extends WatchUi.BehaviorDelegate {
         return true;
     }
 
+    // The second page of set and rest (heart rate, last time): DOWN held, or a swipe on a touch watch.
+    // UP and DOWN pressed short keep their meaning (set list, adjust, rest +/- 15 s).
+    function onKeyPressed(event as WatchUi.KeyEvent) as Boolean {
+        if (event.getKey() == WatchUi.KEY_DOWN) {
+            _downSince = System.getTimer();
+        }
+        return false;
+    }
+
+    function onSwipe(event as WatchUi.SwipeEvent) as Boolean {
+        var direction = event.getDirection();
+        if (direction == WatchUi.SWIPE_LEFT || direction == WatchUi.SWIPE_RIGHT) {
+            return turnPage();
+        }
+        return false;
+    }
+
+    hidden function turnPage() as Boolean {
+        if (_session.state != TrainingSession.STATE_SET && _session.state != TrainingSession.STATE_REST) {
+            return false;
+        }
+        TrainingPages.toggle(_session);
+        WatchUi.requestUpdate();
+        return true;
+    }
+
     function onNextPage() as Boolean {
+        if (_downSince >= 0 && System.getTimer() - _downSince >= LONG_PRESS_MS) {
+            _downSince = -1;
+            if (turnPage()) {
+                return true;
+            }
+        }
+        _downSince = -1;
         if (_session.isFinished()) {
             SummaryScroll.by(1);   // the summary scrolls (found on a Forerunner 255, 15.11.2026)
             WatchUi.requestUpdate();
