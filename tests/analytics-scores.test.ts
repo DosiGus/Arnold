@@ -57,7 +57,7 @@ const run = (
   date: string,
   km: number | null,
   minutes: number | null,
-  type: ScoreRunInput["run_type"] = "easy",
+  type: ScoreRunInput["run_type"] = "base",
   hr: number | null = null,
 ): ScoreRunInput => ({
   workout_id: `run-${(runId += 1)}`,
@@ -263,7 +263,7 @@ describe("Fortschritt", () => {
 
   it("uses speed per heart beat for easy runs only with consent", () => {
     // Same pace, but the heart rate dropped: more efficient.
-    const runs = [run(A, 6, 36, "easy", 140), run(B, 6, 36, "easy", 150)];
+    const runs = [run(A, 6, 36, "base", 140), run(B, 6, 36, "base", 150)];
     expect(progressScore(input({ runs, health: consented() })).runs[0]).toEqual(
       { metric: "easy_efficiency", verdict: "up" },
     );
