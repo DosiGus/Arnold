@@ -13,12 +13,15 @@ import {
 } from "../../analytics/recap.js";
 import type { ArnoldDashboardView } from "../../shared/arnold-view.js";
 import type { ArnoldDataset } from "../../shared/arnold-schema-v1.js";
+import type { DatasetWithRunDays } from "../../analytics/activity.js";
+
+type RecapDataset = ArnoldDataset & Pick<DatasetWithRunDays, "runRecapInputs">;
 import type { ArnoldRecap } from "../../shared/recap-contract.js";
 import { proposeActivePlan } from "./proposal.js";
 import type { WorkoutLoggingService } from "./service.js";
 
 export async function recapFor(
-  dataset: ArnoldDataset,
+  dataset: RecapDataset,
   view: ArnoldDashboardView,
   referenceDate: string,
   logging: Pick<WorkoutLoggingService, "isRecapSeen"> | undefined,
@@ -53,7 +56,7 @@ export async function recapFor(
 }
 
 async function runRecapFor(
-  dataset: ArnoldDataset,
+  dataset: RecapDataset,
   referenceDate: string,
   logging: Pick<WorkoutLoggingService, "isRecapSeen">,
 ): Promise<ArnoldRecap | null> {
@@ -86,7 +89,7 @@ async function runRecapFor(
 
 /** The view with its recap; the recap never makes the overview fail. */
 export async function withRecap(
-  dataset: ArnoldDataset,
+  dataset: RecapDataset,
   view: ArnoldDashboardView,
   referenceDate: string,
   logging: Pick<WorkoutLoggingService, "isRecapSeen"> | undefined,

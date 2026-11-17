@@ -124,27 +124,71 @@ const compareOrder = (a: Ordered, b: Ordered) =>
       : 1) ||
   (a.workout_id < b.workout_id ? -1 : a.workout_id > b.workout_id ? 1 : 0);
 
+/**
+ * A completed run as the recap needs it. The dashboard dataset holds strength
+ * training only, so the server's loader reads these from the raw rows and
+ * carries them next to it (like the score inputs).
+ */
+export type RunRecapInput = Readonly<{
+  workout_id: string;
+  workout_date_local: string;
+  created_at_utc: string;
+  title: string;
+  from_watch: boolean;
+  distance_m: number | null;
+  timer_s: number | null;
+}>;
+
+type RunSource = Readonly<{
+  runRecapInputs?: readonly RunRecapInput[];
+  runs?: ArnoldDataset["runs"];
+}> &
+  Pick<ArnoldDataset, "workouts">;
+
+/** Completed runs of a dataset that still contains its runs. */
+export function runRecapInputsOf(
+  dataset: Pick<ArnoldDataset, "workouts" | "runs">,
+): RunRecapInput[] {
+  const runs = new Map((dataset.runs ?? []).map((r) => [r.workout_id, r]));
+  return dataset.workouts.flatMap((w) => {
+    const run = runs.get(w.workout_id);
+    if (w.status !== "completed" || w.activity_type !== "run" || !run)
+      return [];
+    return [
+      {
+        workout_id: w.workout_id,
+        workout_date_local: w.workout_date_local,
+        created_at_utc: w.created_at_utc,
+        title: w.session_name_snapshot?.trim() || RUN_TYPE_NAMES[run.run_type],
+        from_watch: !!w.client_session_id,
+        distance_m: run.distance_m,
+        timer_s: run.timer_s,
+      },
+    ];
+  });
+}
+
+const inputsOf = (d: RunSource): readonly RunRecapInput[] =>
+  d.runRecapInputs ?? (d.runs ? runRecapInputsOf({ ...d, runs: d.runs }) : []);
+
 /** The most recent completed run, if it is recent enough (UX-014). */
 export function newestRun(
-  dataset: Pick<ArnoldDataset, "workouts" | "runs">,
+  dataset: RunSource,
   referenceDate: string | null,
   maxAgeDays = RECAP_MAX_AGE_DAYS,
 ) {
   if (referenceDate === null) return null;
   const oldest = addDays(referenceDate, -maxAgeDays);
-  const runs = new Map((dataset.runs ?? []).map((r) => [r.workout_id, r]));
-  const latest = dataset.workouts
-    .filter(
-      (w) =>
-        w.status === "completed" &&
-        w.activity_type === "run" &&
-        runs.has(w.workout_id) &&
-        compareDate(w.workout_date_local, referenceDate) <= 0 &&
-        compareDate(w.workout_date_local, oldest) >= 0,
-    )
-    .sort(compareOrder)
-    .at(-1);
-  return latest ? { workout: latest, run: runs.get(latest.workout_id)! } : null;
+  return (
+    [...inputsOf(dataset)]
+      .filter(
+        (r) =>
+          compareDate(r.workout_date_local, referenceDate) <= 0 &&
+          compareDate(r.workout_date_local, oldest) >= 0,
+      )
+      .sort(compareOrder)
+      .at(-1) ?? null
+  );
 }
 
 /**
@@ -152,35 +196,32 @@ export function newestRun(
  * new run, the younger one. The other one gets no receipt, so it stays unseen.
  */
 export function recapKind(
-  dataset: Pick<ArnoldDataset, "workouts" | "runs">,
+  dataset: RunSource,
   referenceDate: string | null,
 ): "strength" | "run" | null {
   const strength = newestWorkout(dataset, referenceDate);
   const run = newestRun(dataset, referenceDate);
   if (strength && run)
-    return compareOrder(run.workout, strength) > 0 ? "run" : "strength";
+    return compareOrder(run, strength) > 0 ? "run" : "strength";
   return run ? "run" : strength ? "strength" : null;
 }
 
 /** Distance, duration and pace of the newest run; only what is stored. */
 export function computeRunRecap(
-  dataset: Pick<ArnoldDataset, "workouts" | "runs">,
+  dataset: RunSource,
   referenceDate: string | null,
 ): RunRecapCore | null {
-  const found = newestRun(dataset, referenceDate);
-  if (!found) return null;
-  const { workout, run } = found;
-  const pace = paceSecondsPerKm(run.timer_s, run.distance_m).value;
+  const run = newestRun(dataset, referenceDate);
+  if (!run) return null;
   return {
-    workout_id: workout.workout_id,
-    date: workout.workout_date_local,
-    title:
-      workout.session_name_snapshot?.trim() || RUN_TYPE_NAMES[run.run_type],
-    from_watch: !!workout.client_session_id,
+    workout_id: run.workout_id,
+    date: run.workout_date_local,
+    title: run.title,
+    from_watch: run.from_watch,
     distance_m:
       run.distance_m !== null && run.distance_m > 0 ? run.distance_m : null,
     duration_s: run.timer_s !== null && run.timer_s > 0 ? run.timer_s : null,
-    pace_s_per_km: pace,
+    pace_s_per_km: paceSecondsPerKm(run.timer_s, run.distance_m).value,
   };
 }
 
