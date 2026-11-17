@@ -61,6 +61,8 @@ import {
   AnalyticsOptionsError,
 } from "../analytics/index.js";
 import { formatNumber } from "../shared/arnold-format.js";
+import { addDays } from "../analytics/period.js";
+import { runningAdjustment, trainingView } from "./plan/adjustment-rules.js";
 
 /** The first fixed dashboard URI; the live one comes from `dashboardResourceUri`. */
 export const ARNOLD_RESOURCE_URI = LEGACY_DASHBOARD_URIS[0];
@@ -361,7 +363,33 @@ export function createArnoldMcpServer(
     ? gateUntilSetUp(guarded, onboarding, actorContext)
     : guarded;
   const sourceLabel = source.label;
-  const load = (): Promise<DatasetSnapshot> => source.load();
+  // UX-008: every reader here sees the training view, in which a running
+  // adjustment for a while stands in for the active plan.
+  const load = async (): Promise<DatasetSnapshot> => {
+    const snapshot = await source.load();
+    return { ...snapshot, dataset: trainingView(snapshot.dataset, clock()) };
+  };
+  /** The overview hint while an adjustment for a while applies (UX-008). */
+  const withAdjustment = <T extends object>(
+    dataset: ArnoldDataset,
+    view: T,
+    now: Date,
+  ) => {
+    const running = runningAdjustment(dataset, now);
+    return {
+      ...view,
+      adjustment: running
+        ? {
+            plan_adjustment_id: running.plan_adjustment_id,
+            kind: running.kind,
+            start_date_local: running.start_date_local,
+            end_date_local: running.end_date_local,
+            normal_from: addDays(running.end_date_local, 1),
+            reason: running.reason,
+          }
+        : null,
+    };
+  };
   // UX-007: only a database source knows the watches; otherwise absent (unknown).
   const withWatch = async <T extends object>(
     dataset: ArnoldDataset,
@@ -436,26 +464,30 @@ export function createArnoldMcpServer(
           );
         const now = clock();
         const day = referenceDay(now, input.timezone);
-        const base = await withWatch(
+        const base = withAdjustment(
           snapshot.dataset,
-          withReference(
-            await withRecap(
-              snapshot.dataset,
-              buildDashboardView(
+          await withWatch(
+            snapshot.dataset,
+            withReference(
+              await withRecap(
                 snapshot.dataset,
-                {
-                  ...context(snapshot),
-                  scoreHealth: await scoreHealthOf(source, day.date, now),
-                },
-                {
-                  reference_date: day.date,
-                },
+                buildDashboardView(
+                  snapshot.dataset,
+                  {
+                    ...context(snapshot),
+                    scoreHealth: await scoreHealthOf(source, day.date, now),
+                  },
+                  {
+                    reference_date: day.date,
+                  },
+                ),
+                day.recap_until,
+                logging,
               ),
-              day.recap_until,
-              logging,
+              day,
             ),
-            day,
           ),
+          now,
         );
         const view = input.card
           ? {
@@ -499,35 +531,39 @@ export function createArnoldMcpServer(
         const snapshot = await load();
         const now = clock();
         const day = referenceDay(now, input.timezone);
-        const view = await withWatch(
+        const view = withAdjustment(
           snapshot.dataset,
-          withReference(
-            await withRecap(
-              snapshot.dataset,
-              buildDashboardView(
+          await withWatch(
+            snapshot.dataset,
+            withReference(
+              await withRecap(
                 snapshot.dataset,
-                {
-                  ...context(snapshot),
-                  scoreHealth: await scoreHealthOf(source, day.date, now),
-                },
-                {
-                  filter: {
-                    from: input.from ?? null,
-                    to: input.to ?? null,
-                    plan_version_ids: input.plan_version_ids ?? null,
-                    session_ids: input.session_ids ?? null,
-                    exercise_ids: input.exercise_ids ?? null,
+                buildDashboardView(
+                  snapshot.dataset,
+                  {
+                    ...context(snapshot),
+                    scoreHealth: await scoreHealthOf(source, day.date, now),
                   },
-                  reference_date: day.date,
-                  weekly_goal_training_days:
-                    input.weekly_goal_training_days ?? null,
-                },
+                  {
+                    filter: {
+                      from: input.from ?? null,
+                      to: input.to ?? null,
+                      plan_version_ids: input.plan_version_ids ?? null,
+                      session_ids: input.session_ids ?? null,
+                      exercise_ids: input.exercise_ids ?? null,
+                    },
+                    reference_date: day.date,
+                    weekly_goal_training_days:
+                      input.weekly_goal_training_days ?? null,
+                  },
+                ),
+                day.recap_until,
+                logging,
               ),
-              day.recap_until,
-              logging,
+              day,
             ),
-            day,
           ),
+          now,
         );
         const volume = view.kpis.find((k) => k.key === "nominal_volume");
         return result(
@@ -627,7 +663,7 @@ export function createArnoldMcpServer(
     },
   );
 
-  registerWorkoutTools(server, source, logging, actorContext);
+  registerWorkoutTools(server, source, logging, actorContext, clock);
   registerRecapTool(server, logging, actorContext);
   registerPlanTools(
     server,

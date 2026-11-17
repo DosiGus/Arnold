@@ -36,6 +36,7 @@ import {
 } from "../../shared/watch-contract.js";
 import { prepareAnalyticsInput } from "../../analytics/eligibility.js";
 import { nextSession } from "../../analytics/home.js";
+import { trainingView } from "../plan/adjustment-rules.js";
 import { similarExercises } from "../../analytics/alternatives.js";
 import { weightStep } from "../../analytics/progression.js";
 import { estimateSessionMinutes } from "../../analytics/session-duration.js";
@@ -313,8 +314,13 @@ export async function dataFor(runtime: DatabaseArnoldRuntime, call: WatchCall) {
   const user = await runtime.forUser(context);
   if (await user.onboarding.setupRequired(context))
     throw new WatchApiError("SETUP_REQUIRED", 409);
-  // The strength routes never see runs or planned workouts (RUN-003).
-  return strengthTrainingView(await user.store.read());
+  // The strength routes never see runs or planned workouts (RUN-003). A
+  // running adjustment for a while stands in for the plan (UX-008), so its
+  // sessions reach the watch and the plan mark moves with it.
+  const now = runtime.options.now
+    ? new Date(runtime.options.now())
+    : new Date();
+  return trainingView(strengthTrainingView(await user.store.read()), now);
 }
 
 /** 304 when the watch already has exactly this body. */

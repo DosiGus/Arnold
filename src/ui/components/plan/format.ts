@@ -9,6 +9,7 @@ export const PLAN_STATUS_LABEL = {
   draft: "Entwurf",
   active: "Aktiv",
   archived: "Archiviert",
+  temporary: "Anpassung auf Zeit",
 } as const;
 
 /**
