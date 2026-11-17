@@ -267,7 +267,6 @@ function restBeforeTheNextExerciseShowsBothNames(logger as Logger) as Boolean {
 
 (:test)
 function swappedExerciseShowsTheNewName(logger as Logger) as Boolean {
-    var dc = LayoutRig.dc();
     var rig = NameRig.rig("Bankdrücken", "Rudern");
     rig.toFirstSet();
     var before = SetScreen.face(rig.session, null, 0);

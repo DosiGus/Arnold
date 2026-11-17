@@ -637,7 +637,6 @@ function trainingScreensShowWhatTheWorkoutNeeds(logger as Logger) as Boolean {
 
 (:test)
 function trainingScreensShowSidesAndOpenValues(logger as Logger) as Boolean {
-    var dc = PairingScreens.deviceDc();
     var rig = new PlayerRig(true);
     rig.toFirstSet();
     for (var i = 0; i < 3; i++) { rig.setAndRest(); }

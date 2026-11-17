@@ -53,7 +53,7 @@ function setFaceShowsWeightRepsAndSetNumber(logger as Logger) as Boolean {
     rig.setAndRest();
     var second = SetScreen.face(rig.session, 132, 0);
     Expect.equal(second.done, 1);
-    Test.assert(second.bottom.equals(Lang.format(TrainingText.text(Rez.Strings.TrSetOf), [2, 3])));
+    Test.assert((second.bottom as String).equals(Lang.format(TrainingText.text(Rez.Strings.TrSetOf), [2, 3])));
     return true;
 }
 
@@ -62,7 +62,7 @@ function setFaceWritesTheDecimalSignByLanguage(logger as Logger) as Boolean {
     var rig = FaceText.rigWith([[2, 8, 62500]] as Array, false);
     var f = SetScreen.face(rig.session, null, 0);
     Expect.equal(f.left, "62" + TrainingText.separator() + "5");
-    Test.assert(f.left.find(" ") == null);
+    Test.assert((f.left as String).find(" ") == null);
     var odd = FaceText.rigWith([[1, 10, 1250]] as Array, false);
     Expect.equal(SetScreen.face(odd.session, null, 0).left, "1" + TrainingText.separator() + "25");
     return true;
@@ -73,7 +73,7 @@ function setFaceMarksOpenValuesInOrangeWithAWord(logger as Logger) as Boolean {
     // weight unknown (the watch cannot tell body weight from unknown: both are null, START asks for the value)
     var noWeight = FaceText.rigWith([[2, 8, null]] as Array, false);
     var f = SetScreen.face(noWeight.session, null, 0);
-    Test.assert(f.left.equals("–"));
+    Test.assert((f.left as String).equals("–"));
     Expect.equal(f.right, "8");
     Expect.equal(f.bottom, TrainingText.text(Rez.Strings.UhrWeightOpen));
     Expect.equal(f.bottomColor, SetScreen.WARN);
@@ -81,13 +81,13 @@ function setFaceMarksOpenValuesInOrangeWithAWord(logger as Logger) as Boolean {
     var noReps = FaceText.rigWith([[2, null, 20000]] as Array, false);
     var g = SetScreen.face(noReps.session, null, 0);
     Expect.equal(g.left, "20");
-    Test.assert(g.right.equals("–"));
+    Test.assert((g.right as String).equals("–"));
     Expect.equal(g.bottom, TrainingText.text(Rez.Strings.UhrRepsOpen));
     Expect.equal(g.bottomColor, SetScreen.WARN);
     // both unknown: never a 0
     var none = FaceText.rigWith([[1, null, null]] as Array, false);
     var h = SetScreen.face(none.session, null, 0);
-    Test.assert(h.left.equals("–") && h.right.equals("–"));
+    Test.assert((h.left as String).equals("–") && (h.right as String).equals("–"));
     Expect.equal(h.bottom, TrainingText.text(Rez.Strings.UhrRepsOpen));
     return true;
 }
@@ -143,7 +143,7 @@ function setFaceSecondPageShowsTheHeartRateAndLastTime(logger as Logger) as Bool
     Expect.equal(page.ring, InstrumentFace.RING_SEGMENTS);
     var none = SetScreen.face(rig.session, null, 1);
     Expect.equal(none.hero, "–");
-    Test.assertMessage(!none.hero.equals("0"), "never 0");
+    Test.assertMessage(!(none.hero as String).equals("0"), "never 0");
     // without a last time: the word "Heart rate" on top
     var plain = FaceText.rigWith([[1, 8, 60000]] as Array, false);
     Expect.equal(SetScreen.face(plain.session, 90, 1).top[0], TrainingText.text(Rez.Strings.UhrPulse));
@@ -220,8 +220,8 @@ function restFaceNamesTheNextSetOrTheNextExercise(logger as Logger) as Boolean {
     rig.setAndRest();
     rig.session.confirmSet();   // the last set of the first exercise
     var next = RestScreen.face(rig.session, null, 0);
-    Test.assert(next.bottom.find("Bizeps") != null);
-    Test.assert(next.bottom.length() <= 16);
+    Test.assert((next.bottom as String).find("Bizeps") != null);
+    Test.assert((next.bottom as String).length() <= 16);
     return true;
 }
 
@@ -236,7 +236,7 @@ function restFaceSecondPageShowsTheHeartRate(logger as Logger) as Boolean {
     Expect.equal(f.top[0], TrainingText.text(Rez.Strings.TrRest));
     Expect.equal(f.bottom, Lang.format(TrainingText.text(Rez.Strings.UhrThenSet), [2]));
     var none = RestScreen.face(rig.session, null, 1);
-    Test.assert(!none.hero.equals("0"));
+    Test.assert(!(none.hero as String).equals("0"));
     Test.assert(none.ring == InstrumentFace.RING_TIME);
     return true;
 }
