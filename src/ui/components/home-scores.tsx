@@ -85,7 +85,9 @@ function recovery(s: ArnoldScores["recovery"]): Score {
       ? `Training ${s.best.value}`
       : `${PART_LABEL[s.best.kind]} ${s.best.value}`
     : null;
-  const head = `${deduction[0].toUpperCase()}${deduction.slice(1)}${best ? `, bester Wert ${best}` : ""}.`;
+  const head = !d
+    ? "Deine Belastung liegt im gewohnten Rahmen."
+    : `${deduction[0].toUpperCase()}${deduction.slice(1)}${best ? `, bester Wert ${best}` : ""}.`;
   return {
     name: "Erholung",
     value: s.value,

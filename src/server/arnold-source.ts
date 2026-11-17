@@ -13,6 +13,7 @@ import {
   runTrainingDates,
   type DatasetWithRunDays,
 } from "../analytics/activity.js";
+import { runRecapInputsOf } from "../analytics/recap.js";
 import { scoreRunsOf, type ScoreHealthInput } from "../analytics/scores.js";
 import type { Recovery } from "../shared/write-recovery.js";
 import type { ArnoldDataset } from "../shared/arnold-schema-v1.js";
@@ -169,12 +170,15 @@ export function storeSource(
       // The scores (UX-009) also need distance, duration and type of the
       // completed runs; nothing else reads these summaries.
       const runScores = scoreRunsOf(parsed.data);
+      // UX-014: the recap after a run reads the same way.
+      const runRecaps = runRecapInputsOf(parsed.data);
       const strength = strengthTrainingView(parsed.data);
       const dataset: DatasetWithRunDays = runDays.length
         ? {
             ...strength,
             runTrainingDates: runDays,
             ...(runScores.length ? { runScoreInputs: runScores } : {}),
+            ...(runRecaps.length ? { runRecapInputs: runRecaps } : {}),
           }
         : strength;
       return {
