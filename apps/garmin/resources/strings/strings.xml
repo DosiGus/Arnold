@@ -277,4 +277,5 @@
     <string id="RunUnitLeft">left</string>
     <string id="RunUnitTime">time</string>
     <string id="RunUnitKmEst">km (est.)</string>
+    <string id="RunEffortRange">Effort $1$–$2$</string>
 </strings>

@@ -134,7 +134,9 @@ module ViewRig {
             Test.assertMessage(dc.getTextWidthInPixels(bottom as String, Graphics.FONT_TINY) <= room, label + " bottom '" + bottom + "'");
         }
         Test.assertMessage(face.left != null && face.right != null, label + " has a pair");
-        Test.assertMessage(Instrument.pairFits(dc, face.left as String, face.right as String, Instrument.smallFont()), label + " pair '" + face.left + "|" + face.right + "'");
+        var font = Instrument.smallFont();
+        var used = dc.getTextWidthInPixels(face.left as String, font) + dc.getTextWidthInPixels(face.right as String, font) + 2 * Instrument.scale(dc, Instrument.PAIR_GAP);
+        Test.assertMessage(used <= Instrument.scale(dc, 228), label + " pair '" + face.left + "|" + face.right + "' " + used + " of " + dc.getWidth());
         Test.assertMessage(dc.getTextWidthInPixels(face.leftUnit, Graphics.FONT_TINY) + dc.getTextWidthInPixels(face.rightUnit, Graphics.FONT_TINY) <= room, label + " units");
         Instrument.draw(dc, face);
     }

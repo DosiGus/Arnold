@@ -85,7 +85,9 @@ module RunFaces {
         if (fit != RunSession.FIT_NONE && fit != RunSession.FIT_OK) {
             face.bottom = word(type, fit);
             face.bottomColor = WARN;
-        } else if (type == 2 || type == 4) {
+        } else if (type == 4) {
+            face.bottom = Lang.format(HomeScreen.text(Rez.Strings.RunEffortRange), [low, high]);    // shorter than RunText.target: German must fit
+        } else if (type == 2) {
             face.bottom = RunText.target(type, low, high);
         } else {
             face.bottom = progressText(session);
@@ -179,6 +181,8 @@ module RunFaces {
         if (fit != RunSession.FIT_NONE && fit != RunSession.FIT_OK) {
             face.bottom = word(type, fit);
             face.bottomColor = WARN;
+        } else if (type == 4) {
+            face.bottom = Lang.format(HomeScreen.text(Rez.Strings.RunEffortRange), [low, high]);
         } else if (type != 0) {
             face.bottom = RunText.target(type, low, high);
         } else {
