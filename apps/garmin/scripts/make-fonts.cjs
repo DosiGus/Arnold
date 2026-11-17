@@ -16,6 +16,7 @@ const TTF =
   );
 
 // Sizes in the 260 px grid of the design; other round displays scale them.
+// AMOLED: 360 = FR265S, 416 = FR265, 454 = FR965.
 const FONTS = [
   { id: "NumHero", px: 96, glyphs: "0123456789:" },
   { id: "NumBig", px: 76, glyphs: "0123456789:,.-–" },
@@ -28,6 +29,9 @@ const DISPLAYS = [
   { dir: "resources-round-218x218", width: 218 },
   { dir: "resources-round-240x240", width: 240 },
   { dir: "resources-round-280x280", width: 280 },
+  { dir: "resources-round-360x360", width: 360 },
+  { dir: "resources-round-416x416", width: 416 },
+  { dir: "resources-round-454x454", width: 454 },
 ];
 
 async function main() {
