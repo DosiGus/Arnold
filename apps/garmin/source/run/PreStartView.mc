@@ -243,25 +243,25 @@ class RunInterruptedChoices extends RunChoices {
 
 // Texts, colours and the ring of the pre-start screen. No state: everything comes in as parameters.
 module PreStartScreen {
-    const RING_GRAY as Number = Graphics.COLOR_DK_GRAY;
+    const RING_GRAY as Number = Instrument.TRACK;
 
     function lines(dc as Dc, model as PreStartModel, quality as Number, heartRate as Number or Null, battery as Number) as Array<PairingLine> {
         var out = [] as Array<PairingLine>;
         var request = model.request;
-        out.add(new PairingLine(kindText(request), Graphics.FONT_TINY, Graphics.COLOR_LT_GRAY).skippable());
+        out.add(new PairingLine(kindText(request), Graphics.FONT_TINY, Instrument.LABEL).skippable());
         out.add(new PairingLine(nameText(request), Graphics.FONT_SMALL, Graphics.COLOR_WHITE));
         var summary = summaryText(model);
         if (summary.length() > 0) {
-            out.add(new PairingLine(summary, Graphics.FONT_TINY, Graphics.COLOR_LT_GRAY).skippable());
+            out.add(new PairingLine(summary, Graphics.FONT_TINY, Instrument.LABEL).skippable());
         }
         out.add(new PairingLine(environmentText(model.environment), Graphics.FONT_MEDIUM, Graphics.COLOR_WHITE));
         out.add(new PairingLine(gpsText(model, quality), Graphics.FONT_TINY, gpsColor(model, quality)));
-        out.add(new PairingLine(heartText(request, heartRate), Graphics.FONT_TINY, Graphics.COLOR_LT_GRAY));
+        out.add(new PairingLine(heartText(request, heartRate), Graphics.FONT_TINY, Instrument.LABEL));
         var minutes = model.minutes();
         if (RunBattery.isShort(minutes, battery, model.usesGps())) {
-            out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.PreBattery), [minutes as Number]), Graphics.FONT_TINY, Graphics.COLOR_ORANGE));
+            out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.PreBattery), [minutes as Number]), Graphics.FONT_TINY, Instrument.WARN));
         }
-        out.add(new PairingLine(HomeScreen.text(Rez.Strings.PreStartHint), Graphics.FONT_TINY, Graphics.COLOR_DK_GRAY).skippable());
+        out.add(new PairingLine(HomeScreen.text(Rez.Strings.PreStartHint), Graphics.FONT_TINY, Instrument.TRACK).skippable());
         return out;
     }
 
@@ -331,7 +331,7 @@ module PreStartScreen {
     }
 
     function gpsColor(model as PreStartModel, quality as Number) as Number {
-        return model.usesGps() ? ringColor(quality) : Graphics.COLOR_LT_GRAY;
+        return model.usesGps() ? ringColor(quality) : Instrument.LABEL;
     }
 
     // Heart rate line: off without the consent, the value, or "searching" until the sensor has one.
@@ -365,15 +365,15 @@ module PreStartScreen {
 
     function ringColor(quality as Number) as Number {
         if (quality >= Position.QUALITY_GOOD) {
-            return Graphics.COLOR_GREEN;
+            return Instrument.OK;
         }
         if (quality >= Position.QUALITY_USABLE) {
-            return Graphics.COLOR_YELLOW;
+            return Graphics.COLOR_WHITE;
         }
         if (quality >= Position.QUALITY_LAST_KNOWN) {
-            return Graphics.COLOR_ORANGE;
+            return Instrument.WARN;
         }
-        return Graphics.COLOR_LT_GRAY;
+        return Instrument.LABEL;
     }
 
     // The ring along the edge: grey track, the coloured part clockwise from the top.

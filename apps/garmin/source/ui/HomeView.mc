@@ -90,8 +90,8 @@ module HomeScreen {
 
     // How current the plan is, or what the watch is doing about it.
     function statusLine(sync as PlanSync, now as Number) as PairingLine {
-        var gray = Graphics.COLOR_LT_GRAY;
-        var alert = Graphics.COLOR_YELLOW;
+        var gray = Instrument.LABEL;
+        var alert = Instrument.WARN;
         if (sync.isPhoneMissing()) {
             return new PairingLine(text(Rez.Strings.HomeNoPhone), Graphics.FONT_XTINY, alert);
         }
@@ -128,23 +128,23 @@ module HomeScreen {
             var kind = rows[i].kind;
             if (!todayHeader && kind != HomeStop.STOP_RUN_RESUME) {
                 todayHeader = true;
-                out.add(new PairingLine(text(Rez.Strings.HomeToday), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY).skippable());
+                out.add(new PairingLine(text(Rez.Strings.HomeToday), Graphics.FONT_XTINY, Instrument.LABEL).skippable());
             }
             if (!freeHeader && !rows[i].labeled && (kind == HomeStop.STOP_FREE || kind == HomeStop.STOP_ZONE2)) {
                 freeHeader = true;
-                out.add(new PairingLine(text(Rez.Strings.HomeFreeRun), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY).skippable());
+                out.add(new PairingLine(text(Rez.Strings.HomeFreeRun), Graphics.FONT_XTINY, Instrument.LABEL).skippable());
             }
             var chosen = i == selected;
             var row = chosen ? text(Rez.Strings.HomeMarker) + " " + rows[i].text : rows[i].text;
-            out.add(new PairingLine(PairingLayout.ellipsize(dc, row, rowFont, PairingLayout.textWidth(dc)), rowFont, chosen ? Graphics.COLOR_WHITE : Graphics.COLOR_LT_GRAY));
+            out.add(new PairingLine(PairingLayout.ellipsize(dc, row, rowFont, PairingLayout.textWidth(dc)), rowFont, chosen ? Graphics.COLOR_WHITE : Instrument.LABEL));
         }
         return out;
     }
 
     function lines(dc as Dc, sync as PlanSync, picker as SessionPicker, now as Number) as Array<PairingLine> {
         var white = Graphics.COLOR_WHITE;
-        var gray = Graphics.COLOR_LT_GRAY;
-        var alert = Graphics.COLOR_YELLOW;
+        var gray = Instrument.LABEL;
+        var alert = Instrument.WARN;
         var out = [] as Array<PairingLine>;
         var dir = sync.cache.directory();
         if (dir == null) {
@@ -175,7 +175,7 @@ module HomeScreen {
     // "1 workout waiting": workouts saved on the watch that the server has not confirmed yet (PRD S-05).
     function withPending(lines as Array<PairingLine>, pending as Number) as Array<PairingLine> {
         if (pending > 0) {
-            lines.add(new PairingLine(Lang.format(text(pending == 1 ? Rez.Strings.HomePending : Rez.Strings.HomePendingMany), [pending]), Graphics.FONT_XTINY, Graphics.COLOR_YELLOW));
+            lines.add(new PairingLine(Lang.format(text(pending == 1 ? Rez.Strings.HomePending : Rez.Strings.HomePendingMany), [pending]), Graphics.FONT_XTINY, Instrument.WARN));
         }
         return lines;
     }
@@ -183,7 +183,7 @@ module HomeScreen {
     // A workout is running (or was interrupted): offer to continue it.
     function resumeLines(name as String) as Array<PairingLine> {
         var out = [] as Array<PairingLine>;
-        out.add(new PairingLine(text(Rez.Strings.HomeResume), Graphics.FONT_XTINY, Graphics.COLOR_YELLOW));
+        out.add(new PairingLine(text(Rez.Strings.HomeResume), Graphics.FONT_XTINY, Graphics.COLOR_WHITE));
         out.add(new PairingLine(name, Graphics.FONT_MEDIUM, Graphics.COLOR_WHITE));
         out.add(new PairingLine(text(Rez.Strings.HomeResumeHint), Graphics.FONT_SMALL, Graphics.COLOR_WHITE));
         return out;
@@ -192,8 +192,8 @@ module HomeScreen {
     // Nothing stored: loading, or why there is no plan.
     function noPlanLines(sync as PlanSync) as Array<PairingLine> {
         var white = Graphics.COLOR_WHITE;
-        var gray = Graphics.COLOR_LT_GRAY;
-        var alert = Graphics.COLOR_YELLOW;
+        var gray = Instrument.LABEL;
+        var alert = Instrument.WARN;
         var out = [] as Array<PairingLine>;
         if (sync.state == PlanSync.SYNC_FAILED || sync.state == PlanSync.SYNC_DONE) {
             if (sync.problem == PlanSync.PROBLEM_NO_PLAN) {

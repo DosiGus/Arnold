@@ -199,19 +199,27 @@ module RunEndScreens {
 
     function correct(dc as Dc, flow as RunEndFlow) as Array<PairingLine> {
         var out = [] as Array<PairingLine>;
-        out.add(new PairingLine(HomeScreen.text(Rez.Strings.RunCorrectTitle), Graphics.FONT_TINY, Graphics.COLOR_ORANGE));
-        out.add(PairingLayout.bigLine(dc, RunText.distance(flow.distanceCm, false), Graphics.COLOR_WHITE));
-        out.add(new PairingLine(HomeScreen.text(Rez.Strings.RunCorrectHint), Graphics.FONT_XTINY, Graphics.COLOR_DK_GRAY).skippable());
+        out.add(new PairingLine(HomeScreen.text(Rez.Strings.RunCorrectTitle), Graphics.FONT_TINY, Instrument.LABEL));
+        distanceLines(dc, out, flow.distanceCm, false);
+        out.add(new PairingLine(HomeScreen.text(Rez.Strings.RunCorrectHint), Graphics.FONT_XTINY, Instrument.TRACK).skippable());
         return out;
+    }
+
+    // The distance as digits in the Instrument font with its unit ("km", "km (est.)") in grey below.
+    function distanceLines(dc as Dc, out as Array<PairingLine>, cm as Number, estimated as Boolean) as Void {
+        var number = RunText.km(cm);
+        var full = RunText.distance(cm, estimated);
+        out.add(PairingLayout.numberLine(dc, number, Graphics.COLOR_WHITE));
+        out.add(new PairingLine(full.substring(number.length() + 1, full.length()) as String, Graphics.FONT_TINY, Instrument.LABEL));
     }
 
     function effort(dc as Dc, flow as RunEndFlow) as Array<PairingLine> {
         var out = [] as Array<PairingLine>;
-        out.add(new PairingLine(HomeScreen.text(Rez.Strings.RunEffortTitle), Graphics.FONT_TINY, Graphics.COLOR_ORANGE));
-        out.add(PairingLayout.bigLine(dc, flow.effort.toString(), Graphics.COLOR_WHITE));
+        out.add(new PairingLine(HomeScreen.text(Rez.Strings.RunEffortTitle), Graphics.FONT_TINY, Instrument.LABEL));
+        out.add(PairingLayout.numberLine(dc, flow.effort.toString(), Graphics.COLOR_WHITE));
         out.add(new PairingLine(RunEffort.word(flow.effort), Graphics.FONT_MEDIUM, Graphics.COLOR_WHITE));
-        out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunEffortOf), [flow.effort]), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY).skippable());
-        out.add(new PairingLine(HomeScreen.text(Rez.Strings.RunEffortHint), Graphics.FONT_XTINY, Graphics.COLOR_DK_GRAY).skippable());
+        out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunEffortOf), [flow.effort]), Graphics.FONT_XTINY, Instrument.LABEL).skippable());
+        out.add(new PairingLine(HomeScreen.text(Rez.Strings.RunEffortHint), Graphics.FONT_XTINY, Instrument.TRACK).skippable());
         return out;
     }
 
@@ -220,14 +228,14 @@ module RunEndScreens {
         var session = flow.session;
         var out = [] as Array<PairingLine>;
         if (flow.page == 0) {
-            out.add(PairingLayout.bigLine(dc, RunText.distance(session.resultDistanceCm(), session.distanceIsEstimated() && session.correctedCm < 0), Graphics.COLOR_WHITE));
+            distanceLines(dc, out, session.resultDistanceCm(), session.distanceIsEstimated() && session.correctedCm < 0);
             out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumTime), [RunText.clock(session.calc.timerS)]), Graphics.FONT_MEDIUM, Graphics.COLOR_WHITE));
             out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSegAvg), [RunText.pace(RunSummary.averagePace(session))]), Graphics.FONT_SMALL, Graphics.COLOR_WHITE));
             if (session.effort > 0) {
-                out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumEffort), [session.effort]), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY).skippable());
+                out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumEffort), [session.effort]), Graphics.FONT_XTINY, Instrument.LABEL).skippable());
             }
             if (!flow.saved) {
-                out.add(new PairingLine(HomeScreen.text(Rez.Strings.RunSaveFailed), Graphics.FONT_XTINY, Graphics.COLOR_ORANGE).skippable());
+                out.add(new PairingLine(HomeScreen.text(Rez.Strings.RunSaveFailed), Graphics.FONT_XTINY, Instrument.WARN).skippable());
             }
         } else if (flow.page == 1) {
             heart(session, out);
@@ -238,34 +246,34 @@ module RunEndScreens {
         if (status != null) {
             out.add(status as PairingLine);
         }
-        out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunPageOf), [flow.page + 1, flow.pageCount()]), Graphics.FONT_XTINY, Graphics.COLOR_DK_GRAY).skippable());
+        out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunPageOf), [flow.page + 1, flow.pageCount()]), Graphics.FONT_XTINY, Instrument.TRACK).skippable());
         return out;
     }
 
     function heart(session as RunSession, out as Array<PairingLine>) as Void {
         var calc = session.calc;
         if (calc.heartN <= 0) {
-            out.add(new PairingLine(HomeScreen.text(Rez.Strings.RunSumNoHeart), Graphics.FONT_SMALL, Graphics.COLOR_LT_GRAY));
+            out.add(new PairingLine(HomeScreen.text(Rez.Strings.RunSumNoHeart), Graphics.FONT_SMALL, Instrument.LABEL));
             return;
         }
         out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumHeart), [calc.heartSum / calc.heartN, calc.heartMax]), Graphics.FONT_MEDIUM, Graphics.COLOR_WHITE));
         var z = calc.zoneSeconds;
-        out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumZonesA), [z[0] / 60, z[1] / 60, z[2] / 60]), Graphics.FONT_SMALL, Graphics.COLOR_LT_GRAY).shrinks(Graphics.FONT_XTINY));
-        out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumZonesB), [z[3] / 60, z[4] / 60]), Graphics.FONT_SMALL, Graphics.COLOR_LT_GRAY).shrinks(Graphics.FONT_XTINY));
+        out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumZonesA), [z[0] / 60, z[1] / 60, z[2] / 60]), Graphics.FONT_SMALL, Instrument.LABEL).shrinks(Graphics.FONT_XTINY));
+        out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumZonesB), [z[3] / 60, z[4] / 60]), Graphics.FONT_SMALL, Instrument.LABEL).shrinks(Graphics.FONT_XTINY));
     }
 
     function segments(session as RunSession, out as Array<PairingLine>) as Void {
         var work = RunSummary.stats(session, RunSummary.KIND_WORK);
         if (work[0] > 0) {
             out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumWork), [work[0], RunText.pace(work[2] > 0 ? work[1] * 1000 / work[2] : null)]), Graphics.FONT_MEDIUM, Graphics.COLOR_WHITE));
-            out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumBest), [RunText.pace(work[3])]), Graphics.FONT_SMALL, Graphics.COLOR_LT_GRAY).shrinks(Graphics.FONT_XTINY));
-            out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumSegments), [session.results.size()]), Graphics.FONT_XTINY, Graphics.COLOR_DK_GRAY).skippable());
+            out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumBest), [RunText.pace(work[3])]), Graphics.FONT_SMALL, Instrument.LABEL).shrinks(Graphics.FONT_XTINY));
+            out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumSegments), [session.results.size()]), Graphics.FONT_XTINY, Instrument.TRACK).skippable());
             return;
         }
         var km = RunSummary.stats(session, RunSummary.KIND_LAP);
         out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumKms), [km[0]]), Graphics.FONT_MEDIUM, Graphics.COLOR_WHITE));
-        out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumKmFast), [RunText.pace(km[3])]), Graphics.FONT_SMALL, Graphics.COLOR_LT_GRAY).shrinks(Graphics.FONT_XTINY));
-        out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumKmSlow), [RunText.pace(km[4])]), Graphics.FONT_SMALL, Graphics.COLOR_LT_GRAY).shrinks(Graphics.FONT_XTINY));
+        out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumKmFast), [RunText.pace(km[3])]), Graphics.FONT_SMALL, Instrument.LABEL).shrinks(Graphics.FONT_XTINY));
+        out.add(new PairingLine(Lang.format(HomeScreen.text(Rez.Strings.RunSumKmSlow), [RunText.pace(km[4])]), Graphics.FONT_SMALL, Instrument.LABEL).shrinks(Graphics.FONT_XTINY));
     }
 
     // "An Arnold gesendet", "Wird gesendet, sobald das Handy verbunden ist", ... (nothing without a sender).
@@ -278,18 +286,18 @@ module RunEndScreens {
         var phase = s.phaseOf(flow.session.uuid);
         if (phase == RunSender.PHASE_SENT) {
             var id = s.wasAlreadySent(flow.session.uuid) ? Rez.Strings.RunSentAlready : Rez.Strings.RunSentOk;
-            return new PairingLine(HomeScreen.text(id), Graphics.FONT_XTINY, Graphics.COLOR_GREEN).skippable();
+            return new PairingLine(HomeScreen.text(id), Graphics.FONT_XTINY, Instrument.OK).skippable();
         }
         if (phase == RunSender.PHASE_REJECTED) {
-            return new PairingLine(HomeScreen.text(Rez.Strings.RunSendRejected), Graphics.FONT_XTINY, Graphics.COLOR_ORANGE).skippable();
+            return new PairingLine(HomeScreen.text(Rez.Strings.RunSendRejected), Graphics.FONT_XTINY, Instrument.WARN).skippable();
         }
         if (phase == RunSender.PHASE_SENDING && !s.isPhoneMissing()) {
-            return new PairingLine(HomeScreen.text(Rez.Strings.RunSending), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY).skippable();
+            return new PairingLine(HomeScreen.text(Rez.Strings.RunSending), Graphics.FONT_XTINY, Instrument.LABEL).skippable();
         }
         if (phase == RunSender.PHASE_NONE) {
             return null;
         }
-        return new PairingLine(HomeScreen.text(Rez.Strings.RunSendWait), Graphics.FONT_XTINY, Graphics.COLOR_YELLOW).skippable();
+        return new PairingLine(HomeScreen.text(Rez.Strings.RunSendWait), Graphics.FONT_XTINY, Instrument.WARN).skippable();
     }
 }
 

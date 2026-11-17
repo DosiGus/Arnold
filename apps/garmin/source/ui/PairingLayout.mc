@@ -145,6 +145,16 @@ module PairingLayout {
         return new PairingLine(text, bigFont(dc, text), color).big();
     }
 
+    // The same main number in the "Instrument" digit fonts (they know the comma): the biggest that fits.
+    // A text with a unit or word in it is no number and falls back to bigLine.
+    function numberLine(dc as Dc, text as String, color as Graphics.ColorType) as PairingLine {
+        if (!numeralOnly(text)) {
+            return bigLine(dc, text, color);
+        }
+        var fonts = [Instrument.bigFont(), Instrument.midFont(), Instrument.smallFont()] as Array<Graphics.FontType>;
+        return new PairingLine(text, fitFont(dc, text, bigWidth(dc), fonts), color).big();
+    }
+
     function bigWidth(dc as Dc) as Number {
         return dc.getWidth() * 90 / 100;
     }

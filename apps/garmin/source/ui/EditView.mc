@@ -25,17 +25,17 @@ module EditScreen {
         var out = [] as Array<PairingLine>;
         var ex = session.exercise();
         out.add(PairingLayout.nameLine(dc, ex.name, Graphics.COLOR_WHITE));
-        out.add(new PairingLine(Lang.format(TrainingText.text(Rez.Strings.TrSetOf), [adjust.setIndex + 1, ex.sets.size()]), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY));
+        out.add(new PairingLine(Lang.format(TrainingText.text(Rez.Strings.TrSetOf), [adjust.setIndex + 1, ex.sets.size()]), Graphics.FONT_XTINY, Instrument.LABEL));
         var onReps = adjust.field == SetAdjust.FIELD_REPS;
         var unknown = onReps ? adjust.repsUnknown : adjust.loadUnknown;
         var label = onReps
             ? (unknown ? Rez.Strings.EditRepsPick : Rez.Strings.EditReps)
             : (unknown ? Rez.Strings.EditLoadPick : Rez.Strings.EditLoad);
-        out.add(new PairingLine(TrainingText.text(label), Graphics.FONT_XTINY, unknown ? Graphics.COLOR_YELLOW : Graphics.COLOR_LT_GRAY));
+        out.add(new PairingLine(TrainingText.text(label), Graphics.FONT_XTINY, unknown ? Instrument.WARN : Instrument.LABEL));
         var value = onReps ? adjust.reps.toString() : TrainingText.kg(adjust.loadG, TrainingText.separator());
-        out.add(PairingLayout.bigLine(dc, value, Graphics.COLOR_WHITE));
+        out.add(PairingLayout.numberLine(dc, value, Graphics.COLOR_WHITE));
         out.add(new PairingLine(onReps ? TrainingText.text(Rez.Strings.TrRepsUnit) : TrainingText.text(Rez.Strings.TrKg), Graphics.FONT_SMALL, Graphics.COLOR_WHITE));
-        out.add(new PairingLine(TrainingText.text(onReps ? Rez.Strings.EditNextHint : Rez.Strings.EditDoneHint), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY).skippable());
+        out.add(new PairingLine(TrainingText.text(onReps ? Rez.Strings.EditNextHint : Rez.Strings.EditDoneHint), Graphics.FONT_XTINY, Instrument.LABEL).skippable());
         return out;
     }
 }

@@ -45,6 +45,8 @@ class InstrumentFace {
 module Instrument {
     const TRACK as Number = 0x555555;     // the darkest neutral of the 64 colour palette that still shows on black
     const LABEL as Number = 0xAAAAAA;
+    const OK as Number = 0x55FF55;        // only for "in target" / "done"
+    const WARN as Number = 0xFFAA00;      // only for "attention", always with a word
     const PAIR_WIDTH as Number = 212;
     const PAIR_GAP as Number = 14;
 
