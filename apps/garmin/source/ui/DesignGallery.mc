@@ -1,3 +1,4 @@
+import Toybox.Application;
 import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.Timer;
@@ -11,7 +12,7 @@ module DesignFaces {
     const WARN as Number = 0xFFAA00;
 
     function count() as Number {
-        return 8;
+        return 13;
     }
 
     function at(index as Number) as InstrumentFace {
@@ -60,7 +61,7 @@ module DesignFaces {
             f.bottom = "Gewicht offen";
             f.bottomColor = WARN;
             sets(f, 4, 1, 0);
-        } else {
+        } else if (index == 7) {
             f.top = ["Pause"] as Array<String>;
             f.hero = "0:08";
             f.heroColor = WARN;
@@ -68,6 +69,8 @@ module DesignFaces {
             f.bottom = "Dann Satz 3";
             time(f, 336, 24);
             f.ringColor = WARN;
+        } else {
+            return GalleryRig.face(index);   // 8..12: the real set and rest faces of the training screen (UHR-01/02)
         }
         return f;
     }
@@ -149,5 +152,83 @@ class DesignGalleryDelegate extends WatchUi.BehaviorDelegate {
     function onPreviousPage() as Boolean {
         _view.move(-1);
         return true;
+    }
+}
+
+// In-memory pieces so the gallery can run a real TrainingSession (the test doubles are not part of this build).
+(:designGallery)
+class GalleryStore extends KeyValueStore {
+    private var _values as Dictionary = {} as Dictionary;
+
+    function initialize() {
+        KeyValueStore.initialize();
+    }
+
+    function getValue(key as String) as Application.Storage.ValueType {
+        return _values[key] as Application.Storage.ValueType;
+    }
+
+    function setValue(key as String, value as Application.Storage.ValueType) as Void {
+        _values[key] = value;
+    }
+
+    function deleteValue(key as String) as Void {
+        _values.remove(key);
+    }
+}
+
+(:designGallery)
+class GalleryClock extends PairingClock {
+    var now as Number = 1000000;
+
+    function initialize() {
+        PairingClock.initialize();
+    }
+
+    function nowSeconds() as Number {
+        return now;
+    }
+
+    function utcOffsetMinutes() as Number {
+        return 0;
+    }
+}
+
+(:designGallery)
+class GallerySignals extends Signals {
+    function initialize() {
+        Signals.initialize(null);
+    }
+
+    function warn() as Void {
+    }
+
+    function restOver() as Void {
+    }
+}
+
+// Faces 8..12: set with weight, set with "Weight open", rest above and below ten seconds, second page of the set.
+(:designGallery)
+module GalleryRig {
+    function day(load as Number or Null) as Dictionary {
+        var cat = [{ "id" => "ex_a", "n" => "Überzüge am Kabelzug", "g" => 2500, "l" => { "b" => "total" }, "s" => [[4, 8, load]] }] as Array;
+        var items = [{ "id" => "it_a", "c" => 0, "r" => 120, "rr" => null, "l" => "Letztes Mal 8 · 8 · 7" }] as Array;
+        return { "api_version" => 1, "min_app_version" => "1.0.0", "p" => "plv_1", "id" => "d1", "n" => "Oberkörper A", "cat" => cat, "items" => items };
+    }
+
+    function face(index as Number) as InstrumentFace {
+        var clock = new GalleryClock();
+        var session = TrainingSession.start(day(index == 9 ? null : 62500), new Journal(new GalleryStore()), clock, new GallerySignals());
+        session.confirmPreview();
+        if (index == 10 || index == 11) {
+            session.confirmSet();
+            clock.now += index == 10 ? 32 : 112;
+            return RestScreen.face(session, 98, 0);
+        }
+        if (index != 9) {
+            session.confirmSet();     // set 1 is done, the screen shows set 2
+            session.endRest();
+        }
+        return SetScreen.face(session, 132, index == 12 ? 1 : 0);
     }
 }
