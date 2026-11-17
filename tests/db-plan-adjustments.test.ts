@@ -9,6 +9,7 @@ import { readFile } from "node:fs/promises";
 import pg from "pg";
 import { afterAll, describe, expect, inject, it } from "vitest";
 import { migrate } from "../src/server/db/migrate";
+import { TrainingPlanService } from "../src/server/plan/service";
 import { appDatabase, asOwner, newAccount } from "./fixtures/arnold-db.js";
 
 const db = appDatabase();
@@ -172,6 +173,135 @@ describe("plan_adjustments: checks", () => {
       c.query("delete from arnold.users where user_id = $1", [alice.userId]),
     );
     expect(await count(alice.userId)).toBe(0);
+  });
+});
+
+/** The account's plan service, on a fixed clock (Tuesday, 17 Nov 2026). */
+function plansAt(account: Account, now = "2026-11-17T09:00:00Z") {
+  return new TrainingPlanService({
+    mode: "database",
+    trackerId: account.trackerId,
+    store: account.store,
+    clock: () => new Date(now),
+    authorization: {
+      authorize: async () => ({
+        subject: account.userId,
+        trackerId: account.trackerId,
+        verified: true,
+        kind: "authenticated",
+        permissions: ["write"],
+      }),
+    },
+  });
+}
+
+async function activePlan(plans: TrainingPlanService) {
+  const created = await plans.execute("create_training_plan", {
+    request_id: randomUUID(),
+    name: "Testplan",
+    days_per_week: 2,
+    sessions: [
+      {
+        session_name: "A",
+        exercises: [
+          { exercise_id: "squat", target_sets: 3, rep_min: 6, rep_max: 8 },
+          {
+            exercise_id: "bench-press",
+            target_sets: 3,
+            rep_min: 6,
+            rep_max: 8,
+          },
+          {
+            exercise_id: "dumbbell-curl",
+            target_sets: 3,
+            rep_min: 10,
+            rep_max: 12,
+          },
+        ],
+      },
+      {
+        session_name: "B",
+        exercises: [
+          { exercise_id: "deadlift", target_sets: 3, rep_min: 5, rep_max: 5 },
+          {
+            exercise_id: "barbell-row",
+            target_sets: 3,
+            rep_min: 8,
+            rep_max: 10,
+          },
+        ],
+      },
+    ],
+  });
+  expect(created.error).toBeNull();
+  const version = created.result!.plan!.version;
+  const activated = await plans.execute("activate_training_plan", {
+    request_id: randomUUID(),
+    plan_version_id: version.plan_version_id,
+    expected_row_revision: version.row_revision,
+    confirmation: {
+      plan_version_id: version.plan_version_id,
+      row_revision: version.row_revision,
+      confirmed: true,
+    },
+  });
+  expect(activated.error).toBeNull();
+  return version.plan_version_id;
+}
+
+describe("plan_adjustments through the plan service", () => {
+  it("stores, replays and confirms an adjustment, only for its own user", async () => {
+    const alice = await newAccount(db);
+    const bob = await newAccount(db);
+    const plans = plansAt(alice);
+    const base = await activePlan(plans);
+    const input = {
+      request_id: randomUUID(),
+      timezone: "Europe/Berlin",
+      kind: "today",
+      minutes_per_session: 20,
+    };
+    const created = await plans.adjustments.execute(
+      "create_plan_adjustment",
+      input,
+    );
+    expect(created.error).toBeNull();
+    // The same request_id replays the stored receipt.
+    const replay = await plans.adjustments.execute(
+      "create_plan_adjustment",
+      input,
+    );
+    expect(replay.replayed).toBe(true);
+    expect(replay.result).toEqual(created.result);
+    const a = created.result!.plan_adjustment.adjustment;
+    const confirmed = await plans.adjustments.execute(
+      "confirm_plan_adjustment",
+      {
+        request_id: randomUUID(),
+        plan_adjustment_id: a.plan_adjustment_id,
+        expected_row_revision: a.row_revision,
+      },
+    );
+    expect(confirmed.error).toBeNull();
+
+    const data = await alice.store.read();
+    expect(data.planAdjustments).toHaveLength(1);
+    expect(data.planAdjustments[0]!.status).toBe("confirmed");
+    expect(data.plans.find((p) => p.status === "active")!.plan_version_id).toBe(
+      base,
+    );
+    expect(
+      data.plans.find((p) => p.plan_version_id === a.plan_version_id)!.status,
+    ).toBe("temporary");
+    // The plan list never shows the temporary version.
+    const listed = (await plans.list()).families.flatMap((f) =>
+      f.versions.map((v) => v.plan_version_id),
+    );
+    expect(listed).not.toContain(a.plan_version_id);
+    // Bob sees none of it.
+    const bobs = await bob.store.read();
+    expect(bobs.planAdjustments).toEqual([]);
+    expect(bobs.plans.some((p) => p.status === "temporary")).toBe(false);
   });
 });
 
