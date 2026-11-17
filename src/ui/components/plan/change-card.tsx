@@ -59,7 +59,7 @@ export function PlanChangeView({
         title={state.draft.name}
         subtitle={`Version ${state.draft.version_no} gilt ab jetzt.`}
       >
-        <StatusLines saved watch="unknown" />
+        <StatusLines saved watch={state.watch ?? "unknown"} />
         <ConfirmAction
           state="confirmed"
           label="Übernehmen"
