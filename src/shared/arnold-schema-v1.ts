@@ -44,6 +44,7 @@ export const ARNOLD_TABLES = [
   "PLAN_RUN_SESSIONS",
   "RUNS",
   "RUN_SEGMENTS",
+  "PLAN_ADJUSTMENTS",
 ] as const;
 export type ArnoldTable = (typeof ARNOLD_TABLES)[number];
 export const ARNOLD_TABLE_HEADERS = {
@@ -245,6 +246,25 @@ export const ARNOLD_TABLE_HEADERS = {
     "updated_at_utc",
     "row_revision",
   ],
+  // UX-008, adjustment for a while (migration 007).
+  PLAN_ADJUSTMENTS: [
+    "plan_adjustment_id",
+    "plan_version_id",
+    "base_plan_version_id",
+    "kind",
+    "start_date_local",
+    "end_date_local",
+    "timezone",
+    "minutes_per_session",
+    "sessions_per_week",
+    "reason",
+    "status",
+    "confirmed_at_utc",
+    "cancelled_at_utc",
+    "created_at_utc",
+    "updated_at_utc",
+    "row_revision",
+  ],
 } as const satisfies Record<ArnoldTable, readonly string[]>;
 
 export const ArnoldIdSchema = z
@@ -361,7 +381,11 @@ export const ArnoldPlanVersionSchema = z
     version_no: positiveInt,
     name: text,
     split_key: optionalText,
-    status: z.enum(["draft", "active", "archived"]),
+    /**
+     * `temporary` (UX-008): the sessions of an adjustment for a while. Never
+     * activated, never a draft, frozen once written; see PLAN_ADJUSTMENTS.
+     */
+    status: z.enum(["draft", "active", "archived", "temporary"]),
     goal_key: optionalText,
     days_per_week: positiveInt.max(7).nullable(),
     activated_at_utc: ArnoldUtcTimestampSchema.nullable(),
@@ -373,18 +397,20 @@ export const ArnoldPlanVersionSchema = z
     message: "updated_at_utc liegt vor created_at_utc.",
   })
   .superRefine((row, ctx) => {
-    if (row.status === "draft") {
+    if (row.status === "draft" || row.status === "temporary") {
       if (row.activated_at_utc !== null)
         ctx.addIssue({
           code: "custom",
           path: ["activated_at_utc"],
-          message: "Ein Entwurf darf noch keinen Aktivierungszeitpunkt haben.",
+          message:
+            "Ein Entwurf oder eine Anpassung auf Zeit hat keinen Aktivierungszeitpunkt.",
         });
       if (row.retired_at_utc !== null)
         ctx.addIssue({
           code: "custom",
           path: ["retired_at_utc"],
-          message: "Ein Entwurf darf noch keinen Archivierungszeitpunkt haben.",
+          message:
+            "Ein Entwurf oder eine Anpassung auf Zeit hat keinen Archivierungszeitpunkt.",
         });
     } else {
       if (row.activated_at_utc === null)
@@ -750,6 +776,80 @@ export const ArnoldPlanRunSessionSchema = z
   })
   .readonly();
 
+/** Longest adjustment for a while, in local calendar days (UX-008). */
+export const PLAN_ADJUSTMENT_MAX_DAYS = 56;
+
+/** Whole days from `from` to `to` (YYYY-MM-DD), calendar arithmetic in UTC. */
+export function daysBetween(from: string, to: string): number {
+  return Math.round(
+    (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) /
+      86_400_000,
+  );
+}
+
+/**
+ * An adjustment for a while (UX-008): for the local calendar days from
+ * `start_date_local` to `end_date_local` (both inclusive, in `timezone`) a
+ * confirmed adjustment's temporary plan version replaces the active plan for
+ * training. The active plan itself is never touched; after the last day it
+ * applies again without any write.
+ */
+export const ArnoldPlanAdjustmentSchema = z
+  .strictObject({
+    plan_adjustment_id: ArnoldIdSchema,
+    plan_version_id: ArnoldIdSchema,
+    base_plan_version_id: ArnoldIdSchema,
+    kind: z.enum(["today", "week", "month", "range"]),
+    start_date_local: z.iso.date(),
+    end_date_local: z.iso.date(),
+    timezone: z
+      .string()
+      .min(1)
+      .max(64)
+      .refine((value) => {
+        try {
+          new Intl.DateTimeFormat("en", { timeZone: value });
+          return true;
+        } catch {
+          return false;
+        }
+      }, "Unbekannte Zeitzone."),
+    minutes_per_session: z.number().int().min(10).max(180).nullable(),
+    sessions_per_week: z.number().int().min(1).max(7).nullable(),
+    reason: optionalText,
+    status: z.enum(["draft", "confirmed", "cancelled"]),
+    confirmed_at_utc: ArnoldUtcTimestampSchema.nullable(),
+    cancelled_at_utc: ArnoldUtcTimestampSchema.nullable(),
+    ...technical,
+  })
+  .refine(chronological, {
+    path: ["updated_at_utc"],
+    message: "updated_at_utc liegt vor created_at_utc.",
+  })
+  .superRefine((row, ctx) => {
+    const issue = (path: string, message: string) =>
+      ctx.addIssue({ code: "custom", path: [path], message });
+    const days = daysBetween(row.start_date_local, row.end_date_local);
+    if (days < 0) issue("end_date_local", "Das Ende liegt vor dem Anfang.");
+    if (days + 1 > PLAN_ADJUSTMENT_MAX_DAYS)
+      issue(
+        "end_date_local",
+        `Eine Anpassung auf Zeit dauert höchstens ${PLAN_ADJUSTMENT_MAX_DAYS} Tage.`,
+      );
+    // A cancelled adjustment may have been confirmed before, or not.
+    if (
+      (row.status === "confirmed" && row.confirmed_at_utc === null) ||
+      (row.status === "draft" && row.confirmed_at_utc !== null)
+    )
+      issue(
+        "confirmed_at_utc",
+        "Bestätigungszeitpunkt passt nicht zum Status.",
+      );
+    if ((row.status === "cancelled") !== (row.cancelled_at_utc !== null))
+      issue("cancelled_at_utc", "Absagezeitpunkt passt nicht zum Status.");
+  })
+  .readonly();
+
 /**
  * One run: one-to-one with a workout of activity_type "run". A planned run
  * (workout status "planned") carries only its prescription; the result
@@ -901,6 +1001,8 @@ const datasetBase = z.strictObject({
   planRunSessions: z.array(ArnoldPlanRunSessionSchema).readonly().default([]),
   runs: z.array(ArnoldRunSchema).readonly().default([]),
   runSegments: z.array(ArnoldRunSegmentSchema).readonly().default([]),
+  // UX-008 (migration 007). Absent in older datasets.
+  planAdjustments: z.array(ArnoldPlanAdjustmentSchema).readonly().default([]),
 });
 export const ArnoldDatasetSchema = datasetBase
   .superRefine((data, ctx) => {
@@ -1116,6 +1218,55 @@ export const ArnoldDatasetSchema = datasetBase
         );
       activeGoals.add(key);
     });
+    // Adjustments for a while (UX-008): each temporary version belongs to
+    // exactly one adjustment, the base is a real plan, and two confirmed
+    // adjustments never share a calendar day.
+    index(data.planAdjustments, "plan_adjustment_id", "planAdjustments");
+    const temporaryOwners = new Map<string, number>();
+    data.planAdjustments.forEach((row, i) => {
+      const own = plans.get(row.plan_version_id);
+      if (!own || own.status !== "temporary")
+        issue(
+          ["planAdjustments", i, "plan_version_id"],
+          "Eine Anpassung auf Zeit verweist auf eine Planversion mit Status temporary.",
+        );
+      const base = plans.get(row.base_plan_version_id);
+      if (!base || base.status === "temporary")
+        issue(
+          ["planAdjustments", i, "base_plan_version_id"],
+          "Referenz auf den Ausgangsplan fehlt.",
+        );
+      if (temporaryOwners.has(row.plan_version_id))
+        issue(
+          ["planAdjustments", i, "plan_version_id"],
+          "Eine Planversion gehört höchstens zu einer Anpassung auf Zeit.",
+        );
+      temporaryOwners.set(row.plan_version_id, i);
+    });
+    data.plans.forEach((row, i) => {
+      if (
+        row.status === "temporary" &&
+        !temporaryOwners.has(row.plan_version_id)
+      )
+        issue(
+          ["plans", i, "status"],
+          "Eine Planversion mit Status temporary braucht ihre Anpassung auf Zeit.",
+        );
+    });
+    const confirmed = data.planAdjustments
+      .map((row, i) => ({ row, i }))
+      .filter(({ row }) => row.status === "confirmed")
+      .sort((a, b) =>
+        a.row.start_date_local < b.row.start_date_local ? -1 : 1,
+      );
+    for (let k = 1; k < confirmed.length; k++)
+      if (
+        confirmed[k].row.start_date_local <= confirmed[k - 1].row.end_date_local
+      )
+        issue(
+          ["planAdjustments", confirmed[k].i, "start_date_local"],
+          "Zwei bestätigte Anpassungen auf Zeit überschneiden sich.",
+        );
     const weighedDays = new Set<string>();
     data.bodyWeights.forEach((row, i) => {
       if (row.status !== "active") return;
@@ -1133,7 +1284,8 @@ export const ArnoldDatasetSchema = datasetBase
         data.runProfiles.length ||
         data.planRunSessions.length ||
         data.runs.length ||
-        data.runSegments.length)
+        data.runSegments.length ||
+        data.planAdjustments.length)
     )
       issue(
         ["config", "file_role"],
@@ -1168,6 +1320,7 @@ export type ArnoldRunProfile = z.infer<typeof ArnoldRunProfileSchema>;
 export type ArnoldPlanRunSession = z.infer<typeof ArnoldPlanRunSessionSchema>;
 export type ArnoldRun = z.infer<typeof ArnoldRunSchema>;
 export type ArnoldRunSegment = z.infer<typeof ArnoldRunSegmentSchema>;
+export type ArnoldPlanAdjustment = z.infer<typeof ArnoldPlanAdjustmentSchema>;
 
 /**
  * The dataset as every strength reader sees it: strength workouts that took

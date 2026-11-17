@@ -922,7 +922,7 @@ export function buildDashboardView(
           plan_family_id: activePlan.plan_family_id,
           version_no: activePlan.version_no,
           name: activePlan.name,
-          status: activePlan.status,
+          status: "active" as const,
           days_per_week: activePlan.days_per_week,
           session_count: new Set(
             dataset.planItems
@@ -968,7 +968,12 @@ export function buildDashboardView(
             .sort((a, b) => a.session_order - b.session_order),
         }
       : null,
-    plan_history: [...dataset.plans]
+    // A temporary version (UX-008) is not part of the plan history; while
+    // its adjustment runs the training view shows it as the active plan.
+    plan_history: dataset.plans
+      .flatMap((plan) =>
+        plan.status === "temporary" ? [] : [{ ...plan, status: plan.status }],
+      )
       .sort(
         (a, b) =>
           a.plan_family_id.localeCompare(b.plan_family_id) ||

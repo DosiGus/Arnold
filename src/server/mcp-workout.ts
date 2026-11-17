@@ -10,6 +10,7 @@ import {
 import type { ArnoldDataSource } from "./arnold-source.js";
 import type { WorkoutLoggingService } from "./workout/service.js";
 import { proposeActivePlan } from "./workout/proposal.js";
+import { trainingView } from "./plan/adjustment-rules.js";
 
 const descriptions: Record<WriteOperation, string> = {
   start_workout:
@@ -46,6 +47,7 @@ export function registerWorkoutTools(
   source: ArnoldDataSource,
   logging?: WorkoutLoggingService,
   actorContext?: unknown,
+  clock: () => Date = () => new Date(),
 ) {
   server.registerTool(
     "get_workout",
@@ -74,7 +76,8 @@ export function registerWorkoutTools(
             /* capabilities fail closed */
           }
         }
-        const { dataset } = await source.load();
+        // UX-008: a running adjustment for a while stands in for the plan.
+        const dataset = trainingView((await source.load()).dataset, clock());
         const workout =
           dataset.workouts.find((w) => w.workout_id === workout_id) ?? null;
         if (workout_id && !workout)

@@ -18,7 +18,10 @@ import {
   InMemoryArnoldStore,
 } from "../src/server/workout/infrastructure";
 import { WorkoutLoggingService } from "../src/server/workout/service";
-import { planFixtureDataset } from "../src/server/plan/fixture";
+import {
+  createFixturePlanning,
+  planFixtureDataset,
+} from "../src/server/plan/fixture";
 import { createHttpApp } from "../src/server/http";
 import { ARNOLD_INSTRUCTIONS } from "../src/server/mcp-arnold";
 import { UNUSUAL_SET_LIMITS } from "../src/shared/workout-contract";
@@ -225,5 +228,68 @@ describe("UX-013: the plan change ends in the card", () => {
       expect(line).toContain("plan_change");
       expect(line).toContain("activate_training_plan");
     }
+  });
+});
+
+/**
+ * UX-008: one corpus case per example sentence of an adjustment for a while.
+ * Whether ChatGPT picks the call is checked by hand; enforced here: the
+ * instructions name sentence, tool and kind, the call the sentence maps to
+ * yields the right days, and it is only a draft until the user's yes.
+ */
+describe("UX-008: adjustment for a while", () => {
+  // Tuesday, 17 November 2026, 10:00 in Berlin.
+  const AT = "2026-11-17T09:00:00Z";
+  const CASES = [
+    {
+      sentence: "Ich habe heute nur 20 Minuten.",
+      input: { kind: "today", minutes_per_session: 20 },
+      days: ["2026-11-17", "2026-11-17"],
+    },
+    {
+      sentence: "Ich habe diese Woche wenig Zeit.",
+      input: { kind: "week", sessions_per_week: 2 },
+      days: ["2026-11-17", "2026-11-22"],
+    },
+    {
+      sentence: "Ich habe diesen Monat keine Zeit.",
+      input: { kind: "month" },
+      days: ["2026-11-17", "2026-11-30"],
+    },
+  ] as const;
+
+  it.each(CASES)(
+    '"$sentence" → create_plan_adjustment, a draft for the right days',
+    async ({ sentence, input, days }) => {
+      expect(ARNOLD_INSTRUCTIONS).toContain(`„${sentence}“`);
+      const at = ARNOLD_INSTRUCTIONS.indexOf(`„${sentence}“`);
+      expect(ARNOLD_INSTRUCTIONS.slice(at, at + 120)).toContain(
+        `kind ${input.kind}`,
+      );
+      const runtime = createFixturePlanning(planFixtureDataset(), {
+        clock: () => new Date(AT),
+      });
+      const created = await runtime.plans.adjustments.execute(
+        "create_plan_adjustment",
+        { request_id: "corpus", timezone: "Europe/Berlin", ...input },
+      );
+      expect(created.error).toBeNull();
+      const adjustment = created.result!.plan_adjustment.adjustment;
+      expect([adjustment.start_date_local, adjustment.end_date_local]).toEqual(
+        days,
+      );
+      // Not in force before the click or an explicit yes.
+      expect(adjustment.status).toBe("draft");
+      expect(created.result!.plan_adjustment.running).toBe(false);
+    },
+  );
+
+  it("confirms only after a yes and never invents numbers", () => {
+    expect(ARNOLD_INSTRUCTIONS).toContain(
+      "Wirksam erst per Knopf in der Karte oder nach einem ausdrücklichen Ja über confirm_plan_adjustment, nie von selbst",
+    );
+    expect(ARNOLD_INSTRUCTIONS).toContain(
+      "stecken Zeitraum und Umfang schon im Satz, entfällt die Rückfrage",
+    );
   });
 });

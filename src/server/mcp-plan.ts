@@ -31,6 +31,15 @@ import {
   type PlanWriteOperation,
 } from "../shared/plan-contract.js";
 import { toPlanError } from "./plan/errors.js";
+import {
+  GetPlanAdjustmentsInputSchema,
+  PlanAdjustmentInputs,
+  PlanAdjustmentListSchema,
+  PlanAdjustmentWriteResponseSchema,
+  type PlanAdjustmentWriteOperation,
+  type PlanAdjustmentWriteResponse,
+} from "../shared/plan-adjustment-contract.js";
+import { dayLabel } from "./plan/adjustments.js";
 import type { TrainingPlanService } from "./plan/service.js";
 import type { WatchDelivery } from "../shared/watch-contract.js";
 
@@ -276,6 +285,42 @@ export function registerPlanTools(
     },
   );
 
+  // UX-008: adjustment for a while.
+  server.registerTool(
+    "get_plan_adjustments",
+    {
+      title: "Anpassungen auf Zeit laden",
+      description:
+        "Lädt die laufende Anpassung auf Zeit (running) und alle offenen oder bestätigten, die noch nicht vorbei sind, mit Zeitraum, Einheiten, Unterschied zum normalen Plan und dem Tag, ab dem wieder der normale Plan gilt. Mit plan_adjustment_id genau diese.",
+      inputSchema: GetPlanAdjustmentsInputSchema,
+      outputSchema: PlanAdjustmentListSchema,
+      annotations: readOnly,
+    },
+    async (input) => {
+      try {
+        let canWrite = plans.mode !== "disabled";
+        if (canWrite)
+          try {
+            await plans.actor(actorContext);
+          } catch {
+            canWrite = false;
+          }
+        const list = await plans.adjustments.list(input, canWrite);
+        const running = list.running?.adjustment;
+        return ok(
+          list,
+          running
+            ? `Anpassung auf Zeit läuft bis ${dayLabel(running.end_date_local)}; ab ${dayLabel(list.running!.normal_from)} gilt wieder der normale Plan.`
+            : list.adjustments.length
+              ? `${list.adjustments.length} Anpassung(en) auf Zeit offen oder geplant.`
+              : "Keine Anpassung auf Zeit. Es gilt der normale Plan.",
+        );
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
   if (plans.mode === "disabled") return;
 
   for (const operation of Object.keys(
@@ -334,4 +379,76 @@ export function registerPlanTools(
       },
     );
   }
+  registerPlanAdjustmentWrites(server, plans, actorContext, watchDelivery);
+}
+
+const ADJUSTMENT_DESCRIPTIONS: Record<PlanAdjustmentWriteOperation, string> = {
+  create_plan_adjustment:
+    "Legt eine Anpassung auf Zeit als ENTWURF an: für einen Zeitraum gilt statt des aktiven Plans eine angepasste Fassung, danach ohne Zutun wieder der normale Plan. Der aktive Plan wird nie verändert. Beispiele: „Ich habe heute nur 20 Minuten“ → kind today, minutes_per_session 20 (Arnold kürzt die heutige Einheit selbst: Grundübungen zuerst, weniger Sätze und Pausen). „Ich habe diese Woche wenig Zeit“ → kind week (bis Sonntag), sessions_per_week und/oder minutes_per_session nur nennen, wenn der Nutzer sie sagt, sonst einmal fragen. „Ich habe diesen Monat keine Zeit“ → kind month (bis Monatsende, höchstens 56 Tage): kurze Ganzkörper-Einheiten zum Stand halten. Urlaub → kind range mit Anfang und Ende, Übungen für die Geräte vor Ort mit replacements bzw. remove_exercise_ids. Keine Zahlen erfinden. Danach die Karte plan_adjustment mit show_arnold_dashboard zeigen; wirksam wird sie erst mit confirm_plan_adjustment nach Klick oder ausdrücklichem Ja. Überschneidet sich der Zeitraum mit einer bestätigten Anpassung, wird abgelehnt. Wurde heute schon trainiert oder ist heute nichts geplant, sagt das Ergebnis es; dann nichts anlegen.",
+  confirm_plan_adjustment:
+    "Macht einen Anpassungs-Entwurf wirksam. Nur nach Klick in der Karte oder einem ausdrücklichen Ja des Nutzers im Chat, nie von selbst. Braucht plan_adjustment_id und expected_row_revision aus create_plan_adjustment bzw. get_plan_adjustments.",
+  cancel_plan_adjustment:
+    "Sagt eine Anpassung auf Zeit ab, auch eine laufende: ab sofort gilt wieder der normale Plan. Ändern heißt absagen und neu anlegen.",
+};
+
+/** The chat line after an adjustment write; the card shows the details. */
+function adjustmentText(payload: PlanAdjustmentWriteResponse): string {
+  if (!payload.ok)
+    return failureText(
+      payload.error!.code,
+      payload.error!.message,
+      payload.error!.recovery,
+    );
+  if (payload.replayed)
+    return "Bereits gespeicherter Vorgang; keine weitere Änderung.";
+  const view = payload.result!.plan_adjustment;
+  const a = view.adjustment;
+  const back = `Ab ${dayLabel(view.normal_from)} gilt wieder dein normaler Plan.`;
+  if (payload.operation === "create_plan_adjustment")
+    return `Entwurf angelegt: ${dayLabel(a.start_date_local)} bis ${dayLabel(a.end_date_local)}, ${view.sessions.length} Einheit(en). Noch nicht wirksam. Jetzt die Karte plan_adjustment zeigen; wirksam erst nach Klick oder ausdrücklichem Ja. ${back}`;
+  if (payload.operation === "confirm_plan_adjustment")
+    return `Anpassung gilt vom ${dayLabel(a.start_date_local)} bis ${dayLabel(a.end_date_local)}. ${back}`;
+  return "Anpassung abgesagt. Es gilt wieder der normale Plan.";
+}
+
+export function registerPlanAdjustmentWrites(
+  server: McpServer,
+  plans: TrainingPlanService,
+  actorContext?: unknown,
+  watchDelivery?: () => Promise<WatchDelivery>,
+) {
+  for (const operation of Object.keys(
+    PlanAdjustmentInputs,
+  ) as PlanAdjustmentWriteOperation[])
+    server.registerTool(
+      operation,
+      {
+        description: `${ADJUSTMENT_DESCRIPTIONS[operation]} Bei retry_same_request denselben Aufruf mit derselben request_id wiederholen; ein gespeicherter Vorgang wird nicht doppelt ausgeführt.`,
+        inputSchema: PlanAdjustmentInputs[operation],
+        outputSchema: PlanAdjustmentWriteResponseSchema,
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: operation !== "create_plan_adjustment",
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      async (input: unknown) => {
+        const executed = await plans.adjustments.execute(
+          operation,
+          input,
+          actorContext,
+        );
+        // UX-007: answer-time status, never stored with the operation.
+        const payload =
+          executed.ok && operation !== "create_plan_adjustment" && watchDelivery
+            ? { ...executed, watch_delivery: await watchDelivery() }
+            : executed;
+        return {
+          isError: !payload.ok,
+          structuredContent: payload,
+          content: [{ type: "text" as const, text: adjustmentText(payload) }],
+        };
+      },
+    );
 }

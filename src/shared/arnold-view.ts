@@ -558,6 +558,22 @@ export const ArnoldDashboardViewSchema = z.object({
    * delivered and pending.
    */
   watch_delivery: WatchDeliverySchema.optional(),
+  /**
+   * The adjustment for a while that applies today (UX-008), for the hint in
+   * the overview. Absent or null when the normal plan applies.
+   */
+  adjustment: z
+    .object({
+      plan_adjustment_id: ArnoldIdSchema,
+      kind: z.enum(["today", "week", "month", "range"]),
+      start_date_local: z.iso.date(),
+      end_date_local: z.iso.date(),
+      /** First day on which the normal plan applies again. */
+      normal_from: z.iso.date(),
+      reason: z.string().nullable(),
+    })
+    .nullable()
+    .optional(),
   totals: z.object({
     workouts_in_history: count,
     workouts_in_period: count,

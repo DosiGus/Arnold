@@ -5,6 +5,7 @@ import {
   ArnoldDatasetSchema,
   ArnoldExerciseSchema,
   ArnoldGoalSchema,
+  ArnoldPlanAdjustmentSchema,
   ArnoldPlanItemSchema,
   ArnoldPlanRunSessionSchema,
   ArnoldPlanVersionSchema,
@@ -17,6 +18,7 @@ import {
   type ArnoldDataset,
   type ArnoldExercise,
   type ArnoldGoal,
+  type ArnoldPlanAdjustment,
   type ArnoldPlanItem,
   type ArnoldPlanRunSession,
   type ArnoldPlanVersion,
@@ -31,6 +33,7 @@ import {
   type WriteErrorCode,
 } from "../../shared/workout-contract.js";
 import { PlanWriteResultSchema } from "../../shared/plan-contract.js";
+import { PlanAdjustmentResultSchema } from "../../shared/plan-adjustment-contract.js";
 
 export class WriteError extends Error {
   constructor(
@@ -161,6 +164,12 @@ const ChangeSchema = z.discriminatedUnion("table", [
     before: ArnoldRunSegmentSchema.nullable(),
     after: ArnoldRunSegmentSchema,
   }),
+  // UX-008, adjustment for a while.
+  z.object({
+    table: z.literal("planAdjustments"),
+    before: ArnoldPlanAdjustmentSchema.nullable(),
+    after: ArnoldPlanAdjustmentSchema,
+  }),
 ]);
 export type EntityChange = z.infer<typeof ChangeSchema>;
 export type Entity =
@@ -174,24 +183,30 @@ export type Entity =
   | ArnoldRunProfile
   | ArnoldPlanRunSession
   | ArnoldRun
-  | ArnoldRunSegment;
+  | ArnoldRunSegment
+  | ArnoldPlanAdjustment;
 /**
  * Order matters: a set also carries workout_id and plan_item_id, a plan item a
  * plan_version_id, a goal an exercise_id, a run segment a workout_id, a run
  * session a plan_version_id. A run is keyed by its workout_id.
  */
 export const entityId = (row: Entity): string =>
-  "run_segment_id" in row
-    ? row.run_segment_id
-    : "plan_run_session_id" in row
-      ? row.plan_run_session_id
-      : "run_profile_id" in row
-        ? row.run_profile_id
-        : entityIdStrength(row);
+  "plan_adjustment_id" in row
+    ? row.plan_adjustment_id
+    : "run_segment_id" in row
+      ? row.run_segment_id
+      : "plan_run_session_id" in row
+        ? row.plan_run_session_id
+        : "run_profile_id" in row
+          ? row.run_profile_id
+          : entityIdStrength(row);
 const entityIdStrength = (
   row: Exclude<
     Entity,
-    ArnoldRunSegment | ArnoldPlanRunSession | ArnoldRunProfile
+    | ArnoldRunSegment
+    | ArnoldPlanRunSession
+    | ArnoldRunProfile
+    | ArnoldPlanAdjustment
   >,
 ): string =>
   "goal_id" in row
@@ -272,6 +287,10 @@ export const AuditEventSchema = z.object({
     "PLAN_EXERCISE_ADDED",
     "PLAN_EXERCISE_REPLACED",
     "PLAN_EXERCISE_REMOVED",
+    // UX-008 adjustment for a while: kind, days and status only.
+    "PLAN_ADJUSTMENT_CREATED",
+    "PLAN_ADJUSTMENT_CONFIRMED",
+    "PLAN_ADJUSTMENT_CANCELLED",
     // Task 006 onboarding. The entity is an onboarding session, never a person,
     // and no profile free text is ever recorded in an audit event.
     "ONBOARDING_STARTED",
@@ -327,7 +346,11 @@ export const StoredOperationSchema = z.object({
   audit: z.array(AuditEventSchema),
   // One store serves workout and plan writes, so a replay is deduplicated
   // across both domains by request_id rather than per service.
-  result: z.union([WriteResultSchema, PlanWriteResultSchema]),
+  result: z.union([
+    WriteResultSchema,
+    PlanWriteResultSchema,
+    PlanAdjustmentResultSchema,
+  ]),
 });
 export type StoredOperation = z.infer<typeof StoredOperationSchema>;
 
@@ -459,6 +482,20 @@ const STABLE_COLUMNS = {
   planRunSessions: ["plan_run_session_id", "plan_version_id", "session_id"],
   runs: ["workout_id"],
   runSegments: ["run_segment_id", "workout_id", "segment_index"],
+  // An adjustment keeps its version, base, kind and days for life; only its
+  // status moves (draft -> confirmed -> cancelled). Changing it means a new one.
+  planAdjustments: [
+    "plan_adjustment_id",
+    "plan_version_id",
+    "base_plan_version_id",
+    "kind",
+    "start_date_local",
+    "end_date_local",
+    "timezone",
+    "minutes_per_session",
+    "sessions_per_week",
+    "reason",
+  ],
 } as const satisfies Record<EntityChange["table"], readonly string[]>;
 /** Fields of PLANS that describe the training content rather than the lifecycle. */
 const PLAN_CONTENT_COLUMNS = [
@@ -497,12 +534,16 @@ export function changedDataset(
   // Which versions may carry position edits: judged against the pre-batch state
   // plus the drafts this batch creates, so the verdict cannot depend on the
   // order of changes inside one batch.
+  // A temporary version (UX-008) takes its positions only in the batch that
+  // creates it; afterwards it is frozen like an activated one.
   const draftVersions = new Set([
     ...dataset.plans
       .filter((plan) => plan.status === "draft")
       .map((plan) => plan.plan_version_id),
     ...changes.flatMap((c) =>
-      c.table === "plans" && !c.before && c.after.status === "draft"
+      c.table === "plans" &&
+      !c.before &&
+      (c.after.status === "draft" || c.after.status === "temporary")
         ? [c.after.plan_version_id]
         : [],
     ),
