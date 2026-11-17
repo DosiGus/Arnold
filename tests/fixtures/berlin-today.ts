@@ -7,3 +7,10 @@ export const E2E_TIMEZONE = "Europe/Berlin";
 
 export const berlinToday = (now: Date = new Date()): string =>
   new Intl.DateTimeFormat("en-CA", { timeZone: E2E_TIMEZONE }).format(now);
+
+/** The Berlin day before `now`. */
+export const berlinYesterday = (now: Date = new Date()): string => {
+  const day = new Date(`${berlinToday(now)}T12:00:00Z`);
+  day.setUTCDate(day.getUTCDate() - 1);
+  return day.toISOString().slice(0, 10);
+};

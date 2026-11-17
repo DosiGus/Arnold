@@ -234,7 +234,11 @@ test("after today's workout the card shows the saved state", async ({
 }) => {
   await page.route("**/mcp", async (route) => {
     const body = route.request().postDataJSON();
-    if (body?.params?.name !== "show_arnold_dashboard") return route.continue();
+    if (
+      body?.params?.name !== "show_arnold_dashboard" &&
+      body?.params?.name !== "get_arnold_dashboard"
+    )
+      return route.continue();
     const response = await route.fetch();
     const json = await response.json();
     const recent = json.result?.structuredContent?.recent_workouts;

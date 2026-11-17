@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { resolve } from "node:path";
+import { berlinToday } from "../fixtures/berlin-today";
 
 /**
  * Watch workouts in the history and on the start screen (GAR-B5-02). The
@@ -40,12 +41,12 @@ type Workout = Record<string, unknown> & { workout_id: string };
 /** Rewrites one tool's real answer before the app sees it. */
 async function rewrite(
   page: Page,
-  tool: string,
+  tool: string | string[],
   change: (content: Record<string, unknown>) => void,
 ) {
   await page.route("**/mcp", async (route) => {
     const body = route.request().postDataJSON();
-    if (body?.params?.name !== tool) return route.continue();
+    if (![tool].flat().includes(body?.params?.name)) return route.continue();
     const response = await route.fetch();
     const json = await response.json();
     if (json.result?.structuredContent) change(json.result.structuredContent);
@@ -128,13 +129,19 @@ test("the start screen marks today's training from the watch", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 375, height: 812 });
-  await rewrite(page, "show_arnold_dashboard", (content) => {
+  const markToday = (content: Record<string, unknown>) => {
     const recent = content.recent_workouts as Workout[] | undefined;
     if (!recent?.length) return;
-    recent[0].date = new Intl.DateTimeFormat("en-CA").format(new Date());
+    recent[0].date = berlinToday();
     recent[0].status = "completed";
     recent[0].from_watch = true;
-  });
+  };
+  // The card asks again with its time zone; both answers carry the change.
+  await rewrite(
+    page,
+    ["show_arnold_dashboard", "get_arnold_dashboard"],
+    markToday,
+  );
   await page.goto(`${BASE}/preview`);
   await expect(
     page

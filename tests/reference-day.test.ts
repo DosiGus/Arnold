@@ -67,7 +67,11 @@ function datasetWithWorkoutOn(day: string) {
   };
 }
 
-async function open(instant: string, tool: string, args: object) {
+async function open(
+  instant: string,
+  tool: string,
+  args: Record<string, unknown>,
+) {
   const runtime = createFixtureLogging(datasetWithWorkoutOn("2026-11-18"));
   const server = createArnoldMcpServer(
     runtime.source,
