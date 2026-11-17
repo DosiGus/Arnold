@@ -434,39 +434,27 @@ export function createArnoldMcpServer(
             "Dieses Training gibt es in deinen Daten nicht. Trainings-ID aus get_arnold_workouts nehmen oder die Karte history ohne workout_id öffnen.",
             "reload_then_retry",
           );
-<<<<<<< HEAD
-        const day = referenceDay(clock(), input.timezone);
+        const now = clock();
+        const day = referenceDay(now, input.timezone);
         const base = await withWatch(
           snapshot.dataset,
           withReference(
             await withRecap(
               snapshot.dataset,
-              buildDashboardView(snapshot.dataset, context(snapshot), {
-                reference_date: day.date,
-              }),
+              buildDashboardView(
+                snapshot.dataset,
+                {
+                  ...context(snapshot),
+                  scoreHealth: await scoreHealthOf(source, day.date, now),
+                },
+                {
+                  reference_date: day.date,
+                },
+              ),
               day.recap_until,
               logging,
             ),
             day,
-=======
-        const now = clock();
-        const day = referenceDay(now, input.timezone);
-        const base = withReference(
-          await withRecap(
-            snapshot.dataset,
-            buildDashboardView(
-              snapshot.dataset,
-              {
-                ...context(snapshot),
-                scoreHealth: await scoreHealthOf(source, day.date, now),
-              },
-              {
-                reference_date: day.date,
-              },
-            ),
-            day.recap_until,
-            logging,
->>>>>>> origin/main
           ),
         );
         const view = input.card
@@ -509,50 +497,36 @@ export function createArnoldMcpServer(
     async (input) => {
       try {
         const snapshot = await load();
-<<<<<<< HEAD
-        const day = referenceDay(clock(), input.timezone);
+        const now = clock();
+        const day = referenceDay(now, input.timezone);
         const view = await withWatch(
           snapshot.dataset,
           withReference(
             await withRecap(
               snapshot.dataset,
-              buildDashboardView(snapshot.dataset, context(snapshot), {
-=======
-        const now = clock();
-        const day = referenceDay(now, input.timezone);
-        const view = withReference(
-          await withRecap(
-            snapshot.dataset,
-            buildDashboardView(
-              snapshot.dataset,
-              {
-                ...context(snapshot),
-                scoreHealth: await scoreHealthOf(source, day.date, now),
-              },
-              {
->>>>>>> origin/main
-                filter: {
-                  from: input.from ?? null,
-                  to: input.to ?? null,
-                  plan_version_ids: input.plan_version_ids ?? null,
-                  session_ids: input.session_ids ?? null,
-                  exercise_ids: input.exercise_ids ?? null,
+              buildDashboardView(
+                snapshot.dataset,
+                {
+                  ...context(snapshot),
+                  scoreHealth: await scoreHealthOf(source, day.date, now),
                 },
-                reference_date: day.date,
-                weekly_goal_training_days:
-                  input.weekly_goal_training_days ?? null,
-<<<<<<< HEAD
-              }),
+                {
+                  filter: {
+                    from: input.from ?? null,
+                    to: input.to ?? null,
+                    plan_version_ids: input.plan_version_ids ?? null,
+                    session_ids: input.session_ids ?? null,
+                    exercise_ids: input.exercise_ids ?? null,
+                  },
+                  reference_date: day.date,
+                  weekly_goal_training_days:
+                    input.weekly_goal_training_days ?? null,
+                },
+              ),
               day.recap_until,
               logging,
             ),
             day,
-=======
-              },
-            ),
-            day.recap_until,
-            logging,
->>>>>>> origin/main
           ),
         );
         const volume = view.kpis.find((k) => k.key === "nominal_volume");

@@ -77,17 +77,16 @@ export interface ArnoldDataSource {
     clientSessionIds: readonly string[],
   ): Promise<readonly WatchRecordingData[]>;
   /**
-<<<<<<< HEAD
+   * Watch values for the recovery score (UX-009), only the caller's own and
+   * only with active consent. Only a database source has them.
+   */
+  scoreHealth?(referenceDate: string, now: Date): Promise<ScoreHealthInput>;
+  /**
    * UX-007: whether this dataset's plan is on the user's watch, from the
    * marks the watches confirmed. Only a database source has watches; never
    * throws (a failure is `unknown`).
    */
   watchDelivery?(dataset: ArnoldDataset): Promise<WatchDelivery>;
-=======
-   * Watch values for the recovery score (UX-009), only the caller's own and
-   * only with active consent. Only a database source has them.
-   */
-  scoreHealth?(referenceDate: string, now: Date): Promise<ScoreHealthInput>;
 }
 
 /**
@@ -106,7 +105,6 @@ export async function scoreHealthOf(
   } catch {
     return { status: "unavailable" };
   }
->>>>>>> origin/main
 }
 
 /** One watch recording as stored (UMSETZUNG §3.3, §3.4); gaps stay null. */

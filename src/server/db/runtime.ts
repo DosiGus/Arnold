@@ -308,12 +308,9 @@ export class DatabaseUserRuntime {
           "Deine Trainingsdaten, gespeichert in deinem Arnold-Konto.",
       }),
       watchRecordings: (ids) => watchRecordings(db, userId, ids),
-<<<<<<< HEAD
       watchDelivery: (dataset) => watchDelivery(db, userId, dataset),
-=======
       scoreHealth: (referenceDate, now) =>
         readScoreHealth(db, userId, referenceDate, now),
->>>>>>> origin/main
     };
     const authorization: AuthorizationGuard = {
       authorize: async (tracker, _permission, context): Promise<Actor> => {
