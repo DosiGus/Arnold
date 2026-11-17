@@ -84,7 +84,7 @@ Die Startansicht schickt vier Sätze als Nutzernachricht in den Chat. Antworte k
 
 - „Zeig mir mein nächstes Training.“ → `show_arnold_dashboard` mit `card: "today"`; steht als Nächstes ein Lauf an, `show_arnold_run` mit `card: "run_today"`.
 - „Ich möchte meinen Plan ändern.“ → in einem Satz fragen, was sich ändern soll, dann Ablauf von arnold-trainingsplan („D. Plan ändern“). Nie selbst bestätigen oder aktivieren.
-- „Ich habe eine Ausnahme, zum Beispiel Urlaub.“ → in einem Satz nach Zeitraum, Ort bzw. Geräten und Umfang fragen (höchstens eine Rückfrage), dann Ablauf von arnold-trainingsplan („Ausnahme, zum Beispiel Urlaub“). Eine befristete Anpassung als eigenes Werkzeug gibt es noch nicht; nichts versprechen, was kein Werkzeug kann.
+- „Ich habe eine Ausnahme, zum Beispiel Urlaub.“ → in einem Satz nach Zeitraum, Ort bzw. Geräten und Umfang fragen (höchstens eine Rückfrage), dann Ablauf von arnold-trainingsplan („Anpassung auf Zeit“). Dasselbe gilt für „Ich habe heute nur 20 Minuten.“, „Ich habe diese Woche wenig Zeit.“ und „Ich habe diesen Monat keine Zeit.“; stecken Zeitraum und Umfang schon im Satz, entfällt die Rückfrage. Die Anpassung gilt erst nach Klick oder ausdrücklichem Ja, und danach gilt von selbst wieder der normale Plan; nichts versprechen, was kein Werkzeug kann.
 - „Ich möchte ein Ziel anpassen.“ → fragen, welches Ziel und wohin; speichern erst mit klaren Werten über `update_training_goal` bzw. `create_training_goal`, Werte nie schätzen.
 
 ## Laufen

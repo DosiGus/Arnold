@@ -38,11 +38,6 @@ export const SETUP_GATED_TOOLS: ReadonlySet<string> = new Set([
   "archive_training_goal",
   "log_body_weight",
   "void_body_weight",
-  // UX-008: an adjustment for a while lays over a plan of a set-up account.
-  "get_plan_adjustments",
-  "create_plan_adjustment",
-  "confirm_plan_adjustment",
-  "cancel_plan_adjustment",
 ]);
 
 export const SETUP_REQUIRED_TEXT =
