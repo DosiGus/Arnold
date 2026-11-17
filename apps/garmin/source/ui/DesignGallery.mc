@@ -1,3 +1,4 @@
+import Toybox.Application;
 import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.Timer;
@@ -11,10 +12,13 @@ module DesignFaces {
     const WARN as Number = 0xFFAA00;
 
     function count() as Number {
-        return 8;
+        return 8 + RunGalleryFaces.count();
     }
 
     function at(index as Number) as InstrumentFace {
+        if (index >= 8) {
+            return RunGalleryFaces.at(index - 8);      // UHR-03: the real RunFaces.first on made-up runs
+        }
         var f = new InstrumentFace();
         if (index == 0) {
             f.top = ["Überzüge am", "Kabelzug"] as Array<String>;
@@ -149,5 +153,110 @@ class DesignGalleryDelegate extends WatchUi.BehaviorDelegate {
     function onPreviousPage() as Boolean {
         _view.move(-1);
         return true;
+    }
+}
+
+// UHR-03: page 1 of the run display, made by the real RunFaces.first from a run session on made-up readings
+// (no recording, no storage). Gallery only.
+(:designGallery)
+class GalleryStore extends KeyValueStore {
+    var values as Dictionary<String, Application.Storage.ValueType> = {} as Dictionary<String, Application.Storage.ValueType>;
+
+    function initialize() {
+        KeyValueStore.initialize();
+    }
+
+    function getValue(key as String) as Application.Storage.ValueType {
+        return values[key];
+    }
+
+    function setValue(key as String, value as Application.Storage.ValueType) as Void {
+        values[key] = value;
+    }
+
+    function deleteValue(key as String) as Void {
+        values.remove(key);
+    }
+}
+
+(:designGallery)
+class GalleryBackend extends RunBackend {
+    function initialize() {
+        RunBackend.initialize();
+    }
+
+    function open(environment as Number) as Boolean {
+        return true;
+    }
+
+    function lap(segment as Number) as Boolean {
+        return true;
+    }
+
+    function start() as Boolean {
+        return true;
+    }
+
+    function stop() as Boolean {
+        return true;
+    }
+}
+
+(:designGallery)
+class GallerySource extends RunSource {
+    var timer as Number = 0;
+    var distance as Number = 0;
+    var speed as Number = 300;
+    var hr as Number = 140;
+
+    function initialize() {
+        RunSource.initialize();
+    }
+
+    function read(into as RunReading) as Void {
+        timer++;
+        distance += speed;
+        into.timerS = timer;
+        into.distanceCm = distance;
+        into.speedCmS = speed;
+        into.heartRate = hr;
+        into.cadence = 170;
+        into.ascentM = 0;
+    }
+}
+
+(:designGallery)
+module RunGalleryFaces {
+    function count() as Number {
+        return 4;
+    }
+
+    function at(index as Number) as InstrumentFace {
+        var source = new GallerySource();
+        var store = new GalleryStore();
+        var parts = new RunParts(new RunJournal(store), new PairingClock(), new Settings(store), source, new GalleryBackend(), null,
+            [100, 120, 140, 160, 180, 200] as Array<Number>);
+        var body = { "k" => 1, "n" => "Zone 2", "e" => 0, "s" => [[1, 1, 2700, 1, 2, 2]] as Array } as Dictionary;
+        var seconds = 738;
+        if (index == 0) {
+            source.hr = 130;
+            source.speed = 274;                  // 6:05 /km
+        } else if (index == 1) {
+            source.hr = 162;
+            source.speed = 287;                  // 5:48 /km
+        } else {
+            body = { "k" => 6, "n" => "Intervalle", "e" => 0, "s" => [[1, 1, 180, 2, 270, 285], [2, 1, 120, 0, 0, 0]] as Array, "rp" => [[0, 1, 6]] as Array } as Dictionary;
+            source.speed = 363;                  // 4:35 /km
+            seconds = index == 2 ? 2 * 300 + 77 : 300 + 40;
+        }
+        var model = new PreStartModel(new PreStartRequest(PreStartRequest.MODE_PLANNED, "gallery", body));
+        var session = RunSession.start(model, parts) as RunSession;
+        for (var i = 0; i < seconds; i++) {
+            session.tick();
+        }
+        if (index == 3) {
+            session.pause();
+        }
+        return RunFaces.first(session);
     }
 }
