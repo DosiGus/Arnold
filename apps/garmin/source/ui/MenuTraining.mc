@@ -210,9 +210,9 @@ class HintsView extends WatchUi.View {
 module HintsScreen {
     function lines(ex as PlannedExercise) as Array<PairingLine> {
         var out = [] as Array<PairingLine>;
-        out.add(new PairingLine(ex.name, Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY));
+        out.add(new PairingLine(ex.name, Graphics.FONT_XTINY, Instrument.LABEL));
         if (ex.hint != null) {
-            out.add(new PairingLine(ex.hint as String, Graphics.FONT_SMALL, Graphics.COLOR_YELLOW));
+            out.add(new PairingLine(ex.hint as String, Graphics.FONT_SMALL, Graphics.COLOR_WHITE));
         }
         if (ex.lastTime != null) {
             out.add(new PairingLine(ex.lastTime as String, Graphics.FONT_XTINY, Graphics.COLOR_WHITE));

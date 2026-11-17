@@ -452,7 +452,7 @@ function theSummaryShowsWhatTheRunTypeHas(logger as Logger) as Boolean {
     Test.assertEqual(free.flow.pageCount(), 3);
     free.flow.page = 0;
     var one = EndRigCheck.texts(dc, free.flow);
-    Test.assertMessage(one.find(RunText.distance(125000, false)) != null && one.find(RunText.clock(250)) != null && one.find("3:20") != null, "page 1: " + one);
+    Test.assertMessage(one.find(RunText.km(125000) + "|") != null && one.find("km") != null && one.find(RunText.clock(250)) != null && one.find("3:20") != null, "page 1: " + one);
     free.flow.page = 1;
     var two = EndRigCheck.texts(dc, free.flow);
     Test.assertMessage(two.find("140") != null, "page 2 heart rate: " + two);

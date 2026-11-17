@@ -11,8 +11,8 @@ module SummaryScreen {
     function lines(dc as Dc, session as TrainingSession, sender as OutboxSender or Null) as Array<PairingLine> {
         var phase = sender == null ? OutboxSender.PHASE_NONE : (sender as OutboxSender).phaseOf(session.uuid);
         var white = Graphics.COLOR_WHITE;
-        var gray = Graphics.COLOR_LT_GRAY;
-        var alert = Graphics.COLOR_YELLOW;
+        var gray = Instrument.LABEL;
+        var alert = Instrument.WARN;
         var out = [] as Array<PairingLine>;
         if (phase == OutboxSender.PHASE_SENT) {
             return sentLines((sender as OutboxSender).lastResult);
@@ -59,7 +59,7 @@ module SummaryScreen {
         }
         var records = (result as Dictionary)["records"] as Array;
         if (records.size() > 0) {
-            out.add(new PairingLine(TrainingText.text(Rez.Strings.SumRecords), Graphics.FONT_XTINY, Graphics.COLOR_YELLOW));
+            out.add(new PairingLine(TrainingText.text(Rez.Strings.SumRecords), Graphics.FONT_XTINY, Instrument.OK));
             for (var i = 0; i < records.size() && i < MAX_ANSWER_LINES; i++) {
                 if (records[i] instanceof String) {
                     out.add(new PairingLine(records[i] as String, Graphics.FONT_XTINY, Graphics.COLOR_WHITE));
@@ -68,7 +68,7 @@ module SummaryScreen {
         }
         var next = (result as Dictionary)["next"] as Array;
         if (next.size() > 0) {
-            out.add(new PairingLine(TrainingText.text(Rez.Strings.SumNext), Graphics.FONT_XTINY, Graphics.COLOR_YELLOW));
+            out.add(new PairingLine(TrainingText.text(Rez.Strings.SumNext), Graphics.FONT_XTINY, Graphics.COLOR_WHITE));
             for (var j = 0; j < next.size() && j < MAX_ANSWER_LINES; j++) {
                 if (next[j] instanceof Dictionary && (next[j] as Dictionary)["message"] instanceof String) {
                     out.add(new PairingLine((next[j] as Dictionary)["message"] as String, Graphics.FONT_XTINY, Graphics.COLOR_WHITE));

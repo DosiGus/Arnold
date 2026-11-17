@@ -39,8 +39,8 @@ module PairingScreen {
 
     function lines(dc as Dc, controller as PairingController) as Array<PairingLine> {
         var white = Graphics.COLOR_WHITE;
-        var gray = Graphics.COLOR_LT_GRAY;
-        var alert = Graphics.COLOR_YELLOW;
+        var gray = Instrument.LABEL;
+        var alert = Instrument.WARN;
         var out = [] as Array<PairingLine>;
         if (controller.state == PairingController.STATE_READY) {
             out.add(new PairingLine(text(Rez.Strings.PairConnected), Graphics.FONT_MEDIUM, white));
