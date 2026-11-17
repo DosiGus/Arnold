@@ -10,6 +10,7 @@ import {
 } from "./period.js";
 import { exact, metric, round, unavailable } from "./validation.js";
 import type { AnalyticsReason } from "./types.js";
+import type { ScoreRunInput } from "./scores.js";
 
 export type WeekActivity = Readonly<{
   week_start: string;
@@ -27,7 +28,11 @@ export type WeekActivity = Readonly<{
  * the pure engine can count them as training days (RUN-022).
  */
 export type DatasetWithRunDays = ArnoldDataset &
-  Readonly<{ runTrainingDates?: readonly string[] }>;
+  Readonly<{
+    runTrainingDates?: readonly string[];
+    /** Completed runs as the scores need them (UX-009); nothing else reads them. */
+    runScoreInputs?: readonly ScoreRunInput[];
+  }>;
 
 /**
  * Calendar days (`workout_date_local`) of completed runs, ascending and without
