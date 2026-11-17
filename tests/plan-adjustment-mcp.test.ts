@@ -75,9 +75,7 @@ describe("adjustment tools over MCP", () => {
       expect(CONFIRMATION_RULES[name], name).toBeDefined();
     }
     expect(CONFIRMATION_RULES.create_plan_adjustment.rule).toBe("direct");
-    expect(CONFIRMATION_RULES.confirm_plan_adjustment.rule).toBe(
-      "ask_in_chat",
-    );
+    expect(CONFIRMATION_RULES.confirm_plan_adjustment.rule).toBe("ask_in_chat");
     expect(CONFIRMATION_RULES.cancel_plan_adjustment.rule).toBe("ask_in_chat");
     const create = tools.find((t) => t.name === "create_plan_adjustment")!;
     expect(create.description).toContain("ENTWURF");
