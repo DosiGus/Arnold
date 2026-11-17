@@ -113,3 +113,15 @@ export function formatSetLine(
 ): string {
   return `${formatLoad(set)} × ${formatReps(set.reps, set.reps_basis ?? "total")}`;
 }
+
+/**
+ * A calendar day (YYYY-MM-DD) as "Mo. 24.11.": short and readable aloud.
+ * Pure calendar arithmetic; the day is never shifted by a time zone.
+ */
+export function formatShortDay(date: string): string {
+  const [y, m, d] = date.split("-").map(Number) as [number, number, number];
+  const weekday = ["So.", "Mo.", "Di.", "Mi.", "Do.", "Fr.", "Sa."][
+    new Date(Date.UTC(y, m - 1, d)).getUTCDay()
+  ];
+  return `${weekday} ${String(d).padStart(2, "0")}.${String(m).padStart(2, "0")}.`;
+}

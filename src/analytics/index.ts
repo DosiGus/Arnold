@@ -10,6 +10,7 @@
 export {
   buildArnoldDashboardAnalytics,
   buildHomeAnalytics,
+  buildScores,
   prepareAnalytics,
   type AnalyticsOptions,
 } from "./dashboard.js";
@@ -75,9 +76,32 @@ export {
 } from "./progression.js";
 export * from "./types.js";
 export {
+  BASELINE_MIN_VALUES,
+  BASELINE_WINDOW_DAYS,
+  dailyHealthBaselines,
   dailyHealthRecovery,
   RESTING_HR_WINDOW_DAYS,
+  type BaselinedValue,
+  type DailyHealthBaselines,
   type DailyHealthInput,
   type DailyHealthRecovery,
   type DatedValue,
 } from "./health-daily.js";
+export {
+  computeScores,
+  consistencyScore,
+  progressScore,
+  recoveryScore,
+  roundScore,
+  scoreInputOf,
+  scoreRunsOf,
+  type ConsistencyScore,
+  type ProgressScore,
+  type RecoveryScore,
+  type ScoreHealthInput,
+  type ScoreInput,
+  type ScoreRunInput,
+  type ScoreSetInput,
+  type ScoreSnapshotInput,
+  type Scores,
+} from "./scores.js";

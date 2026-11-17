@@ -282,6 +282,26 @@ export function projectFamilies(dataset: ArnoldDataset): TrainingPlan[] {
     });
 }
 
+/**
+ * The data as the plan service sees it (UX-008): without temporary versions
+ * and their positions. An adjustment's sessions are never a plan in the list,
+ * a draft, a comparison partner, a basis or a candidate for activation; they
+ * are reached only through the adjustment tools. Workouts keep their link.
+ */
+export function hideTemporary<T extends ArnoldDataset>(dataset: T): T {
+  const hidden = new Set(
+    dataset.plans
+      .filter((plan) => plan.status === "temporary")
+      .map((plan) => plan.plan_version_id),
+  );
+  if (!hidden.size) return dataset;
+  return {
+    ...dataset,
+    plans: dataset.plans.filter((p) => !hidden.has(p.plan_version_id)),
+    planItems: dataset.planItems.filter((i) => !hidden.has(i.plan_version_id)),
+  };
+}
+
 export function activePlan(dataset: ArnoldDataset): ArnoldPlanVersion | null {
   return dataset.plans.find((plan) => plan.status === "active") ?? null;
 }
@@ -349,13 +369,16 @@ export const PLAN_TRANSITIONS: Readonly<
   draft: Object.freeze(["active", "archived"] as const),
   active: Object.freeze(["archived"] as const),
   archived: Object.freeze([] as const),
+  // UX-008: the sessions of an adjustment for a while. Never activated or
+  // archived; the adjustment's own status says whether it applies.
+  temporary: Object.freeze([] as const),
 });
 
 export function canTransition(from: PlanStatus, to: PlanStatus): boolean {
   return PLAN_TRANSITIONS[from].includes(to);
 }
 
-/** True while a version may serve as the basis of a new draft. Any version may. */
+/** True while a version may serve as the basis of a new draft. Not a temporary one. */
 export function isReusable(plan: ArnoldPlanVersion): boolean {
   return (
     plan.status === "active" ||

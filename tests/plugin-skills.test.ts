@@ -17,6 +17,7 @@ import {
   TAPER,
 } from "../src/analytics/running/week-context.js";
 import { RUN_RULES_VERSION } from "../src/analytics/running/version.js";
+import { PlanAdjustmentInputs } from "../src/shared/plan-adjustment-contract.js";
 import { PlanEditSchema } from "../src/shared/plan-contract.js";
 import { ShowRunCardInputSchema } from "../src/shared/run-card-contract.js";
 import {
@@ -143,6 +144,7 @@ describe("skills", () => {
           TOOL_VERBS.test(name) &&
           !/_ids?$/.test(name) &&
           name !== "plan_change" && // card name of show_arnold_dashboard, not a tool
+          name !== "plan_adjustment" && // card name (UX-008), not a tool
           !(name in TOOL_ACCESS) &&
           !PLAN_EDITS.has(name)
         )
@@ -479,6 +481,7 @@ describe("server instructions (RUN-011)", () => {
           TOOL_VERBS.test(name) &&
           !/_ids?$/.test(name) &&
           name !== "plan_change" && // card name of show_arnold_dashboard, not a tool
+          name !== "plan_adjustment" && // card name (UX-008), not a tool
           !(name in TOOL_ACCESS) &&
           !PLAN_EDITS.has(name),
       );
@@ -497,6 +500,13 @@ describe("server instructions (RUN-011)", () => {
     );
   });
 });
+
+/** UX-008: the three example sentences of an adjustment for a while. */
+const ADJUSTMENT_SENTENCES = [
+  "Ich habe heute nur 20 Minuten.",
+  "Ich habe diese Woche wenig Zeit.",
+  "Ich habe diesen Monat keine Zeit.",
+];
 
 /** UX-003: the four action buttons of the start view and the new chat tone. */
 describe("start view buttons and chat tone (UX-003)", () => {
@@ -536,8 +546,14 @@ describe("start view buttons and chat tone (UX-003)", () => {
     expect(change).toContain("nie ohne Ja oder Klick");
     expect(change).toContain("nie selbst bestätigen oder aktivieren");
     expect(exception).toContain("höchstens eine Rückfrage");
-    expect(exception).toContain("noch nicht");
-    expect(exception).toContain("zurückwechseln");
+    // UX-008: the adjustment for a while replaces the honest "not yet".
+    expect(exception).not.toContain("noch nicht");
+    expect(exception).not.toContain("zurückwechseln");
+    expect(exception).toContain("create_plan_adjustment");
+    expect(exception).toContain("plan_adjustment");
+    expect(exception).toContain("confirm_plan_adjustment");
+    expect(exception).toContain("nie von selbst");
+    expect(exception).toContain("wieder der normale Plan");
     expect(goal).toContain("update_training_goal");
     expect(goal).toContain("create_training_goal");
     expect(goal).toContain("nie schätzen");
@@ -563,16 +579,18 @@ describe("start view buttons and chat tone (UX-003)", () => {
       expect(planSkill, sentence).toContain(sentence);
     for (const sentence of BUTTONS) expect(coach, sentence).toContain(sentence);
     for (const text of [planSkill, coach]) {
-      expect(text).toContain("noch nicht");
+      expect(text).not.toContain("befristete Anpassung");
       expect(text.toLowerCase()).toContain("nichts versprechen");
+      for (const example of ADJUSTMENT_SENTENCES)
+        expect(text, example).toContain(example);
     }
-    expect(planSkill).toContain("zurückwechseln");
+    expect(planSkill).not.toContain("zurückwechseln");
     expect(planSkill).toContain("Nur heute");
     expect(planSkill).toContain("vorlesbar");
     expect(coach).toContain("vorlesbar");
   });
 
-  it("invents no tool for temporary changes", () => {
+  it("names only published tools for temporary changes", () => {
     const texts = [ARNOLD_INSTRUCTIONS, planSkill, coach];
     const names = (text: string) =>
       [...text.matchAll(/\b[a-z]+(?:_[a-z]+)+\b/g)].map(([n]) => n);
@@ -597,5 +615,66 @@ describe("start view buttons and chat tone (UX-003)", () => {
       expect(text, word).toContain(word);
     expect(ui.defaultPrompt).toHaveLength(3);
     expect(text).not.toMatch(/optimal|garantiert/);
+  });
+});
+
+/**
+ * UX-008: each example sentence of an adjustment for a while has a row in the
+ * plan skill that names create_plan_adjustment, and the call it describes is
+ * accepted by the published input schema.
+ */
+describe("adjustment for a while (UX-008)", () => {
+  const planSkill = read(join(SKILLS, "arnold-trainingsplan", "SKILL.md"));
+  const CASES: { sentence: string; input: Record<string, unknown> }[] = [
+    {
+      sentence: "Ich habe heute nur 20 Minuten.",
+      input: { kind: "today", minutes_per_session: 20 },
+    },
+    { sentence: "Ich habe diese Woche wenig Zeit.", input: { kind: "week" } },
+    {
+      sentence: "Ich habe diesen Monat keine Zeit.",
+      input: { kind: "month" },
+    },
+    {
+      sentence: "Ich bin vom 1. bis 14. im Urlaub, nur Kurzhanteln.",
+      input: {
+        kind: "range",
+        start_date_local: "2026-12-01",
+        end_date_local: "2026-12-14",
+        replacements: [
+          {
+            from_exercise_id: "bench-press",
+            to_exercise_id: "dumbbell-bench-press",
+          },
+        ],
+      },
+    },
+  ];
+
+  it.each(CASES)('maps "$sentence" to create_plan_adjustment', (c) => {
+    const row = planSkill
+      .split("\n")
+      .find((line) => line.startsWith("|") && line.includes(`„${c.sentence}“`));
+    expect(row, c.sentence).toBeDefined();
+    expect(row).toContain("`create_plan_adjustment`");
+    expect(row).toContain(`\`kind: "${c.input.kind as string}"\``);
+    const parsed = PlanAdjustmentInputs.create_plan_adjustment.safeParse({
+      request_id: "r1",
+      timezone: "Europe/Berlin",
+      ...c.input,
+    });
+    expect(parsed.success ? [] : parsed.error.issues).toEqual([]);
+  });
+
+  it("publishes the four tools and asks before confirming or cancelling", () => {
+    for (const tool of [
+      "get_plan_adjustments",
+      "create_plan_adjustment",
+      "confirm_plan_adjustment",
+      "cancel_plan_adjustment",
+    ]) {
+      expect(tool in TOOL_ACCESS, tool).toBe(true);
+      expect(ARNOLD_INSTRUCTIONS + planSkill, tool).toContain(tool);
+    }
   });
 });
