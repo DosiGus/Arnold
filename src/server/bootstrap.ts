@@ -7,6 +7,13 @@ import { PostgresIdentityRepository } from "./db/identity.js";
 import { DatabaseArnoldRuntime } from "./db/runtime.js";
 import { retentionDaysFrom, scheduleRetention } from "./account/retention.js";
 import { logServerError } from "./tool-log.js";
+import {
+  dailyHealthStartMessage,
+  describeDailyHealthConfig,
+  loadDailyHealthConfig,
+} from "./health/config.js";
+import { GarminPersonalSource } from "./health/garmin-personal.js";
+import { DailyHealthSync } from "./health/sync.js";
 
 /**
  * Builds the app from the environment. Async because the login provider's
@@ -54,11 +61,25 @@ export async function createConfiguredHttpApp(
     repository: identities,
   });
   const retentionDays = retentionDaysFrom(env);
+  // Daily health values (UX-015): off unless fully configured; the start
+  // message says which, never the key.
+  const health = loadDailyHealthConfig(env);
+  console.log(dailyHealthStartMessage(health));
+  const dailyHealth =
+    health.state === "active"
+      ? new DailyHealthSync({
+          db,
+          config: health,
+          source: new GarminPersonalSource({ apiKey: health.apiKey }),
+        })
+      : undefined;
   const runtime = new DatabaseArnoldRuntime({
     db,
     auth,
     identities,
     retentionDays,
+    dailyHealth,
+    dailyHealthStatus: describeDailyHealthConfig(health),
   });
   scheduleRetention(() =>
     runtime.applyRetention(retentionDays).catch((error: unknown) => {

@@ -107,6 +107,7 @@ gcloud services enable run.googleapis.com cloudbuild.googleapis.com \
 
 RUNTIME_SA="arnold-runtime@$PROJECT.iam.gserviceaccount.com"
 EXTRA=()
+GARMIN_DAILY_SOURCE=off
 if [[ "$PROFILE" == database ]]; then
   gcloud services enable secretmanager.googleapis.com --quiet
   gcloud iam service-accounts describe "$RUNTIME_SA" --project "$PROJECT" >/dev/null 2>&1 &&
@@ -117,6 +118,23 @@ if [[ "$PROFILE" == database ]]; then
   SECRETS="DATABASE_URL=arnold-database-url:latest"
   if gcloud secrets describe arnold-database-ca --project "$PROJECT" >/dev/null 2>&1; then
     SECRETS+=",DATABASE_CA_CERT=arnold-database-ca:latest"
+  fi
+  # Garmin daily values (UX-015): on only when both secrets exist and
+  # GARMIN_DAILY_DISABLE is not 1. The values are never read here.
+  if [[ "${GARMIN_DAILY_DISABLE:-}" != 1 ]] &&
+    gcloud secrets describe arnold-garmin-personal-key --project "$PROJECT" >/dev/null 2>&1 &&
+    gcloud secrets describe arnold-garmin-daily-user --project "$PROJECT" >/dev/null 2>&1; then
+    for secret in arnold-garmin-personal-key arnold-garmin-daily-user; do
+      gcloud secrets add-iam-policy-binding "$secret" --project "$PROJECT" \
+        --member="serviceAccount:$RUNTIME_SA" \
+        --role=roles/secretmanager.secretAccessor >/dev/null
+    done
+    SECRETS+=",GARMIN_PERSONAL_API_KEY=arnold-garmin-personal-key:latest"
+    SECRETS+=",GARMIN_DAILY_USER_ID=arnold-garmin-daily-user:latest"
+    GARMIN_DAILY_SOURCE=personal
+    echo "  Garmin-Tageswerte: an (persönlicher Schlüssel)"
+  else
+    echo "  Garmin-Tageswerte: aus"
   fi
   # --set-secrets replaces every secret of the service, so secrets of
   # earlier profiles disappear with this deploy.
@@ -164,6 +182,7 @@ env_vars() {
       STORAGE_MODE=arnold_database
       ARNOLD_WRITE_MODE=disabled
       IDENTITY_STORE=postgres
+      "GARMIN_DAILY_SOURCE=$GARMIN_DAILY_SOURCE"
     )
   else
     # The synthetic profile keeps identities in memory, which production

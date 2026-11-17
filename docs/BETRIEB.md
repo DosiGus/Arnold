@@ -9,7 +9,7 @@ Kurze Schrittfolgen für Deploy, Rollback, Wiederherstellung und Alarme. Hinterg
 | Dienst      | `arnold` (Cloud Run, Profil `arnold_database`, höchstens 1 Instanz)                       |
 | Adresse     | `https://arnold-789221393068.europe-west1.run.app/mcp`                                    |
 | Daten       | Supabase-Projekt `Arnold` (`yjamovwtistjbrnyzkhl`, Frankfurt, Free-Plan), Schema `arnold` |
-| Geheimnisse | Secret Manager: `arnold-database-url`, `arnold-database-ca`                               |
+| Geheimnisse | Secret Manager: `arnold-database-url`, `arnold-database-ca`, optional `arnold-garmin-*`   |
 | Login       | WorkOS AuthKit                                                                            |
 | CI          | GitHub Actions, `.github/workflows/check.yml`                                             |
 
@@ -42,6 +42,35 @@ curl -s https://arnold-789221393068.europe-west1.run.app/health
 ```
 
 `release` ist der Commit.
+
+## Garmin-Tageswerte (persönlicher Schlüssel)
+
+Arnold holt tägliche Gesundheitswerte (Ruhepuls, Stress, Body Battery, Schlaf, HRV) für **genau ein** Konto aus Garmin Connect, wenn dieser Nutzer die Übersicht öffnet und der letzte Abruf mindestens 6 Stunden her ist. Gespeichert wird nur mit seiner Einwilligung (`set_garmin_health_consent`); ein Widerruf löscht die Tageswerte. Garmins Personal-Zugang ist nur für die eigenen Daten gedacht, nicht für alle Nutzer.
+
+Konfiguration (setzt das Deploy-Skript, nicht von Hand):
+
+| Name                         | Herkunft                                                           | Bedeutung                             |
+| ---------------------------- | ------------------------------------------------------------------ | ------------------------------------- |
+| `GARMIN_DAILY_SOURCE`        | Deploy-Skript: `personal`, wenn beide Secrets da sind, sonst `off` | an/aus                                |
+| `GARMIN_PERSONAL_API_KEY`    | Secret `arnold-garmin-personal-key`                                | der persönliche Schlüssel             |
+| `GARMIN_DAILY_USER_ID`       | Secret `arnold-garmin-daily-user`                                  | Arnold-Nutzer-ID (`usr_…`) des Kontos |
+| `GARMIN_DAILY_REFRESH_HOURS` | optional, Standard 6                                               | Stunden zwischen zwei Abrufen (1–24)  |
+
+Einrichten (der Owner selbst, der Schlüssel kommt nie in Chat, Repo oder Sheet):
+
+1. In Garmin Connect Web unter Einstellungen den Personal API Key erstellen, Ablauf wählen (30 bis 365 Tage), kopieren.
+2. Schlüssel hinterlegen; der Befehl wartet auf die Eingabe, Schlüssel einfügen, dann Enter und Ctrl-D:
+   ```bash
+   gcloud secrets create arnold-garmin-personal-key --replication-policy=automatic --data-file=-
+   ```
+3. Genauso die eigene Arnold-Nutzer-ID als `arnold-garmin-daily-user` hinterlegen.
+4. Nach Kevins Ja deployen (siehe Deploy). Das Skript gibt dem Dienstkonto Leserecht und meldet „Garmin-Tageswerte: an“.
+
+Neuer Schlüssel nach Ablauf (Garmin mailt etwa eine Woche vorher): `gcloud secrets versions add arnold-garmin-personal-key --data-file=-`, danach neu deployen.
+
+Prüfen: `/health` meldet `garmin_daily` als `off`, `active:garmin_personal` oder `unavailable:<grund>` (zum Beispiel `missing_key`); der Start schreibt dieselbe Zeile ins Log. Jeder Abruf schreibt eine Logzeile `garmin daily fetch` mit `outcome` (`ok`, `empty`, `key_expired`, `key_invalid`, `rate_limited`, `upstream_error`, `network_error`, `no_consent`), nie Schlüssel, Token oder Werte. `key_expired` heißt: neuen Schlüssel erstellen.
+
+Abschalten: sofort `gcloud run services update arnold --region europe-west1 --update-env-vars GARMIN_DAILY_SOURCE=off`; dauerhaft zusätzlich `GARMIN_DAILY_DISABLE=1` vor den Deploy-Befehl setzen oder das Secret `arnold-garmin-personal-key` löschen. Gespeicherte Tageswerte bleiben, bis der Nutzer die Einwilligung widerruft.
 
 ## Rollback
 
