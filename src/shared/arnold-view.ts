@@ -24,6 +24,8 @@ import {
 } from "./arnold-schema-v1.js";
 import { DASHBOARD_CARDS } from "./dashboard-cards.js";
 import { ArnoldRecapSchema } from "./recap-contract.js";
+import { ArnoldScoresSchema } from "./scores-contract.js";
+import { WatchDeliverySchema } from "./watch-contract.js";
 import {
   AnalyticsReasonSchema,
   ComparabilitySchema,
@@ -534,6 +536,11 @@ export const ArnoldDashboardViewSchema = z.object({
    */
   recap: ArnoldRecapSchema.nullable().optional(),
   /**
+   * Konstanz, Fortschritt, Erholung (UX-009), from `src/analytics/scores.ts`.
+   * Additive: absent in payloads from before UX-009.
+   */
+  scores: ArnoldScoresSchema.optional(),
+  /**
    * Which calendar day "today" is for this view (UX-016). `timezone` when the
    * request named the user's zone; `fallback` (UTC day, no "today" marker)
    * when it did not. The UI never works out the day itself.
@@ -544,6 +551,28 @@ export const ArnoldDashboardViewSchema = z.object({
       timezone: z.string().nullable(),
       source: z.enum(["timezone", "fallback"]),
     })
+    .optional(),
+  /**
+   * Whether the current plan is on the user's watch (UX-007). Only set by a
+   * database source; absent means unknown. The UI shows a line only for
+   * delivered and pending.
+   */
+  watch_delivery: WatchDeliverySchema.optional(),
+  /**
+   * The adjustment for a while that applies today (UX-008), for the hint in
+   * the overview. Absent or null when the normal plan applies.
+   */
+  adjustment: z
+    .object({
+      plan_adjustment_id: ArnoldIdSchema,
+      kind: z.enum(["today", "week", "month", "range"]),
+      start_date_local: z.iso.date(),
+      end_date_local: z.iso.date(),
+      /** First day on which the normal plan applies again. */
+      normal_from: z.iso.date(),
+      reason: z.string().nullable(),
+    })
+    .nullable()
     .optional(),
   totals: z.object({
     workouts_in_history: count,

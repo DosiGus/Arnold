@@ -206,6 +206,44 @@ function auditEvents(
     ),
   }));
 }
+/**
+ * A plan version a workout may be recorded against: not a draft, and a
+ * temporary one (UX-008) only once its adjustment was confirmed. A workout
+ * of an adjustment cancelled later keeps its version.
+ */
+/**
+ * The plan a session name refers to on a local day: the temporary version of
+ * a confirmed adjustment covering that day (UX-008), else the active plan if
+ * it was already active then.
+ */
+function planForDay(data: ArnoldDataset, date: string) {
+  const adjustment = (data.planAdjustments ?? []).find(
+    (a) =>
+      a.status === "confirmed" &&
+      a.start_date_local <= date &&
+      date <= a.end_date_local,
+  );
+  if (adjustment)
+    return data.plans.find(
+      (p) => p.plan_version_id === adjustment.plan_version_id,
+    );
+  return data.plans.find(
+    (p) =>
+      p.status === "active" &&
+      p.activated_at_utc !== null &&
+      p.activated_at_utc.slice(0, 10) <= date,
+  );
+}
+
+function trainablePlan(data: ArnoldDataset, planVersionId: string): boolean {
+  const plan = data.plans.find((p) => p.plan_version_id === planVersionId);
+  if (!plan || plan.status === "draft") return false;
+  if (plan.status !== "temporary") return true;
+  return (data.planAdjustments ?? []).some(
+    (a) => a.plan_version_id === planVersionId && a.confirmed_at_utc !== null,
+  );
+}
+
 export class WorkoutLoggingService {
   readonly mode: WriteMode;
   constructor(private options: LoggingOptions) {
@@ -545,12 +583,7 @@ export class WorkoutLoggingService {
         data.planItems.find((i) => i.session_id === session)?.plan_version_id ??
         null;
     if (!plan && !session && sessionName) {
-      const active = data.plans.find(
-        (p) =>
-          p.status === "active" &&
-          p.activated_at_utc !== null &&
-          p.activated_at_utc.slice(0, 10) <= date,
-      );
+      const active = planForDay(data, date);
       const matches = new Set(
         data.planItems
           .filter(
@@ -566,12 +599,7 @@ export class WorkoutLoggingService {
         session = [...matches][0];
       }
     }
-    if (
-      plan &&
-      !data.plans.some(
-        (p) => p.plan_version_id === plan && p.status !== "draft",
-      )
-    )
+    if (plan && !trainablePlan(data, plan))
       throw new WriteError(
         "VALIDATION_ERROR",
         "Planversion unbekannt oder noch im Entwurf.",
@@ -627,12 +655,7 @@ export class WorkoutLoggingService {
             "Session erfordert eine Planversion.",
           );
         if (!plan && !session) {
-          const active = data.plans.find(
-            (p) =>
-              p.status === "active" &&
-              p.activated_at_utc !== null &&
-              p.activated_at_utc.slice(0, 10) <= input.workout_date_local,
-          );
+          const active = planForDay(data, input.workout_date_local);
           const matches = new Set(
             data.planItems
               .filter(
@@ -648,12 +671,7 @@ export class WorkoutLoggingService {
             session = [...matches][0];
           }
         }
-        if (
-          plan &&
-          !data.plans.some(
-            (p) => p.plan_version_id === plan && p.status !== "draft",
-          )
-        )
+        if (plan && !trainablePlan(data, plan))
           throw new WriteError(
             "VALIDATION_ERROR",
             "Planversion unbekannt oder noch im Entwurf.",

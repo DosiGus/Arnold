@@ -24,6 +24,10 @@ import {
   type PlanWriteOperation,
 } from "../../shared/plan-contract";
 import {
+  PlanAdjustmentListSchema,
+  PlanAdjustmentWriteResponseSchema,
+} from "../../shared/plan-adjustment-contract";
+import {
   OnboardingBriefSchema,
   OnboardingHandoffSchema,
   OnboardingResponseSchema,
@@ -576,6 +580,29 @@ export class ArnoldMcpClient {
       }),
     );
   }
+  /* ----------------------------------------- adjustment for a while (UX-008) */
+
+  async planAdjustments(plan_adjustment_id?: string) {
+    return PlanAdjustmentListSchema.parse(
+      await this.client.call(
+        "get_plan_adjustments",
+        plan_adjustment_id ? { plan_adjustment_id } : {},
+      ),
+    );
+  }
+  async writePlanAdjustment(
+    operation: "confirm_plan_adjustment" | "cancel_plan_adjustment",
+    input: {
+      request_id: string;
+      plan_adjustment_id: string;
+      expected_row_revision: number;
+    },
+  ) {
+    return PlanAdjustmentWriteResponseSchema.parse(
+      await this.client.call(operation, input),
+    );
+  }
+
   /** One plan write. The response is always validated before the UI sees it. */
   async writePlan(
     operation: PlanWriteOperation,

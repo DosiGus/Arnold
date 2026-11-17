@@ -209,11 +209,13 @@ describe("the plan lifecycle state machine", () => {
       draft: ["active", "archived"],
       active: ["archived"],
       archived: [],
+      // UX-008: an adjustment's version is never activated or archived.
+      temporary: [],
     });
   });
 
   it("never leads back into draft", () => {
-    for (const from of ["draft", "active", "archived"] as const)
+    for (const from of ["draft", "active", "archived", "temporary"] as const)
       expect(canTransition(from, "draft")).toBe(false);
   });
 
