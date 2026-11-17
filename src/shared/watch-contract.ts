@@ -93,13 +93,21 @@ export const WatchDeviceDeleteResponseSchema = z.strictObject({
   unpaired: z.literal(true),
 });
 
+/**
+ * UX-007: the plan mark, 16 lowercase hex characters over what GET /plan
+ * delivers (language-neutral). The watch sends it back with POST /plan/ack
+ * after a complete sync; only then is the plan "on the watch".
+ */
+export const WatchPlanMarkSchema = z.string().regex(/^[0-9a-f]{16}$/);
 /** D-22: p=plan version, next=next session; days: id, n=name, c=exercise count,
- * m=estimated minutes, tag=ETag of the independently cached session response. */
+ * m=estimated minutes, tag=ETag of the independently cached session response;
+ * v=plan mark (UX-007, ignored by older watch apps). */
 export const WatchPlanDirectorySchema = z
   .strictObject({
     ...envelope,
     p: id,
     next: id,
+    v: WatchPlanMarkSchema,
     days: z
       .array(
         z.strictObject({
@@ -266,6 +274,29 @@ export const WatchHealthResponseSchema = z.strictObject({
   stored: z.literal(true),
 });
 export type WatchPlanDirectory = z.infer<typeof WatchPlanDirectorySchema>;
+/** POST /plan/ack: the mark of the plan the watch has completely loaded. */
+export const WatchPlanAckRequestSchema = z.strictObject({
+  v: WatchPlanMarkSchema,
+});
+export const WatchPlanAckResponseSchema = z.strictObject({
+  ...envelope,
+  v: WatchPlanMarkSchema,
+});
+/**
+ * UX-007: whether the current plan is on the user's watch. delivered only
+ * when an active watch confirmed the current mark; pending when a watch that
+ * can confirm has not yet; no_watch without an active watch; unknown
+ * otherwise (old watch app, no plan, read error). Never guessed.
+ */
+export const WatchDeliverySchema = z.enum([
+  "delivered",
+  "pending",
+  "no_watch",
+  "unknown",
+]);
+export type WatchDelivery = z.infer<typeof WatchDeliverySchema>;
+/** The first watch app version that confirms the plan mark. */
+export const WATCH_ACK_MIN_APP_VERSION = "0.2.0";
 export type WatchPlanSession = z.infer<typeof WatchPlanSessionSchema>;
 export type WatchCatalogEntry = z.infer<typeof WatchCatalogEntrySchema>;
 export type WatchWorkoutRequest = z.infer<typeof WatchWorkoutRequestSchema>;

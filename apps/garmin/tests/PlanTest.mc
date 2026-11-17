@@ -49,6 +49,13 @@ class PlanRig {
         return { "api_version" => 1, "min_app_version" => "1.0.0", "p" => "plv_1", "next" => next, "days" => entries };
     }
 
+    // UX-007: the same directory with the plan mark.
+    function directoryWithMark(days as Array<String>, next as String) as Dictionary {
+        var dir = directory(days, next, 1);
+        dir["v"] = "0123456789abcdef";
+        return dir;
+    }
+
     function dayBody(id as String) as Dictionary {
         return {
             "api_version" => 1, "min_app_version" => "1.0.0", "p" => "plv_1", "id" => id, "n" => "Day " + id,
@@ -710,4 +717,95 @@ module PlanScreens {
         }
         return out;
     }
+}
+
+(:test)
+function planSyncConfirmsTheMarkOnlyAfterACompleteRun(logger as Logger) as Boolean {
+    var rig = new PlanRig();
+    rig.begin();
+    rig.pairing.transport.respond(200, rig.directoryWithMark(["d1", "d2"], "d1"));
+    Expect.equal(rig.cache.mark(), "0123456789abcdef");
+    rig.pairing.transport.respond(200, rig.dayBody("d1"));
+    rig.pairing.transport.respond(200, rig.dayBody("d2"));
+    Expect.equal(rig.pairing.transport.sentCount(), 4);   // no confirmation before the run is complete
+    rig.pairing.transport.respond(200, rig.recentBody());
+    Expect.equal(rig.sync.state, PlanSync.SYNC_DONE);
+    Expect.equal(rig.pairing.transport.sentCount(), 5);
+    Expect.equal(rig.url(4), "http://mock/api/watch/v1/plan/ack");
+    var ack = rig.pairing.transport.requests[4];
+    Expect.equal(ack.method, Communications.HTTP_REQUEST_METHOD_POST);
+    Expect.equal((ack.body as Dictionary)["v"] as String, "0123456789abcdef");
+    Expect.equal(rig.sync.ackCode, 0);
+    rig.pairing.transport.respond(200, { "api_version" => 1, "min_app_version" => "1.0.0", "v" => "0123456789abcdef" });
+    Expect.equal(rig.sync.ackCode, 200);
+    Expect.equal(rig.sync.state, PlanSync.SYNC_DONE);
+    // The mark survives an app restart with the directory.
+    Expect.equal(new PlanCache(rig.pairing.store).mark(), "0123456789abcdef");
+    return true;
+}
+
+(:test)
+function planSyncFailedRunSendsNoConfirmation(logger as Logger) as Boolean {
+    var rig = new PlanRig();
+    rig.begin();
+    rig.pairing.transport.respond(200, rig.directoryWithMark(["d1", "d2"], "d1"));
+    rig.pairing.transport.respond(200, rig.dayBody("d1"));
+    rig.exhaustRetries();    // d2 does not arrive
+    Expect.equal(rig.sync.state, PlanSync.SYNC_FAILED);
+    for (var i = 0; i < rig.pairing.transport.sentCount(); i++) {
+        Test.assert(!rig.url(i).equals("http://mock/api/watch/v1/plan/ack"));
+    }
+    Expect.equal(rig.pairing.client.pendingCount(), 0);
+    Expect.equal(rig.sync.ackCode, 0);
+    return true;
+}
+
+(:test)
+function planSyncMissingDaySendsNoConfirmation(logger as Logger) as Boolean {
+    var rig = new PlanRig();
+    rig.begin();
+    rig.pairing.transport.respond(200, rig.directoryWithMark(["d1", "d2"], "d1"));
+    rig.pairing.transport.respond(200, rig.dayBody("d1"));
+    rig.pairing.transport.respond(422, rig.errorBody("VALIDATION_ERROR", false));   // d2 unreadable
+    rig.pairing.transport.respond(200, rig.recentBody());
+    Expect.equal(rig.sync.state, PlanSync.SYNC_FAILED);
+    Expect.equal(rig.pairing.client.pendingCount(), 0);
+    Expect.equal(rig.pairing.transport.sentCount(), 4);   // directory, d1, d2, recent: no confirmation
+    return true;
+}
+
+(:test)
+function planSyncFailedConfirmationKeepsTheRunDone(logger as Logger) as Boolean {
+    var rig = new PlanRig();
+    rig.begin();
+    rig.pairing.transport.respond(200, rig.directoryWithMark(["d1"], "d1"));
+    rig.pairing.transport.respond(200, rig.dayBody("d1"));
+    rig.pairing.transport.respond(200, rig.recentBody());
+    Expect.equal(rig.sync.state, PlanSync.SYNC_DONE);
+    // The server refuses the confirmation: the plan stays usable.
+    rig.pairing.transport.respond(422, rig.errorBody("VALIDATION_ERROR", false));
+    Expect.equal(rig.sync.state, PlanSync.SYNC_DONE);
+    Expect.equal(rig.sync.problem, PlanSync.PROBLEM_NONE);
+    Expect.equal(rig.sync.ackCode, 422);
+    Test.assert(rig.cache.day("d1") != null);
+    // No connection for the confirmation either: given up, nothing left behind.
+    rig.sync.start();
+    rig.pairing.transport.respond(200, rig.directoryWithMark(["d1"], "d1"));
+    rig.pairing.transport.respond(200, rig.recentBody());
+    Expect.equal(rig.sync.state, PlanSync.SYNC_DONE);
+    rig.exhaustRetries();
+    Expect.equal(rig.sync.state, PlanSync.SYNC_DONE);
+    Expect.equal(rig.pairing.client.pendingCount(), 0);
+    return true;
+}
+
+(:test)
+function planSyncWithoutMarkSendsNoConfirmation(logger as Logger) as Boolean {
+    var rig = new PlanRig();
+    rig.loadAll();   // an older server: the directory has no mark
+    Expect.equal(rig.sync.state, PlanSync.SYNC_DONE);
+    Test.assert(rig.cache.mark() == null);
+    Expect.equal(rig.pairing.transport.sentCount(), 5);   // directory, three days, recent
+    Expect.equal(rig.pairing.client.pendingCount(), 0);
+    return true;
 }

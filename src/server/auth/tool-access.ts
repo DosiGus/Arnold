@@ -102,6 +102,12 @@ export const TOOL_ACCESS: Readonly<Record<string, ToolAccessClass>> = {
   update_plan_draft: "PLAN_WRITE",
   activate_training_plan: "PLAN_WRITE",
   archive_plan_draft: "PLAN_WRITE",
+  // UX-008 adjustment for a while: a plan write like the others, although
+  // it never changes the active plan.
+  get_plan_adjustments: "AUTHENTICATED_READ",
+  create_plan_adjustment: "PLAN_WRITE",
+  confirm_plan_adjustment: "PLAN_WRITE",
+  cancel_plan_adjustment: "PLAN_WRITE",
 
   // ── mcp-onboarding.ts — Task 006 ──
   // Pre-authentication by design (§6). Authorization is delegated to
@@ -171,6 +177,8 @@ export const WATCH_ROUTE_ACCESS: Readonly<Record<string, WatchRouteAccess>> = {
   "GET /plan": "WATCH_READ",
   "GET /plan/sessions/:session_id": "WATCH_READ",
   "GET /plan/recent": "WATCH_READ",
+  // UX-007: the watch confirms the plan mark it has completely loaded.
+  "POST /plan/ack": "WATCH_WRITE",
   "POST /workouts": "WATCH_WRITE",
   "PUT /workouts/:session_uuid/health": "WATCH_WRITE",
   "GET /runs/upcoming": "WATCH_READ",

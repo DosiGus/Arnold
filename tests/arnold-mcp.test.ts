@@ -140,6 +140,7 @@ describe("Arnold v2 MCP surface", () => {
       "history",
       "plan",
       "plan_change",
+      "plan_adjustment",
       "stats",
       "goals",
       "records",

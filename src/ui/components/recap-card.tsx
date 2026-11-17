@@ -4,6 +4,7 @@ import type { ArnoldRecap } from "../../shared/recap-contract";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
 import { formatNumber, recordValue } from "../format";
 import { CardTag } from "./conversation-cards";
+import { clockLabel, distanceLabel, paceLabel } from "../run/format";
 
 const kg = (value: number) => `${formatNumber(value, 2)} kg`;
 
@@ -54,15 +55,38 @@ export function RecapBanner({
 
   const goal = recap.week_goal;
   const watch = recap.from_watch ? " · Von der Uhr" : "";
+  const isRun = recap.kind === "run";
+  // Only values the server delivered; nothing is calculated or filled in here.
+  const runParts = isRun
+    ? [
+        recap.run?.distance_m != null && distanceLabel(recap.run.distance_m),
+        recap.run?.duration_s != null && clockLabel(recap.run.duration_s),
+        recap.run?.pace_s_per_km != null && paceLabel(recap.run.pace_s_per_km),
+      ].filter((part): part is string => typeof part === "string")
+    : [];
   return (
-    <section className="ac-recap" aria-label="Rückblick auf dein Training">
+    <section
+      className="ac-recap"
+      aria-label={
+        isRun ? "Rückblick auf deinen Lauf" : "Rückblick auf dein Training"
+      }
+    >
       <CardTag icon={<Check size={13} />}>Rückblick</CardTag>
       <h3>Geschafft: {recap.title}</h3>
-      <p className="ac-caption">
-        {recap.exercise_count}{" "}
-        {recap.exercise_count === 1 ? "Übung" : "Übungen"} ·{" "}
-        {recap.working_set_count} Arbeitssätze{watch}
-      </p>
+      {isRun ? (
+        (runParts.length > 0 || recap.from_watch) && (
+          <p className="ac-caption">
+            {runParts.join(" · ")}
+            {runParts.length > 0 ? watch : watch.replace(" · ", "")}
+          </p>
+        )
+      ) : (
+        <p className="ac-caption">
+          {recap.exercise_count}{" "}
+          {recap.exercise_count === 1 ? "Übung" : "Übungen"} ·{" "}
+          {recap.working_set_count} Arbeitssätze{watch}
+        </p>
+      )}
       {(recap.records.length > 0 || goal) && (
         <ul className="cc-status ac-recap-lines">
           {recap.records.map((r) => (

@@ -5,6 +5,7 @@ import {
   type PlanChangeRow,
 } from "../../shared/plan-change-rows";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
+import type { WatchDelivery } from "../../shared/watch-contract";
 
 /**
  * State of the plan change card.
@@ -27,6 +28,8 @@ export type PlanChangeState =
       openDrafts: number;
       rows: PlanChangeRow[];
       canWrite: boolean;
+      /** UX-007: after "Übernehmen", whether the plan is on the watch. */
+      watch?: WatchDelivery;
     };
 
 const newRequestId = () =>
@@ -127,6 +130,8 @@ export function usePlanChange(client: ArnoldMcpClient, onChanged: () => void) {
             ...current,
             kind:
               operation === "activate_training_plan" ? "confirmed" : "declined",
+            // Absent means unknown: the card then shows no watch line.
+            watch: response.watch_delivery ?? "unknown",
           };
           shown.current = done;
           setState(done);

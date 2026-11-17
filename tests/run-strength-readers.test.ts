@@ -240,8 +240,20 @@ describe("strength readers with running data in the dataset", () => {
     const loaded = (await source(mixed).load()).dataset as DatasetWithRunDays;
     // The loader hands over the strength dataset plus the days of completed
     // runs; those two completed runs are the only addition (RUN-022).
-    const { runTrainingDates: runDays, ...fromMixed } = loaded;
+    // UX-009 adds the run summaries the scores need; nothing else reads them.
+    const {
+      runTrainingDates: runDays,
+      runScoreInputs: runScores,
+      // UX-014: the run recap's inputs travel the same way.
+      runRecapInputs: runRecaps,
+      ...fromMixed
+    } = loaded;
     expect(runDays).toEqual(["2026-09-08", "2026-10-12"]);
+    expect(runScores?.map((r) => [r.workout_id, r.date])).toEqual([
+      ["run-1", "2026-09-08"],
+      ["run-2", "2026-10-12"],
+    ]);
+    expect(runRecaps?.map((r) => r.workout_id)).toEqual(["run-1", "run-2"]);
     expect(fromMixed).toEqual(base);
     expect(buildDashboardView(fromMixed, context)).toEqual(
       buildDashboardView(base, context),
