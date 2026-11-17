@@ -625,7 +625,7 @@ function trainingScreensShowWhatTheWorkoutNeeds(logger as Logger) as Boolean {
     Test.assertMessage(set.find("|60|kg|8|Wdh.|") != null || set.find("|60|kg|8|reps|") != null, set);    // the weight is the main number
     var page2 = FaceText.joined(SetScreen.face(rig.session, 132, 1));
     Test.assertMessage(page2.find("132") != null, page2);
-    Test.assertMessage(page2.find("Letztes Mal 8") != null, page2);    // the server's text, wrapped in two lines
+    Test.assertMessage(page2.find("Letztes Mal|8 · 8 · 7|") != null, page2);    // the server's text, wrapped in two lines
     var noPulse = FaceText.joined(SetScreen.face(rig.session, null, 1));
     Test.assertMessage(noPulse.find("|–|") != null, noPulse);
     Test.assertMessage(noPulse.find("|0|") == null, noPulse);

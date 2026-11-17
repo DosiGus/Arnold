@@ -65,7 +65,7 @@ module SetScreen {
 
     // The second page of set and rest: the heart rate as the one big value, "-" without a reading (never 0).
     function heartPage(f as InstrumentFace, heartRate as Number or Null, lastTime as String or Null) as Void {
-        f.top = lastTime == null ? [TrainingText.text(Rez.Strings.UhrPulse)] as Array<String> : wrap(lastTime as String, LINE_CHARS);
+        f.top = lastTime == null ? [TrainingText.text(Rez.Strings.UhrPulse)] as Array<String> : wrapLast(lastTime as String);
         f.hero = heartRate == null ? DASH : (heartRate as Number).toString();
         f.sub = TrainingText.text(Rez.Strings.UhrBpm);
     }
@@ -74,6 +74,24 @@ module SetScreen {
     function heartText(heartRate as Number or Null) as String {
         var value = heartRate == null ? TrainingText.text(Rez.Strings.TrNoReading) : (heartRate as Number).toString();
         return Lang.format(TrainingText.text(Rez.Strings.TrHeartRate), [value]);
+    }
+
+    // "Letztes Mal 8 · 8 · 7": the words in the first line, the numbers in the second.
+    function wrapLast(text as String) as Array<String> {
+        for (var i = 1; i < text.length(); i++) {
+            var c = text.substring(i, i + 1) as String;
+            if ("0123456789".find(c) != null) {
+                var head = (text.substring(0, i) as String);
+                while (head.length() > 0 && (head.substring(head.length() - 1, head.length()) as String).equals(" ")) {
+                    head = head.substring(0, head.length() - 1) as String;
+                }
+                if (head.length() > 0 && head.length() <= LINE_CHARS) {
+                    return [head, ellipsize(text.substring(i, text.length()) as String, LINE_CHARS)] as Array<String>;
+                }
+                break;
+            }
+        }
+        return wrap(text, LINE_CHARS);
     }
 
     // A text in at most two lines of `max` characters, broken at a space; too long: the end is cut with "…".

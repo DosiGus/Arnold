@@ -140,6 +140,8 @@ function setFaceSecondPageShowsTheHeartRateAndLastTime(logger as Logger) as Bool
     Expect.equal(page.hero, "132");
     Expect.equal(page.sub, TrainingText.text(Rez.Strings.UhrBpm));
     Test.assert(FaceText.joined(page).find("Letztes Mal") != null);
+    Expect.equal(page.top[0], "Letztes Mal");
+    Expect.equal(page.top[1], "8 · 8 · 7");
     Expect.equal(page.ring, InstrumentFace.RING_SEGMENTS);
     var none = SetScreen.face(rig.session, null, 1);
     Expect.equal(none.hero, "–");
