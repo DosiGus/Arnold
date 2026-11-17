@@ -22,7 +22,10 @@ import type { WatchRecordingData, WatchSnapshotData } from "./arnold-source.js";
 import {
   buildArnoldDashboardAnalytics,
   buildHomeAnalytics,
+  buildScores,
   type HomeAnalytics,
+  type ScoreHealthInput,
+  type Scores,
   DEFAULT_WORKOUT_STATUSES,
   METRICS_VERSION,
   type AnalyticsFilter,
@@ -34,6 +37,7 @@ import {
   type Series,
 } from "../analytics/index.js";
 import { WORKOUT_STATUS_LABEL } from "../shared/arnold-format.js";
+import type { ArnoldScores } from "../shared/scores-contract.js";
 import {
   ARNOLD_UI_CONTRACT,
   ArnoldDashboardViewSchema,
@@ -162,6 +166,11 @@ export type ArnoldModeInfo = {
 export type PresenterContext = {
   readonly generatedAt: string;
   readonly mode?: ArnoldModeInfo;
+  /**
+   * Watch values for the recovery score (UX-009), read by the server with
+   * the caller's consent. Absent: no consent, so only the training part.
+   */
+  readonly scoreHealth?: ScoreHealthInput;
 };
 
 const WEEKDAY = new Intl.DateTimeFormat("de-DE", {
@@ -771,6 +780,23 @@ function homeView(
   };
 }
 
+/** The engine's scores as plain data; nothing is recomputed (UX-009). */
+function scoresView(scores: Scores): ArnoldScores {
+  const { progress, recovery } = scores;
+  return {
+    consistency: { ...scores.consistency },
+    progress: { ...progress, runs: progress.runs.map((r) => ({ ...r })) },
+    recovery: {
+      ...recovery,
+      parts: recovery.parts.map((p) => ({ ...p })),
+      strongest_deduction: recovery.strongest_deduction
+        ? { ...recovery.strongest_deduction }
+        : null,
+      best: recovery.best ? { ...recovery.best } : null,
+    },
+  };
+}
+
 /**
  * Builds the overview payload.
  *
@@ -997,6 +1023,14 @@ export function buildDashboardView(
         reference_date: options.reference_date ?? null,
         // The weekly goal is the plan's training days (server instructions).
         weekly_goal_training_days: activePlan?.days_per_week ?? null,
+      }),
+    ),
+    // Copied, not computed: every figure comes from src/analytics/scores.ts.
+    scores: scoresView(
+      buildScores(dataset, {
+        reference_date: options.reference_date ?? null,
+        weekly_goal_training_days: activePlan?.days_per_week ?? null,
+        health: context.scoreHealth ?? { status: "no_consent" },
       }),
     ),
     totals: {
