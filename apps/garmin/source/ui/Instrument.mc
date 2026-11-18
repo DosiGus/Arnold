@@ -49,6 +49,7 @@ module Instrument {
     const WARN as Number = 0xFFAA00;      // only for "attention", always with a word
     const PAIR_WIDTH as Number = 212;
     const PAIR_GAP as Number = 14;
+    const BOTTOM_WIDTH as Number = 176;   // inside the ring at the height of the bottom line
 
     var _hero as Graphics.FontType or Null = null;
     var _big as Graphics.FontType or Null = null;
@@ -107,7 +108,10 @@ module Instrument {
             drawPair(dc, face);
         }
         if (face.bottom != null) {
-            text(dc, dc.getWidth() / 2, scale(dc, 206), Graphics.FONT_TINY, face.bottomColor, face.bottom as String);
+            // Low on the dial the ring is narrow: a line that would touch it steps down to the smaller font.
+            var bottom = face.bottom as String;
+            var font = dc.getTextWidthInPixels(bottom, Graphics.FONT_TINY) > scale(dc, BOTTOM_WIDTH) ? Graphics.FONT_XTINY : Graphics.FONT_TINY;
+            text(dc, dc.getWidth() / 2, scale(dc, 206), font, face.bottomColor, bottom);
         }
     }
 
