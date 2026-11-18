@@ -106,6 +106,10 @@ class RunView extends WatchUi.View {
             RunLayout.draw(dc, RunPages.sleepLines(_session), -1, shift(minute, dc.getWidth()), shift(minute / 5, dc.getHeight()));
             return;
         }
+        if (_page == 0) {
+            Instrument.draw(dc, RunFaces.first(_session));
+            return;
+        }
         var page = RunPages.build(dc, _session, _page);
         RunLayout.draw(dc, page.lines, page.zone, 0, 0);
     }

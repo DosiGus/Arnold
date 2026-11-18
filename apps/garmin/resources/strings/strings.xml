@@ -273,4 +273,19 @@
     <string id="UhrLast">$1$ kg × $2$</string>
     <string id="UhrBpm">bpm</string>
     <string id="UhrPulse">Heart rate</string>
+    <!-- UHR-03 -->
+    <string id="RunInTarget">In target</string>
+    <string id="RunTooHigh">Too high</string>
+    <string id="RunTooLow">Too low</string>
+    <string id="RunOfTotal">$1$ of $2$</string>
+    <string id="RunNOfM">$1$ $2$ of $3$</string>
+    <string id="RunZoneRange">Zone $1$–$2$</string>
+    <string id="RunBpmRange">$1$–$2$ bpm</string>
+    <string id="RunPhaseRun">Run</string>
+    <string id="RunPhaseWalk">Walk</string>
+    <string id="RunUnitLeft">left</string>
+    <string id="RunUnitTime">time</string>
+    <string id="RunUnitKmEst">km (est.)</string>
+    <string id="RunEffortRange">Effort $1$–$2$</string>
+    <string id="RunTargetShort">Target $1$</string>
 </strings>

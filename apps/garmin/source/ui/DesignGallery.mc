@@ -11,13 +11,16 @@ module DesignFaces {
     const OK as Number = 0x55FF55;
     const WARN as Number = 0xFFAA00;
 
-    const FACES as Number = 13;   // 0..7 made up, 8..12 real set and rest faces; then the line screens (UHR-05)
+    const FACES as Number = 17;   // 0..7 made up, 8..12 real set and rest faces, 13..16 real run page 1; then the line screens (UHR-05)
 
     function count() as Number {
         return FACES + DesignLines.count();
     }
 
     function at(index as Number) as InstrumentFace {
+        if (index >= 13) {
+            return RunGalleryFaces.at(index - 13);     // UHR-03: the real RunFaces.first on made-up runs
+        }
         var f = new InstrumentFace();
         if (index == 0) {
             f.top = ["Überzüge am", "Kabelzug"] as Array<String>;
@@ -289,5 +292,110 @@ module GalleryRig {
             session.endRest();
         }
         return SetScreen.face(session, 132, index == 12 ? 1 : 0);
+    }
+}
+
+// UHR-03: page 1 of the run display, made by the real RunFaces.first from a run session on made-up readings
+// (no recording, no storage). Uses GalleryStore above.
+(:designGallery)
+class GalleryBackend extends RunBackend {
+    function initialize() {
+        RunBackend.initialize();
+    }
+
+    function open(environment as Number) as Boolean {
+        return true;
+    }
+
+    function lap(segment as Number) as Boolean {
+        return true;
+    }
+
+    function start() as Boolean {
+        return true;
+    }
+
+    function stop() as Boolean {
+        return true;
+    }
+}
+
+(:designGallery)
+class GallerySource extends RunSource {
+    var timer as Number = 0;
+    var distance as Number = 0;
+    var speed as Number = 300;
+    var hr as Number = 140;
+
+    function initialize() {
+        RunSource.initialize();
+    }
+
+    function read(into as RunReading) as Void {
+        timer++;
+        distance += speed;
+        into.timerS = timer;
+        into.distanceCm = distance;
+        into.speedCmS = speed;
+        into.heartRate = hr;
+        into.cadence = 170;
+        into.ascentM = 0;
+    }
+}
+
+(:designGallery)
+module RunGalleryFaces {
+    const TICKS_PER_FRAME as Number = 4;     // more in one frame trips the watchdog of the simulator
+    var _index as Number = -1;
+    var _session as RunSession or Null = null;
+    var _target as Number = 0;
+    var _ticked as Number = 0;
+
+    function count() as Number {
+        return 4;
+    }
+
+    function at(index as Number) as InstrumentFace {
+        if (index != _index || _session == null) {
+            build(index);
+        }
+        var session = _session as RunSession;
+        var n = 0;
+        while (_ticked < _target && n < TICKS_PER_FRAME) {
+            session.tick();
+            _ticked++;
+            n++;
+        }
+        if (_ticked < _target) {
+            WatchUi.requestUpdate();           // the run of the picture is still being made up
+        } else if (index == 3 && !session.isPaused()) {
+            session.pause();
+        }
+        return RunFaces.first(session);
+    }
+
+    function build(index as Number) as Void {
+        var source = new GallerySource();
+        var store = new GalleryStore();
+        var parts = new RunParts(new RunJournal(store), new PairingClock(), new Settings(store), source, new GalleryBackend(), null,
+            [100, 120, 140, 160, 180, 200] as Array<Number>);
+        var body = { "k" => 1, "n" => "Zone 2", "e" => 0, "s" => [[1, 1, 150, 1, 2, 2]] as Array } as Dictionary;
+        var seconds = 41;
+        if (index == 0) {
+            source.hr = 130;
+            source.speed = 274;                  // 6:05 /km
+        } else if (index == 1) {
+            source.hr = 162;
+            source.speed = 287;                  // 5:48 /km
+        } else {
+            body = { "k" => 6, "n" => "Intervalle", "e" => 0, "s" => [[1, 1, 20, 2, 270, 285], [2, 1, 15, 0, 0, 0]] as Array, "rp" => [[0, 1, 6]] as Array } as Dictionary;
+            source.speed = 363;                  // 4:35 /km
+            seconds = index == 2 ? 2 * 35 + 8 : 35 + 5;
+        }
+        var model = new PreStartModel(new PreStartRequest(PreStartRequest.MODE_PLANNED, "gallery", body));
+        _session = RunSession.start(model, parts);
+        _index = index;
+        _target = seconds;
+        _ticked = 0;
     }
 }
