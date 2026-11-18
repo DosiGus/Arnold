@@ -35,7 +35,9 @@ class LayoutRig {
         for (var i = 0; i < lines.size(); i++) {
             if (lines[i].wide) {
                 found = true;
-                if (!PairingLayout.isBig(dc, lines[i].font)) {
+                // The Instrument digit fonts (PairingLayout.numberLine) are the designed main-number size, narrower than a third of the height.
+                var instrument = lines[i].font == Instrument.bigFont() || lines[i].font == Instrument.midFont() || lines[i].font == Instrument.smallFont();
+                if (!instrument && !PairingLayout.isBig(dc, lines[i].font)) {
                     return false;
                 }
             }
@@ -111,14 +113,12 @@ function setRestAndEditScreensAreBigAndFit(logger as Logger) as Boolean {
     Test.assert(LayoutRig.fits(dc, preview));
     // set (weight is the main number)
     rig.session.confirmPreview();
-    var set = SetScreen.lines(dc, rig.session, 132);
-    Test.assertMessage(LayoutRig.mainNumbersAreBig(dc, set), "set");
-    Test.assertMessage(LayoutRig.fits(dc, set), "set fits");
-    // rest
+    // (set and rest are Instrument faces now: they draw with the numeral fonts; see InstrumentFaceTest)
+    Instrument.draw(dc, SetScreen.face(rig.session, 132, 0));
+    Instrument.draw(dc, SetScreen.face(rig.session, 132, 1));
     rig.session.confirmSet();
-    var rest = RestScreen.lines(dc, rig.session, null);
-    Test.assertMessage(LayoutRig.mainNumbersAreBig(dc, rest), "rest");
-    Test.assertMessage(LayoutRig.fits(dc, rest), "rest fits");
+    Instrument.draw(dc, RestScreen.face(rig.session, null, 0));
+    Instrument.draw(dc, RestScreen.face(rig.session, null, 1));
     // adjust (reps and weight)
     rig.session.endRest();
     var adjust = new SetAdjust(rig.session.currentSet() as PlannedSet, rig.session.exercise(), SetAdjust.FIELD_REPS);
@@ -151,14 +151,10 @@ function summaryAndOtherScreensFitTheDisplay(logger as Logger) as Boolean {
 function screensAreDarkWithoutLitAreas(logger as Logger) as Boolean {
     var dc = LayoutRig.dc();
     var rig = new PlayerRig(true);
-    var names = ["preview", "set", "rest", "edit", "summary"];
+    var names = ["preview", "edit", "summary"];   // set and rest draw with Instrument: text and ring lines on black only
     var screens = [] as Array<Array<PairingLine>>;
     screens.add(PreviewScreen.lines(dc, rig.session));
     rig.session.confirmPreview();
-    screens.add(SetScreen.lines(dc, rig.session, 132));
-    rig.session.confirmSet();
-    screens.add(RestScreen.lines(dc, rig.session, 132));
-    rig.session.endRest();
     screens.add(EditScreen.lines(dc, rig.session, new SetAdjust(rig.session.currentSet() as PlannedSet, rig.session.exercise(), SetAdjust.FIELD_LOAD)));
     var done = new PlayerRig(false);
     done.finishDay();
@@ -191,6 +187,20 @@ module NameRig {
         return lines[0].text;
     }
 
+    // The first line of an Instrument face is the exercise name (cut with "…" when too long), as wide as the top allows.
+    function faceNameOnTop(dc as Dc, face as InstrumentFace, expectCut as Boolean, shortPart as String) as Boolean {
+        if (face.top.size() == 0 || face.top[0].find(shortPart) != 0) {
+            return false;
+        }
+        for (var i = 0; i < face.top.size(); i++) {
+            if (dc.getTextWidthInPixels(face.top[i], Graphics.FONT_TINY) > Instrument.scale(dc, 190)) {
+                return false;
+            }
+        }
+        var cut = face.top[face.top.size() - 1].find("…") != null;
+        return cut == expectCut;
+    }
+
     // The exercise name is the first line drawn (never dropped), at most as wide as the name area.
     function nameOnTop(dc as Dc, lines as Array<PairingLine>, expectCut as Boolean, shortPart as String) as Boolean {
         var drawn = PairingLayout.arrange(dc, lines);
@@ -216,12 +226,12 @@ function exerciseNameIsOnTopOfSetRestAndEditScreens(logger as Logger) as Boolean
         var prefix = names[i].substring(0, 3) as String;
         var tag = names[i] + " on " + dc.getWidth() + " px";
         rig.session.confirmPreview();
-        var set = SetScreen.lines(dc, rig.session, 132);
-        Test.assertMessage(NameRig.nameOnTop(dc, set, cut, prefix), "set " + tag);
-        Test.assertMessage(LayoutRig.mainNumbersAreBig(dc, set) && LayoutRig.fits(dc, set), "set big+fits " + tag);
+        var set = SetScreen.face(rig.session, 132, 0);
+        Test.assertMessage(NameRig.faceNameOnTop(dc, set, cut, prefix), "set " + tag);
         // heart rate unknown: the name is still there
-        var noHeart = SetScreen.lines(dc, rig.session, null);
-        Test.assertMessage(NameRig.nameOnTop(dc, noHeart, cut, prefix), "set no heart " + tag);
+        var noHeart = SetScreen.face(rig.session, null, 0);
+        Test.assertMessage(NameRig.faceNameOnTop(dc, noHeart, cut, prefix), "set no heart " + tag);
+        Instrument.draw(dc, set);
         // edit
         var adjust = new SetAdjust(rig.session.currentSet() as PlannedSet, rig.session.exercise(), SetAdjust.FIELD_REPS);
         var edit = EditScreen.lines(dc, rig.session, adjust);
@@ -229,9 +239,10 @@ function exerciseNameIsOnTopOfSetRestAndEditScreens(logger as Logger) as Boolean
         Test.assertMessage(LayoutRig.mainNumbersAreBig(dc, edit) && LayoutRig.fits(dc, edit), "edit big+fits " + tag);
         // rest after a set of the same exercise: the name of the exercise the rest belongs to
         rig.session.confirmSet();
-        var rest = RestScreen.lines(dc, rig.session, null);
-        Test.assertMessage(NameRig.nameOnTop(dc, rest, cut, prefix), "rest " + tag);
-        Test.assertMessage(LayoutRig.mainNumbersAreBig(dc, rest) && LayoutRig.fits(dc, rest), "rest big+fits " + tag);
+        var rest = RestScreen.face(rig.session, null, 0);
+        Test.assertMessage(rest.top[0].equals(TrainingText.text(Rez.Strings.TrRest)), "rest title " + tag);
+        Test.assertMessage(rest.bottom != null && (rest.bottom as String).length() <= 16, "rest bottom " + tag);
+        Instrument.draw(dc, rest);
         logger.debug(tag + ": ok");
     }
     return true;
@@ -247,33 +258,25 @@ function restBeforeTheNextExerciseShowsBothNames(logger as Logger) as Boolean {
     rig.session.confirmSet();   // last set of the first exercise: the rest belongs to it, the next exercise comes after
     Test.assert(rig.session.state == TrainingSession.STATE_REST);
     Test.assert(!rig.session.nextIsSameExercise());
-    var lines = RestScreen.lines(dc, rig.session, 120);
-    Test.assertMessage(NameRig.nameOnTop(dc, lines, false, "Bankdrücken"), "own name");
-    var drawn = PairingLayout.arrange(dc, lines);
-    var found = false;
-    for (var i = 0; i < drawn.size(); i++) {
-        logger.debug(dc.getWidth() + " px line " + i + ": " + drawn[i].text);
-        if (drawn[i].text.find("Überz") != null) {
-            found = true;
-            Test.assertMessage(dc.getTextWidthInPixels(drawn[i].text, drawn[i].font) <= PairingLayout.textWidth(dc), "next name width");
-        }
-    }
-    Test.assertMessage(found, "next exercise name on the rest screen");
-    Test.assertMessage(LayoutRig.mainNumbersAreBig(dc, lines) && LayoutRig.fits(dc, lines), "rest next big+fits");
+    var face = RestScreen.face(rig.session, 120, 0);
+    var bottom = face.bottom as String;
+    logger.debug(dc.getWidth() + " px bottom: " + bottom);
+    Test.assertMessage(bottom.find("Überz") != null, "next exercise name on the rest screen");
+    Test.assertMessage(dc.getTextWidthInPixels(bottom, Graphics.FONT_TINY) <= Instrument.scale(dc, 190), "next name width");
+    Instrument.draw(dc, face);
     return true;
 }
 
 (:test)
 function swappedExerciseShowsTheNewName(logger as Logger) as Boolean {
-    var dc = LayoutRig.dc();
     var rig = NameRig.rig("Bankdrücken", "Rudern");
     rig.toFirstSet();
-    var before = SetScreen.lines(dc, rig.session, null);
-    Test.assert(NameRig.firstText(before).find("Bankdrücken") == 0);
+    var before = SetScreen.face(rig.session, null, 0);
+    Test.assert(before.top[0].find("Bankdrücken") == 0);
     var swapped = rig.session.exercise();
     swapped.name = "Fliegende";
-    var after = SetScreen.lines(dc, rig.session, null);
-    Test.assert(NameRig.firstText(after).find("Fliegende") == 0);
+    var after = SetScreen.face(rig.session, null, 0);
+    Test.assert(after.top[0].find("Fliegende") == 0);
     return true;
 }
 

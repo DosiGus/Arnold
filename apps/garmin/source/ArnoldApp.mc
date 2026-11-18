@@ -21,7 +21,7 @@ class ArnoldApp extends Application.AppBase {
         return [new BackgroundService()];
     }
 
-    (:garminProduct, :typecheck(disableBackgroundCheck))
+    (:garminProduct, :productEntry, :typecheck(disableBackgroundCheck))
     function getInitialView() as [WatchUi.Views] or [WatchUi.Views, WatchUi.InputDelegates] {
         return HomeFlow.views();
     }
@@ -29,6 +29,12 @@ class ArnoldApp extends Application.AppBase {
     (:garminGate, :typecheck(disableBackgroundCheck))
     function getInitialView() as [WatchUi.Views] or [WatchUi.Views, WatchUi.InputDelegates] {
         return [DebugMenu.build(), new DebugDelegate()];
+    }
+
+    (:designGallery, :typecheck(disableBackgroundCheck))
+    function getInitialView() as [WatchUi.Views] or [WatchUi.Views, WatchUi.InputDelegates] {
+        var view = new DesignGalleryView();
+        return [view, new DesignGalleryDelegate(view)];
     }
 }
 

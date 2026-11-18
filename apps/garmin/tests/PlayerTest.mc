@@ -621,38 +621,37 @@ function trainingScreensShowWhatTheWorkoutNeeds(logger as Logger) as Boolean {
     Test.assertMessage(preview.find("3") != null, preview);
     Test.assertMessage(preview.find("Heute +2,5 kg") != null, preview);    // the server's hint, unchanged
     rig.toFirstSet();
-    var set = PlanScreens.joined(TrainingScreen.lines(dc, rig.session, 132, null));
-    Test.assertMessage(set.find("|60|kg x 8|") != null, set);    // the weight is the main number
-    Test.assertMessage(set.find("132") != null, set);
-    Test.assertMessage(set.find("Letztes Mal 8 · 8 · 7") != null, set);
-    var noPulse = PlanScreens.joined(TrainingScreen.lines(dc, rig.session, null, null));
-    Test.assertMessage(noPulse.find("--") != null, noPulse);
-    Test.assertMessage(noPulse.find(" 0 ") == null, noPulse);
+    var set = FaceText.joined(SetScreen.face(rig.session, 132, 0));
+    Test.assertMessage(set.find("|60|kg|8|Wdh.|") != null || set.find("|60|kg|8|reps|") != null, set);    // the weight is the main number
+    var page2 = FaceText.joined(SetScreen.face(rig.session, 132, 1));
+    Test.assertMessage(page2.find("132") != null, page2);
+    Test.assertMessage(page2.find("Letztes Mal|8 · 8 · 7|") != null, page2);    // the server's text, wrapped in two lines
+    var noPulse = FaceText.joined(SetScreen.face(rig.session, null, 1));
+    Test.assertMessage(noPulse.find("|–|") != null, noPulse);
+    Test.assertMessage(noPulse.find("|0|") == null, noPulse);
     rig.session.confirmSet();
-    var rest = PlanScreens.joined(TrainingScreen.lines(dc, rig.session, 90, null));
+    var rest = FaceText.joined(RestScreen.face(rig.session, 90, 0));
     Test.assertMessage(rest.find("2:00") != null, rest);
-    Test.assertMessage(rest.find("2") != null, rest);
     return true;
 }
 
 (:test)
 function trainingScreensShowSidesAndOpenValues(logger as Logger) as Boolean {
-    var dc = PairingScreens.deviceDc();
     var rig = new PlayerRig(true);
     rig.toFirstSet();
     for (var i = 0; i < 3; i++) { rig.setAndRest(); }
     rig.session.confirmPreview();
-    var left = PlanScreens.joined(TrainingScreen.lines(dc, rig.session, null, null));
+    var left = FaceText.joined(SetScreen.face(rig.session, null, 0));
     Test.assertMessage(left.find(TrainingText.text(Rez.Strings.TrLeft)) != null, left);
     rig.setAndRest();
-    var right = PlanScreens.joined(TrainingScreen.lines(dc, rig.session, null, null));
+    var right = FaceText.joined(SetScreen.face(rig.session, null, 0));
     Test.assertMessage(right.find(TrainingText.text(Rez.Strings.TrRight)) != null, right);
     rig.setAndRest();
     rig.session.confirmPreview();
     rig.session.confirmSet();
     rig.session.confirmPreview();
-    var open = PlanScreens.joined(TrainingScreen.lines(dc, rig.session, null, null));
-    Test.assertMessage(open.find(TrainingText.text(Rez.Strings.TrRepsOpen)) != null, open);
+    var open = FaceText.joined(SetScreen.face(rig.session, null, 0));
+    Test.assertMessage(open.find(TrainingText.text(Rez.Strings.UhrRepsOpen)) != null, open);
     return true;
 }
 
@@ -662,16 +661,17 @@ function trainingViewDrawsEveryState(logger as Logger) as Boolean {
     var rig = new PlayerRig(false);
     PairingLayout.draw(dc, TrainingScreen.lines(dc, rig.session, null, null));    // preview
     rig.toFirstSet();
-    PairingLayout.draw(dc, TrainingScreen.lines(dc, rig.session, 140, null));     // set
+    Instrument.draw(dc, TrainingScreen.face(rig.session, 140, 0));                // set
     rig.session.confirmSet();
-    PairingLayout.draw(dc, TrainingScreen.lines(dc, rig.session, null, null));    // rest
+    Instrument.draw(dc, TrainingScreen.face(rig.session, null, 0));               // rest
     rig.clock.now += 112;
-    PairingLayout.draw(dc, TrainingScreen.lines(dc, rig.session, 99, null));      // rest, warning colour
+    Instrument.draw(dc, TrainingScreen.face(rig.session, 99, 0));                 // rest, warning colour
     var long = PlayerRig.dayBody(false);
     PlayerRig.change(long, "cat", 0, "n", "Kurzhantel-Schrägbankdrücken eng mit Pause unten");
     var rig2 = new PlayerRig(false);
     rig2.session = TrainingSession.start(long, rig2.journal, rig2.clock, rig2.signals);
-    PairingLayout.draw(dc, TrainingScreen.lines(dc, rig2.session, null, null));
+    rig2.session.confirmPreview();
+    Instrument.draw(dc, TrainingScreen.face(rig2.session, null, 0));              // long name
     var done = new PlayerRig(false);
     done.toFirstSet();
     for (var i = 0; i < 3; i++) { done.setAndRest(); }

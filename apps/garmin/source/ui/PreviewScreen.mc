@@ -8,12 +8,12 @@ module PreviewScreen {
         var out = [] as Array<PairingLine>;
         var ex = session.exercise();
         var number = session.exIdx + 1;
-        out.add(new PairingLine(Lang.format(TrainingText.text(Rez.Strings.TrExerciseOf), [number, session.plan.exerciseCount()]), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY));
+        out.add(new PairingLine(Lang.format(TrainingText.text(Rez.Strings.TrExerciseOf), [number, session.plan.exerciseCount()]), Graphics.FONT_XTINY, Instrument.LABEL));
         out.add(new PairingLine(ex.name, Graphics.FONT_MEDIUM, Graphics.COLOR_WHITE));
         out.add(new PairingLine(summary(ex), Graphics.FONT_SMALL, Graphics.COLOR_WHITE));
-        out.add(new PairingLine(Lang.format(TrainingText.text(Rez.Strings.TrRestOf), [TrainingText.clock(ex.restSeconds)]), Graphics.FONT_XTINY, Graphics.COLOR_LT_GRAY));
+        out.add(new PairingLine(Lang.format(TrainingText.text(Rez.Strings.TrRestOf), [TrainingText.clock(ex.restSeconds)]), Graphics.FONT_XTINY, Instrument.LABEL));
         if (ex.hint != null) {
-            out.add(new PairingLine(ex.hint as String, Graphics.FONT_XTINY, Graphics.COLOR_YELLOW));
+            out.add(new PairingLine(ex.hint as String, Graphics.FONT_XTINY, Graphics.COLOR_WHITE));
         }
         return out;
     }

@@ -471,6 +471,11 @@ class TrainingSession {
         return true;
     }
 
+    // Length of the rest on screen in seconds (changes with UP and DOWN); 0 outside a rest.
+    function restLength() as Number {
+        return state == STATE_REST ? _head["rl"] as Number : 0;
+    }
+
     // Seconds left of the rest, from timestamps; can be negative once it is over.
     function restRemaining() as Number {
         if (state != STATE_REST) {

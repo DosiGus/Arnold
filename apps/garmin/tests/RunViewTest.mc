@@ -104,7 +104,8 @@ module ViewRig {
     // Draws all pages of the session; each must fit the display and no word may be wider than the display.
     function check(dc as Dc, session as RunSession, label as String) as Void {
         var count = RunPages.pageCount(session);
-        for (var p = 0; p < count; p++) {
+        checkFace(dc, RunFaces.first(session), label + " page 1");    // page 1 is the Instrument face, not a block of lines
+        for (var p = 1; p < count; p++) {
             var page = RunPages.build(dc, session, p);
             var message = label + " page " + (p + 1);
             Test.assertMessage(LayoutRig.fits(dc, page.lines), message + " fits: " + ViewRig.heights(dc, page.lines));
@@ -117,6 +118,27 @@ module ViewRig {
             }
             RunLayout.draw(dc, page.lines, page.zone, 0, 0);
         }
+    }
+
+    // The texts of a face must fit the ring: the top line with its state, the bottom line, the pair in the smallest digits.
+    function checkFace(dc as Dc, face as InstrumentFace, label as String) as Void {
+        var room = Instrument.scale(dc, 218);
+        var top = face.top.size() > 0 ? face.top[0] : "";
+        var status = face.status;
+        if (status != null) {
+            top += " · " + (status as String);
+        }
+        Test.assertMessage(dc.getTextWidthInPixels(top, Graphics.FONT_TINY) <= room, label + " top '" + top + "'");
+        var bottom = face.bottom;
+        if (bottom != null) {
+            Test.assertMessage(dc.getTextWidthInPixels(bottom as String, Graphics.FONT_TINY) <= Instrument.scale(dc, 190), label + " bottom '" + bottom + "'");
+        }
+        Test.assertMessage(face.left != null && face.right != null, label + " has a pair");
+        var font = Instrument.smallFont();
+        var used = dc.getTextWidthInPixels(face.left as String, font) + dc.getTextWidthInPixels(face.right as String, font) + 2 * Instrument.scale(dc, Instrument.PAIR_GAP);
+        Test.assertMessage(used <= Instrument.scale(dc, 228), label + " pair '" + face.left + "|" + face.right + "' " + used + " of " + dc.getWidth());
+        Test.assertMessage(dc.getTextWidthInPixels(face.leftUnit, Graphics.FONT_TINY) + dc.getTextWidthInPixels(face.rightUnit, Graphics.FONT_TINY) <= room, label + " units");
+        Instrument.draw(dc, face);
     }
 
     // For a failing message: the display, the room (86 %) and the height of each line as it would be drawn.
@@ -171,47 +193,32 @@ function longRunsAndAutoPauseFitToo(logger as Logger) as Boolean {
     return true;
 }
 
+// Page 1 is an Instrument face (UHR-03); what each run type puts on it is tested in RunFaceTest. The few cases
+// that used to read the lines of the old page 1 are now read from the face: same facts, other carrier.
 (:test)
 function pageOneShowsWhatTheRunTypeNeeds(logger as Logger) as Boolean {
-    var dc = LayoutRig.dc();
-    // heart rate run: the big number is the heart rate, the zone bar follows
+    // heart rate run: the heart rate comes first (left), the pace second; the zone is the state of the top line
     var base = new RunSim(ViewRig.body(1, [ViewRig.seg(1, 0, 0, 0, 0, 0)] as Array, null), 0, false);
     base.seconds(5);
-    var page = RunPages.build(dc, base.session, 0);
-    Test.assert(LayoutRig.mainNumbersAreBig(dc, page.lines));
-    Test.assertEqual(page.zone, 3);                  // 140 bpm with zones 100/120/140/... is zone 3
-    Test.assertMessage(page.lines[0].text.equals("140"), "heart rate " + page.lines[0].text);
-    // intervals: head "n/m · kind", time left big
+    var face = RunFaces.first(base.session);
+    Test.assertMessage("140".equals(face.left), "heart rate " + face.left);
+    Test.assertEqual(base.session.heartZone(), 3);
+    // intervals: "Belastung 1 von 12" and the time left
     var intervals = new RunSim(ViewRig.body(6, [ViewRig.seg(1, 1, 180, 2, 270, 285), ViewRig.seg(2, 1, 120, 0, 0, 0)] as Array, [[0, 1, 6]] as Array), 0, false);
     intervals.seconds(20);
-    var seg = RunPages.build(dc, intervals.session, 0);
-    Test.assertEqual(seg.zone, -1);
-    Test.assertMessage(seg.lines[0].text.equals("1/12 · " + HomeScreen.text(Rez.Strings.RunKind1)), seg.lines[0].text);
-    Test.assertMessage(seg.lines[1].text.equals("02:40"), seg.lines[1].text);   // 180 s - 20 s
-    Test.assert(seg.lines[2].text.find("4:30") != null && seg.lines[2].text.find("4:45") != null);
-    // distance segment: metres left
+    var seg = RunFaces.first(intervals.session);
+    Test.assertMessage(seg.top[0].equals(Lang.format(HomeScreen.text(Rez.Strings.RunNOfM), [RunText.kindName(1), 1, 6])), seg.top[0]);
+    Test.assertMessage("2:40".equals(seg.left), FaceRig.s(seg.left));    // 180 s - 20 s
+    Test.assertMessage(HomeScreen.text(Rez.Strings.RunAlFaster).equals(seg.bottom), FaceRig.s(seg.bottom));    // 5:33 is slower than the 4:30-4:45 asked
+    // distance segment: metres left (RunPages.remaining stays for page 4 style texts)
     var reps = new RunSim(ViewRig.body(7, [ViewRig.seg(1, 2, 400, 0, 0, 0)] as Array, null), 0, false);
     reps.seconds(40);                                // 3 m/s: 120 m run
     Test.assertMessage(RunPages.remaining(reps.session).equals(RunText.meters(280)), RunPages.remaining(reps.session));
-    // run-walk: label and round
-    var walk = new RunSim(ViewRig.body(11, [ViewRig.seg(1, 1, 60, 0, 0, 0), ViewRig.seg(2, 1, 90, 0, 0, 0)] as Array, [[0, 1, 8]] as Array), 0, false);
-    walk.seconds(10);
-    var run = RunPages.build(dc, walk.session, 0);
-    Test.assertMessage(run.lines[0].text.equals(Lang.format(HomeScreen.text(Rez.Strings.RunRoundOf), [1, 8])), run.lines[0].text);
-    Test.assert(run.lines[1].text.equals(HomeScreen.text(Rez.Strings.RunRunNow)));
-    Test.assert(LayoutRig.mainNumbersAreBig(dc, run.lines));
-    walk.seconds(60);                                // now in the walking segment of round 1
-    var gehen = RunPages.build(dc, walk.session, 0);
-    Test.assert(gehen.lines[1].text.equals(HomeScreen.text(Rez.Strings.RunWalkNow)));
-    Test.assertMessage(gehen.lines[2].text.equals("01:20"), gehen.lines[2].text);
-    walk.seconds(90);                                // round 2 begins
-    Test.assertMessage(RunPages.build(dc, walk.session, 0).lines[0].text.equals(Lang.format(HomeScreen.text(Rez.Strings.RunRoundOf), [2, 8])), "round 2");
-    // free run: time first, then distance, pace, heart rate
+    Test.assertMessage("280".equals(RunFaces.first(reps.session).left), FaceRig.s(RunFaces.first(reps.session).left));
+    // free run: time first
     var free = new RunSim(null, 0, false);
     free.seconds(65);
-    var f = RunPages.build(dc, free.session, 0);
-    Test.assert(f.lines[0].text.equals("01:05"));
-    Test.assert(LayoutRig.mainNumbersAreBig(dc, f.lines));
+    Test.assertMessage("1:05".equals(RunFaces.first(free.session).left), FaceRig.s(RunFaces.first(free.session).left));
     return true;
 }
 
