@@ -114,10 +114,22 @@ module RunFaces {
                 return Lang.format(HomeScreen.text(Rez.Strings.RunOfTotal), [clock(session.segmentSeconds()), clock(plan.durationValue(o))]);
             }
             if (type == RunSegments.DURATION_METERS) {
+                var total = plan.durationValue(o);
+                if (total >= 1000) {
+                    // "4,2 von 20 km": metres of a long segment do not fit the line ("21 m von 20000 m").
+                    var done = session.segmentMeters();
+                    return Lang.format(HomeScreen.text(Rez.Strings.RunOfTotal), [tenthKm(done < 0 ? 0 : done), Lang.format(HomeScreen.text(Rez.Strings.RunKm), [total % 1000 == 0 ? (total / 1000).toString() : tenthKm(total)])]);
+                }
                 return Lang.format(HomeScreen.text(Rez.Strings.RunOfTotal), [RunText.meters(session.segmentMeters()), RunText.meters(plan.durationValue(o))]);
             }
         }
         return clock(session.calc.timerS);
+    }
+
+    // Metres as km with one decimal: "4,2".
+    function tenthKm(meters as Number) as String {
+        var tenths = meters / 100;
+        return (tenths / 10).toString() + HomeScreen.text(Rez.Strings.RunSep) + (tenths % 10).toString();
     }
 
     // The ring is the share of the planned duration of the segment that is over; none without a duration.
