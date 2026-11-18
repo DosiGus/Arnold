@@ -46,6 +46,11 @@ class TrainingView extends WatchUi.View {
     }
 
     function onUpdate(dc as Dc) as Void {
+        if (_session.state == TrainingSession.STATE_SET || _session.state == TrainingSession.STATE_REST) {
+            SummaryScroll.first = 0;
+            Instrument.draw(dc, TrainingScreen.face(_session, LiveHeart.current(), TrainingPages.current(_session)));
+            return;
+        }
         var lines = TrainingScreen.lines(dc, _session, LiveHeart.current(), _sender);
         if (_session.isFinished()) {
             // The summary can be longer than the display: UP and DOWN scroll it (TrainingDelegate).
@@ -66,18 +71,40 @@ module SummaryScroll {
     }
 }
 
+// Which page of the set or rest is shown: 0 the values, 1 the heart rate (and last time).
+// Back to page 0 whenever the set, the exercise or the state changes.
+module TrainingPages {
+    var page as Number = 0;
+    var _key as Number = -1;
+
+    function current(session as TrainingSession) as Number {
+        var key = session.state * 10000 + session.exIdx * 100 + session.setIdx;
+        if (key != _key) {
+            _key = key;
+            page = 0;
+        }
+        return page;
+    }
+
+    function toggle(session as TrainingSession) as Void {
+        page = current(session) == 0 ? 1 : 0;
+    }
+}
+
 // Which screen belongs to which state.
 module TrainingScreen {
+
+    // The Instrument face of a set or a rest.
+    function face(session as TrainingSession, heartRate as Number or Null, page as Number) as InstrumentFace {
+        if (session.state == TrainingSession.STATE_SET) {
+            return SetScreen.face(session, heartRate, page);
+        }
+        return RestScreen.face(session, heartRate, page);
+    }
 
     function lines(dc as Dc, session as TrainingSession, heartRate as Number or Null, sender as OutboxSender or Null) as Array<PairingLine> {
         if (session.state == TrainingSession.STATE_PREVIEW) {
             return PreviewScreen.lines(dc, session);
-        }
-        if (session.state == TrainingSession.STATE_SET) {
-            return SetScreen.lines(dc, session, heartRate);
-        }
-        if (session.state == TrainingSession.STATE_REST) {
-            return RestScreen.lines(dc, session, heartRate);
         }
         return SummaryScreen.lines(dc, session, sender);
     }

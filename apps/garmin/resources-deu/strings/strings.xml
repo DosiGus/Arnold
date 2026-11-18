@@ -264,4 +264,13 @@
     <string id="RunAlKind3">Auslaufen</string>
     <string id="RunAlKind4">Pause</string>
     <string id="RunAlEffort">Anstrengung $1$</string>
+    <!-- UHR-01 -->
+    <string id="UhrWeightOpen">Gewicht offen</string>
+    <string id="UhrRepsOpen">Wdh. offen</string>
+    <string id="UhrSideOf">$1$ · $2$ von $3$</string>
+    <string id="UhrThenSet">Dann Satz $1$</string>
+    <string id="UhrThenExercise">Dann: $1$</string>
+    <string id="UhrLast">$1$ kg × $2$</string>
+    <string id="UhrBpm">bpm</string>
+    <string id="UhrPulse">Puls</string>
 </strings>
