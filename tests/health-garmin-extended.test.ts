@@ -14,6 +14,7 @@ import {
 import {
   RAW_MAX_BYTES,
   localTime,
+  summaryExtras,
   rawPayload,
   readMaxMet,
   readTrainingStatus,
@@ -286,6 +287,31 @@ describe("extended values", () => {
     );
     expect(read?.values).toEqual({ acute_load: 100 });
     expect(readMaxMet({ data: [{ calendarDate: DAY }] })).toEqual([]);
+  });
+});
+
+describe("the real shape of the daily summary (first real fetch, 22.11.2026)", () => {
+  it("reads calories, respiration and intensity minutes from their nested blocks", () => {
+    const values = summaryExtras({
+      calendarDate: "2026-11-21",
+      calories: { burnedActive: 325, burnedResting: 2222, burnedTotal: 2547 },
+      respiration: { avgValue: 14, minValue: 8, maxValue: 22 },
+      intensityMinutes: { goal: 150, moderate: 0, vigorous: 0 },
+      pulseOx: { avgAltitudeInMeters: 1231 },
+      movement: null,
+    });
+    expect(values).toMatchObject({
+      kcal_active: 325,
+      kcal_total: 2547,
+      respiration_day_avg: 14,
+      respiration_day_low: 8,
+      respiration_day_high: 22,
+      intensity_minutes_moderate: 0,
+      intensity_minutes_vigorous: 0,
+    });
+    // Nothing measured stays unknown, not 0.
+    expect(values.spo2_avg_pct ?? null).toBeNull();
+    expect(values.floors_climbed ?? null).toBeNull();
   });
 });
 

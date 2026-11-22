@@ -249,64 +249,71 @@ export function readSleepDetail(json: unknown, date: string): Dated | null {
  */
 export function summaryExtras(summary: Rec): Values {
   const scopes = withNested(summary);
+  // Seen in the first real answer (22.11.2026): the values sit in nested
+  // blocks with short names: calories { burnedActive, burnedTotal },
+  // respiration { avgValue, minValue, maxValue }, intensityMinutes
+  // { moderate, vigorous }. The flat names stay as a fallback.
+  const calories = record(summary.calories);
+  const respiration = record(summary.respiration);
+  const intensity = record(summary.intensityMinutes);
+  const flat = (names: string[]) => pick(scopes, names);
   return compact({
-    steps: whole(pick(scopes, ["totalSteps", "steps"]), 0, 200_000),
-    step_goal: whole(pick(scopes, ["dailyStepGoal", "stepGoal"]), 0, 200_000),
+    steps: whole(flat(["totalSteps", "steps"]), 0, 200_000),
+    step_goal: whole(flat(["dailyStepGoal", "stepGoal"]), 0, 200_000),
     intensity_minutes_moderate: whole(
-      pick(scopes, ["moderateIntensityMinutes"]),
+      pick([intensity], ["moderate"]) ?? flat(["moderateIntensityMinutes"]),
       0,
       2880,
     ),
     intensity_minutes_vigorous: whole(
-      pick(scopes, ["vigorousIntensityMinutes"]),
+      pick([intensity], ["vigorous"]) ?? flat(["vigorousIntensityMinutes"]),
       0,
       2880,
     ),
-    floors_climbed: whole(
-      pick(scopes, ["floorsAscended", "floorsClimbed"]),
-      0,
-      2000,
-    ),
+    floors_climbed: whole(flat(["floorsAscended", "floorsClimbed"]), 0, 2000),
     kcal_active: whole(
-      pick(scopes, ["activeKilocalories", "activeKcal"]),
+      pick([calories], ["burnedActive"]) ??
+        flat(["activeKilocalories", "activeKcal"]),
       0,
       20_000,
     ),
     kcal_total: whole(
-      pick(scopes, ["totalKilocalories", "totalKcal"]),
+      pick([calories], ["burnedTotal"]) ??
+        flat(["totalKilocalories", "totalKcal"]),
       0,
       20_000,
     ),
     distance_m: whole(
-      pick(scopes, ["totalDistanceMeters", "distanceMeters"]),
+      flat(["totalDistanceMeters", "distanceMeters"]),
       0,
       1_000_000,
     ),
     respiration_day_avg: decimal(
-      pick(scopes, ["avgWakingRespirationValue", "averageRespirationValue"]),
+      pick([respiration], ["avgValue"]) ??
+        flat(["avgWakingRespirationValue", "averageRespirationValue"]),
       1,
       99,
       1,
     ),
     respiration_day_low: decimal(
-      pick(scopes, ["lowestRespirationValue"]),
+      pick([respiration], ["minValue"]) ?? flat(["lowestRespirationValue"]),
       1,
       99,
       1,
     ),
     respiration_day_high: decimal(
-      pick(scopes, ["highestRespirationValue"]),
+      pick([respiration], ["maxValue"]) ?? flat(["highestRespirationValue"]),
       1,
       99,
       1,
     ),
     spo2_avg_pct: whole(
-      pick(scopes, ["averageSpo2", "averageSpo2Value", "avgSpo2"]),
+      flat(["averageSpo2", "averageSpo2Value", "avgSpo2"]),
       1,
       100,
     ),
     spo2_min_pct: whole(
-      pick(scopes, ["lowestSpo2", "lowestSpo2Value", "minSpo2"]),
+      flat(["lowestSpo2", "lowestSpo2Value", "minSpo2"]),
       1,
       100,
     ),
