@@ -13,6 +13,18 @@ module StoreKeys {
 
     const RUN_UPCOMING as String = "run:up";   // planned runs of today and the next six days (RUN-012)
 
+    const MOB_TODAY as String = "mob:up";   // mobility routines of the plan: weekdays, tags (MOB-008)
+
+    // One mobility routine, stored on its own like a plan day.
+    function mobRoutine(sessionId as String) as String {
+        return "mob:r:" + sessionId;
+    }
+
+    // Session ids of the routines finished on this watch on a local date ("2026-11-23"), MOB-010.
+    function mobDone(date as String) as String {
+        return "mob:done:" + date;
+    }
+
     const RUN_ACTIVE as String = "run:active";   // uuid of the run in progress (or finished, not yet sent), RUN-015
 
     // State of a run being recorded (RUN-015): small head entry, the prescription it runs on (a copy), and the
