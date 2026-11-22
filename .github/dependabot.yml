@@ -12,6 +12,17 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+    # Declined on purpose (22.11.2026); remove a line once its reason is gone.
+    ignore:
+      # The server runs on Node 24 (Dockerfile): the types follow the runtime.
+      - dependency-name: "@types/node"
+        versions: [">=25"]
+      # typescript-eslint does not support TypeScript 7 yet.
+      - dependency-name: "typescript"
+        versions: [">=7"]
+      # The test Postgres mirrors the live major version (Supabase: 17).
+      - dependency-name: "embedded-postgres"
+        versions: [">=18"]
   - package-ecosystem: github-actions
     directory: /
     schedule:

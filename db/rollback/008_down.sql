@@ -12,7 +12,7 @@
 -- with all their values and the endpoint outcomes. The values of 005
 -- (resting heart rate, stress, Body Battery, sleep, HRV) stay. One
 -- transaction: all of it or nothing. Applying 008 again afterwards
--- (npm run db:migrate) works. Tested in tests/db-health-daily.test.ts.
+-- (npm run db:migrate) works. Tested in tests/db-health-daily-extended.test.ts.
 --
 -- It is outside db/migrations on purpose: the migration runner must never
 -- pick it up.

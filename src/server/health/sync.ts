@@ -12,9 +12,15 @@
  *
  * Single-day endpoints (sleep stages, fitness age, training ...) are asked
  * only for the last 3 days, plus a backfill of at most BACKFILL_PER_FETCH
- * further days of the last 28 that have no raw answer stored yet (first
- * fetch, gaps, days from before the extended values existed). That keeps the
- * number of Garmin requests per fetch small; the supplier caps it as well.
+ * further days of the last 28 for which no single-day endpoint has a stored
+ * answer yet (first fetch, gaps, days from before the extended values
+ * existed). A day for which Garmin had nothing is stored as EMPTY_ANSWER, so
+ * it is not asked again on every fetch. That keeps the number of Garmin
+ * requests per fetch small; the supplier caps it as well.
+ *
+ * After every successful fetch the stored answers of the last
+ * FIRST_FETCH_DAYS days are read again (supplier's readStored), so a
+ * corrected reading reaches the stored days without asking Garmin again.
  *
  * Writes need the active health consent (checked here, enforced again by
  * the database trigger). Every write goes through `Database.asUser`.
@@ -28,6 +34,7 @@ import {
   type DailyHealthFailure,
   type DailyHealthPullSource,
   type DailyHealthRaw,
+  isEmptyAnswer,
 } from "./source.js";
 
 export type DailyHealthOutcome =
@@ -133,10 +140,17 @@ export class DailyHealthSync {
         `select max(local_date) as d from arnold.health_daily where user_id = $1`,
         [userId],
       );
+      // Only answers of the single-day endpoints count: the required range
+      // answers are stored for every day of the fetched range.
       const rawDays = await c.query<{ d: string }>(
         `select distinct local_date as d from arnold.health_daily_raw
-          where user_id = $1 and local_date >= $2`,
-        [userId, isoDay(this.now() - (BACKFILL_DAYS - 1) * DAY_MS)],
+          where user_id = $1 and local_date >= $2
+            and ($3::text[] is null or endpoint = any($3::text[]))`,
+        [
+          userId,
+          isoDay(this.now() - (BACKFILL_DAYS - 1) * DAY_MS),
+          source.detailEndpoints ? [...source.detailEndpoints] : null,
+        ],
       );
       return {
         consent: consent.rowCount === 1,
@@ -176,6 +190,7 @@ export class DailyHealthSync {
             : "empty"
         : result.failure;
       let stored = 0;
+      let reread = 0;
       const raw = result.ok ? (result.raw ?? []) : [];
       if (result.ok && (result.days.length > 0 || raw.length > 0)) {
         // Holding the consent row: a revocation waits until this is done.
@@ -191,6 +206,7 @@ export class DailyHealthSync {
             stored++;
           }
           for (const entry of raw) await storeRaw(c, userId, entry);
+          reread = await rereadStored(c, userId, source, earliest);
         }
       }
       // A failed fetch has no endpoint outcomes: the last known ones stay.
@@ -215,6 +231,7 @@ export class DailyHealthSync {
       return {
         outcome,
         stored,
+        reread,
         endpoints: result.ok ? (result.endpoints ?? {}) : undefined,
       };
     });
@@ -227,6 +244,7 @@ export class DailyHealthSync {
         message: "garmin daily fetch",
         outcome: outcome.outcome,
         days: outcome.stored,
+        reread: outcome.reread,
         // Endpoint names with ok/empty/unavailable/error: no values, no text.
         ...(outcome.endpoints ? { endpoints: outcome.endpoints } : {}),
       }),
@@ -238,14 +256,19 @@ export class DailyHealthSync {
 const COLUMNS = Object.keys(DAILY_HEALTH_COLUMNS) as DailyHealthColumn[];
 
 // Built once from the column list: every value column, unknown (null) never
-// overwrites a known value.
-const UPSERT_DAY = `insert into arnold.health_daily
+// overwrites a known value. Reading stored answers again keeps received_at
+// (nothing new arrived).
+const upsertDay = (
+  received: "excluded" | "kept",
+) => `insert into arnold.health_daily
        (user_id, local_date, source, received_at, ${COLUMNS.join(", ")})
      values ($1, $2, $3, now(), ${COLUMNS.map((_, i) => `$${i + 4}`).join(", ")})
      on conflict (user_id, local_date) do update set
        source = excluded.source,
-       received_at = excluded.received_at,
+       received_at = ${received === "excluded" ? "excluded.received_at" : "arnold.health_daily.received_at"},
        ${COLUMNS.map((k) => `${k} = coalesce(excluded.${k}, arnold.health_daily.${k})`).join(",\n       ")}`;
+const UPSERT_DAY = upsertDay("excluded");
+const REREAD_DAY = upsertDay("kept");
 
 /**
  * Inserts or updates one day. A value Garmin no longer sends stays as it
@@ -256,8 +279,9 @@ async function storeDay(
   userId: string,
   source: string,
   day: DailyHealthDay,
+  statement = UPSERT_DAY,
 ) {
-  await c.query(UPSERT_DAY, [
+  await c.query(statement, [
     userId,
     day.local_date,
     source,
@@ -266,9 +290,34 @@ async function storeDay(
 }
 
 /**
+ * Reads the stored answers from `from` on again (supplier's readStored) and
+ * stores the days: a value read now replaces the stored one, unknown keeps
+ * it (storeDay). Inside the transaction that holds the consent row. Returns
+ * the number of days written.
+ */
+async function rereadStored(
+  c: Queryable,
+  userId: string,
+  source: DailyHealthPullSource,
+  from: string,
+): Promise<number> {
+  if (!source.readStored) return 0;
+  const rows = await c.query<DailyHealthRaw>(
+    `select local_date, endpoint, payload from arnold.health_daily_raw
+      where user_id = $1 and local_date >= $2`,
+    [userId, from],
+  );
+  const days = source.readStored(rows.rows);
+  for (const day of days)
+    await storeDay(c, userId, source.kind, day, REREAD_DAY);
+  return days.length;
+}
+
+/**
  * Stores one cleaned Garmin answer (replacing the one of the same day and
- * endpoint). In a savepoint: an answer the database refuses (size, text it
- * cannot hold) is dropped on its own and never takes the day values with it.
+ * endpoint; EMPTY_ANSWER never replaces a real answer). In a savepoint: an
+ * answer the database refuses (size, text it cannot hold) is dropped on its
+ * own and never takes the day values with it.
  * The missing consent is no refused answer: it surfaces.
  */
 async function storeRaw(c: Queryable, userId: string, entry: DailyHealthRaw) {
@@ -278,8 +327,15 @@ async function storeRaw(c: Queryable, userId: string, entry: DailyHealthRaw) {
       `insert into arnold.health_daily_raw (user_id, local_date, endpoint, payload, received_at)
        values ($1, $2, $3, $4::jsonb, now())
        on conflict (user_id, local_date, endpoint) do update set
-         payload = excluded.payload, received_at = excluded.received_at`,
-      [userId, entry.local_date, entry.endpoint, JSON.stringify(entry.payload)],
+         payload = excluded.payload, received_at = excluded.received_at
+       where not $5::boolean`,
+      [
+        userId,
+        entry.local_date,
+        entry.endpoint,
+        JSON.stringify(entry.payload),
+        isEmptyAnswer(entry.payload),
+      ],
     );
     await c.query("release savepoint health_raw");
   } catch (error) {

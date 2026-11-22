@@ -103,6 +103,21 @@ export interface DailyHealthRaw {
 }
 
 /**
+ * Stored in place of an answer when a single-day endpoint had nothing for
+ * that day (204, empty list): the day then counts as asked, so the backfill
+ * moves on instead of asking the same empty day again on every fetch. A real
+ * answer later replaces it; it never replaces a real answer.
+ */
+export const EMPTY_ANSWER = { _arnold: "empty" } as const;
+
+export const isEmptyAnswer = (payload: unknown) =>
+  typeof payload === "object" &&
+  payload !== null &&
+  !Array.isArray(payload) &&
+  Object.keys(payload).length === 1 &&
+  (payload as Record<string, unknown>)._arnold === "empty";
+
+/**
  * How an optional endpoint ended: `ok` (answer with content), `empty`
  * (nothing for that day, 204 or no entries), `unavailable` (not offered to
  * this key: 401, 403, 404), `error` (server error, broken or unexpected
@@ -152,12 +167,25 @@ export interface FetchDaysOptions {
 /** A supplier the server asks (pull). */
 export interface DailyHealthPullSource {
   readonly kind: DailyHealthSourceKind;
+  /**
+   * Names of the single-day endpoints (FetchDaysOptions.detailDates). A day
+   * counts as asked in detail when one of them has a stored answer (or
+   * EMPTY_ANSWER) for it. Without the list every stored answer counts.
+   */
+  readonly detailEndpoints?: readonly string[];
   /** Days from `from` to `to`, both inclusive, YYYY-MM-DD. Never throws. */
   fetchDays(
     from: string,
     to: string,
     options?: FetchDaysOptions,
   ): Promise<DailyHealthFetchResult>;
+  /**
+   * Reads stored answers again into days, by the same rules as fetchDays,
+   * so a corrected reading (a field name that turned out different) reaches
+   * the stored days without asking the supplier again. Pure; days without
+   * any known value are left out.
+   */
+  readStored?(raw: DailyHealthRaw[]): DailyHealthDay[];
 }
 
 /**

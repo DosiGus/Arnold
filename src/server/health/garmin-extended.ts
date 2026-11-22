@@ -252,14 +252,30 @@ export function summaryExtras(summary: Rec): Values {
   // Seen in the first real answer (22.11.2026): the values sit in nested
   // blocks with short names: calories { burnedActive, burnedTotal },
   // respiration { avgValue, minValue, maxValue }, intensityMinutes
-  // { moderate, vigorous }. The flat names stay as a fallback.
+  // { moderate, vigorous }, movement { steps { value, goal,
+  // distanceInMeters }, floorsAscended { value } }. The flat names stay as a
+  // fallback. pulseOx carried only avgAltitudeInMeters (blood oxygen
+  // measurement off on the watch); avgValue/minValue are assumed after the
+  // pattern of respiration (ungeprüft until a day with measurement).
   const calories = record(summary.calories);
   const respiration = record(summary.respiration);
   const intensity = record(summary.intensityMinutes);
+  const movement = record(summary.movement);
+  const stepBlock = record(movement?.steps);
+  const floors = record(movement?.floorsAscended);
+  const pulseOx = record(summary.pulseOx);
   const flat = (names: string[]) => pick(scopes, names);
   return compact({
-    steps: whole(flat(["totalSteps", "steps"]), 0, 200_000),
-    step_goal: whole(flat(["dailyStepGoal", "stepGoal"]), 0, 200_000),
+    steps: whole(
+      pick([stepBlock], ["value"]) ?? flat(["totalSteps", "steps"]),
+      0,
+      200_000,
+    ),
+    step_goal: whole(
+      pick([stepBlock], ["goal"]) ?? flat(["dailyStepGoal", "stepGoal"]),
+      0,
+      200_000,
+    ),
     intensity_minutes_moderate: whole(
       pick([intensity], ["moderate"]) ?? flat(["moderateIntensityMinutes"]),
       0,
@@ -270,7 +286,11 @@ export function summaryExtras(summary: Rec): Values {
       0,
       2880,
     ),
-    floors_climbed: whole(flat(["floorsAscended", "floorsClimbed"]), 0, 2000),
+    floors_climbed: whole(
+      pick([floors], ["value"]) ?? flat(["floorsAscended", "floorsClimbed"]),
+      0,
+      2000,
+    ),
     kcal_active: whole(
       pick([calories], ["burnedActive"]) ??
         flat(["activeKilocalories", "activeKcal"]),
@@ -284,7 +304,8 @@ export function summaryExtras(summary: Rec): Values {
       20_000,
     ),
     distance_m: whole(
-      flat(["totalDistanceMeters", "distanceMeters"]),
+      pick([stepBlock], ["distanceInMeters"]) ??
+        flat(["totalDistanceMeters", "distanceMeters"]),
       0,
       1_000_000,
     ),
@@ -308,12 +329,14 @@ export function summaryExtras(summary: Rec): Values {
       1,
     ),
     spo2_avg_pct: whole(
-      flat(["averageSpo2", "averageSpo2Value", "avgSpo2"]),
+      pick([pulseOx], ["avgValue"]) ??
+        flat(["averageSpo2", "averageSpo2Value", "avgSpo2"]),
       1,
       100,
     ),
     spo2_min_pct: whole(
-      flat(["lowestSpo2", "lowestSpo2Value", "minSpo2"]),
+      pick([pulseOx], ["minValue"]) ??
+        flat(["lowestSpo2", "lowestSpo2Value", "minSpo2"]),
       1,
       100,
     ),
@@ -494,6 +517,9 @@ export const RAW_MAX_BYTES = 120_000;
 const SECRET_KEY =
   /token|secret|password|passwd|authorization|api[-_]?key|bearer|credential|cookie/i;
 const SECRET_VALUE = /^(?:eyJ[\w-]+\.[\w-]+\.[\w-]*|(?:apikey|bearer)\s+\S+)$/i;
+// Garmin's own identifiers of the person and the watch (seen in the first
+// real answers): not needed to read a day again, so not kept.
+const ID_KEY = /^(?:userprofilepk|userprofileid|deviceid|uuid)$/i;
 const MAX_DEPTH = 12;
 
 const cleanText = (s: string) =>
@@ -504,7 +530,10 @@ const cleanText = (s: string) =>
       "",
     );
 
-/** Copy of an answer without anything that looks like a key or a token. */
+/**
+ * Copy of an answer without anything that looks like a key or a token, and
+ * without Garmin's identifiers of the person and the watch.
+ */
 export function sanitize(value: unknown, depth = 0): unknown {
   if (depth > MAX_DEPTH) return null;
   if (typeof value === "string") {
@@ -519,7 +548,8 @@ export function sanitize(value: unknown, depth = 0): unknown {
   if (!r) return null;
   const out: Rec = {};
   for (const [k, v] of Object.entries(r))
-    if (!SECRET_KEY.test(k)) out[cleanText(k)] = sanitize(v, depth + 1);
+    if (!SECRET_KEY.test(k) && !ID_KEY.test(k))
+      out[cleanText(k)] = sanitize(v, depth + 1);
   return out;
 }
 
