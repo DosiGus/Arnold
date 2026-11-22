@@ -58,7 +58,12 @@ export function UnderstoodRows({
           item.value === undefined || item.value === null || item.value === "";
         const missingId = `${base}-${item.key}`;
         const shown = missing ? (
-          <span className="cc-missing" id={missingId}>
+          <span
+            className="cc-missing"
+            id={missingId}
+            // In a button the label names it; the gap is its description.
+            aria-hidden={item.onSelect ? true : undefined}
+          >
             <TriangleAlert size={13} aria-hidden="true" />
             fehlt noch
           </span>
