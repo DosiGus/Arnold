@@ -729,9 +729,11 @@ describe("strengthTrainingView", () => {
     const mixed = ArnoldDatasetSchema.parse(withMobility());
     const view = strengthTrainingView(mixed);
     expect(view.workouts.some(isMobilityWorkout)).toBe(false);
-    expect(view.mobilityProfiles).toEqual([]);
-    expect(view.planMobilitySessions).toEqual([]);
-    expect(view.mobilityResults).toEqual([]);
+    // Left out, not emptied: the view equals the plain strength dataset.
+    expect(view.mobilityProfiles).toBeUndefined();
+    expect(view.planMobilitySessions).toBeUndefined();
+    expect(view.mobilityResults).toBeUndefined();
+    expect(view).toEqual(strengthTrainingView(plain));
     expect(view.workouts).toEqual(strengthTrainingView(plain).workouts);
     expect(view.sets).toEqual(plain.sets);
   });

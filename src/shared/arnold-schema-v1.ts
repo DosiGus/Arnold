@@ -1708,17 +1708,22 @@ export function strengthTrainingView(data: ArnoldDataset): ArnoldDataset {
     (w) => isStrengthWorkout(w) && w.status !== "planned",
   );
   const kept = new Set(workouts.map((w) => w.workout_id));
+  // The mobility lists are optional: leave them out (not empty) so the view of
+  // a dataset equals the plain strength dataset it contains.
+  const {
+    mobilityProfiles: _profiles,
+    planMobilitySessions: _sessions,
+    mobilityResults: _results,
+    ...rest
+  } = data;
   return Object.freeze({
-    ...data,
+    ...rest,
     workouts: Object.freeze(workouts),
     sets: Object.freeze(data.sets.filter((s) => kept.has(s.workout_id))),
     runProfiles: Object.freeze([]),
     planRunSessions: Object.freeze([]),
     runs: Object.freeze([]),
     runSegments: Object.freeze([]),
-    mobilityProfiles: Object.freeze([]),
-    planMobilitySessions: Object.freeze([]),
-    mobilityResults: Object.freeze([]),
   });
 }
 
