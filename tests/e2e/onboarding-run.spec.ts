@@ -12,6 +12,7 @@ import {
   setRhythm,
   storedClaim,
   submitProposal,
+  skipMobility,
 } from "./helpers";
 
 /**
@@ -78,6 +79,7 @@ test("setup with the goal Ausdauer und Laufen reaches the confirmed plan", async
   await main.getByLabel("Wann war das?").fill("2026-10-01");
   await expect(main).not.toContainText("Strecke, Zeit und Datum");
   await next(page);
+  await skipMobility(page);
   await expect(
     main.getByRole("heading", { name: "So wird dein Plan" }),
   ).toBeVisible();

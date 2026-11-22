@@ -84,6 +84,17 @@ export async function setupMenu(page: Page, entry: string) {
     .click();
   await wizard(page).getByRole("button", { name: entry, exact: true }).click();
 }
+/**
+ * The mobility question (MOB-011) follows the wishes and the run page while
+ * the server lists it as open. It is optional: this skips it.
+ */
+export async function skipMobility(page: Page) {
+  const main = wizard(page);
+  await expect(
+    main.getByRole("heading", { name: "Mobility oder Morgenroutine dazu?" }),
+  ).toBeVisible();
+  await main.getByRole("button", { name: "Überspringen", exact: true }).click();
+}
 export const next = (page: Page) =>
   wizard(page).getByRole("button", { name: "Weiter", exact: true }).click();
 export async function fillProfile(page: Page, known: { bench?: string } = {}) {
@@ -118,6 +129,7 @@ export async function fillProfile(page: Page, known: { bench?: string } = {}) {
     main.getByRole("heading", { name: "Deine Wünsche für den Plan" }),
   ).toBeVisible();
   await main.getByRole("button", { name: "Überspringen", exact: true }).click();
+  await skipMobility(page);
   await expect(
     main.getByRole("heading", { name: "So wird dein Plan" }),
   ).toBeVisible();

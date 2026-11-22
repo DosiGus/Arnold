@@ -75,6 +75,8 @@ test("questions remain responsive during an outstanding MCP write; plan creation
   await page.getByRole("button", { name: "Überspringen", exact: true }).click();
   await shows("Deine Wünsche für den Plan");
   await page.getByRole("button", { name: "Überspringen", exact: true }).click();
+  await shows("Mobility oder Morgenroutine dazu?");
+  await page.getByRole("button", { name: "Überspringen", exact: true }).click();
   await shows("So wird dein Plan");
   expect(Date.now() - began).toBeLessThan(2000);
   expect(writes).toHaveLength(1);
