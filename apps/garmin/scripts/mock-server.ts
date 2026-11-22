@@ -32,6 +32,12 @@
  * Planned runs (RUN-012): GET /runs/upcoming (today and the next six days, relative to the current
  * UTC date) and GET /runs/:id (prescription, ETag `"<tag>"`; the list carries the tag without quotes,
  * as the server does). Both with If-None-Match, like the plan routes.
+ *
+ * Mobility (MOB-008): GET /mobility/today (list of the fixture mobility-today.json; d is today's UTC date, entries
+ * without a strength session are on every weekday so the start screen shows them on any day) and GET /mobility/:id
+ * (the routine of mobility-routine.json under that id, ETag `"<tag>"`, 304 with If-None-Match). POST /plan/ack takes an
+ * optional mv (16 hex) and keeps it. An older server without mobility: MOCK_MOBILITY=404 (or POST /__mock/mobility
+ * {"on":false}) answers 404 on both routes, as before MOB-006. Without the fixtures in WATCH_FIXTURES_DIR it is 404 too.
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
@@ -91,11 +97,38 @@ function loadFixtures(dir: string) {
       );
     return JSON.parse(readFileSync(file, "utf8")) as Json;
   };
+  const optional = (name: string): Json | null =>
+    existsSync(join(dir, name))
+      ? (JSON.parse(readFileSync(join(dir, name), "utf8")) as Json)
+      : null;
   return {
     directory: read("directory.json"),
     typical: read("typical-day.json"),
     extreme: read("extreme-day.json"),
+    mobilityToday: optional("mobility-today.json"),
+    mobilityRoutine: optional("mobility-routine.json"),
   };
+}
+
+/** Mobility list and routines from the fixtures (MOB-008): null without the fixtures. */
+function mockMobility(fixtures: ReturnType<typeof loadFixtures>) {
+  if (!fixtures.mobilityToday || !fixtures.mobilityRoutine) return null;
+  const items = (fixtures.mobilityToday.items as Json[]).map((item) => ({
+    ...item,
+    w: item.a === null ? 127 : item.w,
+  }));
+  const list = {
+    ...fixtures.mobilityToday,
+    d: new Date().toISOString().slice(0, 10),
+    items,
+  };
+  const routines = new Map<string, Json>(
+    items.map((item) => [
+      String(item.id),
+      { ...fixtures.mobilityRoutine, id: item.id },
+    ]),
+  );
+  return { list, routines };
 }
 
 // A valid nested D-22 fixture, calibrated in UTF-8 without padding fields.
@@ -212,6 +245,9 @@ export function createMockState(fixtures: ReturnType<typeof loadFixtures>) {
     deviceId: null as string | null,
     healthConsent: true,
     planAck: null as string | null,
+    planAckMv: null as string | null,
+    mobility: mockMobility(fixtures),
+    mobilityOn: process.env.MOCK_MOBILITY !== "404",
     runs: mockRuns(),
     workouts: new Map<
       string,
@@ -303,7 +339,7 @@ function route(
   }
 
   const isWatchRoute =
-    /^\/(device|plan|plan\/recent|plan\/ack|plan\/sessions\/[^/]+|runs|runs\/[^/]+|workouts|workouts\/[^/]+\/health)$/.test(
+    /^\/(device|plan|plan\/recent|plan\/ack|plan\/sessions\/[^/]+|runs|runs\/[^/]+|mobility\/[^/]+|workouts|workouts\/[^/]+\/health)$/.test(
       path,
     );
   if (!isWatchRoute) return null;
@@ -341,8 +377,42 @@ function route(
         status: 422,
         body: errorBody("VALIDATION_ERROR", "Ungültige Marke."),
       };
+    const mv = body?.mv;
+    if (
+      mv !== undefined &&
+      (typeof mv !== "string" || !/^[0-9a-f]{16}$/.test(mv))
+    )
+      return {
+        status: 422,
+        body: errorBody("VALIDATION_ERROR", "Ungültige Mobility-Marke."),
+      };
     state.planAck = v;
+    state.planAckMv = typeof mv === "string" ? mv : null;
     return { status: 200, body: { ...envelope, v } };
+  }
+  const mobilityRoute = /^\/mobility\/([^/]+)$/.exec(path);
+  if (method === "GET" && mobilityRoute) {
+    // An older server has no mobility routes: 404 (MOCK_MOBILITY=404).
+    if (!state.mobilityOn || !state.mobility)
+      return {
+        status: 404,
+        body: errorBody("VALIDATION_ERROR", "Unbekannte Route."),
+      };
+    const part = decodeURIComponent(mobilityRoute[1]!);
+    if (part === "today") return cached(state.mobility.list);
+    const routine = state.mobility.routines.get(part);
+    const entry = (state.mobility.list.items as Json[]).find(
+      (item) => item.id === part,
+    );
+    if (!routine || !entry)
+      return {
+        status: 404,
+        body: errorBody("VALIDATION_ERROR", "Unbekannte Routine."),
+      };
+    const etag = `"${String(entry.tag)}"`;
+    return headers["if-none-match"] === etag
+      ? { status: 304, headers: { ETag: etag } }
+      : { status: 200, body: routine, headers: { ETag: etag } };
   }
   const day = /^\/plan\/sessions\/([^/]+)$/.exec(path);
   if (method === "GET" && day) {
@@ -482,6 +552,7 @@ function routeName(method: string, path: string) {
   return `${method} ${path
     .replace(/^\/plan\/sessions\/[^/]+$/, "/plan/sessions/:session_id")
     .replace(/^\/runs\/(?!upcoming$)[^/]+$/, "/runs/:id")
+    .replace(/^\/mobility\/(?!today$)[^/]+$/, "/mobility/:id")
     .replace(/^\/workouts\/[^/]+\/health$/, "/workouts/:session_uuid/health")}`;
 }
 
@@ -611,6 +682,13 @@ export function startMockServer(options: {
         if (url.pathname === "/__mock/fault" && method === "DELETE") {
           state.fault = null;
           return send(res, { status: 200, body: { fault: null } });
+        }
+        if (url.pathname === "/__mock/mobility" && method === "POST") {
+          state.mobilityOn = input.on === true;
+          return send(res, {
+            status: 200,
+            body: { mobility: state.mobilityOn },
+          });
         }
         if (url.pathname === "/__mock/health-consent" && method === "POST") {
           state.healthConsent = input.on === true;
@@ -842,6 +920,86 @@ async function selfTest(port: number, fixturesDir: string) {
   check(
     "Läufe: ohne Token 401",
     (await call("GET", `${BASE}/runs/upcoming`)).status === 401,
+  );
+  // Mobility (MOB-008): list, routine with ETag, 304, unknown id, older server (404), ack with mv.
+  const mobToday = await call("GET", `${BASE}/mobility/today`, undefined, auth);
+  const mobItems = (mobToday.body?.items ?? []) as Json[];
+  check(
+    "Mobility: Liste mit heute und Einträgen",
+    mobToday.status === 200 &&
+      mobToday.body?.d === new Date().toISOString().slice(0, 10) &&
+      mobItems.length === 5,
+  );
+  const mobRoutine = await call(
+    "GET",
+    `${BASE}/mobility/${String(mobItems[0]!.id)}`,
+    undefined,
+    auth,
+  );
+  check(
+    "Mobility: Routine mit ETag in Anführungszeichen = tag der Liste",
+    mobRoutine.status === 200 &&
+      mobRoutine.etag === `"${String(mobItems[0]!.tag)}"` &&
+      mobRoutine.body?.id === mobItems[0]!.id &&
+      Array.isArray(mobRoutine.body?.ex),
+  );
+  check(
+    "Mobility: 304 mit If-None-Match",
+    (
+      await call(
+        "GET",
+        `${BASE}/mobility/${String(mobItems[0]!.id)}`,
+        undefined,
+        {
+          ...auth,
+          "If-None-Match": mobRoutine.etag ?? "",
+        },
+      )
+    ).status === 304,
+  );
+  check(
+    "Mobility: unbekannte Routine 404",
+    (await call("GET", `${BASE}/mobility/nope`, undefined, auth)).status ===
+      404,
+  );
+  check(
+    "Mobility: ohne Token 401",
+    (await call("GET", `${BASE}/mobility/today`)).status === 401,
+  );
+  await call("POST", "/__mock/mobility", { on: false });
+  check(
+    "Mobility: älterer Server (404) auf Liste und Routine",
+    (await call("GET", `${BASE}/mobility/today`, undefined, auth)).status ===
+      404 &&
+      (
+        await call(
+          "GET",
+          `${BASE}/mobility/${String(mobItems[0]!.id)}`,
+          undefined,
+          auth,
+        )
+      ).status === 404,
+  );
+  await call("POST", "/__mock/mobility", { on: true });
+  check(
+    "Mobility: Bestätigung mit mv wird gespeichert, ungültiges mv 422",
+    (
+      await call(
+        "POST",
+        `${BASE}/plan/ack`,
+        { v: "0123456789abcdef", mv: "fedcba9876543210" },
+        auth,
+      )
+    ).status === 200 &&
+      state.planAckMv === "fedcba9876543210" &&
+      (
+        await call(
+          "POST",
+          `${BASE}/plan/ack`,
+          { v: "0123456789abcdef", mv: "x" },
+          auth,
+        )
+      ).status === 422,
   );
   const sessionUuid = randomUUID();
   const workout = {
