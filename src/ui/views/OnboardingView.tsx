@@ -480,6 +480,7 @@ export function OnboardingView({
           setFormPage("auto");
         }}
         onRequestPlan={() => void onb.requestPlan()}
+        openQuestions={state.open_questions.map((q) => q.id)}
       />
     );
   else if (step === "profile" || (step === "welcome" && formPage))
@@ -499,6 +500,7 @@ export function OnboardingView({
         onRequestPlan={() => void onb.requestPlan()}
         initialPage={formPage && formPage !== "auto" ? formPage : undefined}
         onReturn={() => setFormPage(undefined)}
+        openQuestions={state.open_questions.map((q) => q.id)}
         onBack={() => {
           setFormPage(undefined);
           onb.goToStep("welcome");
