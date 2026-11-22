@@ -31,7 +31,23 @@ const FIELD_LABEL: Record<string, string> = {
   notes: "Notiz",
   target_execution_mode: "Ausführung",
   target_implement_count: "Anzahl Geräte",
+  // Mobility sessions (ARN-MOB).
+  minutes: "Dauer",
+  placement: "Platz",
+  exercise_ids: "Übungen",
 };
+
+/**
+ * Mobility sessions arrive as session changes; only their label says so, and
+ * it always starts with the noun. Reading it here keeps the contract's change
+ * kinds as they are.
+ */
+const mobilityNoun = (change: PlanChange) =>
+  change.label.startsWith("Morgenroutine")
+    ? "Morgenroutine"
+    : change.label.startsWith("Mobility-Einheit")
+      ? "Mobility-Einheit"
+      : null;
 
 const position = (value: string | null) =>
   value === null ? UNSET : `Position ${value}`;
@@ -61,21 +77,25 @@ function row(change: PlanChange, index: number): PlanChangeRow {
     case "session_added":
       return {
         key,
-        label: "Neuer Trainingstag",
+        label: mobilityNoun(change)
+          ? `Neue ${mobilityNoun(change)}`
+          : "Neuer Trainingstag",
         before: NOT_THERE,
         after: change.after ?? session,
       };
     case "session_removed":
       return {
         key,
-        label: "Trainingstag",
+        label: mobilityNoun(change) ?? "Trainingstag",
         before: change.before ?? session,
         after: GONE,
       };
     case "session_renamed":
       return {
         key,
-        label: "Trainingstag umbenannt",
+        label: mobilityNoun(change)
+          ? `${mobilityNoun(change)} umbenannt`
+          : "Trainingstag umbenannt",
         before: change.before ?? UNSET,
         after: change.after ?? UNSET,
       };

@@ -26,6 +26,7 @@ import type {
   TrainingSession,
 } from "../../shared/plan-contract.js";
 
+import { diffMobilitySessions } from "./mobility-sessions.js";
 import { diffRunSessions } from "./run-sessions.js";
 
 const normalize = (value: string) =>
@@ -359,6 +360,15 @@ export function diffVersions(
   }
   // Run sessions (RUN-008) are compared the same way, reported with the same kinds.
   changes.push(...diffRunSessions(from.run_sessions, to.run_sessions));
+  // Mobility sessions (ARN-MOB) likewise; "after Push" needs the strength names.
+  const strengthNames = (version: TrainingPlanVersion) =>
+    new Map(version.sessions.map((s) => [s.session_id, s.session_name]));
+  changes.push(
+    ...diffMobilitySessions(from.mobility_sessions, to.mobility_sessions, {
+      from: strengthNames(from),
+      to: strengthNames(to),
+    }),
+  );
   return changes;
 }
 

@@ -24,6 +24,7 @@ import {
   PLAN_SCHEMA_LIMITS,
   type PlanExerciseOption,
   type PlannedExercise,
+  type PlanMobilitySession,
   type PlanRunSession,
   type TrainingPlan,
   type TrainingPlanVersion,
@@ -163,6 +164,39 @@ export function runSessionsOf(
     );
 }
 
+/** The mobility sessions of one version in display order (ARN-MOB). */
+export function mobilitySessionsOf(
+  dataset: ArnoldDataset,
+  planVersionId: string,
+  options: { includeRemoved?: boolean } = {},
+): PlanMobilitySession[] {
+  return (dataset.planMobilitySessions ?? [])
+    .filter(
+      (row) =>
+        row.plan_version_id === planVersionId &&
+        (options.includeRemoved || row.status === "active"),
+    )
+    .map((row) => ({
+      plan_mobility_session_id: row.plan_mobility_session_id,
+      session_id: row.session_id,
+      session_name: row.session_name,
+      session_order: row.session_order,
+      kind: row.kind,
+      placement: row.placement,
+      weekdays: [...row.weekdays],
+      after_session_id: row.after_session_id,
+      minutes: row.minutes,
+      template: row.template,
+      status: row.status,
+      row_revision: row.row_revision,
+    }))
+    .sort(
+      (a, b) =>
+        a.session_order - b.session_order ||
+        (a.session_id < b.session_id ? -1 : 1),
+    );
+}
+
 /** Full projection of one version, sessions included. */
 export function projectVersion(
   dataset: ArnoldDataset,
@@ -171,6 +205,11 @@ export function projectVersion(
 ): TrainingPlanVersion {
   const sessions = sessionsOf(dataset, plan.plan_version_id, options);
   const runSessions = runSessionsOf(dataset, plan.plan_version_id, options);
+  const mobilitySessions = mobilitySessionsOf(
+    dataset,
+    plan.plan_version_id,
+    options,
+  );
   return {
     plan_version_id: plan.plan_version_id,
     plan_family_id: plan.plan_family_id,
@@ -188,6 +227,8 @@ export function projectVersion(
     sessions,
     // Only present for a plan with run sessions, so strength plans read as before.
     ...(runSessions.length ? { run_sessions: runSessions } : {}),
+    // Likewise for mobility: a plan without it has no such field.
+    ...(mobilitySessions.length ? { mobility_sessions: mobilitySessions } : {}),
     session_count: sessions.filter((s) =>
       s.exercises.some((e) => e.status === "active"),
     ).length,
