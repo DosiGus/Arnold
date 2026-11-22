@@ -67,6 +67,10 @@ describe("row level security", () => {
       "health_consents",
       "workout_recordings",
       "workout_health",
+      // Mobility (migration 009).
+      "mobility_profiles",
+      "plan_mobility_sessions",
+      "mobility_results",
     ])
       expect(await count(null, table), table).toBe(0);
   });
@@ -117,6 +121,12 @@ describe("row level security", () => {
       "delete from arnold.sets",
       "delete from arnold.workouts",
       "truncate arnold.sets",
+      "delete from arnold.mobility_profiles",
+      "delete from arnold.plan_mobility_sessions",
+      "delete from arnold.mobility_results",
+      "truncate arnold.mobility_results",
+      "alter table arnold.mobility_results add column x int",
+      "drop table arnold.mobility_profiles",
       "alter table arnold.sets add column x int",
       "create table arnold.x (id int)",
       "drop table arnold.sets",
@@ -128,6 +138,79 @@ describe("row level security", () => {
         statement,
       ).rejects.toMatchObject({ code: expect.stringMatching(/^42/) });
     expect(await count(alice.userId, "sets")).toBe(1);
+  });
+
+  it("keeps the mobility tables (migration 009) to their owner, also on account deletion", async () => {
+    const alice = await newAccount(db);
+    const bob = await newAccount(db);
+    const stamp = "2026-11-22T06:00:00Z";
+    const workoutId = randomUUID();
+    await db.asUser(alice.userId, async (c) => {
+      await c.query(
+        `insert into arnold.mobility_profiles (user_id, mobility_profile_id, wants, morning_weekdays, morning_minutes, created_at_utc, updated_at_utc, row_revision)
+         values ($1, 'mp', true, '{1,3,5}', 10, $2, $2, 1)`,
+        [alice.userId, stamp],
+      );
+      await c.query(
+        `insert into arnold.plan_versions (user_id, plan_version_id, plan_family_id, version_no, name, status, created_at_utc, updated_at_utc, row_revision)
+         values ($1, 'pv-mob', 'pf-mob', 1, 'Plan', 'draft', $2, $2, 1)`,
+        [alice.userId, stamp],
+      );
+      await c.query(
+        `insert into arnold.plan_mobility_sessions (user_id, plan_mobility_session_id, plan_version_id, session_id, session_order, session_name, kind, placement, weekdays, minutes, template, status, row_revision)
+         values ($1, 'pms', 'pv-mob', 's-mob', 1, 'Morgen', 'morning', 'own_day', '{1}', 5, '{}', 'active', 1)`,
+        [alice.userId],
+      );
+      await c.query(
+        `insert into arnold.workouts (user_id, workout_id, workout_date_local, timezone, status, source, created_at_utc, updated_at_utc, row_revision, activity_type)
+         values ($1, $2, '2026-11-22', 'Europe/Berlin', 'completed', 'chat', $3, $3, 1, 'mobility')`,
+        [alice.userId, workoutId, stamp],
+      );
+      await c.query(
+        `insert into arnold.mobility_results (user_id, workout_id, kind, exercises_total, exercises_done, exercises_skipped, items, result_source, catalog_version, rules_version, created_at_utc, updated_at_utc, row_revision)
+         values ($1, $2, 'morning', 0, 0, 0, '[]', 'chat', 'mob-1', 'r', $3, $3, 1)`,
+        [alice.userId, workoutId, stamp],
+      );
+    });
+    const tables = [
+      "mobility_profiles",
+      "plan_mobility_sessions",
+      "mobility_results",
+    ];
+    for (const table of tables) {
+      expect(await count(alice.userId, table), table).toBe(1);
+      expect(await count(bob.userId, table), table).toBe(0);
+      expect(await count(null, table), table).toBe(0);
+      const changed = await db.asUser(bob.userId, (c) =>
+        c.query(`update arnold.${table} set row_revision = row_revision + 1`),
+      );
+      expect(changed.rowCount, table).toBe(0);
+    }
+    // Bob cannot hang his own result on Alice's workout.
+    await expect(
+      db.asUser(bob.userId, (c) =>
+        c.query(
+          `insert into arnold.mobility_results (user_id, workout_id, kind, exercises_total, exercises_done, exercises_skipped, items, result_source, catalog_version, rules_version, created_at_utc, updated_at_utc, row_revision)
+           values ($1, $2, 'morning', 0, 0, 0, '[]', 'chat', 'mob-1', 'r', $3, $3, 1)`,
+          [bob.userId, workoutId, stamp],
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "23503" });
+    expect(await alice.identities.remove(alice.userId)).toBe(true);
+    const left = await asOwner(async (c) => {
+      const totals: number[] = [];
+      for (const table of [...tables, "workouts", "plan_versions"])
+        totals.push(
+          (
+            await c.query<{ n: number }>(
+              `select count(*)::int as n from arnold.${table} where user_id = $1`,
+              [alice.userId],
+            )
+          ).rows[0].n,
+        );
+      return totals;
+    });
+    expect(left).toEqual([0, 0, 0, 0, 0]);
   });
 
   it("refuses a malformed user id before any query runs", async () => {
@@ -196,6 +279,9 @@ describe("accounts", () => {
         "sets",
         "operations",
         "audit_events",
+        "mobility_profiles",
+        "plan_mobility_sessions",
+        "mobility_results",
       ])
         totals[table] = (
           await c.query<{ n: number }>(

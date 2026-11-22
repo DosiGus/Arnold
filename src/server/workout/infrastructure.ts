@@ -5,8 +5,11 @@ import {
   ArnoldDatasetSchema,
   ArnoldExerciseSchema,
   ArnoldGoalSchema,
+  ArnoldMobilityProfileSchema,
+  ArnoldMobilityResultSchema,
   ArnoldPlanAdjustmentSchema,
   ArnoldPlanItemSchema,
+  ArnoldPlanMobilitySessionSchema,
   ArnoldPlanRunSessionSchema,
   ArnoldPlanVersionSchema,
   ArnoldRunProfileSchema,
@@ -18,8 +21,11 @@ import {
   type ArnoldDataset,
   type ArnoldExercise,
   type ArnoldGoal,
+  type ArnoldMobilityProfile,
+  type ArnoldMobilityResult,
   type ArnoldPlanAdjustment,
   type ArnoldPlanItem,
+  type ArnoldPlanMobilitySession,
   type ArnoldPlanRunSession,
   type ArnoldPlanVersion,
   type ArnoldRun,
@@ -170,6 +176,22 @@ const ChangeSchema = z.discriminatedUnion("table", [
     before: ArnoldPlanAdjustmentSchema.nullable(),
     after: ArnoldPlanAdjustmentSchema,
   }),
+  // Mobility (schema 1.2.0).
+  z.object({
+    table: z.literal("mobilityProfiles"),
+    before: ArnoldMobilityProfileSchema.nullable(),
+    after: ArnoldMobilityProfileSchema,
+  }),
+  z.object({
+    table: z.literal("planMobilitySessions"),
+    before: ArnoldPlanMobilitySessionSchema.nullable(),
+    after: ArnoldPlanMobilitySessionSchema,
+  }),
+  z.object({
+    table: z.literal("mobilityResults"),
+    before: ArnoldMobilityResultSchema.nullable(),
+    after: ArnoldMobilityResultSchema,
+  }),
 ]);
 export type EntityChange = z.infer<typeof ChangeSchema>;
 export type Entity =
@@ -184,13 +206,25 @@ export type Entity =
   | ArnoldPlanRunSession
   | ArnoldRun
   | ArnoldRunSegment
-  | ArnoldPlanAdjustment;
+  | ArnoldPlanAdjustment
+  | ArnoldMobilityProfile
+  | ArnoldPlanMobilitySession
+  | ArnoldMobilityResult;
 /**
  * Order matters: a set also carries workout_id and plan_item_id, a plan item a
  * plan_version_id, a goal an exercise_id, a run segment a workout_id, a run
- * session a plan_version_id. A run is keyed by its workout_id.
+ * session a plan_version_id. A run is keyed by its workout_id, and so is a
+ * mobility result; a mobility session carries a plan_version_id.
  */
 export const entityId = (row: Entity): string =>
+  "plan_mobility_session_id" in row
+    ? row.plan_mobility_session_id
+    : "mobility_profile_id" in row
+      ? row.mobility_profile_id
+      : entityIdWithoutMobility(row);
+const entityIdWithoutMobility = (
+  row: Exclude<Entity, ArnoldPlanMobilitySession | ArnoldMobilityProfile>,
+): string =>
   "plan_adjustment_id" in row
     ? row.plan_adjustment_id
     : "run_segment_id" in row
@@ -207,6 +241,8 @@ const entityIdStrength = (
     | ArnoldPlanRunSession
     | ArnoldRunProfile
     | ArnoldPlanAdjustment
+    | ArnoldPlanMobilitySession
+    | ArnoldMobilityProfile
   >,
 ): string =>
   "goal_id" in row
@@ -305,6 +341,13 @@ export const AuditEventSchema = z.object({
     "ONBOARDING_COMPLETED",
     "ONBOARDING_CANCELLED",
     "ONBOARDING_EXPIRED",
+    // Mobility (ARN-MOB). Kind, minutes, counts and status only, never free
+    // text or heart rate.
+    "MOBILITY_SESSION_CREATED",
+    "MOBILITY_SESSION_UPDATED",
+    "MOBILITY_SESSION_REMOVED",
+    "MOBILITY_PROFILE_UPDATED",
+    "MOBILITY_LOGGED",
   ]),
   entity_id: z.string(),
   at: z.string(),
@@ -452,7 +495,7 @@ const STABLE_COLUMNS = {
     "session_id",
     "session_name_snapshot",
     "source",
-    // A workout never changes between strength and run.
+    // A workout never changes between strength, run and mobility.
     "activity_type",
   ],
   sets: [
@@ -496,6 +539,15 @@ const STABLE_COLUMNS = {
     "sessions_per_week",
     "reason",
   ],
+  // Mobility (1.2.0): a routine of a version stays in its version and
+  // session, a result the result of its workout.
+  mobilityProfiles: ["mobility_profile_id"],
+  planMobilitySessions: [
+    "plan_mobility_session_id",
+    "plan_version_id",
+    "session_id",
+  ],
+  mobilityResults: ["workout_id"],
 } as const satisfies Record<EntityChange["table"], readonly string[]>;
 /** Fields of PLANS that describe the training content rather than the lifecycle. */
 const PLAN_CONTENT_COLUMNS = [
@@ -549,7 +601,8 @@ export function changedDataset(
     ),
   ]);
   for (const change of changes) {
-    const rows = [...next[change.table]] as Entity[];
+    // The 1.2.0 lists are optional; absent means none.
+    const rows = [...(next[change.table] ?? [])] as Entity[];
     const index = rows.findIndex((r) => entityId(r) === entityId(change.after));
     const current = index < 0 ? null : rows[index];
     if (canonical(current) !== canonical(change.before))
@@ -574,8 +627,12 @@ export function changedDataset(
     // One exception: the level of a run session in the ACTIVE version is the
     // progression state of the run engine (RUN-008). It moves with the runs,
     // while the session's content (type, name, bounds, weekday) stays frozen.
+    // Mobility routines of a version follow the same rule, without that
+    // exception: they have no progression state.
     if (
-      (change.table === "planItems" || change.table === "planRunSessions") &&
+      (change.table === "planItems" ||
+        change.table === "planRunSessions" ||
+        change.table === "planMobilitySessions") &&
       !draftVersions.has(change.after.plan_version_id) &&
       !(
         change.table === "planRunSessions" &&

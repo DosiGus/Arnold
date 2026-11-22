@@ -64,6 +64,19 @@ const TABLES = {
     table: "plan_adjustments",
     columns: ARNOLD_TABLE_HEADERS.PLAN_ADJUSTMENTS,
   },
+  // Mobility, schema 1.2.0 (migration 009).
+  mobilityProfiles: {
+    table: "mobility_profiles",
+    columns: ARNOLD_TABLE_HEADERS.MOBILITY_PROFILES,
+  },
+  planMobilitySessions: {
+    table: "plan_mobility_sessions",
+    columns: ARNOLD_TABLE_HEADERS.PLAN_MOBILITY_SESSIONS,
+  },
+  mobilityResults: {
+    table: "mobility_results",
+    columns: ARNOLD_TABLE_HEADERS.MOBILITY_RESULTS,
+  },
 } as const satisfies Record<
   EntityChange["table"],
   { table: string; columns: readonly string[] }
@@ -89,6 +102,9 @@ const ID_COLUMN = {
   runs: "workout_id",
   runSegments: "run_segment_id",
   planAdjustments: "plan_adjustment_id",
+  mobilityProfiles: "mobility_profile_id",
+  planMobilitySessions: "plan_mobility_session_id",
+  mobilityResults: "workout_id",
 } as const satisfies Record<EntityChange["table"], string>;
 
 /**
@@ -101,6 +117,7 @@ const JSON_COLUMNS: ReadonlySet<string> = new Set([
   "prescription",
   "splits_100m",
   "hr_zone_seconds",
+  "items",
 ]);
 /**
  * Columns whose absence in a row means the column default. A strength
@@ -110,6 +127,13 @@ const JSON_COLUMNS: ReadonlySet<string> = new Set([
 const COLUMN_DEFAULTS: Readonly<Record<string, unknown>> = {
   activity_type: "strength",
 };
+
+/**
+ * The 1.2.0 lists are optional in the dataset: an empty one is left out, so a
+ * dataset without mobility reads back exactly as before migration 009.
+ */
+const optionalList = <K extends string>(key: K, rows: unknown[]) =>
+  rows.length === 0 ? {} : ({ [key]: rows } as Record<K, unknown[]>);
 
 /** All training tables in one statement, each as a JSON array in insertion order. */
 const READ_DATASET = `select ${Object.entries(TABLES)
@@ -161,6 +185,9 @@ async function readDataset(
     runs: rows.runs,
     runSegments: rows.runSegments,
     planAdjustments: rows.planAdjustments,
+    ...optionalList("mobilityProfiles", rows.mobilityProfiles),
+    ...optionalList("planMobilitySessions", rows.planMobilitySessions),
+    ...optionalList("mobilityResults", rows.mobilityResults),
   });
   if (!parsed.success)
     throw new WriteError(

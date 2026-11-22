@@ -14,6 +14,7 @@ import {
   type RunInput,
 } from "../../analytics/running/metrics/index.js";
 import {
+  isRunWorkout,
   isStrengthWorkout,
   type ArnoldDataset,
 } from "../../shared/arnold-schema-v1.js";
@@ -47,7 +48,7 @@ export function runInputs(data: ArnoldDataset): RunInput[] {
   const inputs: RunInput[] = [];
   for (const run of data.runs) {
     const workout = workouts.get(run.workout_id);
-    if (!workout || isStrengthWorkout(workout)) continue;
+    if (!workout || !isRunWorkout(workout)) continue;
     inputs.push({
       ...run,
       workout_date_local: workout.workout_date_local,
@@ -102,7 +103,7 @@ export function analyseRuns(
       (w) => w.workout_id === input.workout_id,
     );
     const run = data.runs.find((r) => r.workout_id === input.workout_id);
-    if (!workout || !run || isStrengthWorkout(workout))
+    if (!workout || !run || !isRunWorkout(workout))
       throw new RunNotFoundError();
     const segments = data.runSegments.filter(
       (s) => s.workout_id === workout.workout_id,
