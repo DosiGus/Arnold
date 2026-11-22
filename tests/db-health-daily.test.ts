@@ -11,9 +11,11 @@ import { afterAll, describe, expect, inject, it } from "vitest";
 import { migrate } from "../src/server/db/migrate";
 import { opensOverview } from "../src/server/http";
 import { DailyHealthSync, readDailyHealth } from "../src/server/health/sync";
-import type {
-  DailyHealthFetchResult,
-  DailyHealthPullSource,
+import {
+  DAILY_HEALTH_COLUMNS,
+  type DailyHealthDay,
+  type DailyHealthFetchResult,
+  type DailyHealthPullSource,
 } from "../src/server/health/source";
 import { appDatabase, asOwner, newAccount } from "./fixtures/arnold-db.js";
 
@@ -205,9 +207,14 @@ describe("rollback script 005 → 4 → 5", () => {
         )
       ).rows.map((r) => r.table_name as string);
     try {
-      expect(await migrate(url.toString())).toEqual([1, 2, 3, 4, 5, 6, 7]);
-      expect(await tables()).toEqual(["health_daily", "health_daily_sync"]);
-      // 006 and 007 sit on top of 005 and are undone first (db/rollback).
+      expect(await migrate(url.toString())).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+      expect(await tables()).toEqual([
+        "health_daily",
+        "health_daily_raw",
+        "health_daily_sync",
+      ]);
+      // 006 to 008 sit on top of 005 and are undone first (db/rollback).
+      await exec(await readFile("db/rollback/008_down.sql", "utf8"));
       await exec(await readFile("db/rollback/007_down.sql", "utf8"));
       await exec(await readFile("db/rollback/006_down.sql", "utf8"));
       const script = await readFile("db/rollback/005_down.sql", "utf8");
@@ -228,8 +235,12 @@ describe("rollback script 005 → 4 → 5", () => {
         ).rows[0].n,
       ).toBe(0);
       await expect(exec(script)).rejects.toThrow(/not applied/);
-      expect(await migrate(url.toString())).toEqual([5, 6, 7]);
-      expect(await tables()).toEqual(["health_daily", "health_daily_sync"]);
+      expect(await migrate(url.toString())).toEqual([5, 6, 7, 8]);
+      expect(await tables()).toEqual([
+        "health_daily",
+        "health_daily_raw",
+        "health_daily_sync",
+      ]);
     } finally {
       await asOwner((c) => c.query(`drop database ${name} with (force)`));
     }
@@ -237,17 +248,15 @@ describe("rollback script 005 → 4 → 5", () => {
 });
 
 describe("DailyHealthSync (fetch and store, invented supplier)", () => {
-  const day = (local_date: string, resting: number | null) => ({
-    local_date,
-    resting_hr_bpm: resting,
-    stress_avg: null,
-    body_battery_high: 80,
-    body_battery_end_of_day: null,
-    sleep_seconds: null,
-    sleep_score: null,
-    hrv_last_night_ms: null,
-    hrv_status: null,
-  });
+  const day = (local_date: string, resting: number | null): DailyHealthDay => {
+    const blank: Record<string, unknown> = { local_date };
+    for (const k of Object.keys(DAILY_HEALTH_COLUMNS)) blank[k] = null;
+    return {
+      ...(blank as DailyHealthDay),
+      resting_hr_bpm: resting,
+      body_battery_high: 80,
+    };
+  };
   const NOW = Date.parse("2026-11-16T08:00:00Z");
 
   function setup(account: Account, results: DailyHealthFetchResult[]) {
@@ -312,7 +321,9 @@ describe("DailyHealthSync (fetch and store, invented supplier)", () => {
     });
     t.advance(2);
     await t.sync.refresh(alice.userId);
-    expect(t.ranges[1]).toEqual(["2026-11-15", "2026-11-16"]);
+    // This invented supplier stores no raw answers, so the days stay open
+    // for the backfill and the range reaches back to the oldest of them.
+    expect(t.ranges[1]).toEqual(["2026-11-07", "2026-11-16"]);
     const stored = await readDailyHealth(db, alice.userId, "2026-01-01");
     // A value Garmin no longer sends is kept, unknown stays null.
     expect(stored.map((d) => [d.local_date, d.resting_hr_bpm])).toEqual([

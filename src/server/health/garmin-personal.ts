@@ -16,16 +16,54 @@
  * score inside `sleepScores`, the status codes for an expired key and for
  * rate limiting, the longest HRV range, a JSON-wrapped token answer.
  *
+ * Two kinds of paths:
+ *   - REQUIRED (the three above): a failure fails the fetch with a named
+ *     code, as before.
+ *   - OPTIONAL (extended values, garmin-extended.ts): paths the Personal API
+ *     documents only in part or not at all. Whether they exist for this key,
+ *     and what their answers look like, is "ungeprüft bis zum ersten echten
+ *     Abruf". A failure, a 403/404/204 or an unexpected format never fails
+ *     the fetch and never overwrites a known value; it is noted per endpoint
+ *     (ok, empty, unavailable, error) without any response text. Only a 429
+ *     stops the optional requests (the fetch then reports rateLimited).
+ *     Every successful answer is also kept raw (cleaned) for later reading.
+ *     The number of optional requests per fetch is capped.
+ *
  * The key lives in a private field and only in the token request header.
  * The token lives only in memory. Neither ever reaches an error, a result
  * or a log line: failures are named codes, never response text.
  */
-import type {
-  DailyHealthDay,
-  DailyHealthFailure,
-  DailyHealthFetchResult,
-  DailyHealthPullSource,
-  HrvStatus,
+import {
+  compact,
+  dateOf,
+  hasValues,
+  rawPayload,
+  readFitnessAge,
+  readMaxMet,
+  readSleepDetail,
+  readSpo2,
+  readStepsDaily,
+  readTrainingReadiness,
+  readTrainingStatus,
+  record,
+  sleepValues,
+  splitByDay,
+  summaryExtras,
+  whole,
+  type Dated,
+  type Values,
+} from "./garmin-extended.js";
+import {
+  DAILY_HEALTH_COLUMNS,
+  type DailyHealthColumn,
+  type DailyHealthDay,
+  type DailyHealthFailure,
+  type DailyHealthFetchResult,
+  type DailyHealthPullSource,
+  type DailyHealthRaw,
+  type EndpointOutcome,
+  type FetchDaysOptions,
+  type HrvStatus,
 } from "./source.js";
 
 export const GARMIN_PERSONAL_BASE_URL =
@@ -35,6 +73,12 @@ const TOKEN_PATH =
 const SLEEP_MAX_DAYS = 31;
 // The HRV range limit is not documented; 28 days stays below every other one.
 const HRV_MAX_DAYS = 28;
+// Range limits of the optional range endpoints are not documented either.
+const OPTIONAL_RANGE_DAYS = 28;
+/** Upper limit of optional requests (not the token) in one fetch. */
+export const MAX_OPTIONAL_REQUESTS = 60;
+/** An optional endpoint that failed this often in one fetch is left out for the rest of it. */
+const ENDPOINT_STRIKES = 2;
 const DAY_MS = 86_400_000;
 const TIMEOUT_MS = 15_000;
 // Garmin's sample renews a token an hour before it runs out.
@@ -53,6 +97,86 @@ export interface GarminPersonalOptions {
 class SupplierFailure {
   constructor(readonly failure: DailyHealthFailure) {}
 }
+
+/** What one request came back with. Never carries response text. */
+type Answer =
+  | { kind: "json"; json: unknown }
+  | { kind: "empty" }
+  // 401/403/404: the key may not use this path (or the path does not exist).
+  | { kind: "refused"; status: number }
+  | { kind: "error" };
+
+interface RangeEndpoint {
+  name: string;
+  /** Only fills what the required paths left unknown. */
+  fill?: boolean;
+  path: (from: string, to: string) => string;
+  query?: (from: string, to: string) => Record<string, string>;
+  read: (json: unknown) => Dated[];
+}
+
+interface DayEndpoint {
+  name: string;
+  /** Only fills what the required paths left unknown. */
+  fill?: boolean;
+  path: (date: string) => string;
+  query?: (date: string) => Record<string, string>;
+  read: (json: unknown, date: string) => Dated | null;
+}
+
+// Paths: the first three from the list of Garmin's public Personal API
+// documentation as far as known; training readiness and training status
+// are guesses for this API (ungeprüft bis zum ersten echten Abruf).
+const RANGE_ENDPOINTS: RangeEndpoint[] = [
+  {
+    name: "steps_daily",
+    fill: true,
+    path: (a, b) => `/usersummary-service/stats/steps/daily/${a}/${b}`,
+    read: readStepsDaily,
+  },
+  {
+    name: "max_met_daily",
+    path: (a, b) => `/metrics-service/metrics/maxmet/daily/${a}/${b}`,
+    read: readMaxMet,
+  },
+  {
+    // Only kept raw: the day's values come from the required summaries.
+    name: "body_battery_daily",
+    path: () => "/wellness-service/wellness/bodyBattery/reports/daily",
+    query: (a, b) => ({ startDate: a, endDate: b }),
+    read: () => [],
+  },
+];
+
+const DAY_ENDPOINTS: DayEndpoint[] = [
+  {
+    name: "daily_sleep",
+    path: () => "/sleep-service/sleep/dailySleep",
+    query: (d) => ({ date: d }),
+    read: readSleepDetail,
+  },
+  {
+    name: "spo2_acclimation",
+    fill: true,
+    path: (d) => `/wellness-service/wellness/daily/spo2acclimation/${d}`,
+    read: readSpo2,
+  },
+  {
+    name: "fitness_age",
+    path: (d) => `/fitnessage-service/fitnessage/v2/${d}`,
+    read: readFitnessAge,
+  },
+  {
+    name: "training_readiness",
+    path: (d) => `/metrics-service/metrics/trainingreadiness/${d}`,
+    read: readTrainingReadiness,
+  },
+  {
+    name: "training_status",
+    path: (d) => `/metrics-service/metrics/trainingstatus/aggregated/${d}`,
+    read: readTrainingStatus,
+  },
+];
 
 export class GarminPersonalSource implements DailyHealthPullSource {
   readonly kind = "garmin_personal" as const;
@@ -77,9 +201,14 @@ export class GarminPersonalSource implements DailyHealthPullSource {
     return { kind: this.kind };
   }
 
-  async fetchDays(from: string, to: string): Promise<DailyHealthFetchResult> {
+  async fetchDays(
+    from: string,
+    to: string,
+    options: FetchDaysOptions = {},
+  ): Promise<DailyHealthFetchResult> {
     try {
       const days = new Map<string, DailyHealthDay>();
+      const raw = new Map<string, DailyHealthRaw>();
       const day = (date: string) => {
         let entry = days.get(date);
         if (!entry) {
@@ -88,6 +217,19 @@ export class GarminPersonalSource implements DailyHealthPullSource {
         }
         return entry;
       };
+      const inRange = (date: string) => date >= from && date <= to;
+      const keep = (endpoint: string, date: string, payload: unknown) => {
+        if (!inRange(date)) return;
+        const cleaned = rawPayload(payload);
+        if (cleaned !== null)
+          raw.set(`${date}|${endpoint}`, {
+            local_date: date,
+            endpoint,
+            payload: cleaned,
+          });
+      };
+
+      // ---- required
       const summaries = await this.#get(
         "/usersummary-service/v2/dailysummaries",
         {
@@ -96,26 +238,149 @@ export class GarminPersonalSource implements DailyHealthPullSource {
         },
       );
       for (const s of readDailySummaries(summaries))
-        Object.assign(day(s.local_date), s.values);
+        merge(day(s.local_date), s.values);
+      for (const [date, payload] of splitByDay(record(summaries)?.data ?? null))
+        keep("daily_summary", date, payload);
       for (const [a, b] of chunks(from, to, SLEEP_MAX_DAYS)) {
         const sleep = await this.#get(
           "/sleep-service/sleep/dailySleepSummariesByDate",
           { startDate: a, endDate: b },
         );
-        for (const s of readSleep(sleep))
-          Object.assign(day(s.local_date), s.values);
+        for (const s of readSleep(sleep)) merge(day(s.local_date), s.values);
+        for (const [date, payload] of splitByDay(sleep))
+          keep("sleep_summary", date, payload);
       }
       for (const [a, b] of chunks(from, to, HRV_MAX_DAYS)) {
         const hrv = await this.#get(`/hrv-service/hrv/daily/${a}/${b}`, {});
-        for (const s of readHrv(hrv))
-          Object.assign(day(s.local_date), s.values);
+        for (const s of readHrv(hrv)) merge(day(s.local_date), s.values);
+        for (const [date, payload] of splitByDay(
+          record(hrv)?.hrvSummaries ?? null,
+        ))
+          keep("hrv", date, payload);
       }
+
+      // ---- optional
+      const outcomes = new Map<string, EndpointOutcome[]>();
+      const note = (name: string, outcome: EndpointOutcome) =>
+        outcomes.set(name, [...(outcomes.get(name) ?? []), outcome]);
+      const strikes = new Map<string, number>();
+      let requests = 0;
+      let rateLimited = false;
+      // Unavailable once: not asked again in this fetch. Errors: after a few.
+      const skipped = (name: string) =>
+        (strikes.get(name) ?? 0) >= ENDPOINT_STRIKES;
+      const strike = (name: string, outcome: EndpointOutcome) => {
+        if (outcome === "unavailable") strikes.set(name, ENDPOINT_STRIKES);
+        else if (outcome === "error")
+          strikes.set(name, (strikes.get(name) ?? 0) + 1);
+      };
+      const ask = async (
+        name: string,
+        path: string,
+        query: Record<string, string>,
+      ): Promise<Answer | null> => {
+        if (rateLimited || requests >= MAX_OPTIONAL_REQUESTS) return null;
+        requests++;
+        try {
+          return await this.#request(path, query);
+        } catch (error) {
+          if (
+            error instanceof SupplierFailure &&
+            error.failure === "rate_limited"
+          ) {
+            rateLimited = true;
+            return null;
+          }
+          // Network failure, token trouble: this endpoint only (settle notes it).
+          return { kind: "error" };
+        }
+      };
+      // The outcome of an answer, and its values kept for the day(s).
+      const settle = (
+        name: string,
+        answer: Answer,
+        dated: Dated[],
+        payloads: Map<string, unknown>,
+        fill: boolean,
+      ): void => {
+        let outcome: EndpointOutcome;
+        if (answer.kind === "refused") outcome = "unavailable";
+        else if (answer.kind === "error") outcome = "error";
+        else if (answer.kind === "empty") outcome = "empty";
+        else if (!isContainer(answer.json)) outcome = "error";
+        else if (isEmptyContainer(answer.json)) outcome = "empty";
+        else {
+          const known = dated.filter((d) => hasValues(d.values));
+          for (const d of known) {
+            if (inRange(d.local_date)) merge(day(d.local_date), d.values, fill);
+          }
+          for (const [date, payload] of payloads) keep(name, date, payload);
+          // Answer kept; ok only when something in it was understood (or the
+          // endpoint is only kept raw), otherwise "unexpected format".
+          outcome = known.length > 0 || RAW_ONLY.has(name) ? "ok" : "error";
+        }
+        note(name, outcome);
+        strike(name, outcome);
+      };
+
+      for (const endpoint of RANGE_ENDPOINTS) {
+        for (const [a, b] of chunks(from, to, OPTIONAL_RANGE_DAYS)) {
+          if (skipped(endpoint.name)) break;
+          const answer = await ask(
+            endpoint.name,
+            endpoint.path(a, b),
+            endpoint.query?.(a, b) ?? {},
+          );
+          if (!answer) break;
+          const json = answer.kind === "json" ? answer.json : null;
+          settle(
+            endpoint.name,
+            answer,
+            json === null ? [] : endpoint.read(json),
+            json === null ? new Map() : splitByDay(json),
+            endpoint.fill === true,
+          );
+        }
+      }
+      const detailDates = [
+        ...new Set((options.detailDates ?? []).filter((d) => inRange(d))),
+      ]
+        .filter((d) => dateOf(d) === d)
+        .sort()
+        .reverse();
+      for (const date of detailDates) {
+        for (const endpoint of DAY_ENDPOINTS) {
+          if (skipped(endpoint.name)) continue;
+          const answer = await ask(
+            endpoint.name,
+            endpoint.path(date),
+            endpoint.query?.(date) ?? {},
+          );
+          if (!answer) break;
+          const json = answer.kind === "json" ? answer.json : null;
+          const read = json === null ? null : endpoint.read(json, date);
+          settle(
+            endpoint.name,
+            answer,
+            read ? [{ ...read, local_date: date }] : [],
+            json === null ? new Map() : new Map([[date, json]]),
+            endpoint.fill === true,
+          );
+        }
+        if (rateLimited || requests >= MAX_OPTIONAL_REQUESTS) break;
+      }
+
+      const endpoints: Record<string, EndpointOutcome> = {};
+      for (const [name, list] of outcomes) endpoints[name] = summarize(list);
       return {
         ok: true,
         days: [...days.values()]
-          .filter((d) => d.local_date >= from && d.local_date <= to)
+          .filter((d) => inRange(d.local_date))
           .filter(hasAnyValue)
           .sort((a, b) => a.local_date.localeCompare(b.local_date)),
+        raw: [...raw.values()],
+        endpoints,
+        ...(rateLimited ? { rateLimited: true } : {}),
       };
     } catch (error) {
       if (error instanceof SupplierFailure)
@@ -152,7 +417,11 @@ export class GarminPersonalSource implements DailyHealthPullSource {
     return value;
   }
 
-  async #get(path: string, query: Record<string, string>): Promise<unknown> {
+  /**
+   * One GET. Throws SupplierFailure only for what stops everything (a refused
+   * token, 429, network); other outcomes are returned as an Answer.
+   */
+  async #request(path: string, query: Record<string, string>): Promise<Answer> {
     const url = new URL(`${this.#baseUrl}${path}`);
     for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
     for (let attempt = 0; ; attempt++) {
@@ -169,19 +438,33 @@ export class GarminPersonalSource implements DailyHealthPullSource {
         this.#token = undefined;
         continue;
       }
-      if (response.status === 401 || response.status === 403)
-        throw new SupplierFailure("key_invalid");
+      if (
+        response.status === 401 ||
+        response.status === 403 ||
+        response.status === 404
+      )
+        return { kind: "refused", status: response.status };
       if (response.status === 429) throw new SupplierFailure("rate_limited");
-      if (response.status === 204) return null;
-      if (!response.ok) throw new SupplierFailure("upstream_error");
+      if (response.status === 204) return { kind: "empty" };
+      if (!response.ok) return { kind: "error" };
       const text = await response.text();
-      if (text.trim() === "") return null;
+      if (text.trim() === "") return { kind: "empty" };
       try {
-        return JSON.parse(text) as unknown;
+        return { kind: "json", json: JSON.parse(text) as unknown };
       } catch {
-        throw new SupplierFailure("upstream_error");
+        return { kind: "error" };
       }
     }
+  }
+
+  /** A required path: every failure is a named failure of the whole fetch. */
+  async #get(path: string, query: Record<string, string>): Promise<unknown> {
+    const answer = await this.#request(path, query);
+    if (answer.kind === "json") return answer.json;
+    if (answer.kind === "empty") return null;
+    if (answer.kind === "refused" && answer.status !== 404)
+      throw new SupplierFailure("key_invalid");
+    throw new SupplierFailure("upstream_error");
   }
 
   async #send(url: string, init: RequestInit): Promise<Response> {
@@ -198,55 +481,43 @@ export class GarminPersonalSource implements DailyHealthPullSource {
 
 // ------------------------------------------------------------ reading
 
-type Partial_ = { local_date: string; values: Partial<DailyHealthDay> };
+type Partial_ = Dated;
 
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
+/** Endpoints whose answer is only kept raw (no value is read from it). */
+const RAW_ONLY = new Set(["body_battery_daily"]);
 
 function emptyDay(local_date: string): DailyHealthDay {
-  return {
-    local_date,
-    resting_hr_bpm: null,
-    stress_avg: null,
-    body_battery_high: null,
-    body_battery_end_of_day: null,
-    sleep_seconds: null,
-    sleep_score: null,
-    hrv_last_night_ms: null,
-    hrv_status: null,
-  };
+  const day: Record<string, unknown> = { local_date };
+  for (const key of Object.keys(DAILY_HEALTH_COLUMNS)) day[key] = null;
+  return day as DailyHealthDay;
 }
 
-const VALUE_KEYS = [
-  "resting_hr_bpm",
-  "stress_avg",
-  "body_battery_high",
-  "body_battery_end_of_day",
-  "sleep_seconds",
-  "sleep_score",
-  "hrv_last_night_ms",
-  "hrv_status",
-] as const;
+const VALUE_KEYS = Object.keys(DAILY_HEALTH_COLUMNS) as DailyHealthColumn[];
 
 function hasAnyValue(day: DailyHealthDay) {
   return VALUE_KEYS.some((k) => day[k] !== null);
 }
 
-const record = (v: unknown): Record<string, unknown> | null =>
-  typeof v === "object" && v !== null && !Array.isArray(v)
-    ? (v as Record<string, unknown>)
-    : null;
-
-/** A whole number in range, else null. Garmin's "no value" is never 0 here. */
-function whole(v: unknown, min: number, max: number): number | null {
-  if (typeof v !== "number" || !Number.isFinite(v)) return null;
-  const n = Math.round(v);
-  return n >= min && n <= max ? n : null;
+/**
+ * Known values go in; a null (unknown) never overwrites a known value. With
+ * `fill` a value only goes in where the day has none yet.
+ */
+function merge(day: DailyHealthDay, values: Values, fill = false) {
+  const target = day as Record<string, unknown>;
+  for (const [k, v] of Object.entries(values))
+    if (v !== null && v !== undefined && !(fill && target[k] !== null))
+      target[k] = v;
 }
 
-function dateOf(v: unknown): string | null {
-  if (typeof v !== "string") return null;
-  const d = v.slice(0, 10);
-  return DATE.test(d) ? d : null;
+const isContainer = (v: unknown) => Array.isArray(v) || record(v) !== null;
+const isEmptyContainer = (v: unknown) =>
+  Array.isArray(v) ? v.length === 0 : Object.keys(record(v) ?? {}).length === 0;
+
+/** One outcome for an endpoint asked several times: ok beats the rest. */
+function summarize(list: EndpointOutcome[]): EndpointOutcome {
+  for (const o of ["ok", "error", "unavailable"] as const)
+    if (list.includes(o)) return o;
+  return "empty";
 }
 
 /** /usersummary-service/v2/dailysummaries → { data: [...] }. */
@@ -264,11 +535,15 @@ export function readDailySummaries(json: unknown): Partial_[] {
     out.push({
       local_date,
       values: {
-        resting_hr_bpm: whole(hr?.restingValue, 20, 250),
-        // Garmin uses negative stress values for "not measured".
-        stress_avg: whole(stress?.avgLevel, 0, 100),
-        body_battery_high: whole(bb?.maxValue, 0, 100),
-        body_battery_end_of_day: whole(bb?.endOfDayValue, 0, 100),
+        ...compact({
+          resting_hr_bpm: whole(hr?.restingValue, 20, 250),
+          // Garmin uses negative stress values for "not measured".
+          stress_avg: whole(stress?.avgLevel, 0, 100),
+          body_battery_high: whole(bb?.maxValue, 0, 100),
+          body_battery_end_of_day: whole(bb?.endOfDayValue, 0, 100),
+        }),
+        // Activity, respiration, blood oxygen (garmin-extended.ts).
+        ...summaryExtras(s),
       },
     });
   }
@@ -283,27 +558,9 @@ export function readSleep(json: unknown): Partial_[] {
     const s = record(item);
     const local_date = dateOf(s?.calendarDate);
     if (!s || !local_date) continue;
-    out.push({
-      local_date,
-      values: {
-        sleep_seconds: whole(s.sleepTimeSeconds, 1, 86_400),
-        sleep_score: overallSleepScore(s.sleepScores),
-      },
-    });
+    out.push({ local_date, values: sleepValues([s]) });
   }
   return out;
-}
-
-/**
- * The overall sleep score. `sleepScores` is a map from a component name to
- * { value }; the name of the overall component is not documented. "overall"
- * is the expected one; an unknown shape is null, never an error.
- */
-function overallSleepScore(scores: unknown): number | null {
-  const map = record(scores);
-  if (!map) return null;
-  const key = Object.keys(map).find((k) => k.toLowerCase() === "overall");
-  return key ? whole(record(map[key])?.value, 0, 100) : null;
 }
 
 const HRV_STATUS: Record<string, HrvStatus> = {
@@ -324,13 +581,13 @@ export function readHrv(json: unknown): Partial_[] {
     if (!s || !local_date) continue;
     out.push({
       local_date,
-      values: {
+      values: compact({
         hrv_last_night_ms: whole(s.lastNightAvg, 1, 500),
         hrv_status:
           typeof s.status === "string"
             ? (HRV_STATUS[s.status.toUpperCase()] ?? null)
             : null,
-      },
+      }),
     });
   }
   return out;

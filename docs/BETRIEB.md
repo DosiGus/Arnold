@@ -47,6 +47,15 @@ curl -s https://arnold-789221393068.europe-west1.run.app/health
 
 Arnold holt tägliche Gesundheitswerte (Ruhepuls, Stress, Body Battery, Schlaf, HRV) für **genau ein** Konto aus Garmin Connect, wenn dieser Nutzer die Übersicht öffnet und der letzte Abruf mindestens 6 Stunden her ist. Gespeichert wird nur mit seiner Einwilligung (`set_garmin_health_consent`); ein Widerruf löscht die Tageswerte. Garmins Personal-Zugang ist nur für die eigenen Daten gedacht, nicht für alle Nutzer.
 
+Seit Migration 008 (Schema 8) sammelt Arnold je Tag alles, was Garmin liefert, damit es später in die Analysen für Kraft, Laufen und Erholung einfließen kann (heute nur Speichern, die Scores ändern sich nicht):
+
+- **Werte** in `arnold.health_daily`: Schlaf (Dauer, Score, Tief-, Leicht-, REM-, Wachzeit, Aufwachphasen, unruhige Momente, Einschlaf- und Aufwachzeit als lokale Uhrzeit), Atmung (im Schlaf und am Tag: Durchschnitt, niedrigste, höchste), Blutsauerstoff (Durchschnitt, Minimum), Aktivität (Schritte, Schrittziel, Intensitätsminuten moderat und intensiv, Etagen, aktive und gesamte Kilokalorien, Distanz), Hauttemperatur-Abweichung, VO2max (Laufen, Radfahren), Fitnessalter, Trainingsbereitschaft (Score, Stufe), Trainingszustand, akute und chronische Trainingslast samt Verhältnis, dazu Ruhepuls, Stress, Body Battery und HRV wie bisher. Unbekannt ist `NULL`, nie 0.
+- **Rohdaten** in `arnold.health_daily_raw`: die bereinigte Antwort jedes erfolgreichen Garmin-Pfads je Tag (höchstens 256 KB, nichts mit Schlüssel oder Token). Garmins Feldnamen sind zum Teil nicht belegt; die Rohdaten erlauben, die Tage nach einer Korrektur neu zu lesen. Alle Feldnamen und die Pfade für Trainingsbereitschaft und -zustand sind **ungeprüft bis zum ersten echten Abruf**.
+- **Abruf**: die drei Pflichtpfade wie bisher; alle weiteren Pfade sind optional und halten je Pfad `ok`, `empty`, `unavailable` oder `error` in `health_daily_sync.endpoint_outcomes` fest (Logzeile `garmin daily fetch`, Feld `endpoints`, ohne Werte und Antworttext). Nach dem ersten echten Abruf dort nachsehen: `unavailable` heißt, der Schlüssel darf den Pfad nicht nutzen; `error` bei einem Pfad, der Daten liefert, heißt meist ein anderes Format (Rohdaten ansehen).
+- **Menge**: Einzeltag-Pfade nur für die letzten 3 Tage, dazu höchstens 7 ältere Tage der letzten 28, für die noch keine Rohantwort vorliegt (erster Abruf, Lücken); höchstens 60 optionale Anfragen je Abruf. Ein 429 beendet die optionalen Anfragen, bereits Gelesenes wird gespeichert, der Abruf endet als `rate_limited`.
+- **Löschen**: Der Widerruf der Einwilligung löscht Tageswerte, Rohdaten und Abrufstand in einer Transaktion; das Konto zu löschen entfernt alles über die Kaskade. Eine Aufbewahrungsfrist gibt es nicht (Werte bleiben, bis die Einwilligung widerrufen wird).
+- **Zurückrollen**: `db/rollback/008_down.sql` (nur mit Kevins Ja, löscht die neuen Spalten und die Rohdaten).
+
 Konfiguration (setzt das Deploy-Skript, nicht von Hand):
 
 | Name                         | Herkunft                                                           | Bedeutung                             |
