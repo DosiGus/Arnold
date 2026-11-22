@@ -48,8 +48,12 @@ export const MOBILITY_ADHERENCE_DEFAULT_DAYS = 28;
 export const MOBILITY_ADHERENCE_MAX_DAYS = 366;
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
-const isDate = (value: string) =>
-  DATE.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
+/** A real calendar date: 2026-11-31 is not rolled over to 2026-12-01. */
+const isDate = (value: string) => {
+  if (!DATE.test(value)) return false;
+  const ms = Date.parse(`${value}T00:00:00Z`);
+  return !Number.isNaN(ms) && new Date(ms).toISOString().slice(0, 10) === value;
+};
 
 /** The calendar date `n` days before `date` (pure calendar arithmetic). */
 function daysBefore(date: string, n: number): string {

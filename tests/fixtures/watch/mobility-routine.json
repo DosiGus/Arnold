@@ -1,0 +1,128 @@
+{
+  "api_version": 1,
+  "min_app_version": "1.0.0",
+  "id": "s_00000000-0000-4000-8000-000000000007",
+  "tot": 1799,
+  "ex": [
+    {
+      "c": "mob_cat_cow",
+      "n": "Katze-Kuh",
+      "h": "Im Vierfüßlerstand rund und hohl",
+      "s": 1,
+      "t": 85,
+      "r": null
+    },
+    {
+      "c": "mob_childs_pose",
+      "n": "Kindhaltung",
+      "h": "Gesäß zu den Fersen, Arme lang",
+      "s": 1,
+      "t": 90,
+      "r": null
+    },
+    {
+      "c": "mob_thread_needle",
+      "n": "Faden einfädeln",
+      "h": "Arm unter dem Körper durchschieben",
+      "s": 2,
+      "t": 50,
+      "r": null
+    },
+    {
+      "c": "mob_open_book",
+      "n": "Offenes Buch",
+      "h": "Seitlich liegen, Arm öffnet weit",
+      "s": 2,
+      "t": 80,
+      "r": 8
+    },
+    {
+      "c": "mob_worlds_greatest",
+      "n": "Weltbeste Dehnung",
+      "h": "Ausfallschritt, Ellbogen tief, aufdrehen",
+      "s": 2,
+      "t": 80,
+      "r": null
+    },
+    {
+      "c": "mob_kneeling_hip_flexor",
+      "n": "Hüftbeuger kniend",
+      "h": "Hinteres Knie ab, Becken sanft vor",
+      "s": 2,
+      "t": 80,
+      "r": null
+    },
+    {
+      "c": "mob_pigeon",
+      "n": "Taube",
+      "h": "Vorderes Bein quer, Becken gerade",
+      "s": 2,
+      "t": 80,
+      "r": null
+    },
+    {
+      "c": "mob_frog",
+      "n": "Frosch",
+      "h": "Knie weit, Gesäß sanft nach hinten",
+      "s": 1,
+      "t": 80,
+      "r": null
+    },
+    {
+      "c": "mob_butterfly",
+      "n": "Schmetterling",
+      "h": "Fußsohlen zusammen, Rücken lang",
+      "s": 1,
+      "t": 80,
+      "r": null
+    },
+    {
+      "c": "mob_seated_forward_fold",
+      "n": "Sitzende Vorbeuge",
+      "h": "Aus der Hüfte nach vorn, Knie weich",
+      "s": 1,
+      "t": 80,
+      "r": null
+    },
+    {
+      "c": "mob_supine_hamstring",
+      "n": "Bein heben liegend",
+      "h": "Bein hoch, Gurt oder Hände helfen",
+      "s": 2,
+      "t": 80,
+      "r": null
+    },
+    {
+      "c": "mob_knee_to_chest",
+      "n": "Knie zur Brust",
+      "h": "Knie sanft heranziehen, Kopf liegt",
+      "s": 2,
+      "t": 50,
+      "r": null
+    },
+    {
+      "c": "mob_supine_twist",
+      "n": "Liegende Drehung",
+      "h": "Knie zur Seite, Schultern bleiben unten",
+      "s": 2,
+      "t": 80,
+      "r": null
+    },
+    {
+      "c": "mob_cobra",
+      "n": "Kobra",
+      "h": "Becken bleibt am Boden, Brust hebt",
+      "s": 1,
+      "t": 50,
+      "r": null
+    },
+    {
+      "c": "mob_downward_dog",
+      "n": "Herabschauender Hund",
+      "h": "Gesäß hoch, Fersen Richtung Boden",
+      "s": 1,
+      "t": 80,
+      "r": null
+    }
+  ]
+}

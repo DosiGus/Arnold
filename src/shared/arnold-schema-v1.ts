@@ -329,6 +329,7 @@ export const ARNOLD_TABLE_HEADERS = {
     "exercises_total",
     "exercises_done",
     "exercises_skipped",
+    "ended_early",
     "items",
     "result_source",
     "catalog_version",
@@ -993,6 +994,12 @@ export const ArnoldMobilityResultSchema = z
     exercises_total: mobilityCount,
     exercises_done: mobilityCount,
     exercises_skipped: mobilityCount,
+    /**
+     * The routine was stopped before its last exercise (watch). Only then
+     * may done + skipped fall short of the total; a routine logged in chat
+     * is never ended early.
+     */
+    ended_early: z.boolean(),
     items: MobilityResultItemsSchema,
     result_source: MobilityResultSourceSchema,
     catalog_version: text,
@@ -1018,6 +1025,14 @@ export const ArnoldMobilityResultSchema = z
       issue(
         "exercises_done",
         "Erledigte und übersprungene Übungen übersteigen die Gesamtzahl.",
+      );
+    if (
+      !row.ended_early &&
+      row.exercises_done + row.exercises_skipped !== row.exercises_total
+    )
+      issue(
+        "exercises_done",
+        "Ohne vorzeitiges Ende müssen erledigte und übersprungene Übungen die Gesamtzahl ergeben.",
       );
   })
   .readonly();
