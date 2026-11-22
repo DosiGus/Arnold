@@ -125,7 +125,9 @@ const base = (): Record<string, unknown> =>
   JSON.parse(JSON.stringify(fullDataset()));
 
 /** The base dataset plus mobility rows; `over` replaces whole arrays. */
-const withMobility = (over: Record<string, unknown> = {}) => ({
+const withMobility = (
+  over: Record<string, unknown> = {},
+): Record<string, unknown> => ({
   ...base(),
   mobilityProfiles: [profile()],
   planMobilitySessions: [mobilitySession()],
@@ -532,8 +534,8 @@ describe("mobility workouts and results", () => {
     const set = {
       ...(data.sets as Record<string, unknown>[])[0]!,
       set_id: "s-mob",
+      workout_id: "w-mob-2",
     };
-    set.workout_id = "w-mob-2";
     (data.sets as unknown[]).push(set);
     rejects(data, "Eine Mobility-Routine hat keine Sätze");
   });
