@@ -20,7 +20,9 @@ import {
   DAILY_HEALTH_COLUMNS,
   type DailyHealthDay,
   type DailyHealthFetchResult,
+  EMPTY_ANSWER,
   type DailyHealthPullSource,
+  type DailyHealthRaw,
   type FetchDaysOptions,
 } from "../src/server/health/source";
 import { appDatabase, asOwner, newAccount } from "./fixtures/arnold-db.js";
@@ -262,12 +264,17 @@ describe("DailyHealthSync with extended values", () => {
     return day as DailyHealthDay;
   };
 
-  function setup(account: Account, results: DailyHealthFetchResult[]) {
+  function setup(
+    account: Account,
+    results: DailyHealthFetchResult[],
+    extra: Pick<DailyHealthPullSource, "detailEndpoints" | "readStored"> = {},
+  ) {
     const calls: { from: string; to: string; options?: FetchDaysOptions }[] =
       [];
     let now = NOW;
     const source: DailyHealthPullSource = {
       kind: "garmin_personal",
+      ...extra,
       fetchDays: async (from, to, options) => {
         calls.push({ from, to, options });
         return results.shift() ?? { ok: true, days: [] };
@@ -489,6 +496,137 @@ describe("DailyHealthSync with extended values", () => {
     expect(await run).toMatchObject({ outcome: "no_consent", days: 0 });
     expect(await count(alice.userId, "health_daily")).toBe(0);
     expect(await count(alice.userId, "health_daily_raw")).toBe(0);
+  });
+
+  it("backfills by single-day answers only, and does not ask an empty day again", async () => {
+    const alice = await newAccount(db);
+    await grantConsent(alice);
+    const t = setup(
+      alice,
+      [
+        {
+          ok: true,
+          days: [{ ...blank("2026-11-10"), steps: 1 }],
+          raw: [
+            // A required range answer for an older day: not a detail answer.
+            {
+              local_date: "2026-11-10",
+              endpoint: "daily_summary",
+              payload: { a: 1 },
+            },
+            // Garmin had nothing for this day.
+            {
+              local_date: "2026-11-09",
+              endpoint: "daily_sleep",
+              payload: EMPTY_ANSWER,
+            },
+            {
+              local_date: "2026-11-08",
+              endpoint: "daily_sleep",
+              payload: { b: 1 },
+            },
+          ],
+        },
+      ],
+      { detailEndpoints: ["daily_sleep", "fitness_age"] },
+    );
+    await t.sync.refresh(alice.userId);
+    t.advance(7);
+    await t.sync.refresh(alice.userId);
+    const second = t.calls[1].options?.detailDates ?? [];
+    expect(second).toContain("2026-11-10");
+    expect(second).not.toContain("2026-11-09");
+    expect(second).not.toContain("2026-11-08");
+  });
+
+  it("never lets an empty marker replace a real answer, a real answer replaces it", async () => {
+    const alice = await newAccount(db);
+    await grantConsent(alice);
+    const day = (raw: DailyHealthRaw[]): DailyHealthFetchResult => ({
+      ok: true,
+      days: [{ ...blank("2026-11-15"), steps: 1 }],
+      raw,
+    });
+    const t = setup(alice, [
+      day([
+        {
+          local_date: "2026-11-15",
+          endpoint: "daily_sleep",
+          payload: { a: 1 },
+        },
+        {
+          local_date: "2026-11-14",
+          endpoint: "daily_sleep",
+          payload: EMPTY_ANSWER,
+        },
+      ]),
+      day([
+        {
+          local_date: "2026-11-15",
+          endpoint: "daily_sleep",
+          payload: EMPTY_ANSWER,
+        },
+        {
+          local_date: "2026-11-14",
+          endpoint: "daily_sleep",
+          payload: { b: 2 },
+        },
+      ]),
+    ]);
+    await t.sync.refresh(alice.userId);
+    t.advance(7);
+    await t.sync.refresh(alice.userId);
+    expect(
+      await readDailyHealthRaw(db, alice.userId, "2026-11-01", "2026-11-30"),
+    ).toEqual([
+      { local_date: "2026-11-14", endpoint: "daily_sleep", payload: { b: 2 } },
+      { local_date: "2026-11-15", endpoint: "daily_sleep", payload: { a: 1 } },
+    ]);
+  });
+
+  it("reads the stored answers of the last 35 days again after a fetch", async () => {
+    const alice = await newAccount(db);
+    await grantConsent(alice);
+    // Stored earlier, read wrongly then: the corrected reading fills them.
+    await insertRaw(alice, "2026-11-01", "x", { kcal: 2100 });
+    await insertRaw(alice, "2026-10-01", "x", { kcal: 1900 });
+    await setColumn(alice, "2026-11-01", "steps", 4000);
+    const t = setup(
+      alice,
+      [
+        {
+          ok: true,
+          days: [{ ...blank("2026-11-15"), steps: 9 }],
+          raw: [
+            {
+              local_date: "2026-11-15",
+              endpoint: "x",
+              payload: { kcal: 2500 },
+            },
+          ],
+        },
+      ],
+      {
+        readStored: (raw) =>
+          raw
+            .filter((r) => r.endpoint === "x")
+            .map((r) => ({
+              ...blank(r.local_date),
+              kcal_total: (r.payload as { kcal: number }).kcal,
+            })),
+      },
+    );
+    expect(await t.sync.refresh(alice.userId)).toMatchObject({
+      outcome: "ok",
+      days: 1,
+    });
+    const days = await readDailyHealth(db, alice.userId, "2026-09-01");
+    expect(days.map((d) => [d.local_date, d.kcal_total, d.steps])).toEqual([
+      // Known value kept, re-read value added.
+      ["2026-11-01", 2100, 4000],
+      ["2026-11-15", 2500, 9],
+    ]);
+    expect(t.lines.at(-1)).toContain('"reread":2');
   });
 });
 

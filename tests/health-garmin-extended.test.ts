@@ -10,7 +10,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   GarminPersonalSource,
   MAX_OPTIONAL_REQUESTS,
+  readStoredAnswers,
 } from "../src/server/health/garmin-personal";
+import { EMPTY_ANSWER } from "../src/server/health/source";
 import {
   RAW_MAX_BYTES,
   localTime,
@@ -542,5 +544,85 @@ describe("choosing the days for single-day requests", () => {
       ),
     );
     expect(chooseDetailDates("2026-11-16", all)).toHaveLength(3);
+  });
+});
+
+describe("review fixes (22.11.2026)", () => {
+  it("reads steps, step goal, distance and floors from the movement block", () => {
+    // Key shape of the first real answers; the numbers are invented.
+    const values = summaryExtras({
+      calendarDate: "2026-11-21",
+      movement: {
+        steps: { value: 8_123, goal: 7_500, distanceInMeters: 6_210.4 },
+        floorsAscended: { value: 12.4, goal: 10, distanceInMeters: 37.8 },
+        floorsDescended: { value: 11, distanceInMeters: 33.1 },
+        pushes: {},
+      },
+      pulseOx: { avgAltitudeInMeters: 1231 },
+    });
+    expect(values).toMatchObject({
+      steps: 8_123,
+      step_goal: 7_500,
+      distance_m: 6_210,
+      floors_climbed: 12,
+    });
+    // Blood oxygen not measured: unknown, not 0.
+    expect(values.spo2_avg_pct ?? null).toBeNull();
+    // Assumed after the respiration block, once the watch measures it.
+    expect(
+      summaryExtras({ pulseOx: { avgValue: 96, minValue: 90 } }),
+    ).toMatchObject({ spo2_avg_pct: 96, spo2_min_pct: 90 });
+  });
+
+  it("does not keep Garmin's identifiers of the person and the watch", () => {
+    expect(
+      rawPayload({
+        userProfilePK: 123,
+        userProfilePk: 123,
+        uuid: "u",
+        sleepNeed: { deviceId: 9, actual: 480 },
+        calendarDate: "2026-11-21",
+      }),
+    ).toEqual({ sleepNeed: { actual: 480 }, calendarDate: "2026-11-21" });
+  });
+
+  it("notes a single-day endpoint without anything for the day, not a refused one", async () => {
+    const result = await fetchDay(
+      fakeGarmin({
+        fitnessAge: () => new Response(null, { status: 204 }),
+        readiness: () => json([]),
+        spo2: () => new Response("", { status: 404 }),
+      }),
+    );
+    const byEndpoint = new Map(
+      (result.raw ?? []).map((r) => [r.endpoint, r.payload]),
+    );
+    expect(byEndpoint.get("fitness_age")).toEqual(EMPTY_ANSWER);
+    expect(byEndpoint.get("training_readiness")).toEqual(EMPTY_ANSWER);
+    expect(byEndpoint.has("spo2_acclimation")).toBe(false);
+    expect(byEndpoint.get("daily_sleep")).not.toEqual(EMPTY_ANSWER);
+  });
+
+  it("reads the stored answers again into the same days as the fetch", async () => {
+    const result = await fetchDay(fakeGarmin());
+    expect(result.days.length).toBeGreaterThan(0);
+    expect(readStoredAnswers(result.raw ?? [])).toEqual(result.days);
+    // Empty markers, unknown endpoints and nothing known give no day.
+    expect(
+      readStoredAnswers([
+        { local_date: DAY, endpoint: "fitness_age", payload: EMPTY_ANSWER },
+        { local_date: DAY, endpoint: "unknown_one", payload: { steps: 5 } },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("names its single-day endpoints for the backfill", () => {
+    expect(source(fakeGarmin().fetch).detailEndpoints).toEqual([
+      "daily_sleep",
+      "spo2_acclimation",
+      "fitness_age",
+      "training_readiness",
+      "training_status",
+    ]);
   });
 });

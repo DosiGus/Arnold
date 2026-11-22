@@ -55,6 +55,8 @@ import {
 } from "./garmin-extended.js";
 import {
   DAILY_HEALTH_COLUMNS,
+  EMPTY_ANSWER,
+  isEmptyAnswer,
   type DailyHealthColumn,
   type DailyHealthDay,
   type DailyHealthFailure,
@@ -180,6 +182,7 @@ const DAY_ENDPOINTS: DayEndpoint[] = [
 
 export class GarminPersonalSource implements DailyHealthPullSource {
   readonly kind = "garmin_personal" as const;
+  readonly detailEndpoints = DAY_ENDPOINTS.map((e) => e.name);
   readonly #apiKey: string;
   #token?: { value: string; renewAt: number };
   readonly #fetch: FetchLike;
@@ -199,6 +202,10 @@ export class GarminPersonalSource implements DailyHealthPullSource {
   /** Nothing about the key or the token, also not by accident. */
   toJSON() {
     return { kind: this.kind };
+  }
+
+  readStored(raw: DailyHealthRaw[]): DailyHealthDay[] {
+    return readStoredAnswers(raw);
   }
 
   async fetchDays(
@@ -366,6 +373,12 @@ export class GarminPersonalSource implements DailyHealthPullSource {
             json === null ? new Map() : new Map([[date, json]]),
             endpoint.fill === true,
           );
+          // Nothing for this day: noted, so the backfill does not ask again.
+          if (
+            answer.kind === "empty" ||
+            (json !== null && isContainer(json) && isEmptyContainer(json))
+          )
+            keep(endpoint.name, date, EMPTY_ANSWER);
         }
         if (rateLimited || requests >= MAX_OPTIONAL_REQUESTS) break;
       }
@@ -482,6 +495,68 @@ export class GarminPersonalSource implements DailyHealthPullSource {
 // ------------------------------------------------------------ reading
 
 type Partial_ = Dated;
+
+/**
+ * How each stored answer (health_daily_raw, one per day and endpoint) is
+ * read again, in the order fetchDays merges them: the required paths, then
+ * the range endpoints, then the single-day endpoints, each with its own
+ * `fill` rule. A range answer is stored per day as one entry of its list.
+ */
+const STORED_READERS: {
+  endpoint: string;
+  fill: boolean;
+  read: (payload: unknown, date: string) => Dated[];
+}[] = [
+  {
+    endpoint: "daily_summary",
+    fill: false,
+    read: (p) => readDailySummaries({ data: [p] }),
+  },
+  { endpoint: "sleep_summary", fill: false, read: (p) => readSleep([p]) },
+  { endpoint: "hrv", fill: false, read: (p) => readHrv({ hrvSummaries: [p] }) },
+  ...RANGE_ENDPOINTS.map((e) => ({
+    endpoint: e.name,
+    fill: e.fill === true,
+    read: (p: unknown) => e.read([p]),
+  })),
+  ...DAY_ENDPOINTS.map((e) => ({
+    endpoint: e.name,
+    fill: e.fill === true,
+    read: (p: unknown, date: string) => {
+      const r = e.read(p, date);
+      return r ? [{ ...r, local_date: date }] : [];
+    },
+  })),
+];
+
+/**
+ * The days read again from stored answers, by the same rules as fetchDays
+ * (garmin-extended.ts). Unknown stays null; EMPTY_ANSWER and unknown
+ * endpoints are skipped; a value is only taken for the day the answer is
+ * stored under. Days without any known value are left out. Pure.
+ */
+export function readStoredAnswers(raw: DailyHealthRaw[]): DailyHealthDay[] {
+  const byDate = new Map<string, Map<string, unknown>>();
+  for (const entry of raw) {
+    if (dateOf(entry.local_date) !== entry.local_date) continue;
+    if (isEmptyAnswer(entry.payload)) continue;
+    const answers = byDate.get(entry.local_date) ?? new Map<string, unknown>();
+    answers.set(entry.endpoint, entry.payload);
+    byDate.set(entry.local_date, answers);
+  }
+  const days: DailyHealthDay[] = [];
+  for (const [date, answers] of byDate) {
+    const day = emptyDay(date);
+    for (const reader of STORED_READERS) {
+      if (!answers.has(reader.endpoint)) continue;
+      for (const d of reader.read(answers.get(reader.endpoint), date))
+        if (d.local_date === date && hasValues(d.values))
+          merge(day, d.values, reader.fill);
+    }
+    if (hasAnyValue(day)) days.push(day);
+  }
+  return days.sort((a, b) => a.local_date.localeCompare(b.local_date));
+}
 
 /** Endpoints whose answer is only kept raw (no value is read from it). */
 const RAW_ONLY = new Set(["body_battery_daily"]);
