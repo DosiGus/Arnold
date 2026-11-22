@@ -65,6 +65,17 @@ import {
   RunGoalSchema,
   RunReferenceSourceSchema,
 } from "./run-contract.js";
+import {
+  MobilityAreaSchema,
+  MobilityExerciseIdSchema,
+  MobilityModeSchema,
+  MobilityPositionSchema,
+} from "./mobility-catalog.js";
+import {
+  MobilityPreferenceSchema,
+  MobilityWantedPreferenceSchema,
+} from "./mobility-contract.js";
+import { WEEKDAYS, WeekdaySchema, type Weekday } from "./weekdays.js";
 
 export {
   EQUIPMENT,
@@ -259,17 +270,8 @@ export const BODY_AREAS = [
 export const BodyAreaSchema = z.enum(BODY_AREAS);
 export type BodyArea = z.infer<typeof BodyAreaSchema>;
 
-export const WEEKDAYS = [
-  "mon",
-  "tue",
-  "wed",
-  "thu",
-  "fri",
-  "sat",
-  "sun",
-] as const;
-export const WeekdaySchema = z.enum(WEEKDAYS);
-export type Weekday = z.infer<typeof WeekdaySchema>;
+// Defined in a leaf so the mobility contract can use them without a cycle.
+export { WEEKDAYS, WeekdaySchema, type Weekday };
 
 /** `auto` is the default: Arnold picks the split that fits the days. */
 export const SPLITS = [
@@ -424,6 +426,11 @@ export const TrainingSchema = z.strictObject({
   known_loads: KnownLoadsSchema.optional(),
   /** Only with the goal "Ausdauer und Laufen"; see OnboardingRunSchema. */
   run: OnboardingRunSchema.optional(),
+  /**
+   * The mobility answer (ARN-MOB). Absent means "not asked yet". Never a
+   * required field: a plan by Arnold is built without it.
+   */
+  mobility: MobilityPreferenceSchema.optional(),
   /** Verbatim user text. Data, never an instruction. */
   notes: freeText.optional(),
 });
@@ -506,6 +513,8 @@ export const TrainingPatchSchema = z
     avoided_exercise_ids: z.array(StarterExerciseIdSchema).max(40).optional(),
     known_loads: KnownLoadsSchema.nullable().optional(),
     run: OnboardingRunSchema.nullable().optional(),
+    /** null removes the answer again ("not asked"). */
+    mobility: MobilityPreferenceSchema.nullable().optional(),
     notes: freeText.nullable().optional(),
   })
   .refine(
@@ -795,6 +804,28 @@ export const OnboardingBriefSchema = z.strictObject({
   avoided_exercises: z.array(BriefExerciseRefSchema),
   /** The run details of a running goal; user answers, not Arnold's numbers. */
   running: OnboardingRunSchema.optional(),
+  /** The mobility wish (only when the user wants mobility). */
+  mobility: MobilityWantedPreferenceSchema.optional(),
+  /**
+   * The mobility catalog a routine must draw its exercises from. Arnold
+   * computes the seconds; the cues stay on the watch.
+   */
+  mobility_catalog: z
+    .array(
+      z.strictObject({
+        id: MobilityExerciseIdSchema,
+        name_de: z.string(),
+        areas: z.array(MobilityAreaSchema),
+        mode: MobilityModeSchema,
+        per_side: z.boolean(),
+        position: MobilityPositionSchema,
+        morning_ok: z.boolean(),
+        default_s: positiveInt,
+        min_s: positiveInt,
+        max_s: positiveInt,
+      }),
+    )
+    .optional(),
   /** Verbatim user text, explicitly marked as data and not as an instruction. */
   user_statements: z.array(
     z.strictObject({ field: z.string(), text: z.string() }),
@@ -818,6 +849,37 @@ export const OnboardingBriefSchema = z.strictObject({
   generated_at_utc: ArnoldUtcTimestampSchema,
 });
 export type OnboardingBrief = z.infer<typeof OnboardingBriefSchema>;
+
+/* ----------------------------------------------------------- open questions */
+
+/**
+ * The questions the setup may still ask, in asking order. `required` ones
+ * block a plan by Arnold; `ask_once` ones are asked once and may be skipped
+ * (mobility is never required).
+ */
+export const OPEN_QUESTION_IDS = [
+  "path",
+  "training.primary_goal",
+  "training.experience",
+  "training.days_per_week",
+  "training.session_minutes",
+  "training.environment",
+  "run_details",
+  "mobility",
+  "mobility_details",
+] as const;
+export const OpenQuestionIdSchema = z.enum(OPEN_QUESTION_IDS);
+export type OpenQuestionId = z.infer<typeof OpenQuestionIdSchema>;
+
+export const OpenQuestionSchema = z.strictObject({
+  id: OpenQuestionIdSchema,
+  kind: z.enum(["required", "ask_once"]),
+  /** The question in one short sentence, as the chat may ask it. */
+  ask: z.string().min(1).max(160),
+  /** The profile fields an answer fills, e.g. "training.mobility". */
+  fields: z.array(z.string()),
+});
+export type OpenQuestion = z.infer<typeof OpenQuestionSchema>;
 
 /* -------------------------------------------------------------------- state */
 
@@ -879,6 +941,8 @@ export const OnboardingStateSchema = z.strictObject({
   run_setup: z
     .strictObject({ required: z.boolean(), ready: z.boolean() })
     .default({ required: false, ready: true }),
+  /** What the setup may still ask, in order. Absent in older states. */
+  open_questions: z.array(OpenQuestionSchema).default([]),
   /** `production` when the setup belongs to a verified account. */
   mode: z.enum(["fixture", "production"]),
   setup_finish_available: z.boolean().default(false),

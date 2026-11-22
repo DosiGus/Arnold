@@ -277,6 +277,8 @@ export type WatchPlanDirectory = z.infer<typeof WatchPlanDirectorySchema>;
 /** POST /plan/ack: the mark of the plan the watch has completely loaded. */
 export const WatchPlanAckRequestSchema = z.strictObject({
   v: WatchPlanMarkSchema,
+  /** ARN-MOB: the mobility mark (16 hex) the watch has loaded, if any. */
+  mv: WatchPlanMarkSchema.optional(),
 });
 export const WatchPlanAckResponseSchema = z.strictObject({
   ...envelope,

@@ -443,7 +443,7 @@ describe("validation registers", () => {
     const h = harness();
     const validation = await h.plans.validate({ plan_version_id: "pfx-v2" });
     expect(validation.schema_id).toBe("arnold.training_raw");
-    expect(validation.schema_version).toBe("1.1.0");
+    expect(validation.schema_version).toBe("1.2.0");
   });
 
   it("reports the empty-session schema limit on a draft that has one", async () => {
