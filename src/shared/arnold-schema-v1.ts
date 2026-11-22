@@ -18,6 +18,16 @@ import {
   RunTypeSchema,
   RunZoneSecondsSchema,
 } from "./run-contract.js";
+import { MobilityAreaSchema } from "./mobility-catalog.js";
+import {
+  MOBILITY_LIMITS,
+  MobilityKindSchema,
+  MobilityResultItemsSchema,
+  MobilityResultSourceSchema,
+  MobilityTemplateSchema,
+  PlanMobilityPlacementSchema,
+  checkMobilitySessionShape,
+} from "./mobility-contract.js";
 
 export const ARNOLD_SCHEMA_ID = "arnold.training_raw";
 /**
@@ -25,9 +35,18 @@ export const ARNOLD_SCHEMA_ID = "arnold.training_raw";
  * run sessions of a plan version, runs and run segments. Additive: every
  * 1.0.0 dataset is a valid 1.1.0 dataset.
  */
-export const ARNOLD_SCHEMA_VERSION = "1.1.0";
+/**
+ * 1.2.0 (migration 009) adds mobility: workouts.activity_type "mobility",
+ * the mobility profile, mobility routines of a plan version and mobility
+ * results. Additive: every 1.0.0 and 1.1.0 dataset is a valid 1.2.0 dataset.
+ */
+export const ARNOLD_SCHEMA_VERSION = "1.2.0";
 /** Versions whose stored results (write receipts) still read back. */
-export const ARNOLD_COMPATIBLE_SCHEMA_VERSIONS = ["1.0.0", "1.1.0"] as const;
+export const ARNOLD_COMPATIBLE_SCHEMA_VERSIONS = [
+  "1.0.0",
+  "1.1.0",
+  "1.2.0",
+] as const;
 export const ArnoldSchemaVersionSchema = z.enum(
   ARNOLD_COMPATIBLE_SCHEMA_VERSIONS,
 );
@@ -45,6 +64,10 @@ export const ARNOLD_TABLES = [
   "RUNS",
   "RUN_SEGMENTS",
   "PLAN_ADJUSTMENTS",
+  // Mobility, schema 1.2.0 (migration 009).
+  "MOBILITY_PROFILES",
+  "PLAN_MOBILITY_SESSIONS",
+  "MOBILITY_RESULTS",
 ] as const;
 export type ArnoldTable = (typeof ARNOLD_TABLES)[number];
 export const ARNOLD_TABLE_HEADERS = {
@@ -261,6 +284,55 @@ export const ARNOLD_TABLE_HEADERS = {
     "status",
     "confirmed_at_utc",
     "cancelled_at_utc",
+    "created_at_utc",
+    "updated_at_utc",
+    "row_revision",
+  ],
+  // ARN-MOB, schema 1.2.0 (migration 009).
+  MOBILITY_PROFILES: [
+    "mobility_profile_id",
+    "wants",
+    "morning_weekdays",
+    "morning_minutes",
+    "sessions_placement",
+    "sessions_per_week",
+    "sessions_minutes",
+    "stiff_areas",
+    "created_at_utc",
+    "updated_at_utc",
+    "row_revision",
+  ],
+  PLAN_MOBILITY_SESSIONS: [
+    "plan_mobility_session_id",
+    "plan_version_id",
+    "session_id",
+    "session_name",
+    "session_order",
+    "kind",
+    "placement",
+    "weekdays",
+    "after_session_id",
+    "minutes",
+    "template",
+    "status",
+    "row_revision",
+  ],
+  MOBILITY_RESULTS: [
+    "workout_id",
+    "activity_type",
+    "kind",
+    "plan_version_id",
+    "session_id",
+    "minutes_planned",
+    "timer_s",
+    "elapsed_s",
+    "exercises_total",
+    "exercises_done",
+    "exercises_skipped",
+    "items",
+    "result_source",
+    "catalog_version",
+    "rules_version",
     "created_at_utc",
     "updated_at_utc",
     "row_revision",
@@ -482,13 +554,20 @@ export const ArnoldPlanItemSchema = z
       });
   })
   .readonly();
-/** What a workout is (1.1.0). */
-export const ArnoldActivityTypeSchema = z.enum(["strength", "run"]);
+/** What a workout is (1.1.0: run; 1.2.0: mobility). */
+export const ArnoldActivityTypeSchema = z.enum(["strength", "run", "mobility"]);
 export type ArnoldActivityType = z.infer<typeof ArnoldActivityTypeSchema>;
 /** True for strength workouts, including rows written before 1.1.0. */
 export const isStrengthWorkout = (workout: {
   activity_type?: ArnoldActivityType;
 }) => (workout.activity_type ?? "strength") === "strength";
+/** True for runs only. "Not strength" is no longer "run" since 1.2.0. */
+export const isRunWorkout = (workout: { activity_type?: ArnoldActivityType }) =>
+  workout.activity_type === "run";
+/** True for mobility routines (1.2.0). Never a training day, never load. */
+export const isMobilityWorkout = (workout: {
+  activity_type?: ArnoldActivityType;
+}) => workout.activity_type === "mobility";
 
 export const ArnoldWorkoutSchema = z
   .strictObject({
@@ -519,8 +598,8 @@ export const ArnoldWorkoutSchema = z
     notes: optionalText,
     ...technical,
     /**
-     * 1.1.0: strength or run. Absent means strength, so rows and receipts
-     * written before the column existed read back unchanged.
+     * 1.1.0: strength or run; 1.2.0: or mobility. Absent means strength, so
+     * rows and receipts written before the column existed read back unchanged.
      */
     activity_type: ArnoldActivityTypeSchema.optional(),
   })
@@ -535,6 +614,16 @@ export const ArnoldWorkoutSchema = z
         path: ["status"],
         message:
           "Ein Lauf wird erst nach dem Ende gespeichert und ist nie in_progress.",
+      });
+    if (
+      row.activity_type === "mobility" &&
+      (row.status === "in_progress" || row.status === "planned")
+    )
+      ctx.addIssue({
+        code: "custom",
+        path: ["status"],
+        message:
+          "Eine Mobility-Routine wird erst nach dem Ende gespeichert; sie ist nie planned oder in_progress.",
       });
     if (
       row.started_at_utc &&
@@ -776,6 +865,163 @@ export const ArnoldPlanRunSessionSchema = z
   })
   .readonly();
 
+/* ----------------------------------------------------- mobility (1.2.0) */
+
+const isoWeekday = z.number().int().min(1).max(7);
+
+/**
+ * The mobility profile: one row per user, changed with a revision. What the
+ * user said about mobility; absent means "not asked yet". The morning fields
+ * are set together or all null, as are the three session fields.
+ */
+export const ArnoldMobilityProfileSchema = z
+  .strictObject({
+    mobility_profile_id: ArnoldIdSchema,
+    wants: z.boolean(),
+    morning_weekdays: z.array(isoWeekday).min(1).max(7).nullable(),
+    morning_minutes: z
+      .union([z.literal(5), z.literal(10), z.literal(15)])
+      .nullable(),
+    sessions_placement: z
+      .enum(["own_days", "after_strength", "arnold_decides"])
+      .nullable(),
+    sessions_per_week: z.number().int().min(1).max(3).nullable(),
+    sessions_minutes: z
+      .union([z.literal(15), z.literal(20), z.literal(30)])
+      .nullable(),
+    stiff_areas: z.array(MobilityAreaSchema).max(8),
+    ...technical,
+  })
+  .refine(chronological, {
+    path: ["updated_at_utc"],
+    message: "updated_at_utc liegt vor created_at_utc.",
+  })
+  .superRefine((row, ctx) => {
+    const issue = (path: string, message: string) =>
+      ctx.addIssue({ code: "custom", path: [path], message });
+    const morning = [row.morning_weekdays, row.morning_minutes];
+    const sessions = [
+      row.sessions_placement,
+      row.sessions_per_week,
+      row.sessions_minutes,
+    ];
+    if (morning.some((v) => v === null) && morning.some((v) => v !== null))
+      issue(
+        "morning_weekdays",
+        "Morgenroutine: Wochentage und Minuten nur gemeinsam.",
+      );
+    if (sessions.some((v) => v === null) && sessions.some((v) => v !== null))
+      issue(
+        "sessions_placement",
+        "Mobility-Einheiten: Platz, Anzahl und Minuten nur gemeinsam.",
+      );
+    if (!row.wants) {
+      if ([...morning, ...sessions].some((v) => v !== null))
+        issue("wants", "Ohne Mobility-Wunsch gibt es keine Details.");
+      if (row.stiff_areas.length > 0)
+        issue(
+          "stiff_areas",
+          "Ohne Mobility-Wunsch gibt es keine steifen Bereiche.",
+        );
+    } else if (morning[0] === null && sessions[0] === null)
+      issue("wants", "Mobility-Wunsch braucht Morgenroutine oder Einheiten.");
+    if (
+      row.morning_weekdays &&
+      new Set(row.morning_weekdays).size !== row.morning_weekdays.length
+    )
+      issue("morning_weekdays", "Jeder Wochentag nur einmal.");
+    if (new Set(row.stiff_areas).size !== row.stiff_areas.length)
+      issue("stiff_areas", "Jeder Bereich nur einmal.");
+  })
+  .readonly();
+
+/**
+ * A mobility routine of a plan version. Shares the session_id space of the
+ * version with the strength sessions (PLAN_ITEMS) and the run sessions. The
+ * template (jsonb) holds the exercises and Arnold's seconds.
+ */
+export const ArnoldPlanMobilitySessionSchema = z
+  .strictObject({
+    plan_mobility_session_id: ArnoldIdSchema,
+    plan_version_id: ArnoldIdSchema,
+    session_id: ArnoldIdSchema,
+    session_name: text,
+    session_order: positiveInt,
+    kind: MobilityKindSchema,
+    placement: PlanMobilityPlacementSchema,
+    weekdays: z.array(isoWeekday).max(7),
+    after_session_id: ArnoldIdSchema.nullable(),
+    minutes: positiveInt,
+    template: MobilityTemplateSchema,
+    status: z.enum(["active", "removed"]),
+    row_revision: positiveInt,
+  })
+  .superRefine(checkMobilitySessionShape)
+  .readonly();
+
+const mobilityCount = z
+  .number()
+  .int()
+  .nonnegative()
+  .max(MOBILITY_LIMITS.resultItems);
+const mobilitySeconds = z
+  .number()
+  .int()
+  .nonnegative()
+  .max(MOBILITY_LIMITS.maxSeconds);
+
+/**
+ * The result of a mobility routine, one row per mobility workout. No heart
+ * rate. A routine ended early keeps the exercises it did; the counts follow
+ * the items the watch or the chat reported.
+ */
+export const ArnoldMobilityResultSchema = z
+  .strictObject({
+    workout_id: ArnoldIdSchema,
+    activity_type: z.literal("mobility"),
+    kind: MobilityKindSchema,
+    plan_version_id: ArnoldIdSchema.nullable(),
+    session_id: ArnoldIdSchema.nullable(),
+    minutes_planned: z
+      .number()
+      .int()
+      .min(1)
+      .max(MOBILITY_LIMITS.logMinutesMax)
+      .nullable(),
+    timer_s: mobilitySeconds.nullable(),
+    elapsed_s: mobilitySeconds.nullable(),
+    exercises_total: mobilityCount,
+    exercises_done: mobilityCount,
+    exercises_skipped: mobilityCount,
+    items: MobilityResultItemsSchema,
+    result_source: MobilityResultSourceSchema,
+    catalog_version: text,
+    rules_version: text,
+    ...technical,
+  })
+  .refine(chronological, {
+    path: ["updated_at_utc"],
+    message: "updated_at_utc liegt vor created_at_utc.",
+  })
+  .superRefine((row, ctx) => {
+    const issue = (path: string, message: string) =>
+      ctx.addIssue({ code: "custom", path: [path], message });
+    if ((row.plan_version_id === null) !== (row.session_id === null))
+      issue("session_id", "plan_version_id und session_id nur gemeinsam.");
+    if (
+      row.timer_s !== null &&
+      row.elapsed_s !== null &&
+      row.timer_s > row.elapsed_s
+    )
+      issue("timer_s", "Bewegungszeit länger als die Gesamtzeit.");
+    if (row.exercises_done + row.exercises_skipped > row.exercises_total)
+      issue(
+        "exercises_done",
+        "Erledigte und übersprungene Übungen übersteigen die Gesamtzahl.",
+      );
+  })
+  .readonly();
+
 /** Longest adjustment for a while, in local calendar days (UX-008). */
 export const PLAN_ADJUSTMENT_MAX_DAYS = 56;
 
@@ -1003,6 +1249,14 @@ const datasetBase = z.strictObject({
   runSegments: z.array(ArnoldRunSegmentSchema).readonly().default([]),
   // UX-008 (migration 007). Absent in older datasets.
   planAdjustments: z.array(ArnoldPlanAdjustmentSchema).readonly().default([]),
+  // 1.2.0, mobility. Optional (no default), so every existing reader and
+  // writer of a dataset compiles unchanged; absent means none.
+  mobilityProfiles: z.array(ArnoldMobilityProfileSchema).readonly().optional(),
+  planMobilitySessions: z
+    .array(ArnoldPlanMobilitySessionSchema)
+    .readonly()
+    .optional(),
+  mobilityResults: z.array(ArnoldMobilityResultSchema).readonly().optional(),
 });
 export const ArnoldDatasetSchema = datasetBase
   .superRefine((data, ctx) => {
@@ -1091,10 +1345,51 @@ export const ArnoldDatasetSchema = datasetBase
         );
       runSessions.add(key);
     });
+    // Mobility routines share it too (1.2.0); one after strength follows a
+    // strength session of the same version.
+    const planMobilitySessions = data.planMobilitySessions ?? [];
+    const mobilitySessions = new Set<string>();
+    index(
+      planMobilitySessions,
+      "plan_mobility_session_id",
+      "planMobilitySessions",
+    );
+    planMobilitySessions.forEach((row, i) => {
+      if (!plans.has(row.plan_version_id))
+        issue(
+          ["planMobilitySessions", i, "plan_version_id"],
+          "Referenz auf PLANS fehlt.",
+        );
+      const key = JSON.stringify([row.plan_version_id, row.session_id]);
+      if (
+        mobilitySessions.has(key) ||
+        runSessions.has(key) ||
+        sessions.has(key)
+      )
+        issue(
+          ["planMobilitySessions", i, "session_id"],
+          "Session-ID innerhalb der Planversion doppelt.",
+        );
+      mobilitySessions.add(key);
+      if (
+        row.after_session_id !== null &&
+        !sessions.has(
+          JSON.stringify([row.plan_version_id, row.after_session_id]),
+        )
+      )
+        issue(
+          ["planMobilitySessions", i, "after_session_id"],
+          "Die Krafteinheit, der die Mobility-Einheit folgt, fehlt in der Planversion.",
+        );
+    });
     data.workouts.forEach((row, i) => {
       if (row.plan_version_id !== null && !plans.has(row.plan_version_id))
         issue(["workouts", i, "plan_version_id"], "Referenz auf PLANS fehlt.");
-      const own = isStrengthWorkout(row) ? sessions : runSessions;
+      const own = isRunWorkout(row)
+        ? runSessions
+        : isMobilityWorkout(row)
+          ? mobilitySessions
+          : sessions;
       if (
         row.session_id !== null &&
         (row.plan_version_id === null ||
@@ -1107,12 +1402,12 @@ export const ArnoldDatasetSchema = datasetBase
     });
     const runs = index(data.runs, "workout_id", "runs");
     data.workouts.forEach((row, i) => {
-      if (!isStrengthWorkout(row) && !runs.has(row.workout_id))
+      if (isRunWorkout(row) && !runs.has(row.workout_id))
         issue(["workouts", i, "activity_type"], "Zum Lauf fehlt RUNS.");
     });
     data.runs.forEach((row, i) => {
       const workout = workouts.get(row.workout_id);
-      if (!workout || isStrengthWorkout(workout)) {
+      if (!workout || !isRunWorkout(workout)) {
         issue(
           ["runs", i, "workout_id"],
           "Referenz auf ein Training der Art run fehlt.",
@@ -1159,6 +1454,45 @@ export const ArnoldDatasetSchema = datasetBase
           "Pulswerte eines Abschnitts nur bei erfassten Pulswerten des Laufs.",
         );
     });
+    // Mobility results (1.2.0): exactly one per mobility workout, matching
+    // its plan reference.
+    const mobilityResults = index(
+      data.mobilityResults ?? [],
+      "workout_id",
+      "mobilityResults",
+    );
+    data.workouts.forEach((row, i) => {
+      if (isMobilityWorkout(row) && !mobilityResults.has(row.workout_id))
+        issue(
+          ["workouts", i, "activity_type"],
+          "Zur Mobility-Routine fehlt MOBILITY_RESULTS.",
+        );
+    });
+    (data.mobilityResults ?? []).forEach((row, i) => {
+      const workout = workouts.get(row.workout_id);
+      if (!workout || !isMobilityWorkout(workout)) {
+        issue(
+          ["mobilityResults", i, "workout_id"],
+          "Referenz auf ein Training der Art mobility fehlt.",
+        );
+        return;
+      }
+      if (
+        row.plan_version_id !== workout.plan_version_id ||
+        row.session_id !== workout.session_id
+      )
+        issue(
+          ["mobilityResults", i, "session_id"],
+          "Planversion und Session passen nicht zum Training.",
+        );
+    });
+    if ((data.mobilityProfiles ?? []).length > 1)
+      issue(["mobilityProfiles"], "Höchstens ein Mobility-Profil.");
+    index(
+      data.mobilityProfiles ?? [],
+      "mobility_profile_id",
+      "mobilityProfiles",
+    );
     if (data.runProfiles.length > 1)
       issue(["runProfiles"], "Höchstens ein Laufprofil.");
     index(data.runProfiles, "run_profile_id", "runProfiles");
@@ -1167,6 +1501,11 @@ export const ArnoldDatasetSchema = datasetBase
       const workout = workouts.get(row.workout_id);
       if (!workout)
         issue(["sets", i, "workout_id"], "Referenz auf WORKOUTS fehlt.");
+      else if (isMobilityWorkout(workout))
+        issue(
+          ["sets", i, "workout_id"],
+          "Eine Mobility-Routine hat keine Sätze.",
+        );
       else if (!isStrengthWorkout(workout))
         issue(["sets", i, "workout_id"], "Ein Lauf hat keine Sätze.");
       if (!exercises.has(row.exercise_id))
@@ -1285,11 +1624,14 @@ export const ArnoldDatasetSchema = datasetBase
         data.planRunSessions.length ||
         data.runs.length ||
         data.runSegments.length ||
-        data.planAdjustments.length)
+        data.planAdjustments.length ||
+        data.mobilityProfiles?.length ||
+        data.planMobilitySessions?.length ||
+        data.mobilityResults?.length)
     )
       issue(
         ["config", "file_role"],
-        "MASTER_TEMPLATE darf keine Ziele, Körpergewichte oder Laufdaten enthalten.",
+        "MASTER_TEMPLATE darf keine Ziele, Körpergewichte, Lauf- oder Mobility-Daten enthalten.",
       );
     if (
       data.config.file_role === "MASTER_TEMPLATE" &&
@@ -1321,24 +1663,32 @@ export type ArnoldPlanRunSession = z.infer<typeof ArnoldPlanRunSessionSchema>;
 export type ArnoldRun = z.infer<typeof ArnoldRunSchema>;
 export type ArnoldRunSegment = z.infer<typeof ArnoldRunSegmentSchema>;
 export type ArnoldPlanAdjustment = z.infer<typeof ArnoldPlanAdjustmentSchema>;
+export type ArnoldMobilityProfile = z.infer<typeof ArnoldMobilityProfileSchema>;
+export type ArnoldPlanMobilitySession = z.infer<
+  typeof ArnoldPlanMobilitySessionSchema
+>;
+export type ArnoldMobilityResult = z.infer<typeof ArnoldMobilityResultSchema>;
 
 /**
  * The dataset as every strength reader sees it: strength workouts that took
- * place or are taking place, their sets, and no running data. Planned
- * workouts and runs are left out, so strength figures stay exactly what they
- * were before running existed (ARN-RUN, RUN-003). Pure; the input is not
- * changed.
+ * place or are taking place, their sets, and no running or mobility data.
+ * Planned workouts, runs and mobility routines are left out, so strength
+ * figures stay exactly what they were before running and mobility existed
+ * (ARN-RUN, RUN-003; ARN-MOB). Pure; the input is not changed.
  */
 export function strengthTrainingView(data: ArnoldDataset): ArnoldDataset {
   // The engine also reads unvalidated datasets (its own defect handling), in
-  // which the 1.1.0 arrays may be missing.
-  const hasRunning =
+  // which the 1.1.0 and 1.2.0 arrays may be missing.
+  const hasOther =
     data.runProfiles?.length ||
     data.planRunSessions?.length ||
     data.runs?.length ||
     data.runSegments?.length ||
+    data.mobilityProfiles?.length ||
+    data.planMobilitySessions?.length ||
+    data.mobilityResults?.length ||
     data.workouts.some((w) => !isStrengthWorkout(w) || w.status === "planned");
-  if (!hasRunning) return data;
+  if (!hasOther) return data;
   const workouts = data.workouts.filter(
     (w) => isStrengthWorkout(w) && w.status !== "planned",
   );
@@ -1351,6 +1701,9 @@ export function strengthTrainingView(data: ArnoldDataset): ArnoldDataset {
     planRunSessions: Object.freeze([]),
     runs: Object.freeze([]),
     runSegments: Object.freeze([]),
+    mobilityProfiles: Object.freeze([]),
+    planMobilitySessions: Object.freeze([]),
+    mobilityResults: Object.freeze([]),
   });
 }
 

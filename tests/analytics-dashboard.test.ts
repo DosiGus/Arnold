@@ -67,7 +67,7 @@ describe("dashboard analytics output", () => {
     });
     expect(analytics.metadata.metrics_version).toBe(METRICS_VERSION);
     expect(analytics.metadata.schema_id).toBe("arnold.training_raw");
-    expect(analytics.metadata.schema_version).toBe("1.1.0");
+    expect(analytics.metadata.schema_version).toBe("1.2.0");
     expect(analytics.metadata.week_starts_on).toBe("monday");
     expect(analytics.metadata.unit_mass).toBe("kg");
     expect(analytics.metadata.period).toEqual({

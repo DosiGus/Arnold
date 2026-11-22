@@ -33,6 +33,20 @@ import {
   ArnoldSchemaVersionSchema,
 } from "./arnold-schema-v1.js";
 import { RunSessionTemplateSchema, RunTypeSchema } from "./run-contract.js";
+import { MobilityExerciseIdSchema } from "./mobility-catalog.js";
+import {
+  MobilityKindSchema,
+  MobilityTemplateSchema,
+  PlanMobilityPlacementSchema,
+  checkMobilitySessionShape,
+  type PlanMobilityPlacement,
+} from "./mobility-contract.js";
+
+export {
+  PlanMobilityPlacementSchema,
+  checkMobilitySessionShape,
+  type PlanMobilityPlacement,
+};
 import { WatchDeliverySchema } from "./watch-contract.js";
 
 export const PLAN_CONTRACT = "arnold.plan/1";
@@ -147,6 +161,33 @@ export const PlanRunSessionSchema = z.strictObject({
 });
 export type PlanRunSession = z.infer<typeof PlanRunSessionSchema>;
 
+/** ISO weekday, 1 = Monday. */
+const isoWeekday = z.number().int().min(1).max(7);
+
+/**
+ * A mobility routine of a plan version (ARN-MOB): the morning routine on
+ * chosen weekdays, or a mobility session on its own day or after a strength
+ * session. It shares the session_id space of the version with the strength
+ * and run sessions. The seconds of `template` are always Arnold's.
+ */
+export const PlanMobilitySessionSchema = z
+  .strictObject({
+    plan_mobility_session_id: id,
+    session_id: id,
+    session_name: z.string(),
+    session_order: positiveInt,
+    kind: MobilityKindSchema,
+    placement: PlanMobilityPlacementSchema,
+    weekdays: z.array(isoWeekday).max(7),
+    after_session_id: id.nullable(),
+    minutes: positiveInt,
+    template: MobilityTemplateSchema,
+    status: z.enum(["active", "removed"]),
+    row_revision: positiveInt,
+  })
+  .superRefine(checkMobilitySessionShape);
+export type PlanMobilitySession = z.infer<typeof PlanMobilitySessionSchema>;
+
 /** One immutable-once-activated state of a plan. */
 export const TrainingPlanVersionSchema = z.strictObject({
   plan_version_id: id,
@@ -165,6 +206,8 @@ export const TrainingPlanVersionSchema = z.strictObject({
   sessions: z.array(TrainingSessionSchema),
   /** Run sessions; absent while the version has none. */
   run_sessions: z.array(PlanRunSessionSchema).optional(),
+  /** Mobility routines; absent while the version has none. */
+  mobility_sessions: z.array(PlanMobilitySessionSchema).optional(),
   session_count: nonnegativeInt,
   exercise_count: nonnegativeInt,
   /** True while content may still be edited, i.e. exactly for a draft. */
@@ -318,6 +361,10 @@ export const PLAN_VALIDATION_CODES = [
   "RUN_WEEK_RULE",
   "RUN_INTERFERENCE",
   "RUN_PROFILE_MISSING",
+  // Mobility (ARN-MOB): hints with a reason, never a block.
+  "MOBILITY_STIFF_AREA_UNCOVERED",
+  "MOBILITY_PROTECTED_AREA",
+  "MOBILITY_PROFILE_MISSING",
 ] as const;
 export const PlanValidationCodeSchema = z.enum(PLAN_VALIDATION_CODES);
 export type PlanValidationCode = z.infer<typeof PlanValidationCodeSchema>;
@@ -480,6 +527,33 @@ export const PlanEditSchema = z.discriminatedUnion("type", [
     template: RunSessionTemplateSchema.optional(),
   }),
   z.strictObject({ type: z.literal("remove_run_session"), session_id: id }),
+  // Mobility routines (ARN-MOB). No seconds: Arnold computes the timing.
+  z.strictObject({
+    type: z.literal("add_mobility_session"),
+    kind: MobilityKindSchema,
+    session_name: name,
+    minutes: positiveInt,
+    exercise_ids: z.array(MobilityExerciseIdSchema).min(1).max(15),
+    /** ISO weekdays, 1 = Monday. */
+    weekdays: z.array(isoWeekday).max(7).optional(),
+    placement: PlanMobilityPlacementSchema.optional(),
+    after_session_id: id.nullable().optional(),
+    session_order: positiveInt.optional(),
+  }),
+  z.strictObject({
+    type: z.literal("update_mobility_session"),
+    session_id: id,
+    session_name: name.optional(),
+    minutes: positiveInt.optional(),
+    exercise_ids: z.array(MobilityExerciseIdSchema).min(1).max(15).optional(),
+    weekdays: z.array(isoWeekday).max(7).optional(),
+    placement: PlanMobilityPlacementSchema.optional(),
+    after_session_id: id.nullable().optional(),
+  }),
+  z.strictObject({
+    type: z.literal("remove_mobility_session"),
+    session_id: id,
+  }),
   z.strictObject({
     type: z.literal("replace_draft_sessions"),
     sessions: z.array(TrainingSessionInputSchema).min(1).max(30),
