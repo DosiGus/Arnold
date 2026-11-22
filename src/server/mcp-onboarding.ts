@@ -140,6 +140,16 @@ function runHint(state: OnboardingState): string {
     : " Laufziel „Ausdauer und Laufen“: Die Laufangaben (Ziel, Läufe und Minuten pro Woche, längster Lauf, Umfeld) trägt der Nutzer in der App ein; Arnold übernimmt sie beim Abschluss ins Laufprofil. Vorher keinen Plan erstellen und keine Tempi oder Zonen festlegen.";
 }
 
+/**
+ * The next open questions, at most three per message, as short sentences the
+ * chat may ask as they are. Empty when nothing is open.
+ */
+export function questionsHint(state: OnboardingState): string {
+  const asks = state.open_questions.slice(0, 3).map((q) => q.ask);
+  if (!asks.length) return "";
+  return ` Offene Fragen (höchstens drei in einer Nachricht): ${asks.join(" ")}`;
+}
+
 function summarize(state: OnboardingState): string {
   const { session, progress, handoff } = state;
   const training = session.profile.training;
@@ -153,6 +163,7 @@ function summarize(state: OnboardingState): string {
   if (handoff.status === "superseded")
     return `${where}. ${handoff.blocked_reason}`;
   const run = runHint(state);
+  const questions = questionsHint(state);
   if (session.status === "REVIEWING_PLAN" && state.plan)
     return `${where}. Entwurf "${state.plan.name}": ${state.plan.session_count} Trainingseinheiten, ${state.plan.exercise_count} Übungen, Revision ${state.plan.row_revision}. ${
       progress.can_confirm_plan
@@ -164,14 +175,14 @@ function summarize(state: OnboardingState): string {
       ? `${where}. Den Nutzer bitten, seinen Plan als Text oder Foto in den Chat zu geben, falls noch nicht geschehen. Dann get_onboarding_brief aufrufen und den Plan mit submit_onboarding_plan_proposal (origin existing_routine) übergeben.`
       : `${where}. Jetzt den Plan erstellen: get_onboarding_brief aufrufen und daraus mit submit_onboarding_plan_proposal (origin ai_proposal) einen Vorschlag übergeben.${run}`;
   if (session.profile.path === null)
-    return `${where}. Der Nutzer sieht die Begrüßung mit zwei Buttons: "Plan mit Arnold erstellen" oder "Eigenen Plan übernehmen". Kurz begrüßen und die Wahl abwarten; nichts abfragen, was die App abfragt.`;
+    return `${where}. Der Nutzer sieht die Begrüßung mit zwei Buttons: "Plan mit Arnold erstellen" oder "Eigenen Plan übernehmen". Kurz begrüßen und die Wahl abwarten. Erzählt der Nutzer schon etwas, alles Erkannte in einem Aufruf mit update_onboarding_profile speichern, nichts raten.${questions}`;
   if (session.profile.path === "own_plan")
-    return `${where}. Der Nutzer übernimmt seinen eigenen Plan. Ihn bitten, den Plan als Text einzufügen oder ein Foto davon zu schicken. Dann get_onboarding_brief aufrufen und den Plan mit submit_onboarding_plan_proposal (origin existing_routine) übergeben.`;
+    return `${where}. Der Nutzer übernimmt seinen eigenen Plan. Ihn bitten, den Plan als Text einzufügen oder ein Foto davon zu schicken. Dann get_onboarding_brief aufrufen und den Plan mit submit_onboarding_plan_proposal (origin existing_routine) übergeben.${questions}`;
   if (progress.profile_complete && !state.run_setup.ready)
-    return `${where}. Angaben bis auf die Laufangaben vollständig.${run}`;
+    return `${where}. Angaben bis auf die Laufangaben vollständig.${run}${questions}`;
   if (progress.profile_complete)
-    return `${where}. Angaben vollständig: ${training.primary_goal ? GOAL_LABEL[training.primary_goal] : "—"}, ${training.days_per_week} Tage pro Woche, ${training.session_minutes} Minuten je Einheit. Sobald der Nutzer "Plan erstellen" wählt oder darum bittet: get_onboarding_brief aufrufen und mit submit_onboarding_plan_proposal (origin ai_proposal) einen Vorschlag übergeben.${run}`;
-  return `${where}. Der Nutzer füllt in der App die Karten "Person" (freiwillig) und "Training" aus. Noch offen: ${progress.missing_fields
+    return `${where}. Angaben vollständig: ${training.primary_goal ? GOAL_LABEL[training.primary_goal] : "—"}, ${training.days_per_week} Tage pro Woche, ${training.session_minutes} Minuten je Einheit. Sobald der Nutzer "Plan erstellen" wählt oder darum bittet: get_onboarding_brief aufrufen und mit submit_onboarding_plan_proposal (origin ai_proposal) einen Vorschlag übergeben.${run}${questions}`;
+  return `${where}. Der Nutzer kann die Angaben per Sprachnachricht, im Chat oder mit den Karten "Person" (freiwillig) und "Training" in der App machen; alles landet im selben Zustand. Noch offen: ${progress.missing_fields
     .map(
       (field) =>
         REQUIRED_FIELD_LABEL[field as keyof typeof REQUIRED_FIELD_LABEL] ??
@@ -179,7 +190,7 @@ function summarize(state: OnboardingState): string {
     )
     .join(
       ", ",
-    )}. Nennt der Nutzer Angaben im Chat, sie mit update_onboarding_profile speichern.`;
+    )}. Nennt der Nutzer Angaben, alles Erkannte in einem Aufruf mit update_onboarding_profile speichern, nichts raten.${questions}`;
 }
 
 /** Shapes a write response into an MCP result. */
@@ -244,7 +255,7 @@ export function registerOnboardingTools(
     {
       title: "Arnold einrichten",
       description:
-        "Öffnet die Einrichtung von Arnold als interaktive Oberfläche. Bei einem neuen Nutzer IMMER zuerst aufrufen, bevor andere Arnold-Werkzeuge verwendet werden – auch wenn der Nutzer nur 'Hallo' sagt oder direkt trainieren möchte. Die Oberfläche begrüßt den Nutzer und bietet zwei Wege an: 'Plan mit Arnold erstellen' (Karten Person und Training) oder 'Eigenen Plan übernehmen' (Plan als Text oder Foto im Chat). Ohne Argumente wird die offene Einrichtung des Kontos fortgesetzt oder eine neue begonnen; ist Arnold bereits eingerichtet, zeigt sie das an und es wird keine neue Einrichtung gestartet. Die Antworten werden in der Oberfläche per Button erfasst; im Chat nichts doppelt abfragen.",
+        "Öffnet die Einrichtung von Arnold als interaktive Oberfläche. Bei einem neuen Nutzer IMMER zuerst aufrufen, bevor andere Arnold-Werkzeuge verwendet werden – auch wenn der Nutzer nur 'Hallo' sagt oder direkt trainieren möchte. Die Oberfläche begrüßt den Nutzer und bietet zwei Wege an: 'Plan mit Arnold erstellen' (Karten Person und Training) oder 'Eigenen Plan übernehmen' (Plan als Text oder Foto im Chat). Ohne Argumente wird die offene Einrichtung des Kontos fortgesetzt oder eine neue begonnen; ist Arnold bereits eingerichtet, zeigt sie das an und es wird keine neue Einrichtung gestartet. Antworten kommen per Sprachnachricht, Chat oder Knopf; alles landet im selben Zustand. Erzählt der Nutzer frei, wird alles Erkannte in EINEM update_onboarding_profile-Aufruf gespeichert, danach diese Karte gezeigt und höchstens drei Fragen aus open_questions gestellt. Nicht Genanntes wird nie geraten. Der Weg ist arnold_plan, außer der Nutzer erwähnt einen eigenen Plan.",
       inputSchema: OnboardingToolInputs.show_arnold_onboarding,
       outputSchema: OnboardingViewSchema,
       annotations: { ...writing, readOnlyHint: false },
@@ -330,7 +341,7 @@ export function registerOnboardingTools(
     {
       title: "Trainingsprofil speichern oder ändern",
       description:
-        "Speichert Angaben, die der Nutzer im Chat nennt; die App speichert ihre Button-Eingaben selbst. path: arnold_plan (Arnold erstellt den Plan) oder own_plan (eigener Plan). person (alles freiwillig): age_years, sex (female, male, diverse), height_cm, body_weight_kg, protect_areas (shoulder, elbow, wrist, neck, lower_back, hip, knee – Bereiche, die geschont werden sollen; keine Diagnosen erfragen oder speichern); null entfernt eine Angabe. training: primary_goal (muscle_gain, strength, fat_loss, general_fitness, endurance_running = Ausdauer und Laufen), secondary_goals (weitere Ziele aus derselben Liste, max. 3), experience (beginner, intermediate, advanced), days_per_week (1–7) oder training_days als feste Wochentage (mon … sun, bestimmt dann die Anzahl), session_minutes, environment (gym, home, outdoor, mixed), equipment, split (auto, full_body, upper_lower, push_pull_legs, body_part), focus_muscle_groups (max. 3), preferred_exercise_ids und avoided_exercise_ids aus den exercise_choices des Einrichtungsstands, notes. Übergebene Felder werden zusammengeführt, nicht übergebene bleiben unverändert – für 'doch nur dreimal pro Woche' genügt training.days_per_week. Mit step allein wird nur zu einem früheren Schritt zurückgewechselt. Ändert der Nutzer Angaben nach einer Planbestätigung, wird die Bestätigung ungültig.",
+        "Speichert Angaben, die der Nutzer per Sprache oder im Chat nennt; die App speichert ihre Button-Eingaben selbst. Alles auf einmal speichern: „Kraft und Laufen, viermal die Woche“ ergibt EINEN Aufruf mit primary_goal, secondary_goals und days_per_week. path: arnold_plan (Arnold erstellt den Plan) oder own_plan (eigener Plan). person (alles freiwillig): age_years, sex (female, male, diverse), height_cm, body_weight_kg, protect_areas (shoulder, elbow, wrist, neck, lower_back, hip, knee – Bereiche, die geschont werden sollen; keine Diagnosen erfragen oder speichern); null entfernt eine Angabe. training: primary_goal (muscle_gain, strength, fat_loss, general_fitness, endurance_running = Ausdauer und Laufen), secondary_goals (weitere Ziele aus derselben Liste, max. 3), experience (beginner, intermediate, advanced), days_per_week (1–7) oder training_days als feste Wochentage (mon … sun, bestimmt dann die Anzahl), session_minutes, environment (gym, home, outdoor, mixed), equipment, split (auto, full_body, upper_lower, push_pull_legs, body_part), focus_muscle_groups (max. 3), mobility ({wants:false} oder {wants:true, morning:{weekdays, minutes 5|10|15} oder null, sessions:{placement own_days|after_strength|arnold_decides, per_week 1–3, minutes 15|20|30} oder null, stiff_areas aus neck, shoulders, upper_back, lower_back, hips, hamstrings, calves_ankles, wrists}; ohne Angabe Morgenroutine alle sieben Tage mit 10 Minuten, Einheiten arnold_decides, 2 pro Woche, 20 Minuten; steif heißt nicht Schmerz, Schmerzbereiche gehören nach protect_areas; null = nicht gefragt), preferred_exercise_ids und avoided_exercise_ids aus den exercise_choices des Einrichtungsstands, notes. Übergebene Felder werden zusammengeführt, nicht übergebene bleiben unverändert – für 'doch nur dreimal pro Woche' genügt training.days_per_week. Mit step allein wird nur zu einem früheren Schritt zurückgewechselt. Ändert der Nutzer Angaben nach einer Planbestätigung, wird die Bestätigung ungültig.",
       inputSchema: OnboardingToolInputs.update_onboarding_profile,
       outputSchema: OnboardingResponseSchema,
       annotations: writing,
