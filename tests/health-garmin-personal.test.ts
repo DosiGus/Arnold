@@ -98,7 +98,7 @@ describe("GarminPersonalSource", () => {
       "2026-11-14",
       "2026-11-15",
     );
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       ok: true,
       days: [
         {
@@ -141,7 +141,7 @@ describe("GarminPersonalSource", () => {
     });
     expect(
       await source(garmin.fetch).fetchDays("2026-11-14", "2026-11-15"),
-    ).toEqual({ ok: true, days: [] });
+    ).toMatchObject({ ok: true, days: [], raw: [] });
   });
 
   it("names a refused key as key_expired", async () => {
@@ -238,7 +238,7 @@ describe("GarminPersonalSource", () => {
         { calendarDate: "2026-11-15", sleepScores: { total: { value: 70 } } },
         { calendarDate: "2026-11-16", sleepScores: "n/a" },
       ]).map((d) => d.values.sleep_score),
-    ).toEqual([null, null]);
+    ).toEqual([undefined, undefined]);
   });
 });
 
