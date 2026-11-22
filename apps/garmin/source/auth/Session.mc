@@ -36,8 +36,10 @@ module Session {
     function planSync() as PlanSync {
         if (_plan == null) {
             var cache = new PlanCache(new KeyValueStore());
-            _plan = new PlanSync(client(), cache, new PairingClock(), pairing().method(:onAuthRejected));
+            var sync = new PlanSync(client(), cache, new PairingClock(), pairing().method(:onAuthRejected));
             pairing().setWipeHook(cache.method(:clear));
+            sync.setMobilityMark(mobilitySync().method(:ackMark));
+            _plan = sync;
         }
         return _plan as PlanSync;
     }
@@ -50,6 +52,16 @@ module Session {
             _runs = new RunSync(client(), new RunCache(new KeyValueStore()), new PairingClock(), pairing().method(:onAuthRejected));
         }
         return _runs as RunSync;
+    }
+
+    var _mobility as MobilitySync or Null = null;
+
+    // The mobility routines on the watch and their loader (MOB-008).
+    function mobilitySync() as MobilitySync {
+        if (_mobility == null) {
+            _mobility = new MobilitySync(client(), new MobilityCache(new KeyValueStore()), new PairingClock(), pairing().method(:onAuthRejected));
+        }
+        return _mobility as MobilitySync;
     }
 
     var _runSender as RunSender or Null = null;
@@ -78,7 +90,9 @@ module Session {
             var consent = new HealthConsent(store);
             var healthOutbox = new HealthOutbox(store);
             sender.setHealth(new HealthSender(client(), healthOutbox, outbox, consent, clock, pairing().method(:onAuthRejected)));
-            pairing().setWipeHook(new AccountWipe(planSync().cache, runSync().cache, consent, healthOutbox).method(:wipe));
+            var wipe = new AccountWipe(planSync().cache, runSync().cache, consent, healthOutbox);
+            wipe.setMobility(mobilitySync().cache);
+            pairing().setWipeHook(wipe.method(:wipe));
             _launcher = new TrainingLauncher(journal, clock, new Signals(store), sender);
         }
         return _launcher as TrainingLauncher;
@@ -92,15 +106,25 @@ class AccountWipe {
     private var _runs as RunCache;
     private var _consent as HealthConsent;
     private var _health as HealthOutbox;
+    private var _mobility as MobilityCache or Null;
 
     function initialize(plan as PlanCache, runs as RunCache, consent as HealthConsent, health as HealthOutbox) {
         _plan = plan;
         _runs = runs;
         _consent = consent;
         _health = health;
+        _mobility = null;
+    }
+
+    // MOB-008: the mobility routines of the old account go too.
+    function setMobility(cache as MobilityCache) as Void {
+        _mobility = cache;
     }
 
     function wipe() as Void {
+        if (_mobility != null) {
+            (_mobility as MobilityCache).clear();
+        }
         _plan.clear();
         _runs.clear();
         _consent.clear();

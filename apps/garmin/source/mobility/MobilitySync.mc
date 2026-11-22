@@ -63,6 +63,16 @@ class MobilitySync {
         return state == MOB_LOADING && _client.lastCode == RetryPolicy.BLE_CONNECTION_UNAVAILABLE;
     }
 
+    // The mark for POST /plan/ack: only when this sync ended successfully with every routine current.
+    // Without mobility (older server, no phone, a failed or unfinished sync) there is none, and the
+    // confirmation leaves `mv` out, so an older server does not reject it.
+    function ackMark() as String or Null {
+        if (state != MOB_DONE || !available) {
+            return null;
+        }
+        return cache.completeMark();
+    }
+
     // Starts a run of the loader. Does nothing while one is running.
     function start() as Void {
         if (state == MOB_LOADING) {

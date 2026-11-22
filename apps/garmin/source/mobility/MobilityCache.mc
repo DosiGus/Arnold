@@ -278,7 +278,7 @@ class MobilityCache {
             return false;
         }
         var after = item["a"];
-        return after == null || after instanceof String;
+        return (after == null || after instanceof String) ? true : false;
     }
 
     // Shape of one routine: id, tot (0 or more seconds) and 1 to 15 exercises.
@@ -313,9 +313,13 @@ class MobilityCache {
         var sides = ex["s"];
         var seconds = ex["t"];
         var reps = ex["r"];
-        return sides instanceof Number && ((sides as Number) == 1 || (sides as Number) == 2)
-            && seconds instanceof Number && (seconds as Number) >= 1
-            && (reps == null || reps instanceof Number);
+        if (!(sides instanceof Number) || ((sides as Number) != 1 && (sides as Number) != 2)) {
+            return false;
+        }
+        if (!(seconds instanceof Number) || (seconds as Number) < 1) {
+            return false;
+        }
+        return (reps == null || reps instanceof Number) ? true : false;
     }
 }
 
