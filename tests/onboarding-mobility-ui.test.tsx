@@ -303,7 +303,7 @@ describe("the way through the setup", () => {
   });
 
   it("is skipped when the server lists nothing open", () => {
-    expect(nextPage("wishes")).toBe("review");
+    expect(nextPage("wishes", false)).toBe("review");
     expect(nextPage("run", false, false, true)).toBe("review");
     expect(previousPage("review")).toBe("wishes");
     expect(initialProfileQuestion(training, ids(declined))).toBe("review");

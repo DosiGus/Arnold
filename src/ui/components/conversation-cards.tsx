@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { ArrowRight, Check, Clock, TriangleAlert } from "lucide-react";
 import { CardActions, Rows } from "./cards";
 
@@ -49,14 +49,16 @@ export function UnderstoodRows({
   items: readonly UnderstoodItem[];
   label?: string;
 }) {
+  const base = useId();
   return (
     <Rows
       label={label}
       items={items.map((item) => {
         const missing =
           item.value === undefined || item.value === null || item.value === "";
+        const missingId = `${base}-${item.key}`;
         const shown = missing ? (
-          <span className="cc-missing">
+          <span className="cc-missing" id={missingId}>
             <TriangleAlert size={13} aria-hidden="true" />
             fehlt noch
           </span>
@@ -71,6 +73,8 @@ export function UnderstoodRows({
               type="button"
               className="cc-row-edit"
               aria-label={`${item.label} ändern`}
+              // The name stays "… ändern"; the gap is read as its description.
+              aria-describedby={missing ? missingId : undefined}
               onClick={item.onSelect}
             >
               {shown}
