@@ -166,7 +166,7 @@ Arnold plant Mobility aus dem Wunsch des Nutzers: eine Morgenroutine (5, 10 oder
 1. Fehlt der Wunsch im Profil, `update_mobility_profile` mit den Angaben des Nutzers (neue `request_id`) oder die Karte `mobility_setup`. Nur seine Antworten, nie schätzen; ein Nein gilt endgültig.
 2. Entwurf wie in Ablauf D: `get_training_plan`, `get_plan_editor_context` (dort steht der Mobility-Katalog), `create_plan_version`.
 3. `update_plan_draft` mit `add_mobility_session`. Später ändern mit `update_mobility_session`, entfernen mit `remove_mobility_session`.
-4. `validate_training_plan` mit `timezone`, dann `compare_plan_versions`, dann die Karte `show_arnold_dashboard` mit `card: plan_change` und höchstens ein kurzer Satz. Aktiviert wird nur nach Knopf oder ausdrücklichem Ja.
+4. `validate_training_plan` mit `timezone`, dann `compare_plan_versions`, dann die Karte `show_arnold_dashboard` mit `card: plan_change` und höchstens ein kurzer Satz. Nur nach Knopf oder ausdrücklichem Ja `activate_training_plan`.
 
 **In der Einrichtung:** Hat der Nutzer Mobility gewählt, steht sie im Brief (`mobility`, `mobility_catalog`). Erst den Kraftvorschlag senden, dann `update_plan_draft` mit `add_mobility_session` in denselben Entwurf. Nichts erneut abfragen.
 

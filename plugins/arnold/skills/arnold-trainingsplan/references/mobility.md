@@ -15,7 +15,7 @@ Gespeichert im Profil (`update_mobility_profile`, `get_mobility_overview` zeigt 
 1. Fehlt der Wunsch im Profil: Karte `show_arnold_mobility` mit `card: "mobility_setup"` oder kurz fragen und `update_mobility_profile` mit der Antwort des Nutzers aufrufen (neue `request_id`).
 2. `get_training_plan` und `get_plan_editor_context` (dort steht der Mobility-Katalog), dann `create_plan_version` vom aktiven Plan.
 3. `update_plan_draft` mit `add_mobility_session` je Routine.
-4. `validate_training_plan` mit `timezone`, dann `compare_plan_versions`, dann die Karte `show_arnold_dashboard` mit `card: plan_change`. Ein Satz dazu. Aktiviert wird nur nach Knopf oder Ja.
+4. `validate_training_plan` mit `timezone`, dann `compare_plan_versions`, dann die Karte `show_arnold_dashboard` mit `card: plan_change`. Ein Satz dazu. Nur nach Knopf oder Ja `activate_training_plan`.
 
 ## Ablauf in der Einrichtung
 
