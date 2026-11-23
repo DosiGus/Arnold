@@ -13,6 +13,7 @@ import type { Server } from "node:http";
 import { createHash, randomUUID } from "node:crypto";
 import { mountWatchApi } from "../src/server/watch/router.js";
 import {
+  activePlanVersionId,
   hasWatchMobility,
   mobilityMark,
   mobilityRoutes,
@@ -32,6 +33,7 @@ import {
   newWatchToken,
 } from "../src/server/auth/watch-token.js";
 import { WATCH_ROUTE_ACCESS } from "../src/server/auth/tool-access.js";
+import type { ArnoldDataset } from "../src/shared/arnold-schema-v1.js";
 import { MobilityService } from "../src/server/mobility/service.js";
 import {
   mobilityDayInputsOf,
@@ -72,6 +74,7 @@ const sha = (v: string) => createHash("sha256").update(v).digest();
 const ZONE = "Europe/Berlin";
 // A Monday evening in Berlin (UTC+1): 2026-11-23 23:30 local = 22:30 UTC.
 const NOW = "2026-11-23T22:30:00Z";
+const PV = "pv_00000000-0000-4000-8000-0000000000aa";
 const MORNING_IDS = [
   "mob_neck_rolls",
   "mob_neck_side",
@@ -253,6 +256,15 @@ async function serve(accounts: Athlete[], now = NOW) {
     });
 }
 
+/** The mobility mark of the account's plan, as the list gives it. */
+async function markOf(a: { store: { read(): Promise<ArnoldDataset> } }) {
+  const dataset = await a.store.read();
+  return mobilityMark(
+    mobilityDayInputsOf(dataset),
+    activePlanVersionId(dataset)!,
+  );
+}
+
 /* ------------------------------------------------------ pure: marks, budgets */
 
 const timing = (ids: readonly string[]) => {
@@ -319,12 +331,12 @@ describe("mobility mark and budgets (pure)", () => {
     );
     const inputs = inputsOf(sessions);
     for (const lang of ["de", "en"] as const) {
-      const list = todayBody(inputs, "2026-11-23", lang);
+      const list = todayBody(inputs, PV, "2026-11-23", lang);
       expect(list.items).toHaveLength(5);
       expect(jsonBytes(list)).toBeLessThanOrEqual(
         MOBILITY_WATCH_BUDGET_BYTES.today,
       );
-      const routine = routineBody(sessions[1]!, lang);
+      const routine = routineBody(sessions[1]!, PV, lang);
       expect(routine.ex).toHaveLength(15);
       expect(jsonBytes(routine)).toBeLessThanOrEqual(
         MOBILITY_WATCH_BUDGET_BYTES.routine,
@@ -336,22 +348,22 @@ describe("mobility mark and budgets (pure)", () => {
 
   it("holds the mark independent of the language and the names, and moves it with the plan", () => {
     const base = inputsOf([sessionOf(1, MORNING_IDS), sessionOf(2, FLOOR_IDS)]);
-    const mark = mobilityMark(base);
+    const mark = mobilityMark(base, PV);
     expect(mark).toMatch(/^[0-9a-f]{16}$/);
-    expect(todayBody(base, "2026-11-23", "de").mv).toBe(mark);
-    expect(todayBody(base, "2026-11-23", "en").mv).toBe(mark);
+    expect(todayBody(base, PV, "2026-11-23", "de").mv).toBe(mark);
+    expect(todayBody(base, PV, "2026-11-23", "en").mv).toBe(mark);
     // The tags show the language (names and cues are in them), the mark does not.
-    expect(todayBody(base, "2026-11-23", "de").items[0]!.tag).not.toBe(
-      todayBody(base, "2026-11-23", "en").items[0]!.tag,
+    expect(todayBody(base, PV, "2026-11-23", "de").items[0]!.tag).not.toBe(
+      todayBody(base, PV, "2026-11-23", "en").items[0]!.tag,
     );
     // A new name or the day changes nothing; weekdays, minutes, exercises or a new routine do.
     const renamed = inputsOf([
       sessionOf(1, MORNING_IDS, { session_name: "Frühstart" }),
       sessionOf(2, FLOOR_IDS),
     ]);
-    expect(mobilityMark(renamed)).toBe(mark);
+    expect(mobilityMark(renamed, PV)).toBe(mark);
     const changed = (sessions: MobilityDaySession[]) =>
-      mobilityMark(inputsOf(sessions));
+      mobilityMark(inputsOf(sessions), PV);
     expect(
       changed([
         sessionOf(1, MORNING_IDS, { weekdays: [1, 2] }),
@@ -371,6 +383,28 @@ describe("mobility mark and budgets (pure)", () => {
     expect(hasWatchMobility(inputsOf([]))).toBe(false);
   });
 
+  it("puts the plan version into the routine, its tag and the mark, within the byte budget", () => {
+    const sessions = [sessionOf(1, MORNING_IDS), sessionOf(2, longest)];
+    const inputs = inputsOf(sessions);
+    expect(routineBody(sessions[1]!, PV, "de").p).toBe(PV);
+    expect(jsonBytes(routineBody(sessions[1]!, PV, "en"))).toBeLessThanOrEqual(
+      MOBILITY_WATCH_BUDGET_BYTES.routine,
+    );
+    const other = "pv_00000000-0000-4000-8000-0000000000bb";
+    expect(routineBody(sessions[1]!, other, "de").p).toBe(other);
+    // A new plan version with the same routines: the watch loads them again (tag) and confirms again (mark).
+    expect(todayBody(inputs, other, "2026-11-23", "de").items[0]!.tag).not.toBe(
+      todayBody(inputs, PV, "2026-11-23", "de").items[0]!.tag,
+    );
+    expect(mobilityMark(inputs, other)).not.toBe(mobilityMark(inputs, PV));
+    expect(
+      WatchMobilityRoutineSchema.safeParse({
+        ...routineBody(sessions[0]!, PV, "de"),
+        p: undefined,
+      }).success,
+    ).toBe(false);
+  });
+
   it("gives the weekday mask with bit 0 = Monday and today's bit after strength", () => {
     const after = sessionOf(3, FLOOR_IDS, {
       placement: "after_strength",
@@ -379,6 +413,7 @@ describe("mobility mark and budgets (pure)", () => {
     });
     const list = todayBody(
       inputsOf([sessionOf(1, MORNING_IDS), sessionOf(2, FLOOR_IDS), after]),
+      PV,
       "2026-11-25", // a Wednesday
       "de",
     );
@@ -418,9 +453,7 @@ describe("GET /mobility/today and /mobility/:id", () => {
     });
     expect(again.status).toBe(304);
     // The mark is the one of the plan's mobility.
-    expect(list.mv).toBe(
-      mobilityMark(mobilityDayInputsOf(await a.store.read())),
-    );
+    expect(list.mv).toBe(await markOf(a));
   });
 
   it("serves the routine with names from the catalog in German or English, a strong ETag and 304", async () => {
@@ -435,6 +468,8 @@ describe("GET /mobility/today and /mobility/:id", () => {
     expect(de.status).toBe(200);
     const routine = WatchMobilityRoutineSchema.parse(await de.json());
     expect(routine.ex.map((e) => e.c)).toEqual(MORNING_IDS);
+    // The routine names the plan version it belongs to: the watch sends it back with the result.
+    expect(routine.p).toBe(activePlanVersionId(await a.store.read()));
     const first = mobilityExercise(MORNING_IDS[0]!)!;
     expect(routine.ex[0]).toMatchObject({ n: first.name_de, h: first.cue_de });
     // The tag of the list is the ETag of the routine.
@@ -691,7 +726,9 @@ describe("delivery with the mobility mark", () => {
     let dataset = await a.store.read();
     const v = currentPlanMark(dataset)!;
     const mv = currentMobilityMark(dataset)!;
-    expect(mv).toBe(mobilityMark(mobilityDayInputsOf(dataset)));
+    expect(mv).toBe(
+      mobilityMark(mobilityDayInputsOf(dataset), activePlanVersionId(dataset)!),
+    );
     expect(await watchDelivery(db, a.userId, dataset)).toBe("pending");
     // The old app confirms v only.
     expect((await call("POST", "/plan/ack", a.token, { v })).status).toBe(200);

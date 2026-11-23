@@ -576,10 +576,14 @@ export const WatchMobilityExerciseSchema = z.strictObject({
   r: int.min(MOBILITY_REPS_MIN).max(MOBILITY_REPS_MAX).nullable(),
 });
 
-/** One routine: id=session_id, tot=total seconds, ex=exercises. */
+/**
+ * One routine: id=session_id, p=plan_version_id of the version it belongs to
+ * (the watch sends it back with the result), tot=total seconds, ex=exercises.
+ */
 export const WatchMobilityRoutineSchema = z.strictObject({
   ...envelope,
   id,
+  p: id,
   tot: nonneg.max(MOBILITY_LIMITS.maxSeconds),
   ex: z
     .array(WatchMobilityExerciseSchema)

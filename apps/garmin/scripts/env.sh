@@ -48,7 +48,7 @@ compile() {
   shift 2
   local log
   mkdir -p "$(dirname "$out")"
-  if ! log="$("$MONKEYC" -f "$APP_DIR/monkey.jungle" -d "$device" -o "$out" \
+  if ! log="$("$MONKEYC" -f "$APP_DIR/${JUNGLE:-monkey.jungle}" -d "$device" -o "$out" \
     -y "$GARMIN_DEVELOPER_KEY" -l 3 -w "$@" 2>&1)"; then
     echo "$log" >&2
     echo "Build fehlgeschlagen: $device" >&2

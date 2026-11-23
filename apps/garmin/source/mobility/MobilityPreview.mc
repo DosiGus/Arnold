@@ -159,8 +159,10 @@ class MobilityOpener {
         var recorder = new Recorder(Uuid.v4(), new MobilityBackend());
         var signals = new MobilitySignals(new Signals(store), new Settings(store));
         var player = new MobilityPlayer(id, kind, routine as Dictionary, new PairingClock(), signals, recorder);
+        var sender = Session.mobilitySender();
+        player.connect(new MobilityJournal(store), sender.outbox(), sender.method(:sendAll));
         player.begin();
-        WatchUi.pushView(new MobilityView(player), new MobilityDelegate(player, store), WatchUi.SLIDE_LEFT);
+        WatchUi.pushView(new MobilityView(player), new MobilityDelegate(player), WatchUi.SLIDE_LEFT);
     }
 
     function pick(cache as MobilityCache) as Void {

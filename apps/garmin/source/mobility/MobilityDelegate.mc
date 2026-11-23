@@ -6,12 +6,10 @@ import Toybox.WatchUi;
 // A question pauses the player; "no" goes on again unless the user had paused it already.
 class MobilityDelegate extends WatchUi.BehaviorDelegate {
     private var _player as MobilityPlayer;
-    private var _store as KeyValueStore;
 
-    function initialize(player as MobilityPlayer, store as KeyValueStore) {
+    function initialize(player as MobilityPlayer) {
         BehaviorDelegate.initialize();
         _player = player;
-        _store = store;
     }
 
     function onSelect() as Boolean {
@@ -19,7 +17,7 @@ class MobilityDelegate extends WatchUi.BehaviorDelegate {
             _player.toggle();
         } else if (_player.isSaved()) {
             close();
-        } else if (_player.save(_store)) {
+        } else if (_player.save()) {
             // saved: the summary says so, the next key leaves
         } else {
             _player.discard();

@@ -828,6 +828,15 @@ describe("watch: today and routine fixtures", () => {
       WatchMobilityTodaySchema.safeParse({ ...today, hr: 60 }).success,
     ).toBe(false);
     const routine = fixture("mobility-routine");
+    // The routine names its plan version (p): without it the watch could not send the result as a planned one.
+    expect(WatchMobilityRoutineSchema.safeParse(routine).success).toBe(true);
+    expect(
+      WatchMobilityRoutineSchema.safeParse({ ...routine, p: undefined })
+        .success,
+    ).toBe(false);
+    expect(
+      WatchMobilityRoutineSchema.safeParse({ ...routine, p: "" }).success,
+    ).toBe(false);
     expect(
       WatchMobilityRoutineSchema.safeParse({
         ...routine,

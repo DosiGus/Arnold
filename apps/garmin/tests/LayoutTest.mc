@@ -718,7 +718,7 @@ function mobilityPlayerStatesFitEveryDisplay(logger as Logger) as Boolean {
     var done = MobPlayLayout.rig(1, null);
     done.go(5 + 20 + 5 + 5);
     MobPlayLayout.summaryFits(dc, done, "done");
-    Test.assert(done.player.save(done.store));
+    Test.assert(done.player.save());
     MobPlayLayout.summaryFits(dc, done, "saved");
     var early = MobPlayLayout.rig(1, null);
     early.go(2);

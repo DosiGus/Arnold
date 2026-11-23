@@ -20,6 +20,19 @@ module StoreKeys {
         return "mob:r:" + sessionId;
     }
 
+    const MOB_ACTIVE as String = "mob:active";        // uuid of the routine in progress (MOB-010)
+    const MOB_OUTBOX_INDEX as String = "mout:index";   // uuids of the frozen mobility results, oldest first
+
+    // Head of the routine in progress: exercises done so far, times, checksum.
+    function mobHead(uuid as String) as String {
+        return "mob:" + uuid + ":h";
+    }
+
+    // One finished routine waiting to be sent.
+    function mobOutbox(uuid as String) as String {
+        return "mout:" + uuid;
+    }
+
     // Session ids of the routines finished on this watch on a local date ("2026-11-23"), MOB-010.
     function mobDone(date as String) as String {
         return "mob:done:" + date;

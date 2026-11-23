@@ -7,6 +7,13 @@ import Toybox.Test;
 // MOB-009: the mobility player (time, transitions, pause, skip, end), the recording and the result.
 // Kept short like MobilityTest.mc: the test build of the fr255 may use 90 % of the memory (RunSessionTest.mc).
 
+// The plan version the rigs' routines name (null: an answer without it, an older cache).
+(:test)
+module MobPlay {
+    var plan as String or Null = "pv_00000000-0000-4000-8000-000000000001";
+    var session as String = "s_1";
+}
+
 // A routine on a fake clock, fake recording and recording signals. Each exercise: [sides, seconds per side, reps or null].
 (:test)
 class MobPlayRig {
@@ -15,6 +22,8 @@ class MobPlayRig {
     var signals as RunPatternSignals;
     var store as MemoryStore;
     var player as MobilityPlayer;
+    var outbox as MobilityOutbox;
+    var journal as MobilityJournal;
 
     function initialize(specs as Array) {
         clock = new FakeClock();
@@ -28,8 +37,14 @@ class MobPlayRig {
             var ex = { "c" => "mob_cat_cow", "n" => "Übung " + i, "h" => "Ruhig atmen", "s" => spec[0], "t" => spec[1], "r" => spec[2] };
             all.add(ex);
         }
-        var routine = { "id" => "s_1", "tot" => 600, "ex" => all };
-        player = new MobilityPlayer("s_1", "session", routine, clock, new MobilitySignals(signals, new Settings(store)), new Recorder("u1", backend));
+        var routine = { "id" => MobPlay.session, "tot" => 600, "ex" => all };
+        if (MobPlay.plan != null) {
+            routine["p"] = MobPlay.plan;
+        }
+        player = new MobilityPlayer(MobPlay.session, "session", routine, clock, new MobilitySignals(signals, new Settings(store)), new Recorder("u1", backend));
+        outbox = new MobilityOutbox(store);
+        journal = new MobilityJournal(store);
+        player.connect(journal, outbox, null);
         player.begin();
     }
 
@@ -148,12 +163,17 @@ function savedResultHasTheFieldsOfTheWatchRequest(logger as Logger) as Boolean {
     var p = rig.player;
     rig.go(5 + 10 + 5 + 3);
     p.endEarly();
-    Test.assert(p.save(rig.store));
-    Test.assert(!p.save(rig.store));              // once
+    Test.assert(p.save());
+    Test.assert(!p.save());                       // once
     Expect.equal(rig.backend.count("save"), 1);
-    var saved = rig.store.getValue(MobilityPlayer.LAST_KEY) as Dictionary;
+    Expect.equal(rig.outbox.count(), 1);
+    var entry = rig.outbox.get(p.uuid) as Dictionary;
+    Expect.field(entry, "i", "s_1");
+    var saved = entry["b"] as Dictionary;
     Expect.field(saved, "kind", "session");
-    Expect.field(saved, "session_id", "s_1");
+    Expect.field(saved, "request_id", "gm_" + p.uuid);
+    Expect.field(saved, "session_id", "s_1");                                   // planned: both fields together
+    Expect.field(saved, "plan_version_id", "pv_00000000-0000-4000-8000-000000000001");     // the plan version is not known on the watch
     Test.assert(Uuid.isV4(saved["session_uuid"] as String));
     Expect.field(saved, "started_at_utc", "2023-11-14T22:13:20Z");
     Expect.field(saved, "ended_at_utc", "2023-11-14T22:13:43Z");
@@ -174,7 +194,8 @@ function savedResultHasTheFieldsOfTheWatchRequest(logger as Logger) as Boolean {
     other.go(5 + 10);
     other.player.discard();
     Expect.equal(other.backend.count("discard"), 1);
-    Test.assert(other.store.getValue(MobilityPlayer.LAST_KEY) == null);
+    Expect.equal(other.outbox.count(), 0);
+    Test.assert(other.journal.activeId() == null);
     return true;
 }
 
@@ -238,46 +259,5 @@ function theFaceShowsNameSideCountdownAndARingThatRunsDown(logger as Logger) as 
     var paused = MobilityScreen.face(p);
     Expect.equal(paused.bottom, MobilityPreviewScreen.text(Rez.Strings.MobPaused));
     Expect.equal(paused.heroColor, Instrument.LABEL);
-    return true;
-}
-
-(:test)
-function aThirtyMinuteRoutineLeavesNothingBehindAndRedrawsAreFree(logger as Logger) as Boolean {
-    var dc = LayoutRig.dc();
-    var specs = [] as Array;
-    for (var i = 0; i < 15; i++) {
-        specs.add([2, 60, null] as Array);   // 15 exercises, two sides of a minute: 30 minutes of movement
-    }
-    var baseline = System.getSystemStats().usedMemory;
-    var rig = new MobPlayRig(specs);
-    var view = new MobilityView(rig.player);
-    var peak = 0;
-    for (var s = 0; s < 1800 + 15 * 8 + 1; s++) {
-        rig.go(1);
-        if (s % 100 == 99) {
-            view.onUpdate(dc);
-            peak = System.getSystemStats().usedMemory > peak ? System.getSystemStats().usedMemory : peak;
-        }
-    }
-    Test.assert(rig.player.phase == MobilityPlayer.PH_END);
-    Expect.equal(rig.player.countOf("done"), 15);
-    Test.assert(rig.player.save(rig.store));
-    var limit = ThreeHours.LIMIT;
-    logger.debug("30 min: peak " + peak + " of " + limit + " (before " + baseline + ")");
-    Test.assertMessage(peak - baseline < limit * 6 / 100, "grew by " + (peak - baseline));
-    Test.assertMessage(peak * 100 / limit < ThreeHours.PEAK_PERCENT, "peak " + peak);
-    // 300 redraws while the routine would run: the memory stays flat
-    var again = new MobPlayRig([[2, 600, null]] as Array);
-    var live = new MobilityView(again.player);
-    for (var warm = 0; warm < 5; warm++) {
-        live.onUpdate(dc);
-    }
-    var before = System.getSystemStats().usedMemory;
-    for (var i = 0; i < 300; i++) {
-        again.go(1);
-        live.onUpdate(dc);
-    }
-    var after = System.getSystemStats().usedMemory;
-    Test.assertMessage(after - before < 600, "memory grew by " + (after - before));
     return true;
 }

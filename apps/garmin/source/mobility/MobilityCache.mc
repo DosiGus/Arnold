@@ -139,6 +139,9 @@ class MobilityCache {
             exercises.add({ "c" => raw["c"], "n" => raw["n"], "h" => raw["h"], "s" => raw["s"], "t" => raw["t"], "r" => raw["r"] });
         }
         var routine = { "id" => body["id"], "tot" => body["tot"], "ex" => exercises };
+        if (body["p"] instanceof String) {
+            routine["p"] = body["p"];   // the plan version the routine belongs to (MOB-010); an older answer has none
+        }
         var entry = { "tag" => tag, "at" => now, "r" => routine };
         _store.setValue(StoreKeys.mobRoutine(id), entry as Application.Storage.ValueType);
         return true;
@@ -197,6 +200,19 @@ class MobilityCache {
             }
         }
         return out;
+    }
+
+    // A routine was sent: noted for its local date, so the start screen does not offer it again (MOB-010). Notes of
+    // dates a week back are dropped, so they do not pile up.
+    function markDone(date as String, sessionId as String, now as Number, offsetMinutes as Number) as Void {
+        var list = doneLocal(date);
+        if (list.indexOf(sessionId) < 0) {
+            list.add(sessionId);
+            _store.setValue(StoreKeys.mobDone(date), list as Application.Storage.ValueType);
+        }
+        for (var days = 8; days < 16; days++) {
+            _store.deleteValue(StoreKeys.mobDone(Clock.localDate(now - days * 86400, offsetMinutes)));
+        }
     }
 
     // Done today: the server says so (only for the date of its list) or this watch noted it.

@@ -23,6 +23,7 @@ import {
 import { mobilityExercise } from "../../shared/mobility-catalog.js";
 import { RUN_WATCH_API_VERSION } from "../../shared/run-contract.js";
 import { WATCH_MIN_APP_VERSION } from "../../shared/watch-contract.js";
+import type { ArnoldDataset } from "../../shared/arnold-schema-v1.js";
 import type { DatabaseArnoldRuntime } from "../db/runtime.js";
 import {
   isoWeekday,
@@ -86,11 +87,17 @@ function nameOf(session: MobilityDaySession, lang: WatchLanguage): string {
 }
 
 /** The routine as the watch loads it, in one language. */
-export function routineBody(session: MobilityDaySession, lang: WatchLanguage) {
+export function routineBody(
+  session: MobilityDaySession,
+  planVersionId: string,
+  lang: WatchLanguage,
+) {
   return WatchMobilityRoutineSchema.parse({
     api_version: RUN_WATCH_API_VERSION,
     min_app_version: WATCH_MIN_APP_VERSION,
     id: session.session_id,
+    // The version the routine belongs to: the watch sends it back with the result.
+    p: planVersionId,
     tot: session.template.total_s,
     ex: session.template.items.map((item) => {
       const exercise = mobilityExercise(item.exercise_id);
@@ -109,9 +116,13 @@ export function routineBody(session: MobilityDaySession, lang: WatchLanguage) {
 }
 
 /** Up to 16 characters of the hash of the routine as the watch gets it: its ETag without the quotes. */
-export const routineTag = (session: MobilityDaySession, lang: WatchLanguage) =>
+export const routineTag = (
+  session: MobilityDaySession,
+  planVersionId: string,
+  lang: WatchLanguage,
+) =>
   createHash("sha256")
-    .update(JSON.stringify(routineBody(session, lang)))
+    .update(JSON.stringify(routineBody(session, planVersionId, lang)))
     .digest("hex")
     .slice(0, 16);
 
@@ -123,16 +134,31 @@ const watchSessions = (inputs: MobilityDayInputs) =>
 export const hasWatchMobility = (inputs: MobilityDayInputs) =>
   watchSessions(inputs).length > 0;
 
+/** The plan version the routines belong to: the latest activated active one, as in the mobility day facts. */
+export function activePlanVersionId(dataset: ArnoldDataset): string | null {
+  return (
+    [...dataset.plans]
+      .filter((p) => p.status === "active" && p.activated_at_utc !== null)
+      .sort((a, b) => b.activated_at_utc!.localeCompare(a.activated_at_utc!))[0]
+      ?.plan_version_id ?? null
+  );
+}
+
 /**
  * The mobility mark: 16 hex over what the watch loads of the plan's mobility,
- * the routines with their weekdays and timing, without names and cues, so the
- * language of the watch does not change it. A new plan or an edited routine does.
+ * the version, the routines with their weekdays and timing, without names and
+ * cues, so the language of the watch does not change it. A new plan version or
+ * an edited routine does.
  */
-export function mobilityMark(inputs: MobilityDayInputs): string {
+export function mobilityMark(
+  inputs: MobilityDayInputs,
+  planVersionId: string,
+): string {
   return createHash("sha256")
     .update(
-      JSON.stringify(
-        watchSessions(inputs).map((s) => [
+      JSON.stringify([
+        planVersionId,
+        ...watchSessions(inputs).map((s) => [
           s.session_id,
           s.kind,
           s.minutes,
@@ -146,7 +172,7 @@ export function mobilityMark(inputs: MobilityDayInputs): string {
             i.reps,
           ]),
         ]),
-      ),
+      ]),
     )
     .digest("hex")
     .slice(0, 16);
@@ -155,6 +181,7 @@ export function mobilityMark(inputs: MobilityDayInputs): string {
 /** The list: every routine of the plan, the day in the user's calendar, the mark. */
 export function todayBody(
   inputs: MobilityDayInputs,
+  planVersionId: string,
   today: string,
   lang: WatchLanguage,
 ) {
@@ -175,13 +202,13 @@ export function todayBody(
         : weekdayMask(s.weekdays),
     a: s.placement === "after_strength" ? s.after_session_id : null,
     dn: doneToday.has(s.session_id),
-    tag: routineTag(s, lang),
+    tag: routineTag(s, planVersionId, lang),
   }));
   return WatchMobilityTodaySchema.parse({
     api_version: RUN_WATCH_API_VERSION,
     min_app_version: WATCH_MIN_APP_VERSION,
     d: today,
-    mv: mobilityMark(inputs),
+    mv: mobilityMark(inputs, planVersionId),
     items,
   });
 }
@@ -207,11 +234,13 @@ async function inputsOf(runtime: DatabaseArnoldRuntime, call: WatchCall) {
   const now = runtime.options.now
     ? new Date(runtime.options.now())
     : new Date();
+  const dataset = await user.store.read();
   return {
     user,
     timezone,
     today: localDayOf(now, timezone),
-    inputs: mobilityDayInputsOf(await user.store.read()),
+    inputs: mobilityDayInputsOf(dataset),
+    planVersionId: activePlanVersionId(dataset) ?? "",
   };
 }
 
@@ -219,9 +248,9 @@ async function today(
   runtime: DatabaseArnoldRuntime,
   call: WatchCall,
 ): Promise<WatchReply> {
-  const { today: day, inputs } = await inputsOf(runtime, call);
+  const { today: day, inputs, planVersionId } = await inputsOf(runtime, call);
   const body = withinBudget(
-    todayBody(inputs, day, call.lang),
+    todayBody(inputs, planVersionId, day, call.lang),
     MOBILITY_WATCH_BUDGET_BYTES.today,
   );
   const tag = etagOf(body);
@@ -235,7 +264,7 @@ async function detail(
   runtime: DatabaseArnoldRuntime,
   call: WatchCall,
 ): Promise<WatchReply> {
-  const { inputs } = await inputsOf(runtime, call);
+  const { inputs, planVersionId } = await inputsOf(runtime, call);
   // A stranger's or malformed id looks like a missing one.
   const session = watchSessions(inputs).find(
     (s) => s.session_id === call.params.id,
@@ -243,10 +272,10 @@ async function detail(
   if (!session)
     throw new WatchApiError("VALIDATION_ERROR", 404, false, {}, "id");
   const body = withinBudget(
-    routineBody(session, call.lang),
+    routineBody(session, planVersionId, call.lang),
     MOBILITY_WATCH_BUDGET_BYTES.routine,
   );
-  const tag = `"${routineTag(session, call.lang)}"`;
+  const tag = `"${routineTag(session, planVersionId, call.lang)}"`;
   const headers = { ETag: tag, Vary: "Accept-Language" };
   return matches(call.headers["if-none-match"], tag)
     ? { status: 304, headers }

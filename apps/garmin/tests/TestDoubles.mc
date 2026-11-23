@@ -170,4 +170,32 @@ module Expect {
     function field(dict as Dictionary, key as String, expected as Object or Null) as Void {
         equal(valueOf(dict, key), expected);
     }
+
+    // Two requests with the same content (a repeat of the frozen request).
+    function same(a as Dictionary, b as Dictionary) as Boolean {
+        return bytes(a) == bytes(b) && a.toString().equals(b.toString());
+    }
+
+    // A rough size of a stored value in bytes (text and numbers, containers by their parts).
+    function bytes(value as Object or Null) as Number {
+        if (value instanceof String) {
+            return (value as String).length() + 2;
+        }
+        if (value instanceof Array) {
+            var sum = 2;
+            for (var i = 0; i < (value as Array).size(); i++) {
+                sum += bytes((value as Array)[i] as Object or Null) + 1;
+            }
+            return sum;
+        }
+        if (value instanceof Dictionary) {
+            var total = 2;
+            var keys = (value as Dictionary).keys();
+            for (var j = 0; j < keys.size(); j++) {
+                total += bytes(keys[j] as Object or Null) + bytes((value as Dictionary)[keys[j]] as Object or Null) + 2;
+            }
+            return total;
+        }
+        return 11;
+    }
 }
