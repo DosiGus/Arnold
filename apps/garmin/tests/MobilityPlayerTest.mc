@@ -265,7 +265,7 @@ function aThirtyMinuteRoutineLeavesNothingBehindAndRedrawsAreFree(logger as Logg
     var limit = ThreeHours.LIMIT;
     logger.debug("30 min: peak " + peak + " of " + limit + " (before " + baseline + ")");
     Test.assertMessage(peak - baseline < limit * 6 / 100, "grew by " + (peak - baseline));
-    Test.assertMessage(peak * 100 / limit < 90, "peak " + peak);
+    Test.assertMessage(peak * 100 / limit < ThreeHours.PEAK_PERCENT, "peak " + peak);
     // 300 redraws while the routine would run: the memory stays flat
     var again = new MobPlayRig([[2, 600, null]] as Array);
     var live = new MobilityView(again.player);
