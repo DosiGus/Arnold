@@ -20,6 +20,11 @@ import { recordingMetrics } from "../analytics/recording.js";
 import { DEFAULT_REST_SECONDS } from "../analytics/session-duration.js";
 import type { WatchRecordingData, WatchSnapshotData } from "./arnold-source.js";
 import {
+  mobilityAdherenceOf,
+  mobilityDueToday,
+  type DatasetWithMobility,
+} from "./mobility/day.js";
+import {
   buildArnoldDashboardAnalytics,
   buildHomeAnalytics,
   buildScores,
@@ -700,11 +705,53 @@ function workingSetKpi(analytics: ArnoldDashboardAnalytics): ViewMetric {
  * The start screen. Copies the engine's figures and adds what only the data
  * knows: exercise names and muscle groups. Nothing is recomputed here.
  */
+function homeMobility(
+  dataset: ArnoldDataset,
+  referenceDate: string | null,
+): ArnoldHome["mobility"] {
+  const inputs = (dataset as DatasetWithMobility).mobilityDay;
+  // Only for a user who said yes, and only with a known day (never a guess).
+  if (!inputs || inputs.wants !== true || referenceDate === null)
+    return undefined;
+  const adherence = mobilityAdherenceOf(inputs, referenceDate, null);
+  const due = mobilityDueToday(inputs, referenceDate);
+  const morning = due.find((entry) => entry.session.kind === "morning");
+  const sessionsOpen = due.filter(
+    (entry) => entry.session.kind !== "morning" && !entry.done,
+  ).length;
+  const parts = [
+    morning
+      ? morning.done
+        ? "Morgenroutine erledigt"
+        : "Morgenroutine noch offen"
+      : null,
+    adherence.streak_days >= 2
+      ? `${adherence.streak_days} Tage in Folge`
+      : null,
+    adherence.ratio !== null
+      ? `${Math.round(adherence.ratio * 100)} % der geplanten Routinen in ${Math.round(adherence.days / 7)} Wochen`
+      : null,
+  ].filter((part): part is string => part !== null);
+  return {
+    morning: morning ? (morning.done ? "done" : "open") : null,
+    sessions_open: sessionsOpen,
+    adherence: {
+      ratio: adherence.ratio,
+      streak_days: adherence.streak_days,
+      planned_count: adherence.planned_count,
+      done_count: adherence.done_count,
+      days: adherence.days,
+    },
+    line: parts.length ? parts.join(" · ") : "Mobility ist eingerichtet.",
+  };
+}
+
 function homeView(
   dataset: ArnoldDataset,
   names: ReadonlyMap<string, string>,
   home: HomeAnalytics,
 ): ArnoldHome {
+  const mobility = homeMobility(dataset, home.reference_date);
   const muscle = new Map(
     dataset.exercises.map((e) => [e.exercise_id, e.primary_muscle.trim()]),
   );
@@ -777,6 +824,7 @@ function homeView(
     latest_body_weight: home.latest_body_weight
       ? { ...home.latest_body_weight }
       : null,
+    ...(mobility ? { mobility } : {}),
   };
 }
 

@@ -4,6 +4,7 @@ import {
 } from "../../shared/arnold-schema-v1.js";
 import { storeSource } from "../arnold-source.js";
 import { RunService } from "../run/service.js";
+import { MobilityService } from "../mobility/service.js";
 import { WorkoutLoggingService } from "./service.js";
 import {
   FixtureAuthorizationGuard,
@@ -168,7 +169,13 @@ export function createFixtureLogging(
     authorization: new FixtureAuthorizationGuard(dataset.config.tracker_id),
     healthConsent: options.healthConsent,
   });
-  return { source, service, store, runs };
+  const mobility = new MobilityService({
+    mode: "fixture",
+    trackerId: dataset.config.tracker_id,
+    store,
+    authorization: new FixtureAuthorizationGuard(dataset.config.tracker_id),
+  });
+  return { source, service, store, runs, mobility };
 }
 /**
  * The write mode the environment asks for. Only the fixture profile is chosen

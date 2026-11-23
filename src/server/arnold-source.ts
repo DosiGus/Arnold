@@ -14,6 +14,11 @@ import {
   type DatasetWithRunDays,
 } from "../analytics/activity.js";
 import { runRecapInputsOf } from "../analytics/recap.js";
+import {
+  mobilityDayInputsOf,
+  type DatasetWithMobility,
+} from "./mobility/day.js";
+import { trainingView } from "./plan/adjustment-rules.js";
 import { scoreRunsOf, type ScoreHealthInput } from "../analytics/scores.js";
 import type { Recovery } from "../shared/write-recovery.js";
 import type { ArnoldDataset } from "../shared/arnold-schema-v1.js";
@@ -173,7 +178,7 @@ export function storeSource(
       // UX-014: the recap after a run reads the same way.
       const runRecaps = runRecapInputsOf(parsed.data);
       const strength = strengthTrainingView(parsed.data);
-      const dataset: DatasetWithRunDays = runDays.length
+      const withRuns: DatasetWithRunDays = runDays.length
         ? {
             ...strength,
             runTrainingDates: runDays,
@@ -181,6 +186,22 @@ export function storeSource(
             ...(runRecaps.length ? { runRecapInputs: runRecaps } : {}),
           }
         : strength;
+      // MOB-005: the mobility facts travel next to the strength view, as the
+      // run days do, only where mobility exists at all (anything else stays
+      // byte-identical). The plan that applies now is the one a running
+      // adjustment for a while stands in with.
+      const mobilityData =
+        parsed.data.mobilityProfiles?.length ||
+        parsed.data.planMobilitySessions?.length ||
+        parsed.data.mobilityResults?.length;
+      const dataset: DatasetWithRunDays & DatasetWithMobility = mobilityData
+        ? {
+            ...withRuns,
+            mobilityDay: mobilityDayInputsOf(
+              trainingView(parsed.data, new Date()),
+            ),
+          }
+        : withRuns;
       return {
         // Dashboard, analytics and workout lists read strength training
         // only; runs and planned workouts are left out (RUN-003).

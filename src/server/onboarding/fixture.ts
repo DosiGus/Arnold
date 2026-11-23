@@ -13,6 +13,7 @@
  */
 import { logStartWeight } from "../workout/start-weight.js";
 import { recordSetupRunProfile } from "./run-profile.js";
+import { recordSetupMobilityProfile } from "../mobility/setup.js";
 import { randomUUID } from "node:crypto";
 import type { ArnoldDataset } from "../../shared/arnold-schema-v1.js";
 import type { ArnoldDataSource } from "../arnold-source.js";
@@ -70,6 +71,13 @@ export function createFixtureOnboarding(
       logStartWeight(planning.service, weightKg, requestId, context),
     recordRunProfile: (run, sessionId, context) =>
       recordSetupRunProfile(planning.runs, run, sessionId, context),
+    recordMobilityProfile: (preference, sessionId, context) =>
+      recordSetupMobilityProfile(
+        planning.mobility,
+        preference,
+        sessionId,
+        context,
+      ),
     sessionTtlMs: options.sessionTtlMs,
     clock: options.clock,
     id: options.id,

@@ -375,8 +375,31 @@ export const MOBILITY_WRITE_OPERATIONS = [
 ] as const;
 export type MobilityWriteOperation = (typeof MOBILITY_WRITE_OPERATIONS)[number];
 
+/**
+ * The user's IANA time zone. "Today" and the date of a routine logged in chat
+ * are the user's calendar day in this zone, never the UTC day. Absent: the
+ * service falls back to the zone of the user's last workout and otherwise
+ * refuses (it never guesses UTC).
+ */
+export const MobilityTimezoneSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .refine((value) => {
+    try {
+      new Intl.DateTimeFormat("en", { timeZone: value });
+      return true;
+    } catch {
+      return false;
+    }
+  }, "Unbekannte Zeitzone (IANA, z. B. Europe/Berlin).");
+
 export const MobilityToolInputs = {
-  get_mobility_overview: z.strictObject({}),
+  get_mobility_overview: z.strictObject({
+    timezone: MobilityTimezoneSchema.optional().describe(
+      "Zeitzone des Nutzers (IANA, z. B. Europe/Berlin); „heute“ wird in dieser Zone bestimmt.",
+    ),
+  }),
   update_mobility_profile: z.strictObject({
     request_id: requestId,
     preference: MobilityPreferenceSchema,
@@ -392,6 +415,8 @@ export const MobilityToolInputs = {
     minutes: int.min(1).max(MOBILITY_LIMITS.logMinutesMax).optional(),
     /** Only after the user said yes to logging the same routine twice that day. */
     confirm_duplicate: z.boolean().optional(),
+    /** Zone of the user; decides "today" when no date is given. */
+    timezone: MobilityTimezoneSchema.optional(),
   }),
 } as const;
 export type MobilityToolName = keyof typeof MobilityToolInputs;
