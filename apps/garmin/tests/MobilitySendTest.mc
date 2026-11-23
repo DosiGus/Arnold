@@ -121,7 +121,7 @@ function aDuplicateCountsAsSentARefusalStaysAndTheTokenGoesToPairing(logger as L
     rig.outbox.addResult(rig.result("s_3", 1), rig.plan.pairing.clock.now);
     rig.sender.sendAll();
     rig.plan.pairing.transport.respond(401, null);
-    Expect.equal(rig.rejected.count() as Number, 1);
+    Expect.equal(rig.rejected.count, 1);
     Expect.equal(rig.outbox.count(), 1);
     return true;
 }

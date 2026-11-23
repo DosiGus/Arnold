@@ -67,7 +67,16 @@ for lang in "${langs[@]}"; do
   # Memory (3 h of a run, 30 min of mobility): once per device, in English (the language does not change the memory).
   if [[ "$lang" == eng ]]; then
     for device in "${targets[@]}"; do
-      out="$("$MONKEYDO" "$BIN_DIR/memory-$device.prg" "$device" -t 2>&1 || true)"
+      prg="$BIN_DIR/memory-$device.prg"
+      for attempt in 1 2 3; do
+        out="$("$MONKEYDO" "$prg" "$device" -t 2>&1 || true)"
+        grep -qE '^(PASSED|FAILED) \(' <<<"$out" && break
+        if grep -q 'Unable to connect to simulator' <<<"$out"; then
+          start_simulator
+          bash "$(dirname "$0")/sim-language.sh" "$lang" "$prg" "$device" >/dev/null 2>&1 || true
+        fi
+        sleep 3
+      done
       summary="$(grep -E '^(PASSED|FAILED) \(' <<<"$out" || true)"
       runs=$((runs + 1))
       peaks="$(grep -E '(3 h|30 min): peak' <<<"$out" | sed -E 's/^DEBUG \([0-9:]+\): //' | tr '\n' ';' || true)"
