@@ -27,14 +27,17 @@ export type Harness = ReturnType<typeof harness>;
 
 export function harness(
   shape: PlanFixtureShape = "active_ppl",
-  options: { now?: string } = {},
+  options: { now?: string; dataset?: ArnoldDataset } = {},
 ) {
   let counter = 0;
   let instant = Date.parse(options.now ?? NOW);
-  const runtime = createFixturePlanning(planFixtureDataset(shape), {
-    id: () => `gen-${String(++counter).padStart(3, "0")}`,
-    clock: () => new Date(instant),
-  });
+  const runtime = createFixturePlanning(
+    options.dataset ?? planFixtureDataset(shape),
+    {
+      id: () => `gen-${String(++counter).padStart(3, "0")}`,
+      clock: () => new Date(instant),
+    },
+  );
   return {
     ...runtime,
     /** Moves the fixed clock forward, so two operations get distinct stamps. */
