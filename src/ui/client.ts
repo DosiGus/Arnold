@@ -32,6 +32,11 @@ import {
   type RunCardView,
 } from "../shared/run-card-contract";
 import {
+  MobilityCardSchema,
+  MobilityCardViewSchema,
+  type MobilityCardView,
+} from "../shared/mobility-contract";
+import {
   RunWriteResponseSchema,
   ScheduleRunWeekResponseSchema,
 } from "../shared/run-contract";
@@ -63,6 +68,8 @@ export type ArnoldPayload =
   | { contract: "garmin"; garmin: GarminPayload }
   /** A run card (RUN-010); it loads its own numbers from the run tools. */
   | { contract: "run"; run: RunCardView }
+  /** A mobility card (MOB-012); it loads its own numbers from the mobility tools. */
+  | { contract: "mobility"; mobility: MobilityCardView }
   /** The setup wizard. Its own contract, so it never renders dashboard data. */
   | { contract: "onboarding"; onboarding: OnboardingView };
 
@@ -117,6 +124,9 @@ export class ArnoldClient {
     if (!content || typeof content !== "object") return null;
     const runCard = RunCardViewSchema.safeParse(content);
     if (runCard.success) return { contract: "run", run: runCard.data };
+    const mobilityCard = MobilityCardViewSchema.safeParse(content);
+    if (mobilityCard.success)
+      return { contract: "mobility", mobility: mobilityCard.data };
     // Checked first and by its own contract field: an onboarding payload must
     // never be mistaken for a dashboard, and vice versa.
     const onboarding = OnboardingViewSchema.safeParse(content);
@@ -191,7 +201,11 @@ export class ArnoldClient {
    * the chat history. The wizard reloads itself once mounted instead.
    */
   private refreshTool(payload: ArnoldPayload | null) {
-    if (payload?.contract === "onboarding" || payload?.contract === "run")
+    if (
+      payload?.contract === "onboarding" ||
+      payload?.contract === "run" ||
+      payload?.contract === "mobility"
+    )
       return null;
     if (payload?.contract === "account") return "delete_arnold_account";
     // A pairing cannot be asked again without counting as an attempt, and a
@@ -316,6 +330,17 @@ export class ArnoldClient {
       if (runCard.success) {
         await this.call("show_arnold_run", {
           card: runCard.data,
+          ...(garmin.get("workout_id")
+            ? { workout_id: garmin.get("workout_id") }
+            : {}),
+        });
+        return;
+      }
+      // `?mobility=mobility_today` opens a mobility card.
+      const mobilityCard = MobilityCardSchema.safeParse(garmin.get("mobility"));
+      if (mobilityCard.success) {
+        await this.call("show_arnold_mobility", {
+          card: mobilityCard.data,
           ...(garmin.get("workout_id")
             ? { workout_id: garmin.get("workout_id") }
             : {}),

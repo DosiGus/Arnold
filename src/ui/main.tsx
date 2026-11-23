@@ -8,6 +8,7 @@ import "./style.css";
 import { AccountCard } from "./views/AccountCard";
 import { GarminCard } from "./views/GarminCard";
 import { RunCardApp } from "./run/RunCardApp";
+import { MobilityCardApp } from "./mobility/MobilityCardApp";
 import { CardSkeleton } from "./components/cards";
 import { RecoveryCard } from "./components/recovery";
 import type { UiFailure } from "./recovery";
@@ -88,6 +89,8 @@ function Boot() {
     <GarminCard client={mcp} initial={payload.garmin} />
   ) : payload.contract === "run" ? (
     <RunCardApp client={mcp} initial={payload.run} />
+  ) : payload.contract === "mobility" ? (
+    <MobilityCardApp client={mcp} initial={payload.mobility} />
   ) : payload.contract === "onboarding" ? (
     <OnboardingView
       client={mcp}
