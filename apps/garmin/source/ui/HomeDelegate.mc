@@ -50,7 +50,9 @@ class HomeDelegate extends PairingDelegate {
     // A free run opens the pre-start screen at once; a planned run from its stored
     // prescription (without it the runs are loaded again).
     hidden function startRun(stop as HomeStop) as Void {
-        if (stop.kind == HomeStop.STOP_RUN_RESUME) {
+        if (stop.kind == HomeStop.STOP_MOBILITY || stop.kind == HomeStop.STOP_MOBILITY_PICK) {
+            startMobility(stop);
+        } else if (stop.kind == HomeStop.STOP_RUN_RESUME) {
             _run.opener().resume();
         } else if (stop.kind == HomeStop.STOP_FREE) {
             _run.opener().open(new PreStartRequest(PreStartRequest.MODE_FREE, "", null).with(null, _run.sync.cache.healthConsent()));
@@ -65,6 +67,21 @@ class HomeDelegate extends PairingDelegate {
             } else {
                 _run.sync.start();
             }
+        }
+    }
+
+    // MOB-008: a mobility row opens the preview of its routine (the player follows in MOB-009), the row
+    // "Mobility" the short choice of all entries.
+    hidden function startMobility(stop as HomeStop) as Void {
+        var loader = _run.mobility;
+        if (loader == null) {
+            return;
+        }
+        var cache = (loader as MobilitySync).cache;
+        if (stop.kind == HomeStop.STOP_MOBILITY_PICK) {
+            _run.mobilityOpener.pick(cache);
+        } else {
+            _run.mobilityOpener.preview(cache, stop.id);
         }
     }
 

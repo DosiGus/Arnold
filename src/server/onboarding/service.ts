@@ -62,6 +62,7 @@ import type {
   PlanValidationResult,
   TrainingPlanVersion,
 } from "../../shared/plan-contract.js";
+import type { MobilityPreference } from "../../shared/mobility-contract.js";
 import type { TrainingPlanService } from "../plan/service.js";
 import {
   uuid7,
@@ -88,6 +89,7 @@ import {
   validateProposalAgainstProfile,
   runSetupState,
   wantsRunning,
+  openQuestions,
 } from "./profile.js";
 import {
   RepositoryConflictError,
@@ -159,6 +161,18 @@ export interface OnboardingServiceOptions {
   recordRunProfile?: (
     run: OnboardingRun,
     sessionId: string,
+    context: unknown,
+  ) => Promise<void>;
+  /**
+   * Hands the mobility answer to the mobility service once the setup is
+   * finished and the plan is active. Called whenever the profile holds a
+   * mobility answer, a "no" included, so the question is never asked again.
+   * Throws when the mobility service refused. Absent where a deployment keeps
+   * no mobility data.
+   */
+  recordMobilityProfile?: (
+    preference: MobilityPreference,
+    onboardingSessionId: string,
     context: unknown,
   ) => Promise<void>;
   clock?: () => Date;
@@ -599,6 +613,11 @@ export class OnboardingService {
       : record.session;
     const complete = isProfileComplete(session.profile);
     const runSetup = this.runSetup(session.profile);
+    // Questions are moot once the setup has ended.
+    const ended =
+      session.status === "COMPLETED" ||
+      session.status === "CANCELLED" ||
+      session.status === "EXPIRED";
     return OnboardingStateSchema.parse({
       onboarding_contract: ONBOARDING_CONTRACT,
       session: {
@@ -634,6 +653,7 @@ export class OnboardingService {
         : [],
       split_options: splitsForDays(session.profile.training.days_per_week),
       run_setup: runSetup,
+      open_questions: ended ? [] : openQuestions(session.profile, runSetup),
       mode: this.mode,
       setup_finish_available: this.options.setupFinishAvailable ?? false,
       can_write_plan: Boolean(this.options.plans),
@@ -1503,9 +1523,12 @@ export class OnboardingService {
       // Fail closed before anything is activated: a setup with the running
       // goal must not finish where nothing can keep the run profile.
       this.assertRunServiceFor(record.session);
+      this.assertMobilityServiceFor(record.session);
       if (record.session.status === "COMPLETED") {
-        // A finish whose run hand-over failed is repeated until it holds.
+        // A finish whose run or mobility hand-over failed is repeated until
+        // it holds.
         await this.applyRunProfile(record.session, context);
+        await this.applyMobilityProfile(record.session, context);
         return {
           state: await this.project(record),
           token: null,
@@ -1590,6 +1613,7 @@ export class OnboardingService {
       // The user asked for runs: unlike the start weight, losing these
       // answers silently would leave a plan with runs and no run profile.
       await this.applyRunProfile(done.session, context);
+      await this.applyMobilityProfile(done.session, context);
       const weight = done.session.profile.person.body_weight_kg;
       if (weight !== undefined && this.options.recordStartWeight)
         // A convenience on top of a finished setup: the setup is stored and
@@ -1641,6 +1665,47 @@ export class OnboardingService {
       throw new OnboardingError(
         "PLAN_WRITE_UNAVAILABLE",
         "Dein Plan ist aktiv, aber die Laufangaben konnten noch nicht gespeichert werden. Tippe noch einmal auf „Einrichtung abschließen“.",
+        true,
+      );
+    }
+  }
+
+  /**
+   * A setup that holds a mobility answer needs a mobility service to keep it.
+   * Without one the finish is refused, never silently skipped.
+   */
+  private assertMobilityServiceFor(session: OnboardingRecord["session"]) {
+    if (session.profile.training.mobility === undefined) return;
+    if (this.options.recordMobilityProfile) return;
+    throw fail(
+      "PLAN_WRITE_UNAVAILABLE",
+      "In dieser Umgebung können Mobility-Angaben nicht gespeichert werden. Die Einrichtung mit einer Mobility-Antwort lässt sich hier nicht abschließen.",
+    );
+  }
+
+  /**
+   * Hands the mobility answer to the mobility service, a "no" included. The
+   * service's own request id rules make this safe to repeat. A refusal is
+   * reported, not swallowed.
+   */
+  private async applyMobilityProfile(
+    session: OnboardingRecord["session"],
+    context: unknown,
+  ) {
+    const mobility = session.profile.training.mobility;
+    if (mobility === undefined) return;
+    if (!this.options.recordMobilityProfile)
+      return this.assertMobilityServiceFor(session);
+    try {
+      await this.options.recordMobilityProfile(
+        mobility,
+        session.onboarding_session_id,
+        context,
+      );
+    } catch {
+      throw new OnboardingError(
+        "PLAN_WRITE_UNAVAILABLE",
+        "Dein Plan ist aktiv, aber die Mobility-Angaben konnten noch nicht gespeichert werden. Tippe noch einmal auf „Einrichtung abschließen“.",
         true,
       );
     }

@@ -1,3 +1,4 @@
+import Toybox.Application;
 import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.Position;
@@ -484,5 +485,177 @@ function theSettingsMenuHasAllSixSwitches(logger as Logger) as Boolean {
         count++;
     }
     Test.assertEqual(count, 6);
+    return true;
+}
+
+// MOB-008: the start screen with the mobility rows. The morning routine comes first, today's entries after the runs,
+// the row "Mobility" when more entries wait; everything fits every display and long names are cut.
+(:test)
+function startScreenFitsWithMobilityAndHasNoCommaOrLargeLitArea(logger as Logger) as Boolean {
+    var dc = LayoutRig.dc();
+    var rig = MobHomeRig.rigWithRun();
+    MobHomeRig.load(rig, [MobHomeRig.morning(false)] as Array);
+    var rows = MobHomeRig.rows(rig);
+    Expect.equal(rows[0].kind, HomeStop.STOP_MOBILITY);
+    Expect.equal(rows[1].kind, HomeStop.STOP_STRENGTH);
+    Test.assert(rows[0].morning && rig.home.selectedStop(rows, rig.plan.sync).morning);
+    Test.assert(HomeRig.ok(dc, rig, "morning+strength+run"));
+    // long names, a routine after the strength session and one for another day (the row "Mobility"), a run cut off
+    var more = MobHomeRig.rigWithRun();
+    MobHomeRig.load(more, [MobHomeRig.morning(false), MobHomeRig.entry(2, "s", MobHomeRig.LONG_NAME, 127, "d2", false), MobHomeRig.entry(3, "s", "Montag", 1, null, false)] as Array);
+    more.home.journal = new RunSim(null, 0, false).parts.journal;
+    var all = MobHomeRig.rows(more);
+    Expect.equal(MobHomeRig.count(all, HomeStop.STOP_MOBILITY), 2);
+    for (var i = 0; i < all.size(); i++) {
+        more.home.move(all, more.plan.sync, 1);
+        Test.assert(HomeRig.ok(dc, more, "mobility selection " + i));
+    }
+    var lines = HomeRig.lines(dc, more);
+    var drawn = PairingLayout.arrange(dc, lines);
+    var prefix = Lang.format(HomeScreen.text(Rez.Strings.HomeMobRow), [""]);
+    var cut = false;
+    for (var j = 0; j < drawn.size(); j++) {
+        Test.assertMessage(drawn[j].text.find(",") == null, "no comma in " + drawn[j].text);   // the number font has none
+        if (drawn[j].text.find(prefix) != null) {
+            cut = true;                                // the long name is cut with "...", umlauts whole, and fits
+            Test.assert((drawn[j].text.substring(drawn[j].text.length() - 3, drawn[j].text.length()) as String).equals("..."));
+            Test.assert(dc.getTextWidthInPixels(drawn[j].text, drawn[j].font) <= PairingLayout.textWidth(dc));
+            Test.assertMessage(drawn[j].text.find("Äußere") != null, "umlauts stay whole: " + drawn[j].text);
+        }
+    }
+    Test.assert(cut);
+    Test.assertMessage(LayoutRig.litShare(dc, lines) <= 45, "lit " + LayoutRig.litShare(dc, lines) + " %");
+    // no plan and no run: the rows fit as well
+    var bare = new RunRig();
+    bare.plan.begin();
+    bare.plan.exhaustRetries();
+    MobHomeRig.load(bare, [MobHomeRig.morning(false), MobHomeRig.entry(2, "s", "Hüfte", 127, null, false)] as Array);
+    Test.assert(HomeRig.ok(dc, bare, "mobility without plan"));
+    return true;
+}
+
+(:test)
+function startScreenMorningRuleFollowsTheLocalTime(logger as Logger) as Boolean {
+    var checks = [[3 * 3600 + 59 * 60, false], [4 * 3600, true], [11 * 3600 + 59 * 60, true], [12 * 3600, false]] as Array;
+    for (var i = 0; i < checks.size(); i++) {
+        var check = checks[i] as Array;
+        var rig = MobHomeRig.rigWithRun();
+        MobHomeRig.setTime(rig, check[0] as Number);
+        MobHomeRig.load(rig, [MobHomeRig.morning(false)] as Array);
+        var rows = MobHomeRig.rows(rig);
+        var expected = check[1] as Boolean;
+        Expect.equal(rows[0].morning, expected);
+        Expect.equal(MobHomeRig.count(rows, HomeStop.STOP_MOBILITY), 1);   // out of the morning it is a normal row of today
+        var selected = rig.home.selectedStop(rows, rig.plan.sync);
+        Test.assert(expected ? selected.morning : selected.kind == HomeStop.STOP_RUN);
+    }
+    var rig = new RunRig();                                // local time, not UTC: 02:00 UTC is 04:00 at +02:00
+    rig.plan.loadAll();
+    MobHomeRig.setTime(rig, 2 * 3600);
+    rig.plan.pairing.clock.offsetMinutes = 120;
+    MobHomeRig.load(rig, [MobHomeRig.morning(false)] as Array);
+    Test.assert(MobHomeRig.rows(rig)[0].morning);
+    MobHomeRig.setTime(rig, 2 * 3600 - 1);
+    Test.assert(!MobHomeRig.rows(rig)[0].morning);
+    return true;
+}
+
+(:test)
+function startScreenMorningRoutineIsNotOnTopWhenDoneOrNotToday(logger as Logger) as Boolean {
+    var served = MobHomeRig.rigWithRun();                  // done by the server (dn), the list is of today
+    MobHomeRig.load(served, [MobHomeRig.morning(true)] as Array);
+    var rows = MobHomeRig.rows(served);
+    Test.assert(!rows[0].morning);
+    Expect.equal(rows[0].kind, HomeStop.STOP_STRENGTH);
+    Expect.equal(served.home.selectedStop(rows, served.plan.sync).kind, HomeStop.STOP_RUN);
+    var local = MobHomeRig.rigWithRun();                   // done on this watch (dn is still false)
+    MobHomeRig.load(local, [MobHomeRig.morning(false)] as Array);
+    Test.assert(MobHomeRig.rows(local)[0].morning);
+    var written = [new MobilityRig().id(1)] as Array<Application.Storage.ValueType>;
+    local.plan.pairing.store.setValue(StoreKeys.mobDone(local.TODAY), written as Application.Storage.ValueType);
+    Test.assert(!MobHomeRig.rows(local)[0].morning);
+    var old = MobHomeRig.rigWithRun();                     // dn of an old list does not count
+    MobHomeRig.loadFor(old, [MobHomeRig.morning(true)] as Array, "2026-11-13");
+    Test.assert(MobHomeRig.rows(old)[0].morning);
+    var monday = MobHomeRig.rigWithRun();                  // Mondays only: no morning routine on a Saturday
+    MobHomeRig.load(monday, [MobHomeRig.entry(1, "m", "Morgenroutine", 1, null, false)] as Array);
+    Test.assert(!MobHomeRig.rows(monday)[0].morning);
+    return true;
+}
+
+(:test)
+function startScreenShowsAnAfterStrengthRoutineOnlyOnTheMatchingStrengthDay(logger as Logger) as Boolean {
+    var id = new MobilityRig().id(2);                      // the next session of the plan is d2
+    var match = MobHomeRig.rigWithRun();
+    MobHomeRig.load(match, [MobHomeRig.entry(2, "s", "Nach Kraft", 127, "d2", false)] as Array);
+    var rows = MobHomeRig.rows(match);
+    Expect.equal(MobHomeRig.count(rows, HomeStop.STOP_MOBILITY), 1);
+    Expect.equal(rows[MobHomeRig.indexOfKind(rows, HomeStop.STOP_MOBILITY)].id, id);
+    Expect.equal(MobHomeRig.count(rows, HomeStop.STOP_MOBILITY_PICK), 0);
+    var other = MobHomeRig.rigWithRun();                   // another session: not today, "Mobility" keeps it reachable
+    MobHomeRig.load(other, [MobHomeRig.entry(2, "s", "Nach Kraft", 127, "d1", false)] as Array);
+    var otherRows = MobHomeRig.rows(other);
+    Expect.equal(MobHomeRig.count(otherRows, HomeStop.STOP_MOBILITY), 0);
+    Expect.equal(MobHomeRig.count(otherRows, HomeStop.STOP_MOBILITY_PICK), 1);
+    var bare = new RunRig();                               // no plan on the watch: the strength day is unknown
+    bare.plan.begin();
+    bare.plan.exhaustRetries();
+    MobHomeRig.load(bare, [MobHomeRig.entry(2, "s", "Nach Kraft", 127, "d2", false)] as Array);
+    Expect.equal(MobHomeRig.count(MobHomeRig.rows(bare), HomeStop.STOP_MOBILITY), 0);
+    return true;
+}
+
+(:test)
+function startScreenHasTheMobilityRowOnlyWithFurtherEntries(logger as Logger) as Boolean {
+    var rig = MobHomeRig.rigWithRun();
+    MobHomeRig.load(rig, [MobHomeRig.entry(1, "s", "Hüfte", 127, null, false), MobHomeRig.entry(2, "s", "Nach Kraft", 127, "d2", false)] as Array);
+    var rows = MobHomeRig.rows(rig);
+    Expect.equal(MobHomeRig.count(rows, HomeStop.STOP_MOBILITY), 2);      // everything is on today: no extra row
+    Expect.equal(MobHomeRig.count(rows, HomeStop.STOP_MOBILITY_PICK), 0);
+    MobHomeRig.load(rig, [MobHomeRig.entry(1, "s", "Hüfte", 127, null, false), MobHomeRig.entry(3, "s", "Montag", 1, null, false)] as Array);
+    var more = MobHomeRig.rows(rig);                       // one more for another day: the row "Mobility" after today's entries
+    Expect.equal(MobHomeRig.count(more, HomeStop.STOP_MOBILITY_PICK), 1);
+    var pick = MobHomeRig.indexOfKind(more, HomeStop.STOP_MOBILITY_PICK);
+    Test.assert(MobHomeRig.indexOfKind(more, HomeStop.STOP_MOBILITY) > MobHomeRig.indexOfKind(more, HomeStop.STOP_RUN));
+    Expect.equal(MobHomeRig.indexOfKind(more, HomeStop.STOP_MOBILITY) + 1, pick);
+    Expect.equal(more[pick + 1].kind, HomeStop.STOP_ZONE2);
+    Expect.equal(more[pick].text, HomeScreen.text(Rez.Strings.HomeMobPick));
+    var noRun = new RunRig();                              // without a run today the entries come before the free runs
+    noRun.plan.loadAll();
+    MobHomeRig.load(noRun, [MobHomeRig.entry(1, "s", "Hüfte", 127, null, false), MobHomeRig.entry(3, "s", "Montag", 1, null, false)] as Array);
+    var last = MobHomeRig.rows(noRun);
+    Expect.equal(last[last.size() - 3].kind, HomeStop.STOP_MOBILITY_PICK);
+    Expect.equal(last[last.size() - 2].kind, HomeStop.STOP_FREE);
+    // without a loader and with an empty list the rows are as before
+    var plain = MobHomeRig.rigWithRun();
+    var before = MobHomeRig.rows(plain).size();
+    Expect.equal(plain.home.mobilityStops(plain.plan.sync).size(), 0);
+    MobHomeRig.load(plain, [] as Array);
+    Expect.equal(MobHomeRig.rows(plain).size(), before);
+    return true;
+}
+
+(:test)
+function mobilityPreviewShowsTheRoutineOrSaysItIsNotLoaded(logger as Logger) as Boolean {
+    var dc = LayoutRig.dc();
+    var rig = new RunRig();
+    var cache = MobHomeRig.load(rig, [MobHomeRig.morning(false)] as Array);
+    var text = "";
+    var lines = MobilityPreviewScreen.lines(cache, new MobilityRig().id(1));
+    for (var i = 0; i < lines.size(); i++) {
+        text += lines[i].text + "|";
+    }
+    Test.assert(text.find("Morgenroutine") == 0 && text.find(",") == null && text.find(HomeScreen.text(Rez.Strings.HomeDayNotLoaded)) == null);
+    Test.assert(text.find("Katze-Kuh · " + Lang.format(HomeScreen.text(Rez.Strings.MobSeconds), [85])) != null);
+    Test.assert(text.find("Katze-Kuh · " + Lang.format(HomeScreen.text(Rez.Strings.MobSecondsSides), [50])) != null);
+    PairingLayout.draw(dc, lines);
+    var empty = new MobilityCache(new RunRig().plan.pairing.store);        // an entry whose routine is not loaded, an unknown one
+    Test.assert(empty.putToday(new MobilityRig().list([MobHomeRig.morning(false)] as Array, "9f3a1c5e7b2d4a60"), 10));
+    var missing = MobilityPreviewScreen.lines(empty, new MobilityRig().id(1));
+    Expect.equal(missing[missing.size() - 1].text, HomeScreen.text(Rez.Strings.HomeDayNotLoaded));
+    var unknown = MobilityPreviewScreen.lines(empty, "gone");
+    Expect.equal(unknown.size(), 1);
+    PairingLayout.draw(dc, missing);
+    PairingLayout.draw(dc, unknown);
     return true;
 }

@@ -42,12 +42,19 @@ import {
   WEEKDAYS,
   type OnboardingProgress,
   type OnboardingStep,
+  type OpenQuestion,
   type OnboardingValidationIssue,
   type OnboardingValidationResult,
   type RequiredProfileField,
   type TrainingSessionInputLike,
 } from "./onboarding-contract.js";
 import { exercisesFor, starterExercise } from "./exercise-starter-catalog.js";
+import { MOBILITY_CATALOG } from "./mobility-catalog.js";
+import {
+  MOBILITY_DEFAULTS,
+  MobilityPreferenceSchema,
+  type MobilityPreference,
+} from "./mobility-contract.js";
 
 /** Whether "Ausdauer und Laufen" is a main or a further goal. */
 export function wantsRunning(training: OnboardingProfile["training"]): boolean {
@@ -101,6 +108,79 @@ export function firstOpenStep(
 
 export const isProfileComplete = (profile: OnboardingProfile) =>
   profile.path !== null && missingRequiredFields(profile).length === 0;
+
+/** The question a missing required answer is asked with; short enough to read aloud. */
+const REQUIRED_QUESTION: Record<RequiredProfileField, string> = {
+  path: "Soll Arnold deinen Plan erstellen, oder möchtest du deinen eigenen Plan übernehmen?",
+  "training.primary_goal":
+    "Was ist dein Hauptziel – Muskeln aufbauen, stärker werden, abnehmen, fit bleiben oder Laufen?",
+  "training.experience":
+    "Wie viel Trainingserfahrung hast du – Anfänger, Fortgeschritten oder Erfahren?",
+  "training.days_per_week":
+    "An wie vielen Tagen pro Woche möchtest du trainieren?",
+  "training.session_minutes": "Wie lange darf ein Training dauern?",
+  "training.environment":
+    "Wo trainierst du – im Studio, zuhause, draußen oder gemischt?",
+};
+
+/**
+ * What the setup may still ask, in asking order.
+ *
+ * Required answers first (in the order of `missingRequiredFields`), then the
+ * run details a running goal needs, then the mobility question, asked once.
+ * Mobility is never required: it does not change `profile_complete` or any
+ * plan gate. `wants: false` is a final answer and is never asked again.
+ *
+ * `mobility_details` stays open while the user wants mobility and has not
+ * named stiff areas. The contract has no flag for "asked and nothing is
+ * stiff", so a chat client asks it once and does not repeat it.
+ */
+export function openQuestions(
+  profile: OnboardingProfile,
+  runSetup: { required: boolean; ready: boolean },
+): OpenQuestion[] {
+  const questions: OpenQuestion[] = missingRequiredFields(profile).map(
+    (field) => ({
+      id: field,
+      kind: "required" as const,
+      ask: REQUIRED_QUESTION[field],
+      fields: [field],
+    }),
+  );
+  if (runSetup.required && !runSetup.ready)
+    questions.push({
+      id: "run_details",
+      kind: "required",
+      ask: "Fürs Laufen: Welches Ziel, wie oft pro Woche, wie viele Minuten und wie lang war dein längster Lauf zuletzt?",
+      fields: ["training.run"],
+    });
+  const mobility = profile.training.mobility;
+  if (mobility === undefined)
+    questions.push({
+      id: "mobility",
+      kind: "ask_once",
+      ask: "Sollen eine Morgenroutine oder Mobility-Einheiten dazukommen?",
+      fields: ["training.mobility"],
+    });
+  else if (mobility.wants && mobility.stiff_areas.length === 0)
+    questions.push({
+      id: "mobility_details",
+      kind: "ask_once",
+      ask: mobilityDetailsAsk(mobility),
+      fields: ["training.mobility.stiff_areas"],
+    });
+  return questions;
+}
+
+function mobilityDetailsAsk(
+  mobility: Extract<MobilityPreference, { wants: true }>,
+): string {
+  const morning = mobility.morning;
+  const plan = morning
+    ? `${morning.weekdays.length === 7 ? "Jeden Tag" : `An ${morning.weekdays.length} Tagen pro Woche`} ${morning.minutes} Minuten Morgenroutine – passt das?`
+    : `${mobility.sessions!.per_week} Mobility-Einheiten pro Woche – passt das?`;
+  return `${plan} Und wo fühlst du dich steif?`;
+}
 
 /** The Person card's check mark: all four basics answered. */
 export const isPersonComplete = (profile: OnboardingProfile) =>
@@ -382,6 +462,8 @@ export function buildBrief(
     statements.push({ field: "training.notes", text: training.notes });
 
   const runs = wantsRunning(training);
+  const mobility =
+    training.mobility?.wants === true ? training.mobility : undefined;
   const shared = [
     "Jede Trainingseinheit braucht mindestens eine Übung.",
     "Nur exercise_id-Werte aus exercise_catalog verwenden.",
@@ -394,6 +476,24 @@ export function buildBrief(
     shared.push(
       `Der Nutzer möchte diese Bereiche schonen: ${protect.map((area) => BODY_AREA_LABEL[area]).join(", ")}. Übungen, die diese Bereiche stark belasten, zurückhaltend einsetzen oder durch schonendere Varianten ersetzen. Das ist eine Trainingsvorliebe, keine Diagnose; keine medizinischen Aussagen dazu machen.`,
     );
+
+  const mobilityBrief = mobility
+    ? {
+        mobility,
+        mobility_catalog: MOBILITY_CATALOG.map((exercise) => ({
+          id: exercise.id,
+          name_de: exercise.name_de,
+          areas: [...exercise.areas],
+          mode: exercise.mode,
+          per_side: exercise.per_side,
+          position: exercise.position,
+          morning_ok: exercise.morning_ok,
+          default_s: exercise.default_s,
+          min_s: exercise.min_s,
+          max_s: exercise.max_s,
+        })),
+      }
+    : {};
 
   const personFacts = {
     age_years: person.age_years ?? null,
@@ -429,6 +529,7 @@ export function buildBrief(
       "Keine Wirksamkeitsversprechen und keine Behauptung, der Plan sei wissenschaftlich optimal.",
       "Den Plan nicht als aktiviert oder gespeichert darstellen, bevor der Nutzer ihn bestätigt hat.",
     ],
+    ...mobilityBrief,
     generated_at_utc: input.now,
   };
 
@@ -451,6 +552,7 @@ export function buildBrief(
         "Jede genannte Übung der passenden exercise_id aus exercise_catalog zuordnen. Gibt es keine passende Übung, sie nicht weglassen: in custom_exercises mit key (custom:1, custom:2 …) und name_de so beschreiben, wie der Nutzer sie nennt, und in der Einheit key als exercise_id verwenden. Arnold legt sie als eigene Übung an. Gerät, Muskel und Lastbasis nur angeben, wenn eindeutig.",
         "Nicht genannte Sätze oder Wiederholungen nicht erfinden: offen lassen und in open_questions nennen; der Nutzer ergänzt sie im Editor.",
         ...shared,
+        ...(mobility ? mobilityConstraints(mobility, true) : []),
       ],
     };
 
@@ -507,6 +609,7 @@ export function buildBrief(
       "Nach dem Kraftvorschlag Laufeinheiten in denselben Entwurf legen: update_plan_draft mit add_run_session (session_name, run_type, optional preferred_weekday). Anzahl der Läufe = Läufe pro Woche aus dem Laufprofil, im Zweifel eher weniger; höchstens zwei harte Läufe pro Woche. Kraft- und Lauftage so verteilen, dass sie zu den gewählten Trainingstagen passen.",
       "Tempi, Pulszonen, Streckenlängen und Steigerungen nie selbst festlegen oder nennen: Das berechnet Arnold aus dem Laufprofil. Keine Wettkampfzeit versprechen.",
     );
+  if (mobility) constraints.push(...mobilityConstraints(mobility, false));
   if (training.focus_muscle_groups?.length)
     constraints.push(
       `Schwerpunkt auf ${training.focus_muscle_groups.map((group) => MUSCLE_GROUP_LABEL[group]).join(", ")}: diese Muskelgruppen etwas häufiger oder mit mehr Sätzen trainieren, ohne die übrigen zu vernachlässigen.`,
@@ -709,6 +812,91 @@ const ordered = <T extends string>(values: readonly T[], order: readonly T[]) =>
   order.filter((value) => values.includes(value));
 const unique = <T>(values: readonly T[]) => [...new Set(values)];
 
+/** The rules for mobility in a proposal, written like the run rules. */
+function mobilityConstraints(
+  mobility: Extract<MobilityPreference, { wants: true }>,
+  own: boolean,
+): string[] {
+  const rules = [
+    "Der Nutzer möchte Mobility (Feld mobility und mobility_catalog im Brief) und hat seine Angaben in der Einrichtung gemacht. Nicht noch einmal abfragen.",
+    `Mobility kommt erst ${own ? "nach der Planübernahme" : "nach dem Kraftvorschlag"} in denselben Entwurf: update_plan_draft mit add_mobility_session. Nur Übungen aus mobility_catalog verwenden.`,
+  ];
+  if (mobility.morning)
+    rules.push(
+      "Die Morgenroutine nur aus Übungen mit morning_ok=true zusammenstellen (im Stehen oder an der Wand).",
+    );
+  if (mobility.sessions)
+    rules.push(
+      mobility.sessions.placement === "arnold_decides"
+        ? "Mobility-Einheiten: Arnold entscheidet. Einen Tag ohne Krafttraining wählen, sonst nach dem Krafttraining."
+        : mobility.sessions.placement === "own_days"
+          ? "Mobility-Einheiten kommen an eigene Tage ohne Krafttraining."
+          : "Mobility-Einheiten kommen nach dem Krafttraining.",
+    );
+  if (mobility.stiff_areas.length)
+    rules.push(
+      `Übungen nach den steifen Bereichen wählen (${mobility.stiff_areas.join(", ")}). Steif ist keine Diagnose; keine medizinischen Aussagen.`,
+    );
+  rules.push(
+    "Sekunden, Haltezeiten und Wiederholungen nie selbst festlegen: Das rechnet Arnold. Keine Diagnosen, keine Heilversprechen.",
+  );
+  return rules;
+}
+
+/**
+ * Fills the gaps of a mobility answer with Arnold's defaults.
+ *
+ * "Yes, a morning routine" without days or length becomes every day, 10
+ * minutes; sessions without details become two per week of 20 minutes with
+ * Arnold deciding the placement. A "yes" naming neither a routine nor
+ * sessions means the morning routine, the lighter reading. Values the user
+ * named stay as they are. An answer that is not readable even after this is
+ * returned unchanged for the schema to refuse; nothing is guessed.
+ */
+export function withMobilityDefaults(value: unknown): MobilityPreference {
+  const loose = (value ?? {}) as Record<string, unknown>;
+  if (loose.wants !== true) return value as MobilityPreference;
+  const object = (input: unknown): Record<string, unknown> | null =>
+    input !== null && typeof input === "object"
+      ? (input as Record<string, unknown>)
+      : null;
+  const morning = object(loose.morning);
+  const sessions = object(loose.sessions);
+  const named = morning !== null || sessions !== null;
+  const completed = {
+    wants: true,
+    morning:
+      morning !== null || !named
+        ? {
+            ...MOBILITY_DEFAULTS.morning,
+            weekdays: [...MOBILITY_DEFAULTS.morning.weekdays],
+            ...Object.fromEntries(
+              Object.entries(morning ?? {}).filter(
+                ([, v]) => v !== undefined && v !== null,
+              ),
+            ),
+          }
+        : null,
+    sessions:
+      sessions !== null
+        ? {
+            placement: "arnold_decides",
+            ...MOBILITY_DEFAULTS.sessions,
+            ...Object.fromEntries(
+              Object.entries(sessions).filter(
+                ([, v]) => v !== undefined && v !== null,
+              ),
+            ),
+          }
+        : null,
+    stiff_areas: Array.isArray(loose.stiff_areas)
+      ? unique(loose.stiff_areas as string[])
+      : [],
+  };
+  const parsed = MobilityPreferenceSchema.safeParse(completed);
+  return parsed.success ? parsed.data : (value as MobilityPreference);
+}
+
 /**
  * Applies a patch to a profile.
  *
@@ -736,6 +924,11 @@ export function mergeProfile(
       delete training[key];
     else training[key] = Array.isArray(value) ? unique(value) : value;
   }
+
+  // Mobility: what the user did not name gets Arnold's default, what they
+  // named is never overwritten. `null` was removed above ("not asked").
+  if (patch.training?.mobility)
+    training.mobility = withMobilityDefaults(patch.training.mobility);
 
   const days = patch.training?.training_days;
   if (days?.length) {
