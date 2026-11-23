@@ -1,3 +1,4 @@
 project.manifest = manifest.xml
-base.sourcePath = source;tests
+# The tests of tests/memory are a build of their own (monkey-memory.jungle): only the files directly in tests/ are here.
+base.sourcePath = source;tests/*.mc
 base.excludeAnnotations = garminGate;designGallery

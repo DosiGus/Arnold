@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Builds the unit tests and runs them in the Connect IQ simulator on each target device.
+# Builds the unit tests and runs them in the Connect IQ simulator on each target device. The memory tests (tests/memory)
+# are a build of their own (monkey-memory.jungle) and run once per device, in English.
 # Starts the simulator if it is not running.
 # Usage: test.sh [device ...]   (default: all devices from manifest.xml)
 # Languages: ARNOLD_SIM_LANGS="eng deu" (default, both); each device runs once per language.
@@ -28,6 +29,8 @@ done
 
 for device in "${targets[@]}"; do
   compile "$device" "$BIN_DIR/test-$device.prg" -t
+  # The memory build: the app and only the memory tests (tests/memory), so the peak is not the peak of all tests.
+  JUNGLE=monkey-memory.jungle compile "$device" "$BIN_DIR/memory-$device.prg" -t
 done
 
 reset_language() { bash "$(dirname "$0")/sim-language.sh" eng "$BIN_DIR/test-${targets[0]}.prg" "${targets[0]}" >/dev/null 2>&1 || true; }
@@ -61,6 +64,22 @@ for lang in "${langs[@]}"; do
       failed=1
     fi
   done
+  # Memory (3 h of a run, 30 min of mobility): once per device, in English (the language does not change the memory).
+  if [[ "$lang" == eng ]]; then
+    for device in "${targets[@]}"; do
+      out="$("$MONKEYDO" "$BIN_DIR/memory-$device.prg" "$device" -t 2>&1 || true)"
+      summary="$(grep -E '^(PASSED|FAILED) \(' <<<"$out" || true)"
+      runs=$((runs + 1))
+      peaks="$(grep -E '(3 h|30 min): peak' <<<"$out" | sed -E 's/^DEBUG \([0-9:]+\): //' | tr '\n' ';' || true)"
+      if [[ "$summary" == PASSED* ]]; then
+        echo "ok  $device memory  $summary  $peaks"
+      else
+        echo "$out" >&2
+        echo "FEHLER  $device memory  ${summary:-keine Testergebnisse}" >&2
+        failed=1
+      fi
+    done
+  fi
 done
 [[ $failed -eq 0 ]] || exit 1
 echo "Tests erfolgreich: ${#targets[@]} Geräte, ${#langs[@]} Sprachen, $runs Läufe"

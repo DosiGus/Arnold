@@ -1,0 +1,5 @@
+# The memory build (MOB-010, 23.11.2026): the app and only the tests of tests/memory, so the peak of the three-hour run
+# and of the 30-minute routine does not carry the code of all other tests. Built and run by scripts/test.sh.
+project.manifest = manifest.xml
+base.sourcePath = source;tests/memory
+base.excludeAnnotations = garminGate;designGallery
