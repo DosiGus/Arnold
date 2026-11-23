@@ -1,6 +1,13 @@
 import { MarkRecapSeenOutputSchema } from "../../shared/recap-contract";
 import type { DashboardCard } from "../../shared/dashboard-cards";
 import type { RunCard } from "../../shared/run-card-contract";
+import {
+  LogMobilityResponseSchema,
+  MobilityOverviewSchema,
+  UpdateMobilityProfileResponseSchema,
+  type MobilityCard,
+  type MobilityWriteOperation,
+} from "../../shared/mobility-contract";
 import { OnboardingProfileBuffer } from "./OnboardingProfileBuffer";
 import { ArnoldToolError } from "../recovery";
 import { DeleteAccountResponseSchema } from "../../shared/account-contract";
@@ -693,6 +700,33 @@ export class ArnoldMcpClient {
     return ScheduleRunWeekResponseSchema.parse(
       await this.client.call("schedule_run_week", input, { publish: false }),
     );
+  }
+  /* ------------------------------------------------------------- mobility */
+  /** Switches the app to a mobility card (`show_arnold_mobility`). */
+  async openMobility(card: MobilityCard, workoutId?: string) {
+    await this.client.call("show_arnold_mobility", {
+      card,
+      ...(workoutId ? { workout_id: workoutId } : {}),
+    });
+  }
+  /** The only read of the mobility cards; they show what comes back. */
+  async mobilityOverview(timezone?: string) {
+    return MobilityOverviewSchema.parse(
+      await this.client.call(
+        "get_mobility_overview",
+        timezone ? { timezone } : {},
+        { publish: false },
+      ),
+    );
+  }
+  async mobilityWrite(
+    operation: MobilityWriteOperation,
+    input: Record<string, unknown>,
+  ) {
+    const raw = await this.client.call(operation, input, { publish: false });
+    return operation === "log_mobility"
+      ? LogMobilityResponseSchema.parse(raw)
+      : UpdateMobilityProfileResponseSchema.parse(raw);
   }
   async runWrite(operation: RunWriteOperation, input: Record<string, unknown>) {
     return RunWriteResponseSchema.parse(
