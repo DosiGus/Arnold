@@ -11,10 +11,9 @@ import {
   describe,
   expect,
   it,
-  vi,
 } from "vitest";
 import { createServer, type Server } from "node:http";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import {
   Client,
   StreamableHTTPClientTransport,
