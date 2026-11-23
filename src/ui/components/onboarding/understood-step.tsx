@@ -18,6 +18,7 @@ import {
   type UnderstoodItem,
 } from "../conversation-cards";
 import type { Page } from "./pages";
+import { AREA_LABEL, PLACEMENT_LABEL, WEEKDAY_OPTIONS } from "./mobility-draft";
 import { SetupHead } from "./setup-head";
 
 /**
@@ -33,7 +34,8 @@ export function hasUnderstood(profile: OnboardingProfile): boolean {
       t.experience !== null ||
       t.days_per_week !== null ||
       t.session_minutes !== null ||
-      t.environment !== null)
+      t.environment !== null ||
+      t.mobility !== undefined)
   );
 }
 
@@ -45,6 +47,7 @@ export function understoodRows(
   profile: OnboardingProfile,
   missing: readonly string[],
   open: (page: Page) => void,
+  openQuestions: readonly string[] = [],
 ): UnderstoodItem[] {
   const t = profile.training;
   const gap = (...fields: string[]) =>
@@ -110,8 +113,91 @@ export function understoodRows(
       value: t.run ? "angegeben" : undefined,
       onSelect: () => open("run"),
     });
+  rows.push(...mobilityRows(t.mobility, openQuestions, open));
   return rows;
 }
+
+/** "Jeden Tag · 10 Min." or "Mo, Mi, Fr · 5 Min."; stored values only. */
+function morningText(
+  morning: { weekdays: readonly string[]; minutes: number } | null,
+): string {
+  if (!morning) return "keine";
+  const days =
+    morning.weekdays.length === 7
+      ? "Jeden Tag"
+      : WEEKDAY_OPTIONS.filter((day) => morning.weekdays.includes(day.value))
+          .map((day) => day.label)
+          .join(", ");
+  return `${days} · ${morning.minutes} Min.`;
+}
+
+/**
+ * The mobility rows. They show "fehlt noch" only when the server lists the
+ * question as open (`open_questions`); mobility never blocks the plan, so
+ * these rows are not counted as gaps for it (see `isMobilityRow`).
+ */
+function mobilityRows(
+  mobility: OnboardingProfile["training"]["mobility"],
+  openQuestions: readonly string[],
+  open: (page: Page) => void,
+): UnderstoodItem[] {
+  const select = () => open("mobility");
+  if (mobility === undefined)
+    return openQuestions.includes("mobility")
+      ? [
+          {
+            key: "mobility",
+            label: "Mobility",
+            value: undefined,
+            onSelect: select,
+          },
+        ]
+      : [];
+  if (!mobility.wants)
+    return [
+      {
+        key: "mobility",
+        label: "Mobility",
+        value: "nicht gewünscht",
+        onSelect: select,
+      },
+    ];
+  const rows: UnderstoodItem[] = [
+    {
+      key: "morning",
+      label: "Morgenroutine",
+      value: morningText(mobility.morning),
+      onSelect: select,
+    },
+    {
+      key: "mobility",
+      label: "Mobility",
+      value: mobility.sessions
+        ? `${PLACEMENT_LABEL[mobility.sessions.placement]} · ${mobility.sessions.per_week}× pro Woche · ${mobility.sessions.minutes} Min.`
+        : "keine Einheiten",
+      onSelect: select,
+    },
+  ];
+  if (mobility.stiff_areas.length > 0)
+    rows.push({
+      key: "stiff",
+      label: "Steif",
+      value: mobility.stiff_areas.map((area) => AREA_LABEL[area]).join(", "),
+      onSelect: select,
+    });
+  else if (openQuestions.includes("mobility_details"))
+    rows.push({
+      key: "stiff",
+      label: "Steif",
+      value: undefined,
+      onSelect: select,
+    });
+  return rows;
+}
+
+/** Rows of the optional mobility answer; a gap there never blocks a plan. */
+const isMobilityRow = (row: UnderstoodItem) =>
+  row.key === "morning" || row.key === "mobility" || row.key === "stiff";
 
 /** One example sentence per row: what to say to fill exactly that gap. */
 const SAY_EXAMPLE: Record<string, string> = {
@@ -120,6 +206,8 @@ const SAY_EXAMPLE: Record<string, string> = {
   scope: "Ich trainiere dreimal pro Woche, 60 Minuten",
   place: "Ich trainiere im Fitnessstudio",
   run: "Ich laufe zweimal pro Woche, ungefähr 5 Kilometer",
+  mobility: "Morgens 10 Minuten, meine Hüfte ist steif.",
+  stiff: "Meine Hüfte und der untere Rücken sind morgens steif.",
 };
 
 /**
@@ -142,6 +230,7 @@ export function UnderstoodStep({
   onOpen,
   onForm,
   onRequestPlan,
+  openQuestions = [],
 }: {
   profile: OnboardingProfile;
   progress: OnboardingProgress;
@@ -151,10 +240,19 @@ export function UnderstoodStep({
   onOpen: (page: Page) => void;
   onForm: () => void;
   onRequestPlan: () => void;
+  /** Ids of the open questions the server lists (`state.open_questions`). */
+  openQuestions?: readonly string[];
 }) {
-  const rows = understoodRows(profile, progress.missing_fields, onOpen);
+  const rows = understoodRows(
+    profile,
+    progress.missing_fields,
+    onOpen,
+    openQuestions,
+  );
+  // Only the required rows count: a missing mobility answer is shown, not asked for.
   const gaps = rows.filter(
-    (row) => row.value === undefined || row.value === null,
+    (row) =>
+      !isMobilityRow(row) && (row.value === undefined || row.value === null),
   ).length;
   const example = sayExample(rows);
   const ready = gaps === 0 && progress.can_request_plan && canWritePlan;

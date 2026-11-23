@@ -75,8 +75,9 @@ test("told in the chat: understood with a gap, gap filled, proposal, activation,
   ).toBeVisible();
   await expect(main).toContainText("Muskeln aufbauen");
   await expect(main).toContainText("3 Tage · 60 Min.");
-  // Exactly one gap, and the server named it.
-  await expect(main.locator(".cc-missing")).toHaveCount(1);
+  // Two gaps, and the server named both: the place (required) and the
+  // optional mobility question.
+  await expect(main.locator(".cc-missing")).toHaveCount(2);
   const claim = await storedClaim(page);
   const before = await callTool(page, "get_onboarding_state", claim);
   expect(before.progress.missing_fields).toEqual(["training.environment"]);
@@ -104,7 +105,11 @@ test("told in the chat: understood with a gap, gap filled, proposal, activation,
   await save(page, { training: { environment: "gym" } });
   await setupMenu(page, "Stand neu laden");
   await expect(main).toContainText("Fitnessstudio");
-  await expect(main.locator(".cc-missing")).toHaveCount(0);
+  // Mobility is still unanswered and shown as open, but never blocks the plan.
+  await expect(main.locator(".cc-missing")).toHaveCount(1);
+  await expect(
+    main.getByRole("button", { name: "Mobility ändern" }),
+  ).toContainText("fehlt noch");
   expect(
     (await callTool(page, "get_onboarding_state", claim)).session.status,
   ).toBe("PROFILE_READY");
@@ -153,7 +158,8 @@ test("one row corrected by tap returns to the card and saves only that field", a
     },
   });
   await page.reload();
-  await expect(main.locator(".cc-missing")).toHaveCount(2);
+  // The place and the session length (required), plus the optional mobility.
+  await expect(main.locator(".cc-missing")).toHaveCount(3);
   await main.getByRole("button", { name: "Umfang ändern" }).click();
   await stepTo(page, "Minuten pro Training", 45);
   await next(page);

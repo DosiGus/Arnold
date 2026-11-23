@@ -11,6 +11,7 @@ export type Page =
   | "loads"
   | "wishes"
   | "run"
+  | "mobility"
   | "review";
 
 export const QUESTIONS: readonly Page[] = [
@@ -29,6 +30,7 @@ export const TITLE: Record<Page, string> = {
   loads: "Kennst du deine Gewichte?",
   wishes: "Deine Wünsche für den Plan",
   run: "Deine Laufangaben",
+  mobility: "Mobility oder Morgenroutine dazu?",
   review: "So wird dein Plan",
 };
 
@@ -47,6 +49,8 @@ export const PAGE_FIELD: Record<Page, string[]> = {
   loads: [],
   wishes: [],
   run: [],
+  // Never required: the server lists mobility as an open question instead.
+  mobility: [],
   review: [],
 };
 
@@ -64,7 +68,21 @@ export type WishesDraft = {
   notes: string;
 };
 
-export function initialProfileQuestion(profile: OnboardingProfile): Page {
+/** The ids of the open questions that make the mobility page worth showing. */
+const MOBILITY_QUESTIONS = ["mobility", "mobility_details"];
+
+/**
+ * Whether the server still lists a mobility question as open. The page asks
+ * nothing else: a decided answer (or an old server) skips it.
+ */
+export function asksMobility(openQuestions: readonly string[]): boolean {
+  return openQuestions.some((id) => MOBILITY_QUESTIONS.includes(id));
+}
+
+export function initialProfileQuestion(
+  profile: OnboardingProfile,
+  openQuestions: readonly string[] = [],
+): Page {
   const t = profile.training;
   const firstMissing: Page | undefined =
     t.primary_goal === null
@@ -77,7 +95,11 @@ export function initialProfileQuestion(profile: OnboardingProfile): Page {
             ? "environment"
             : undefined;
   if (!firstMissing)
-    return wantsRunning(t) && t.run === undefined ? "run" : "review";
+    return wantsRunning(t) && t.run === undefined
+      ? "run"
+      : asksMobility(openQuestions)
+        ? "mobility"
+        : "review";
   const anyAnswer =
     t.primary_goal !== null ||
     t.experience !== null ||
@@ -110,6 +132,7 @@ export function nextPage(
   fromReview: boolean,
   withLoads = false,
   withRun = false,
+  withMobility = false,
 ): Page {
   if (fromReview) return "review";
   if (current === "person") return "goal";
@@ -117,7 +140,9 @@ export function nextPage(
   if (index >= 0 && index < QUESTIONS.length - 1) return QUESTIONS[index + 1];
   if (current === "environment") return withLoads ? "loads" : "wishes";
   if (current === "loads") return "wishes";
-  if (current === "wishes") return withRun ? "run" : "review";
+  if (current === "wishes")
+    return withRun ? "run" : withMobility ? "mobility" : "review";
+  if (current === "run") return withMobility ? "mobility" : "review";
   return "review";
 }
 
@@ -126,6 +151,7 @@ export function previousPage(
   current: Page,
   withLoads = false,
   withRun = false,
+  withMobility = false,
 ): Page | null {
   if (current === "person") return null;
   if (current === "goal") return "person";
@@ -134,6 +160,8 @@ export function previousPage(
   if (current === "loads") return "environment";
   if (current === "wishes") return withLoads ? "loads" : "environment";
   if (current === "run") return "wishes";
-  if (current === "review") return withRun ? "run" : "wishes";
+  if (current === "mobility") return withRun ? "run" : "wishes";
+  if (current === "review")
+    return withMobility ? "mobility" : withRun ? "run" : "wishes";
   return null;
 }

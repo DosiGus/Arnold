@@ -175,7 +175,8 @@ test("resumes at the next unanswered question and adopts answers from chat", asy
   ).toBeVisible();
   await expect(wizard(page)).toContainText("Stärker werden");
   await expect(wizard(page)).toContainText("Anfänger");
-  await expect(wizard(page).locator(".cc-missing")).toHaveCount(2);
+  // Two required gaps and the optional mobility question, all named by the server.
+  await expect(wizard(page).locator(".cc-missing")).toHaveCount(3);
   // A tap on a row opens that field; the stored 4 days stay.
   await wizard(page)
     .getByRole("button", { name: "Umfang ändern", exact: true })
@@ -195,7 +196,7 @@ test("resumes at the next unanswered question and adopts answers from chat", asy
     page.getByRole("heading", { name: "Das habe ich verstanden" }),
   ).toBeVisible();
   await expect(wizard(page)).toContainText("4 Tage · 45 Min.");
-  await expect(wizard(page).locator(".cc-missing")).toHaveCount(1);
+  await expect(wizard(page).locator(".cc-missing")).toHaveCount(2);
   await expect(wizard(page)).toHaveAttribute("data-profile-save", "saved");
   await callTool(page, "update_onboarding_profile", {
     ...claim,
