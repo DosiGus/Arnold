@@ -117,6 +117,7 @@ function mockMobility(fixtures: ReturnType<typeof loadFixtures>) {
   const items = (fixtures.mobilityToday.items as Json[]).map((item) => ({
     ...item,
     w: item.a === null ? 127 : item.w,
+    dn: false, // nothing is done until the watch sends it (the list then shows dn)
   }));
   const list = {
     ...fixtures.mobilityToday,
