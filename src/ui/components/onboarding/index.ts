@@ -6,7 +6,8 @@
  */
 export { SetupHead } from "./setup-head";
 export { MultiChoice } from "./controls";
-export { initialProfileQuestion } from "./pages";
+export { initialProfileQuestion, asksMobility } from "./pages";
+export { renderMobilityPage } from "./mobility-page";
 export { WelcomeStep } from "./welcome-step";
 export { ProfileStep } from "./profile-step";
 export { UnderstoodStep, hasUnderstood } from "./understood-step";

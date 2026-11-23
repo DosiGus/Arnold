@@ -39,7 +39,19 @@ function monday(date: string): string {
 const roundTo = (value: number, step: number) =>
   Math.round(value / step) * step;
 
-export function demoHistoryDataset(today: string): ArnoldDataset {
+/**
+ * `today` is the user's calendar day (Berlin for the fixtures), `now` the
+ * instant of the server clock. Rows of today must not be stamped later than
+ * `now`: an entry created "at 07:00 UTC" would lie in the future before 07:00
+ * UTC, and replacing it (a second body weight on the same day) would fail with
+ * `updated_at_utc liegt vor created_at_utc` (DATE-001).
+ */
+export function demoHistoryDataset(
+  today: string,
+  now: Date = new Date(),
+): ArnoldDataset {
+  const nowStamp = now.toISOString();
+  const upTo = (stamp: string) => (stamp > nowStamp ? nowStamp : stamp);
   const base = planFixtureDataset("active_ppl");
   const plan = base.plans.find((p) => p.status === "active")!;
   const items = base.planItems.filter(
@@ -63,13 +75,13 @@ export function demoHistoryDataset(today: string): ArnoldDataset {
         .sort((a, b) => a.exercise_order - b.exercise_order);
       if (!sessionItems.length) continue;
       const workoutId = `demo-w-${date}-${session}`;
-      const stamp = `${date}T17:00:00.000Z`;
+      const stamp = upTo(`${date}T17:00:00.000Z`);
       workouts.push({
         workout_id: workoutId,
         workout_date_local: date,
         timezone: "Europe/Berlin",
         started_at_utc: stamp,
-        ended_at_utc: `${date}T18:00:00.000Z`,
+        ended_at_utc: upTo(`${date}T18:00:00.000Z`),
         plan_version_id: plan.plan_version_id,
         session_id: session,
         session_name_snapshot: sessionItems[0].session_name,
@@ -77,7 +89,7 @@ export function demoHistoryDataset(today: string): ArnoldDataset {
         source: "chat",
         notes: null,
         created_at_utc: stamp,
-        updated_at_utc: `${date}T18:00:00.000Z`,
+        updated_at_utc: upTo(`${date}T18:00:00.000Z`),
         row_revision: 2,
       });
       for (const item of sessionItems) {
@@ -142,7 +154,7 @@ export function demoHistoryDataset(today: string): ArnoldDataset {
   }
 
   const first = addDays(thisWeek, -7 * (WEEKS - 1));
-  const created = `${first}T08:00:00.000Z`;
+  const created = upTo(`${first}T08:00:00.000Z`);
   const goal = (
     goal_id: string,
     kind: ArnoldGoal["kind"],
@@ -189,8 +201,8 @@ export function demoHistoryDataset(today: string): ArnoldDataset {
       weight_kg: Math.round((88 - w * 0.45) * 10) / 10,
       status: "active",
       source: "chat",
-      created_at_utc: `${date}T07:00:00.000Z`,
-      updated_at_utc: `${date}T07:00:00.000Z`,
+      created_at_utc: upTo(`${date}T07:00:00.000Z`),
+      updated_at_utc: upTo(`${date}T07:00:00.000Z`),
       row_revision: 1,
     });
   }

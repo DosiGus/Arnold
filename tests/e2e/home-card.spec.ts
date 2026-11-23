@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { callTool } from "./helpers";
 import type { ArnoldDashboardView } from "../../src/shared/arnold-view";
-import { berlinToday } from "../fixtures/berlin-today";
+import { berlinToday, E2E_TIMEZONE } from "../fixtures/berlin-today";
 
 /**
  * The start card: header line, four tiles whose detail opens in the card, and
@@ -89,7 +89,9 @@ test("a tile opens its detail in the same card, only one at a time", async ({
   const view = (await callTool(
     page,
     "get_arnold_dashboard",
-    {},
+    // Like the card itself: the user's zone. Without it the server anchors on
+    // the UTC day, which is still yesterday for an hour after Berlin midnight.
+    { timezone: E2E_TIMEZONE },
   )) as ArnoldDashboardView;
   const names = ["Woche", "Scores", "Ziele", "Rekorde"];
   for (const name of names) {
@@ -128,7 +130,9 @@ test("the scores tile shows the server's values, each with its sentence", async 
   const view = (await callTool(
     page,
     "get_arnold_dashboard",
-    {},
+    // Like the card itself: the user's zone. Without it the server anchors on
+    // the UTC day, which is still yesterday for an hour after Berlin midnight.
+    { timezone: E2E_TIMEZONE },
   )) as ArnoldDashboardView;
   const s = view.scores!;
   const shown = [s.consistency, s.progress, s.recovery].map((x) =>
@@ -193,7 +197,9 @@ test("record and goal rows keep their exact identity through navigation", async 
   const view = (await callTool(
     page,
     "get_arnold_dashboard",
-    {},
+    // Like the card itself: the user's zone. Without it the server anchors on
+    // the UTC day, which is still yesterday for an hour after Berlin midnight.
+    { timezone: E2E_TIMEZONE },
   )) as ArnoldDashboardView;
   await tile(page, "Rekorde").click();
   await page

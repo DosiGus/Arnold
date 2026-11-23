@@ -21,6 +21,7 @@ import {
   RHYTHM_DEFAULT,
   TITLE,
   asksForLoads,
+  asksMobility,
   initialProfileQuestion,
   nextPage,
   previousPage,
@@ -34,6 +35,14 @@ import { renderWishesPage } from "./wishes-page";
 import { renderLoadsPage } from "./loads-page";
 import { renderReviewPage } from "./review-page";
 import { renderRunPage } from "./run-page";
+import { renderMobilityPage, MOBILITY_PAGE_ERROR } from "./mobility-page";
+import {
+  MOBILITY_DRAFT_DEFAULT,
+  draftFromMobility,
+  mobilityFromDraft,
+  wantsMorning,
+  type MobilityDraft,
+} from "./mobility-draft";
 import {
   RUN_DRAFT_DEFAULT,
   draftFromRun,
@@ -65,6 +74,7 @@ export function ProfileStep({
   onQuestion,
   initialPage,
   onReturn,
+  openQuestions = [],
 }: {
   profile: OnboardingProfile;
   progress: OnboardingProgress;
@@ -85,9 +95,14 @@ export function ProfileStep({
   initialPage?: Page;
   /** With `initialPage`: where to go after that single page is saved. */
   onReturn?: () => void;
+  /**
+   * The ids of the questions the server still lists as open. The mobility page
+   * asks only what is listed here; without the list it is skipped.
+   */
+  openQuestions?: readonly string[];
 }) {
   const [page, setPage] = useState<Page>(
-    () => initialPage ?? initialProfileQuestion(profile),
+    () => initialPage ?? initialProfileQuestion(profile, openQuestions),
   );
   const [fromReview, setFromReview] = useState(false);
   const [error, setError] = useState("");
@@ -113,6 +128,9 @@ export function ProfileStep({
     notes: "",
   });
   const [runDraft, setRunDraft] = useState<RunDraft>(RUN_DRAFT_DEFAULT);
+  const [mobilityDraft, setMobilityDraft] = useState<MobilityDraft>(
+    MOBILITY_DRAFT_DEFAULT,
+  );
   const [fold, setFold] = useState(-1);
   // Number fields whose text is outside the allowed range.
   const [invalidNumbers, setInvalidNumbers] = useState<string[]>([]);
@@ -134,6 +152,7 @@ export function ProfileStep({
     setEnvironment(training.environment ?? undefined);
     setLoads(training.known_loads ?? {});
     setRunDraft(draftFromRun(training.run));
+    setMobilityDraft(draftFromMobility(training.mobility));
     setWishes({
       training_days: training.training_days ?? [],
       split: training.split,
@@ -155,6 +174,7 @@ export function ProfileStep({
     minutes <= SESSION_MINUTES_MAX;
 
   const runResult = runFromDraft(runDraft);
+  const mobilityAnswer = mobilityFromDraft(mobilityDraft);
   const answered =
     page === "goal"
       ? goals.length > 0
@@ -166,7 +186,9 @@ export function ProfileStep({
             ? !!environment
             : page === "run"
               ? runResult.run !== undefined
-              : true;
+              : page === "mobility"
+                ? mobilityAnswer !== undefined
+                : true;
 
   // Asked on the strength of the answers on screen, saved or not yet.
   const withLoads = asksForLoads(
@@ -179,6 +201,16 @@ export function ProfileStep({
     page === "goal"
       ? goals.includes("endurance_running")
       : wantsRunning(training);
+
+  // Asked only while the server lists a mobility question as open (and on the
+  // page itself, so a saved answer does not take it away mid-edit).
+  const withMobility = page === "mobility" || asksMobility(openQuestions);
+  // The whole question while the wish is open or a row is edited; only the
+  // stiff areas when just those are still open.
+  const mobilityScope =
+    initialPage === "mobility" || openQuestions.includes("mobility")
+      ? "all"
+      : "details";
 
   const go = (next: Page, edit = false) => {
     setFromReview(edit);
@@ -218,6 +250,10 @@ export function ProfileStep({
         };
       case "run":
         return runResult.run ? { training: { run: runResult.run } } : null;
+      case "mobility":
+        return mobilityAnswer
+          ? { training: { mobility: mobilityAnswer } }
+          : null;
       case "wishes":
         return {
           training: {
@@ -244,7 +280,11 @@ export function ProfileStep({
           ? runResult.problems.target ||
               runResult.problems.reference ||
               "Wähle dein Laufziel und trag die Minuten pro Woche und den längsten Lauf ein."
-          : "Wähle eine Antwort aus.",
+          : page === "mobility" &&
+              wantsMorning(mobilityDraft.choice) &&
+              mobilityDraft.weekdays.length === 0
+            ? MOBILITY_PAGE_ERROR.weekdays
+            : "Wähle eine Antwort aus.",
       );
       return;
     }
@@ -279,7 +319,7 @@ export function ProfileStep({
         if (patch && !(await onSave(patch))) return;
       }
       if (onReturn && initialPage && page === initialPage) onReturn();
-      else go(nextPage(page, fromReview, withLoads, withRun));
+      else go(nextPage(page, fromReview, withLoads, withRun, withMobility));
     } finally {
       guard.current = false;
     }
@@ -287,7 +327,7 @@ export function ProfileStep({
   const back = () => {
     if (onReturn && initialPage && page === initialPage) return onReturn();
     if (fromReview) return go("review");
-    const previous = previousPage(page, withLoads, withRun);
+    const previous = previousPage(page, withLoads, withRun, withMobility);
     if (previous) go(previous);
     else onBack();
   };
@@ -321,10 +361,16 @@ export function ProfileStep({
                 ? "Angaben · Gewichte"
                 : page === "run"
                   ? "Angaben · Laufen"
-                  : "Prüfen"
+                  : page === "mobility"
+                    ? "Wünsche · Mobility"
+                    : "Prüfen"
       }
       phase={
-        page === "wishes" || page === "run" ? 1 : page === "review" ? 2 : 0
+        page === "wishes" || page === "run" || page === "mobility"
+          ? 1
+          : page === "review"
+            ? 2
+            : 0
       }
       within={
         page === "person"
@@ -425,6 +471,17 @@ export function ProfileStep({
       setDraft: setRunDraft,
       problems: runResult.problems,
       setInvalidNumbers,
+    });
+
+  if (page === "mobility")
+    return renderMobilityPage({
+      head,
+      errorNote,
+      actions: actions(true),
+      busy,
+      draft: mobilityDraft,
+      setDraft: setMobilityDraft,
+      scope: mobilityScope,
     });
 
   if (page === "wishes")

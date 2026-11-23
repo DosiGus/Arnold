@@ -2,6 +2,7 @@ import { logProtocolStep, logServerError } from "./tool-log.js";
 import { writeModeFromEnv } from "./workout/fixture.js";
 import { createFixtureOnboarding } from "./onboarding/fixture.js";
 import { demoHistoryDataset } from "./plan/demo-history.js";
+import { localDayOf } from "./reference-day.js";
 import type { WorkoutLoggingService } from "./workout/service.js";
 import type { RunService } from "./run/service.js";
 import type { MobilityService } from "./mobility/service.js";
@@ -150,8 +151,10 @@ export function createHttpApp(options: ServerOptions = {}) {
         // too, or two thirds of the product are simply absent from the tool
         // list and a connected client cannot reach them.
         // With invented history, so the start screen has something to show.
+        // "Today" of the history is the calendar day of the demo user (Berlin),
+        // not the UTC day: for the first hour after midnight they differ.
         createFixtureOnboarding({
-          dataset: demoHistoryDataset(new Date().toISOString().slice(0, 10)),
+          dataset: demoHistoryDataset(localDayOf(new Date(), "Europe/Berlin")),
         })
       : undefined);
   if (runtime && options.arnoldSource)
