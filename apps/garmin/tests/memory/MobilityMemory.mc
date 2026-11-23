@@ -36,7 +36,7 @@ class MobMemRig {
 
 (:test)
 function aThirtyMinuteRoutineLeavesNothingBehindAndRedrawsAreFree(logger as Logger) as Boolean {
-    var dc = displayDc();
+    var dc = MemoryDisplay.dc();
     var baseline = System.getSystemStats().usedMemory;
     var rig = new MobMemRig(15, 60);   // 15 exercises, two sides of a minute: 30 minutes of movement
     var view = new MobilityView(rig.player);
@@ -73,8 +73,10 @@ function aThirtyMinuteRoutineLeavesNothingBehindAndRedrawsAreFree(logger as Logg
 
 // A bitmap of the real display size of the device the test runs on.
 (:test)
-function displayDc() as Dc {
-    var settings = System.getDeviceSettings();
-    var bitmap = Graphics.createBufferedBitmap({ :width => settings.screenWidth, :height => settings.screenHeight }).get() as BufferedBitmap;
-    return bitmap.getDc();
+module MemoryDisplay {
+    function dc() as Dc {
+        var settings = System.getDeviceSettings();
+        var bitmap = Graphics.createBufferedBitmap({ :width => settings.screenWidth, :height => settings.screenHeight }).get() as BufferedBitmap;
+        return bitmap.getDc();
+    }
 }
