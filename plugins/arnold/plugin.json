@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "arnold",
-  "version": "0.3.3",
-  "description": "Arnold ist dein Trainingsbegleiter in ChatGPT für Krafttraining und Laufen: Trainingsplan, einfaches Loggen, Fortschritt, Garmin-Uhr und Rückfragen an einem Ort.",
+  "version": "0.4.0",
+  "description": "Arnold ist dein Trainingsbegleiter in ChatGPT für Krafttraining, Laufen und Mobility: Trainingsplan, einfaches Loggen, Fortschritt, Garmin-Uhr und Rückfragen an einem Ort.",
   "author": {
     "name": "Arnold",
     "url": "https://arnold-789221393068.europe-west1.run.app/support"
@@ -14,15 +14,16 @@
     "trainingsplan",
     "fitness",
     "coach",
-    "garmin"
+    "garmin",
+    "mobility"
   ],
   "extensions": {
     "com.openai": {
       "apps": "./.app.json",
       "interface": {
         "displayName": "Arnold",
-        "shortDescription": "Dein Trainingsbegleiter für Kraft und Laufen, mit Plan, Logging, Fortschritt und Garmin-Uhr.",
-        "longDescription": "Arnold erstellt mit dir im Gespräch einen Trainingsplan für Krafttraining und Laufen, der zu deinen Tagen, deiner Zeit und deinem Studio passt. Du loggst dein Training mit einem Satz oder mit der Garmin-Uhr, Arnold schlägt die Gewichte für das nächste Mal vor und erklärt dir deinen Fortschritt. Änderungen am Plan oder an Zielen sagst du einfach; du gibst sie frei.",
+        "shortDescription": "Dein Trainingsbegleiter für Kraft, Laufen und Mobility, mit Plan, Logging, Fortschritt und Garmin-Uhr.",
+        "longDescription": "Arnold erstellt mit dir im Gespräch einen Trainingsplan für Krafttraining, Laufen und Mobility samt Morgenroutine, der zu deinen Tagen, deiner Zeit und deinem Studio passt. Du loggst dein Training mit einem Satz oder mit der Garmin-Uhr, Arnold schlägt die Gewichte für das nächste Mal vor und erklärt dir deinen Fortschritt. Änderungen am Plan oder an Zielen sagst du einfach; du gibst sie frei.",
         "developerName": "Arnold",
         "capabilities": ["Read", "Write"],
         "websiteURL": "https://arnold-789221393068.europe-west1.run.app/support",
