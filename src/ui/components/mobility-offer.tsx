@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from "react";
+import type { MobilityOverview } from "../../shared/mobility-contract";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
 import { browserZone } from "../run/shared";
 import { WriteError, useMobilityWrite } from "../mobility/shared";
 
 /** The one sentence the "Ja" button sends; the server skills know it. */
 export const MOBILITY_OFFER_MESSAGE = "Ich will auch Mobility.";
+
+/** The offer is for a profile that was never asked; yes and no both end it. */
+export const offersMobility = (overview: MobilityOverview): boolean =>
+  overview.profile.state === "not_asked";
 
 /**
  * True only for someone whose mobility profile is `not_asked`. A failed read
@@ -24,7 +29,7 @@ export function useMobilityNotAsked(
     let alive = true;
     client
       .mobilityOverview(browserZone())
-      .then((o) => alive && setNotAsked(o.profile.state === "not_asked"))
+      .then((o) => alive && setNotAsked(offersMobility(o)))
       .catch(() => alive && setNotAsked(false));
     return () => {
       alive = false;
