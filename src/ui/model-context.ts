@@ -197,6 +197,10 @@ export function homeContext(view: ArnoldDashboardView) {
     home.next_session
       ? `Als Nächstes im Plan: „${home.next_session.session_name}“.`
       : "",
+    // MOB-013: the server's own mobility line, only for a user with mobility.
+    home.mobility
+      ? `Mobility auf der Startansicht: „${home.mobility.line}“. Die Karte zeigt es; Dauern und Anteile nie selbst festlegen oder nachrechnen.`
+      : "",
     home.streak.current !== null
       ? `Serie: ${home.streak.current} ${home.streak.current === 1 ? "Woche" : "Wochen"} am Stück mit erreichtem Wochenziel.`
       : "",
