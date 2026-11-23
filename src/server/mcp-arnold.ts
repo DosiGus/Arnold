@@ -15,6 +15,11 @@ import {
 import { registerPlanTools } from "./mcp-plan.js";
 import { registerRunTools } from "./mcp-run.js";
 import { registerRunCardTool } from "./mcp-run-cards.js";
+import {
+  registerMobilityCardTool,
+  registerMobilityTools,
+} from "./mcp-mobility.js";
+import type { MobilityService } from "./mobility/service.js";
 import type { RunService } from "./run/service.js";
 import { registerOnboardingTools } from "./mcp-onboarding.js";
 import { gateUntilSetUp } from "./onboarding/setup-gate.js";
@@ -340,6 +345,7 @@ export function createArnoldMcpServer(
   onboarding?: OnboardingService,
   guard?: ArnoldToolGuard,
   runs?: RunService,
+  mobility?: MobilityService,
 ) {
   const bare = new McpServer(
     { name: "arnold", version: "0.5.0" },
@@ -676,6 +682,8 @@ export function createArnoldMcpServer(
   );
   registerRunTools(server, runs, actorContext);
   registerRunCardTool(server, runs, resourceUri);
+  registerMobilityTools(server, mobility, actorContext);
+  registerMobilityCardTool(server, mobility, resourceUri);
   // Onboarding is its own app resource and tool set. Registering it last keeps
   // the dashboard surface above byte-for-byte unchanged for a deployment that
   // publishes no onboarding at all.

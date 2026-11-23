@@ -40,6 +40,8 @@ import {
   type LoggingOptions,
 } from "../workout/service.js";
 import { RunService } from "../run/service.js";
+import { MobilityService } from "../mobility/service.js";
+import { recordSetupMobilityProfile } from "../mobility/setup.js";
 import { logStartWeight } from "../workout/start-weight.js";
 import { recordSetupRunProfile } from "../onboarding/run-profile.js";
 import type { StoredDataItem } from "../../shared/account-contract.js";
@@ -291,6 +293,7 @@ export class DatabaseUserRuntime {
   readonly plans: TrainingPlanService;
   readonly service: WorkoutLoggingService;
   readonly runs: RunService;
+  readonly mobility: MobilityService;
   readonly onboarding: OnboardingService;
 
   private constructor(
@@ -345,6 +348,13 @@ export class DatabaseUserRuntime {
         logStartWeight(this.service, weightKg, requestId, context),
       recordRunProfile: (run, sessionId, context) =>
         recordSetupRunProfile(this.runs, run, sessionId, context),
+      recordMobilityProfile: (preference, sessionId, context) =>
+        recordSetupMobilityProfile(
+          this.mobility,
+          preference,
+          sessionId,
+          context,
+        ),
     });
     const loggingOptions: LoggingOptions = {
       mode: "database",
@@ -369,6 +379,7 @@ export class DatabaseUserRuntime {
       },
     };
     this.service = new WorkoutLoggingService(loggingOptions);
+    this.mobility = new MobilityService(loggingOptions);
     // Heart rate of a run is stored only with the health consent (D-RUN-07).
     this.runs = new RunService({
       ...loggingOptions,

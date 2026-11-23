@@ -484,9 +484,21 @@ describe("readers with mobility in the dataset (D-MOB-08)", () => {
         );
     const fromMixed = (await source(mixed).load()).dataset;
     const fromBase = (await source(base).load()).dataset;
-    expect(fromMixed).toEqual(fromBase);
+    // MOB-005: the mobility facts travel next to the strength view as their
+    // own field; everything else is the strength dataset of before.
+    const { mobilityDay, ...strengthOnly } = fromMixed as typeof fromMixed & {
+      mobilityDay?: unknown;
+    };
+    expect(mobilityDay).toBeDefined();
+    expect((fromBase as { mobilityDay?: unknown }).mobilityDay).toBeUndefined();
+    expect(strengthOnly).toEqual(fromBase);
     const context = { generatedAt: "2026-11-14T06:00:00Z" };
-    expect(buildDashboardView(fromMixed, context)).toEqual(
+    // The start screen gets its own mobility line (only with a yes); nothing
+    // else of the view changes.
+    const mixedView = buildDashboardView(fromMixed, context);
+    const { mobility: line, ...homeRest } = mixedView.home;
+    expect(line === undefined || typeof line.line === "string").toBe(true);
+    expect({ ...mixedView, home: homeRest }).toEqual(
       buildDashboardView(fromBase, context),
     );
     const statuses = [

@@ -140,6 +140,7 @@ describe("every published tool is classified", () => {
           runtime.onboarding,
           undefined,
           createFixtureLogging().runs,
+          runtime.mobility,
         ),
       ),
     );

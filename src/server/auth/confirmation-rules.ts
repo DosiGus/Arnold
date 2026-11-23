@@ -88,6 +88,11 @@ export const CONFIRMATION_RULES: Readonly<Record<string, ConfirmationEntry>> = {
     rule: "ask_in_chat",
     reason: "Sagt einen geplanten Lauf ab; vorher im Chat nachfragen.",
   },
+  // Mobility (MOB-005): reading, opening a card and normal logging.
+  get_mobility_overview: read,
+  show_arnold_mobility: read,
+  update_mobility_profile: log,
+  log_mobility: log,
   get_workout: read,
   start_workout: log,
   log_workout_sets: log,

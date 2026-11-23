@@ -64,6 +64,14 @@ export const TOOL_ACCESS: Readonly<Record<string, ToolAccessClass>> = {
   // RUN-010: opens a run card; reads nothing itself (the card calls the run tools).
   show_arnold_run: "AUTHENTICATED_READ",
 
+  // ── mcp-mobility.ts — MOB-005 ──
+  get_mobility_overview: "AUTHENTICATED_READ",
+  // Registered only when a mobility service is injected and not disabled.
+  update_mobility_profile: "AUTHENTICATED_WRITE",
+  log_mobility: "AUTHENTICATED_WRITE",
+  // Opens a mobility card; reads nothing itself (the card calls the tools).
+  show_arnold_mobility: "AUTHENTICATED_READ",
+
   // ── mcp-workout.ts — Task 004 ──
   get_workout: "AUTHENTICATED_READ",
   // Registered only when a workout runtime is injected and not disabled.

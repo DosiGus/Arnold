@@ -496,6 +496,29 @@ export const ArnoldHomeSchema = z.object({
   latest_body_weight: z
     .object({ date: isoDate, weight_kg: finiteNumber })
     .nullable(),
+  /**
+   * MOB-005: today's mobility line for the start screen. Present only when
+   * the user said yes to mobility; absent for everyone else, so a dashboard
+   * without mobility stays exactly as it was.
+   */
+  mobility: z
+    .object({
+      /** The morning routine of today; null when none is due today. */
+      morning: z.enum(["open", "done"]).nullable(),
+      /** Other routines due today (own day or after strength), still open. */
+      sessions_open: count,
+      /** The figures of "Dranbleiben", copied from the analytics. */
+      adherence: z.object({
+        ratio: z.number().min(0).max(1).nullable(),
+        streak_days: count,
+        planned_count: count,
+        done_count: count,
+        days: z.number().int().positive(),
+      }),
+      /** One sentence for the start screen. */
+      line: z.string().min(1),
+    })
+    .optional(),
 });
 export type ArnoldHome = z.infer<typeof ArnoldHomeSchema>;
 

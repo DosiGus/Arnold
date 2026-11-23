@@ -4,6 +4,7 @@ import { createFixtureOnboarding } from "./onboarding/fixture.js";
 import { demoHistoryDataset } from "./plan/demo-history.js";
 import type { WorkoutLoggingService } from "./workout/service.js";
 import type { RunService } from "./run/service.js";
+import type { MobilityService } from "./mobility/service.js";
 import type { TrainingPlanService } from "./plan/service.js";
 import type { OnboardingService } from "./onboarding/service.js";
 import { createMcpExpressApp } from "@modelcontextprotocol/express";
@@ -34,6 +35,7 @@ export interface ServerOptions {
     source: ArnoldDataSource;
     service: WorkoutLoggingService;
     runs?: RunService;
+    mobility?: MobilityService;
     /** Task 005 plan management over the same source; omitted leaves plans read-only. */
     plans?: TrainingPlanService;
     /** Task 006 onboarding over the same source; omitted publishes no onboarding. */
@@ -355,6 +357,7 @@ export function createHttpApp(options: ServerOptions = {}) {
         userRuntime?.onboarding,
         auth.guard,
         userRuntime?.runs,
+        userRuntime?.mobility,
       );
       if (options.database) {
         const uri = dashboardResourceUri(
