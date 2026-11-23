@@ -193,6 +193,10 @@ export const WATCH_ROUTE_ACCESS: Readonly<Record<string, WatchRouteAccess>> = {
   "GET /runs/:id": "WATCH_READ",
   "POST /runs": "WATCH_WRITE",
   "PATCH /runs/:session_uuid/rpe": "WATCH_WRITE",
+  // MOB-006: the mobility routines of the plan and the result of a routine.
+  "GET /mobility/today": "WATCH_READ",
+  "GET /mobility/:id": "WATCH_READ",
+  "POST /mobility": "WATCH_WRITE",
 };
 
 export class UnclassifiedWatchRouteError extends Error {

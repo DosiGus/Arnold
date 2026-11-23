@@ -178,3 +178,92 @@ describe("rollback script 006 → 5 → 6", () => {
     }
   });
 });
+
+describe("watch_plan_receipts.mobility_mark (migration 009)", () => {
+  const MOBILITY = "89abcdef01234567";
+
+  const markOf = (account: Account, deviceId: string) =>
+    db.asUser(
+      account.userId,
+      async (c) =>
+        (
+          await c.query<{ plan_mark: string; mobility_mark: string | null }>(
+            "select plan_mark, mobility_mark from arnold.watch_plan_receipts where device_id = $1",
+            [deviceId],
+          )
+        ).rows[0],
+    );
+
+  it("is empty for a watch that confirmed only the plan mark", async () => {
+    const account = await newAccount(db);
+    const deviceId = await watch(account);
+    await receipt(account, deviceId, "0123456789abcdef");
+    expect(await markOf(account, deviceId)).toEqual({
+      plan_mark: "0123456789abcdef",
+      mobility_mark: null,
+    });
+  });
+
+  it("stores the mark of the confirmed mobility, replaces it and keeps it when a later confirmation has none", async () => {
+    const account = await newAccount(db);
+    const deviceId = await watch(account);
+    const confirm = (planMark: string, mobilityMark: string | null) =>
+      db.asUser(account.userId, (c) =>
+        c.query(
+          `insert into arnold.watch_plan_receipts (user_id, device_id, plan_mark, mobility_mark, confirmed_at)
+           values ($1, $2, $3, $4, now())
+           on conflict (user_id, device_id)
+           do update set plan_mark = excluded.plan_mark,
+                         mobility_mark = coalesce(excluded.mobility_mark, watch_plan_receipts.mobility_mark),
+                         confirmed_at = excluded.confirmed_at`,
+          [account.userId, deviceId, planMark, mobilityMark],
+        ),
+      );
+    await confirm("0123456789abcdef", MOBILITY);
+    expect((await markOf(account, deviceId))?.mobility_mark).toBe(MOBILITY);
+    await confirm("fedcba9876543210", null);
+    expect(await markOf(account, deviceId)).toEqual({
+      plan_mark: "fedcba9876543210",
+      mobility_mark: MOBILITY,
+    });
+    await confirm("fedcba9876543210", "0000000000000000");
+    expect((await markOf(account, deviceId))?.mobility_mark).toBe(
+      "0000000000000000",
+    );
+  });
+
+  it("refuses a mobility mark that is not 16 lowercase hex characters", async () => {
+    const account = await newAccount(db);
+    const deviceId = await watch(account);
+    await receipt(account, deviceId, "0123456789abcdef");
+    for (const bad of ["ABCDEF0123456789", "0123", "0123456789abcdeg", ""])
+      await expect(
+        db.asUser(account.userId, (c) =>
+          c.query(
+            "update arnold.watch_plan_receipts set mobility_mark = $2 where device_id = $1",
+            [deviceId, bad],
+          ),
+        ),
+      ).rejects.toThrow();
+  });
+
+  it("is readable only by its own user", async () => {
+    const alice = await newAccount(db);
+    const bob = await newAccount(db);
+    const aliceWatch = await watch(alice);
+    await receipt(alice, aliceWatch, "0123456789abcdef");
+    await db.asUser(alice.userId, (c) =>
+      c.query(
+        "update arnold.watch_plan_receipts set mobility_mark = $2 where device_id = $1",
+        [aliceWatch, MOBILITY],
+      ),
+    );
+    const seenByBob = await db.asUser(
+      bob.userId,
+      async (c) =>
+        (await c.query("select mobility_mark from arnold.watch_plan_receipts"))
+          .rows,
+    );
+    expect(seenByBob).toEqual([]);
+  });
+});
