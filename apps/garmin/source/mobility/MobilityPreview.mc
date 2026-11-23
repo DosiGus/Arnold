@@ -2,9 +2,9 @@ import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.WatchUi;
 
-// What START on a mobility row opens for now (MOB-008): a plain preview with the name, the minutes and
-// the exercises with sides and seconds. The player follows in MOB-009. UP and DOWN scroll, BACK goes back.
-// An entry without a loaded routine says so instead of showing an empty list.
+// What START on a mobility row opens (MOB-008): the overview before the start, with the name, the minutes and
+// the exercises with sides and seconds. START begins the routine in the player (MOB-009). UP and DOWN scroll,
+// BACK goes back. An entry without a loaded routine says so instead of showing an empty list.
 module MobilityPreviewScreen {
 
     function text(id as ResourceId) as String {
@@ -34,6 +34,7 @@ module MobilityPreviewScreen {
             out.add(new PairingLine(text(Rez.Strings.HomeDayNotLoaded), Graphics.FONT_XTINY, Instrument.WARN));
             return out;
         }
+        out.add(new PairingLine(text(Rez.Strings.MobStart), Graphics.FONT_XTINY, Graphics.COLOR_WHITE));
         var all = (routine as Dictionary)["ex"] as Array;
         for (var i = 0; i < all.size(); i++) {
             var exercise = all[i] as Dictionary;
@@ -69,10 +70,22 @@ class MobilityPreviewView extends WatchUi.View {
 
 class MobilityPreviewDelegate extends WatchUi.BehaviorDelegate {
     private var _view as MobilityPreviewView;
+    private var _opener as MobilityOpener;
+    private var _cache as MobilityCache;
+    private var _id as String;
 
-    function initialize(view as MobilityPreviewView) {
+    function initialize(view as MobilityPreviewView, opener as MobilityOpener, cache as MobilityCache, id as String) {
         BehaviorDelegate.initialize();
         _view = view;
+        _opener = opener;
+        _cache = cache;
+        _id = id;
+    }
+
+    // START: the routine begins in the player (nothing happens while the routine is not loaded).
+    function onSelect() as Boolean {
+        _opener.play(_cache, _id);
+        return true;
     }
 
     function onNextPage() as Boolean {
@@ -131,7 +144,23 @@ class MobilityOpener {
 
     function preview(cache as MobilityCache, id as String) as Void {
         var view = new MobilityPreviewView(cache, id);
-        WatchUi.pushView(view, new MobilityPreviewDelegate(view), WatchUi.SLIDE_LEFT);
+        WatchUi.pushView(view, new MobilityPreviewDelegate(view, self, cache, id), WatchUi.SLIDE_LEFT);
+    }
+
+    // The player (MOB-009): the preview stays below it, BACK on the summary returns to it.
+    function play(cache as MobilityCache, id as String) as Void {
+        var entry = cache.item(id);
+        var routine = cache.routine(id);
+        if (entry == null || routine == null) {
+            return;
+        }
+        var store = new KeyValueStore();
+        var kind = "m".equals((entry as Dictionary)["k"] as String) ? "morning" : "session";
+        var recorder = new Recorder(Uuid.v4(), new MobilityBackend());
+        var signals = new MobilitySignals(new Signals(store), new Settings(store));
+        var player = new MobilityPlayer(id, kind, routine as Dictionary, new PairingClock(), signals, recorder);
+        player.begin();
+        WatchUi.pushView(new MobilityView(player), new MobilityDelegate(player, store), WatchUi.SLIDE_LEFT);
     }
 
     function pick(cache as MobilityCache) as Void {
