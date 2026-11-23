@@ -34,7 +34,6 @@ import { MobilityOverviewSchema } from "../src/shared/mobility-contract.js";
 import {
   OnboardingResponseSchema,
   OnboardingViewSchema,
-  type OnboardingResponse,
 } from "../src/shared/onboarding-contract.js";
 import {
   jwksDocument,
