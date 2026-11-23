@@ -1,4 +1,7 @@
-import type { MobilityCard } from "../../shared/mobility-contract";
+import type {
+  MobilityCard,
+  MobilityOverview,
+} from "../../shared/mobility-contract";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
 import { ArnoldCard, CardActions, Rows } from "../components/cards";
 import { CardTag, SayHint } from "../components/conversation-cards";
@@ -31,90 +34,107 @@ export function MobilityResultCard({
   );
   return (
     <Loaded state={state}>
-      {(overview) => {
-        const recent =
-          overview.recent.find((r) => r.workout_id === workoutId) ??
-          (workoutId ? undefined : overview.recent[0]);
-        const a = overview.adherence;
-        const stay =
-          a.ratio === null
-            ? "Dranbleiben: noch kein Plan."
-            : `Dranbleiben: ${a.done_count} von ${a.planned_count} Routinen in ${a.days} Tagen${a.streak_days > 0 ? `, ${a.streak_days} ${a.streak_days === 1 ? "Tag" : "Tage"} in Folge` : ""}.`;
-        if (!recent)
-          return (
-            <main
-              className="arnold-cards"
-              id="main-content"
-              data-card="mobility_result"
-            >
-              <ArnoldCard
-                label={<CardTag>Status</CardTag>}
-                title="Noch kein Ergebnis"
-                subtitle={
-                  workoutId
-                    ? "Diese Routine finde ich nicht in deinen letzten Routinen."
-                    : "Sobald du eine Routine gemacht hast, steht sie hier."
-                }
-              >
-                <p className="ac-caption">{stay}</p>
-                <SayHint>Morgenroutine gemacht.</SayHint>
-                <CardActions
-                  primary={{
-                    label: "Heute ansehen",
-                    onClick: () => onOpen("mobility_today"),
-                  }}
-                />
-              </ArnoldCard>
-            </main>
-          );
-        return (
-          <main
-            className="arnold-cards"
-            id="main-content"
-            data-card="mobility_result"
-          >
-            <ArnoldCard
-              label={<CardTag>Status</CardTag>}
-              title={recent.session_name ?? KIND_LABEL[recent.kind]}
-              subtitle={dateLabel(recent.date_local, true)}
-            >
-              <Rows
-                label="Ergebnis"
-                items={[
-                  { key: "kind", label: "Art", value: KIND_LABEL[recent.kind] },
-                  {
-                    key: "duration",
-                    label: "Dauer",
-                    value: durationText(recent.timer_s),
-                  },
-                  {
-                    key: "exercises",
-                    label: "Übungen",
-                    value:
-                      recent.exercises_total > 0
-                        ? `${recent.exercises_done} von ${recent.exercises_total}`
-                        : UNKNOWN,
-                  },
-                  {
-                    key: "source",
-                    label: "Quelle",
-                    value: recent.source === "watch" ? "Uhr" : "Chat",
-                  },
-                ]}
-              />
-              <p className="ac-caption" data-testid="stay">
-                {stay}
-              </p>
-              <CardActions
-                primary={{
-                  label: "Heute ansehen",
-                  onClick: () => onOpen("mobility_today"),
-                }}
-              />
-            </ArnoldCard>
-          </main>
-        );
-      }}
+      {(overview) => (
+        <MobilityResultBody
+          overview={overview}
+          workoutId={workoutId}
+          onOpen={onOpen}
+        />
+      )}
     </Loaded>
+  );
+}
+
+/** The card for an overview that has arrived (also rendered by the tests). */
+export function MobilityResultBody({
+  overview,
+  workoutId,
+  onOpen,
+}: {
+  overview: MobilityOverview;
+  workoutId: string | null;
+  onOpen: (card: MobilityCard, workoutId?: string) => void;
+}) {
+  const recent =
+    overview.recent.find((r) => r.workout_id === workoutId) ??
+    (workoutId ? undefined : overview.recent[0]);
+  const a = overview.adherence;
+  const stay =
+    a.ratio === null
+      ? "Dranbleiben: noch kein Plan."
+      : `Dranbleiben: ${a.done_count} von ${a.planned_count} Routinen in ${a.days} Tagen${a.streak_days > 0 ? `, ${a.streak_days} ${a.streak_days === 1 ? "Tag" : "Tage"} in Folge` : ""}.`;
+  if (!recent)
+    return (
+      <main
+        className="arnold-cards"
+        id="main-content"
+        data-card="mobility_result"
+      >
+        <ArnoldCard
+          label={<CardTag>Status</CardTag>}
+          title="Noch kein Ergebnis"
+          subtitle={
+            workoutId
+              ? "Diese Routine finde ich nicht in deinen letzten Routinen."
+              : "Sobald du eine Routine gemacht hast, steht sie hier."
+          }
+        >
+          <p className="ac-caption">{stay}</p>
+          <SayHint>Morgenroutine gemacht.</SayHint>
+          <CardActions
+            primary={{
+              label: "Heute ansehen",
+              onClick: () => onOpen("mobility_today"),
+            }}
+          />
+        </ArnoldCard>
+      </main>
+    );
+  return (
+    <main
+      className="arnold-cards"
+      id="main-content"
+      data-card="mobility_result"
+    >
+      <ArnoldCard
+        label={<CardTag>Status</CardTag>}
+        title={recent.session_name ?? KIND_LABEL[recent.kind]}
+        subtitle={dateLabel(recent.date_local, true)}
+      >
+        <Rows
+          label="Ergebnis"
+          items={[
+            { key: "kind", label: "Art", value: KIND_LABEL[recent.kind] },
+            {
+              key: "duration",
+              label: "Dauer",
+              value: durationText(recent.timer_s),
+            },
+            {
+              key: "exercises",
+              label: "Übungen",
+              value:
+                recent.exercises_total > 0
+                  ? `${recent.exercises_done} von ${recent.exercises_total}`
+                  : UNKNOWN,
+            },
+            {
+              key: "source",
+              label: "Quelle",
+              value: recent.source === "watch" ? "Uhr" : "Chat",
+            },
+          ]}
+        />
+        <p className="ac-caption" data-testid="stay">
+          {stay}
+        </p>
+        <CardActions
+          primary={{
+            label: "Heute ansehen",
+            onClick: () => onOpen("mobility_today"),
+          }}
+        />
+      </ArnoldCard>
+    </main>
   );
 }

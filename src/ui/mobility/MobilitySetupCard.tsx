@@ -52,7 +52,7 @@ export function MobilitySetupCard({
   );
 }
 
-function SetupForm({
+export function SetupForm({
   client,
   profile,
 }: {

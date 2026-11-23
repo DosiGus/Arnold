@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { CheckCircle2, Dumbbell } from "lucide-react";
-import type { MobilityCard } from "../../shared/mobility-contract";
+import type {
+  MobilityCard,
+  MobilityOverview,
+} from "../../shared/mobility-contract";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
 import { ArnoldCard, CardActions, CardNote, Rows } from "../components/cards";
 import { CardTag, SayHint } from "../components/conversation-cards";
@@ -24,8 +27,6 @@ export function MobilityTodayCard({
   onOpen: (card: MobilityCard, workoutId?: string) => void;
 }) {
   const zone = browserZone();
-  const [asking, setAsking] = useState<string>();
-  const write = useMobilityWrite(client);
   const state = useRunData(() => client.mobilityOverview(zone), [client, zone]);
   useModelContext(
     client,
@@ -34,132 +35,151 @@ export function MobilityTodayCard({
 
   return (
     <Loaded state={state}>
-      {(overview) => {
-        const items = overview.today.items;
-        if (items.length === 0)
-          return (
-            <main
-              className="arnold-cards"
-              id="main-content"
-              data-card="mobility_today"
-            >
-              <ArnoldCard
-                label={<CardTag>Status</CardTag>}
-                title="Heute steht keine Mobility an"
-                subtitle={
-                  overview.profile.state === "yes"
-                    ? "In deinem Plan ist für heute nichts geplant."
-                    : overview.profile.state === "no"
-                      ? "Du hast bisher Nein gesagt. Das kannst du jederzeit ändern."
-                      : "Du hast noch nicht gesagt, ob Mobility dazukommen soll."
-                }
-              >
-                <SayHint>Bau mir die Morgenroutine in den Plan.</SayHint>
-                <CardActions
-                  primary={{
-                    label: "Mobility einrichten",
-                    onClick: () => onOpen("mobility_setup"),
-                  }}
-                />
-              </ArnoldCard>
-            </main>
-          );
-        const confirm = items.find((i) => i.session_id === asking);
-        const log = async () => {
-          if (!confirm) return;
-          const out = await write.send("log_mobility", {
-            kind: confirm.kind,
-            session_id: confirm.session_id,
-            timezone: zone,
-          });
-          if (out?.ok) {
-            setAsking(undefined);
-            state.reload();
-          }
-        };
-        return (
-          <main
-            className="arnold-cards"
-            id="main-content"
-            data-card="mobility_today"
-          >
-            <ArnoldCard
-              label={<CardTag icon={<Dumbbell size={13} />}>Status</CardTag>}
-              title="Mobility heute"
-              subtitle={dateLabel(overview.today.date_local, true)}
-            >
-              {items.map((item) => (
-                <section
-                  key={item.session_id}
-                  className="ac-block"
-                  aria-label={item.session_name}
-                >
-                  <div className="ac-head">
-                    <h3 className="ac-section-title">{item.session_name}</h3>
-                    {item.done ? (
-                      <span className="ac-pill ok">
-                        <CheckCircle2 size={13} aria-hidden="true" /> Erledigt
-                      </span>
-                    ) : (
-                      <span className="ac-pill muted">Offen</span>
-                    )}
-                  </div>
-                  <p className="ac-caption">
-                    {KIND_LABEL[item.kind]} · {item.minutes} Min.
-                  </p>
-                  <Rows
-                    label={`Übungen: ${item.session_name}`}
-                    items={item.template.items.map((ex, i) => ({
-                      key: `${ex.exercise_id}-${i}`,
-                      label: exerciseName(ex.exercise_id),
-                      value: itemText(ex),
-                    }))}
-                  />
-                  {!item.done && (
-                    <CardActions
-                      primary={{
-                        label: "Erledigt",
-                        ariaLabel: `Erledigt: ${item.session_name}`,
-                        disabled: write.busy,
-                        onClick: () => {
-                          write.clear();
-                          setAsking(item.session_id);
-                        },
-                      }}
-                    />
-                  )}
-                </section>
-              ))}
-              {confirm && (
-                <div role="group" aria-label="Erledigt eintragen?">
-                  <CardNote>
-                    Soll Arnold „{confirm.session_name}“ für heute als erledigt
-                    eintragen?
-                  </CardNote>
-                  <CardActions
-                    primary={{
-                      label: write.busy
-                        ? "Wird gespeichert …"
-                        : "Ja, eintragen",
-                      disabled: write.busy,
-                      onClick: () => void log(),
-                    }}
-                    secondary={{
-                      label: "Abbrechen",
-                      disabled: write.busy,
-                      onClick: () => {
-                        write.clear();
-                        setAsking(undefined);
-                      },
-                    }}
-                  />
-                </div>
-              )}
-              <WriteError error={write.error} />
-            </ArnoldCard>
-          </main>
-        );
-      }}
+      {(overview) => (
+        <MobilityTodayBody
+          client={client}
+          overview={overview}
+          zone={zone}
+          onOpen={onOpen}
+          reload={state.reload}
+        />
+      )}
     </Loaded>
+  );
+}
+
+/** The card for an overview that has arrived (also rendered by the tests). */
+export function MobilityTodayBody({
+  client,
+  overview,
+  zone,
+  onOpen,
+  reload,
+}: {
+  client: ArnoldMcpClient;
+  overview: MobilityOverview;
+  zone: string;
+  onOpen: (card: MobilityCard, workoutId?: string) => void;
+  reload: () => void;
+}) {
+  const [asking, setAsking] = useState<string>();
+  const write = useMobilityWrite(client);
+  const items = overview.today.items;
+  if (items.length === 0)
+    return (
+      <main
+        className="arnold-cards"
+        id="main-content"
+        data-card="mobility_today"
+      >
+        <ArnoldCard
+          label={<CardTag>Status</CardTag>}
+          title="Heute steht keine Mobility an"
+          subtitle={
+            overview.profile.state === "yes"
+              ? "In deinem Plan ist für heute nichts geplant."
+              : overview.profile.state === "no"
+                ? "Du hast bisher Nein gesagt. Das kannst du jederzeit ändern."
+                : "Du hast noch nicht gesagt, ob Mobility dazukommen soll."
+          }
+        >
+          <SayHint>Bau mir die Morgenroutine in den Plan.</SayHint>
+          <CardActions
+            primary={{
+              label: "Mobility einrichten",
+              onClick: () => onOpen("mobility_setup"),
+            }}
+          />
+        </ArnoldCard>
+      </main>
+    );
+  const confirm = items.find((i) => i.session_id === asking);
+  const log = async () => {
+    if (!confirm) return;
+    const out = await write.send("log_mobility", {
+      kind: confirm.kind,
+      session_id: confirm.session_id,
+      timezone: zone,
+    });
+    if (out?.ok) {
+      setAsking(undefined);
+      reload();
+    }
+  };
+  return (
+    <main className="arnold-cards" id="main-content" data-card="mobility_today">
+      <ArnoldCard
+        label={<CardTag icon={<Dumbbell size={13} />}>Status</CardTag>}
+        title="Mobility heute"
+        subtitle={dateLabel(overview.today.date_local, true)}
+      >
+        {items.map((item) => (
+          <section
+            key={item.session_id}
+            className="ac-block"
+            aria-label={item.session_name}
+          >
+            <div className="ac-head">
+              <h3 className="ac-section-title">{item.session_name}</h3>
+              {item.done ? (
+                <span className="ac-pill ok">
+                  <CheckCircle2 size={13} aria-hidden="true" /> Erledigt
+                </span>
+              ) : (
+                <span className="ac-pill muted">Offen</span>
+              )}
+            </div>
+            <p className="ac-caption">
+              {KIND_LABEL[item.kind]} · {item.minutes} Min.
+            </p>
+            <Rows
+              label={`Übungen: ${item.session_name}`}
+              items={item.template.items.map((ex, i) => ({
+                key: `${ex.exercise_id}-${i}`,
+                label: exerciseName(ex.exercise_id),
+                value: itemText(ex),
+              }))}
+            />
+            {!item.done && (
+              <CardActions
+                primary={{
+                  label: "Erledigt",
+                  ariaLabel: `Erledigt: ${item.session_name}`,
+                  disabled: write.busy,
+                  onClick: () => {
+                    write.clear();
+                    setAsking(item.session_id);
+                  },
+                }}
+              />
+            )}
+          </section>
+        ))}
+        {confirm && (
+          <div role="group" aria-label="Erledigt eintragen?">
+            <CardNote>
+              Soll Arnold „{confirm.session_name}“ für heute als erledigt
+              eintragen?
+            </CardNote>
+            <CardActions
+              primary={{
+                label: write.busy ? "Wird gespeichert …" : "Ja, eintragen",
+                disabled: write.busy,
+                onClick: () => void log(),
+              }}
+              secondary={{
+                label: "Abbrechen",
+                disabled: write.busy,
+                onClick: () => {
+                  write.clear();
+                  setAsking(undefined);
+                },
+              }}
+            />
+          </div>
+        )}
+        <WriteError error={write.error} />
+      </ArnoldCard>
+    </main>
   );
 }
