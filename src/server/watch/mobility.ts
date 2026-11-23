@@ -79,11 +79,14 @@ function nameOf(session: MobilityDaySession, lang: WatchLanguage): string {
   if (name === DEFAULT_NAMES[session.kind].de)
     return DEFAULT_NAMES[session.kind][lang];
   if (name.length <= NAME_MAX) return name;
-  return `${name.slice(0, NAME_MAX - 1).replace(/[\ud800-\udbff]$/, "").trimEnd()}…`;
+  return `${name
+    .slice(0, NAME_MAX - 1)
+    .replace(/[\ud800-\udbff]$/, "")
+    .trimEnd()}…`;
 }
 
 /** The routine as the watch loads it, in one language. */
-function routineBody(session: MobilityDaySession, lang: WatchLanguage) {
+export function routineBody(session: MobilityDaySession, lang: WatchLanguage) {
   return WatchMobilityRoutineSchema.parse({
     api_version: RUN_WATCH_API_VERSION,
     min_app_version: WATCH_MIN_APP_VERSION,
@@ -106,7 +109,7 @@ function routineBody(session: MobilityDaySession, lang: WatchLanguage) {
 }
 
 /** Up to 16 characters of the hash of the routine as the watch gets it: its ETag without the quotes. */
-const routineTag = (session: MobilityDaySession, lang: WatchLanguage) =>
+export const routineTag = (session: MobilityDaySession, lang: WatchLanguage) =>
   createHash("sha256")
     .update(JSON.stringify(routineBody(session, lang)))
     .digest("hex")
@@ -189,7 +192,13 @@ function refused(code: string): WatchApiError {
     422,
     false,
   ];
-  return new WatchApiError(watchCode, status, retryable, {}, `mobility.${code}`);
+  return new WatchApiError(
+    watchCode,
+    status,
+    retryable,
+    {},
+    `mobility.${code}`,
+  );
 }
 
 /** The user's mobility facts, after the same setup gate as the other routes. */
