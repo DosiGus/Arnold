@@ -158,7 +158,8 @@ test("one row corrected by tap returns to the card and saves only that field", a
     },
   });
   await page.reload();
-  await expect(main.locator(".cc-missing")).toHaveCount(2);
+  // The place and the session length (required), plus the optional mobility.
+  await expect(main.locator(".cc-missing")).toHaveCount(3);
   await main.getByRole("button", { name: "Umfang ändern" }).click();
   await stepTo(page, "Minuten pro Training", 45);
   await next(page);
