@@ -123,6 +123,15 @@ export function MobilityResultBody({
               label: "Quelle",
               value: recent.source === "watch" ? "Uhr" : "Chat",
             },
+            ...(recent.ended_early === true
+              ? [
+                  {
+                    key: "ended_early",
+                    label: "Ende",
+                    value: "vorzeitig beendet",
+                  },
+                ]
+              : []),
           ]}
         />
         <p className="ac-caption" data-testid="stay">

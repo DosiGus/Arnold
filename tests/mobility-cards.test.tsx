@@ -181,6 +181,29 @@ describe("MobilityResultCard", () => {
     );
   });
 
+  it('says "vorzeitig beendet" only when the server says so (MOB-013)', () => {
+    const row = (ended_early?: boolean) =>
+      overview({
+        recent: [
+          {
+            workout_id: "w-1",
+            date_local: "2026-11-22",
+            kind: "morning",
+            session_name: "Morgenroutine",
+            timer_s: 240,
+            exercises_done: 3,
+            exercises_total: 6,
+            source: "watch",
+            ...(ended_early === undefined ? {} : { ended_early }),
+          },
+        ],
+      });
+    expect(result(row(true))).toContain("vorzeitig beendet");
+    expect(result(row(false))).not.toContain("vorzeitig");
+    // An answer without the field says nothing about it.
+    expect(result(row())).not.toContain("vorzeitig");
+  });
+
   it("shows unknown values as unknown, never as 0", () => {
     const markup = result(
       overview({

@@ -410,6 +410,7 @@ export class MobilityService {
                 exercises_done: r.exercises_done,
                 exercises_total: r.exercises_total,
                 source: r.result_source,
+                ended_early: r.ended_early,
               },
             ]
           : [];

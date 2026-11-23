@@ -353,6 +353,11 @@ export const MobilityRecentSchema = z.strictObject({
   exercises_done: nonneg.max(MOBILITY_LIMITS.resultItems),
   exercises_total: nonneg.max(MOBILITY_LIMITS.resultItems),
   source: MobilityResultSourceSchema,
+  /**
+   * True when the user stopped the routine on the watch. Optional: an older
+   * answer without it means "not stated", never "finished".
+   */
+  ended_early: z.boolean().optional(),
 });
 
 /** `get_mobility_overview`. */

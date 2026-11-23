@@ -17,7 +17,10 @@ import type { OnboardingProfilePatch } from "../src/shared/onboarding-contract";
 import type { MobilityPreference } from "../src/shared/mobility-contract";
 import { mobilityDayInputsOf } from "../src/server/mobility/day";
 import { isMobilityWorkout } from "../src/shared/arnold-schema-v1";
-import { LogMobilityResponseSchema } from "../src/shared/mobility-contract";
+import {
+  LogMobilityResponseSchema,
+  MobilityOverviewSchema,
+} from "../src/shared/mobility-contract";
 import { harness, NOW, type Harness } from "./fixtures/arnold-plan";
 
 const M = [
@@ -310,6 +313,7 @@ describe("the overview", () => {
         exercises_done: M.length,
         exercises_total: M.length,
         source: "chat",
+        ended_early: false,
       },
     ]);
   });
@@ -830,6 +834,15 @@ describe("saveWatchMobility", () => {
       // A partly done exercise counts as skipped.
       exercises_skipped: 2,
     });
+    // MOB-013: the overview carries the flag into `recent`.
+    const recent = (await h.mobility.getOverview(undefined, BERLIN)).recent;
+    expect(recent).toHaveLength(1);
+    expect(recent[0]).toMatchObject({ source: "watch", ended_early: true });
+    expect(
+      MobilityOverviewSchema.safeParse(
+        await h.mobility.getOverview(undefined, BERLIN),
+      ).success,
+    ).toBe(true);
   });
 
   it("applies the ended_early rules", async () => {
