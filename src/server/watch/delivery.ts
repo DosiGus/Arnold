@@ -17,7 +17,11 @@ import {
 } from "../../shared/watch-contract.js";
 import type { Database } from "../db/database.js";
 import { mobilityDayInputsOf } from "../mobility/day.js";
-import { hasWatchMobility, mobilityMark } from "./mobility.js";
+import {
+  activePlanVersionId,
+  hasWatchMobility,
+  mobilityMark,
+} from "./mobility.js";
 import { planMark } from "./plan.js";
 
 /** One active watch: its app version and the mark it confirmed last, if any. */
@@ -87,7 +91,9 @@ export function currentPlanMark(dataset: ArnoldDataset): string | null {
  */
 export function currentMobilityMark(dataset: ArnoldDataset): string | null {
   const inputs = mobilityDayInputsOf(dataset);
-  return hasWatchMobility(inputs) ? mobilityMark(inputs) : null;
+  return hasWatchMobility(inputs)
+    ? mobilityMark(inputs, activePlanVersionId(dataset) ?? "")
+    : null;
 }
 
 /** The user's active watches with their last confirmed mark (own rows only). */

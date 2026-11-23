@@ -60,7 +60,7 @@ function theOutboxSurvivesARestartAndSendsOneRequestAtATime(logger as Logger) as
     Expect.equal(rig.plan.pairing.transport.sentCount(), 1);                  // one at a time
     Test.assert(rig.plan.pairing.transport.urls[0].find("/mobility") != null);
     Expect.field(rig.body(0), "request_id", "gm_" + (first["session_uuid"] as String));
-    Expect.equal(Expect.valueOf(rig.body(0), "session_id"), null);
+    Expect.equal(Expect.valueOf(rig.body(0), "session_id"), null);              // a result without a plan version is a free routine
     Expect.equal(Expect.valueOf(rig.body(0), "plan_version_id"), null);
     rig.plan.pairing.transport.respond(201, { "workout_id" => "w1", "replayed" => false });
     Expect.equal(rig.plan.pairing.transport.sentCount(), 2);
@@ -203,10 +203,13 @@ function everyStoredValueStaysFarBelow32KB(logger as Logger) as Boolean {
 // mock server, which checks them against the contract (src/shared/mobility-contract.ts): 201, then 200 for the repeat.
 (:test)
 function printTheMobilityRequestsForTheEndToEndCheck(logger as Logger) as Boolean {
+    MobPlay.session = "s_00000000-0000-4000-8000-000000000001";   // the routine the mock server's list names (with its plan version)
     var done = new MobPlayRig([[2, 20, null], [1, 30, 8]] as Array);
     done.go(5 + 20 + 3 + 20 + 5 + 30);
     Test.assert(done.player.save());
+    MobPlay.session = "s_00000000-0000-4000-8000-000000000002";
     var early = new MobPlayRig([[1, 30, null], [1, 30, null]] as Array);
+    MobPlay.session = "s_1";
     early.go(5 + 30 + 5 + 12);
     early.player.endEarly();
     Test.assert(early.player.save());
@@ -216,5 +219,38 @@ function printTheMobilityRequestsForTheEndToEndCheck(logger as Logger) as Boolea
     Expect.field(partial, "ended_early", true);
     logger.debug("MOBPAYLOAD morgen-fertig " + RunJson.write(body));
     logger.debug("MOBPAYLOAD einheit-frueh-beendet " + RunJson.write(partial));
+    return true;
+}
+
+(:test)
+function thePlanVersionOfTheRoutineTravelsWithTheSessionOrNotAtAll(logger as Logger) as Boolean {
+    // the routine named its plan version: both fields, also after a crash
+    var planned = new MobPlayRig([[1, 40, null], [1, 40, null]] as Array);
+    planned.go(5 + 40 + 5 + 25);
+    MobilityHandover.live = null;
+    Test.assert(MobilityHandover.recover(planned.journal, planned.outbox, planned.clock.now));
+    var recovered = (planned.outbox.get(planned.player.uuid) as Dictionary)["b"] as Dictionary;
+    Expect.field(recovered, "plan_version_id", "pv_00000000-0000-4000-8000-000000000001");
+    Expect.field(recovered, "session_id", "s_1");
+    // the answer had none (a cache from before the update): neither field is sent, the routine is still marked done here
+    MobPlay.plan = null;
+    var free = new MobPlayRig([[1, 5, null]] as Array);
+    MobPlay.plan = "pv_00000000-0000-4000-8000-000000000001";
+    free.go(5 + 5);
+    Test.assert(free.player.save());
+    var entry = free.outbox.get(free.player.uuid) as Dictionary;
+    var body = entry["b"] as Dictionary;
+    Expect.equal(Expect.valueOf(body, "session_id"), null);
+    Expect.equal(Expect.valueOf(body, "plan_version_id"), null);
+    Expect.field(entry, "i", "s_1");
+    // the cache keeps p when the answer has it, and loads an older answer without it
+    var cache = new MobilityCache(new MemoryStore());
+    var rig = new MobilityRig();
+    var routine = rig.routine(1, 600);
+    routine["p"] = "pv_x";
+    Test.assert(cache.putRoutine(rig.id(1), "t", routine, 1));
+    Expect.field(cache.routine(rig.id(1)) as Dictionary, "p", "pv_x");
+    Test.assert(cache.putRoutine(rig.id(2), "t", rig.routine(2, 600), 1));
+    Expect.equal(Expect.valueOf(cache.routine(rig.id(2)) as Dictionary, "p"), null);
     return true;
 }

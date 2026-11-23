@@ -64,6 +64,7 @@ class MobilityPlayer {
     var sessionId as String;
     var kind as String;       // "morning" or "session"
     var uuid as String;
+    var planVersion as String;   // the plan version of the routine ("" when the answer had none)
 
     private var _exercises as Array;
     private var _results as Array<Dictionary>;
@@ -88,6 +89,7 @@ class MobilityPlayer {
         kind = routineKind;
         uuid = Uuid.v4();
         _exercises = routine["ex"] as Array;
+        planVersion = routine["p"] instanceof String ? routine["p"] as String : "";
         _results = [] as Array<Dictionary>;
         _clock = clock;
         _signals = signals;
@@ -135,7 +137,7 @@ class MobilityPlayer {
     hidden function headOf() as Dictionary {
         return {
             "st" => phase == PH_END ? MobilityJournal.STATE_ENDED : MobilityJournal.STATE_RUNNING,
-            "id" => sessionId, "k" => kind, "o" => _offset, "a" => _startedAt, "lt" => _clock.nowSeconds(),
+            "id" => sessionId, "pv" => planVersion, "k" => kind, "o" => _offset, "a" => _startedAt, "lt" => _clock.nowSeconds(),
             "tm" => _timerS, "el" => _elapsedS, "ee" => endedEarly ? 1 : 0, "cs" => _spent,
             "ci" => phase == PH_END ? "" : exercise()["c"], "ex" => _results
         } as Dictionary;
@@ -370,7 +372,7 @@ class MobilityPlayer {
     // The finished routine as WatchMobilityRequestSchema has it (without request_id and plan_version_id, which
     // the sending adds): ex = [{ c, st "done"|"skipped"|"partial", t }].
     function result() as Dictionary {
-        return {
+        var out = {
             "session_uuid" => uuid,
             "kind" => kind,
             "session_id" => sessionId,
@@ -382,6 +384,10 @@ class MobilityPlayer {
             "elapsed_s" => _elapsedS,
             "ended_early" => endedEarly,
             "ex" => _results
-        };
+        } as Dictionary;
+        if (planVersion.length() > 0) {
+            out["plan_version_id"] = planVersion;
+        }
+        return out;
     }
 }

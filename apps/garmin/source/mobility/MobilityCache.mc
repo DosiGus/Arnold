@@ -139,6 +139,9 @@ class MobilityCache {
             exercises.add({ "c" => raw["c"], "n" => raw["n"], "h" => raw["h"], "s" => raw["s"], "t" => raw["t"], "r" => raw["r"] });
         }
         var routine = { "id" => body["id"], "tot" => body["tot"], "ex" => exercises };
+        if (body["p"] instanceof String) {
+            routine["p"] = body["p"];   // the plan version the routine belongs to (MOB-010); an older answer has none
+        }
         var entry = { "tag" => tag, "at" => now, "r" => routine };
         _store.setValue(StoreKeys.mobRoutine(id), entry as Application.Storage.ValueType);
         return true;

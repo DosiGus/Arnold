@@ -98,14 +98,18 @@ class MobilityJournal {
 module MobilityHandover {
     var live as String or Null = null;   // the routine this process is running (it is not "interrupted")
 
-    // The request of POST /mobility for a result (MobilityPlayer.result): the plan version is not known on the watch, so
-    // the routine goes without session_id and plan_version_id (a free routine for Arnold); the outbox keeps the session
-    // id to mark the routine done on this watch.
+    // The request of POST /mobility for a result (MobilityPlayer.result). session_id and plan_version_id go together
+    // or not at all: a routine whose answer did not name its plan version (an older cache) is sent as a free routine.
+    // The outbox keeps the session id in any case, to mark the routine done on this watch.
     function request(result as Dictionary) as Dictionary {
         var keys = ["session_uuid", "kind", "workout_date_local", "utc_offset_min", "started_at_utc", "ended_at_utc", "timer_s", "elapsed_s", "ended_early", "ex"];
         var body = { "request_id" => "gm_" + (result["session_uuid"] as String) } as Dictionary;
         for (var i = 0; i < keys.size(); i++) {
             body[keys[i]] = result[keys[i]];
+        }
+        if (result["plan_version_id"] instanceof String) {
+            body["plan_version_id"] = result["plan_version_id"];
+            body["session_id"] = result["session_id"];
         }
         return body;
     }
@@ -127,7 +131,7 @@ module MobilityHandover {
         var started = head["a"] as Number;
         var offset = head["o"] as Number;
         var ended = head["lt"] as Number;
-        return {
+        var out = {
             "session_uuid" => uuid,
             "kind" => head["k"],
             "session_id" => head["id"],
@@ -140,6 +144,10 @@ module MobilityHandover {
             "ended_early" => running || (head["ee"] as Number) == 1,
             "ex" => done
         } as Dictionary;
+        if (head["pv"] instanceof String && (head["pv"] as String).length() > 0) {
+            out["plan_version_id"] = head["pv"];
+        }
+        return out;
     }
 
     // The app opens: a routine the journal still holds goes into the outbox, once (the journal is dropped with it).

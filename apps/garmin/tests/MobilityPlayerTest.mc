@@ -7,6 +7,13 @@ import Toybox.Test;
 // MOB-009: the mobility player (time, transitions, pause, skip, end), the recording and the result.
 // Kept short like MobilityTest.mc: the test build of the fr255 may use 90 % of the memory (RunSessionTest.mc).
 
+// The plan version the rigs' routines name (null: an answer without it, an older cache).
+(:test)
+module MobPlay {
+    var plan as String or Null = "pv_00000000-0000-4000-8000-000000000001";
+    var session as String = "s_1";
+}
+
 // A routine on a fake clock, fake recording and recording signals. Each exercise: [sides, seconds per side, reps or null].
 (:test)
 class MobPlayRig {
@@ -30,8 +37,11 @@ class MobPlayRig {
             var ex = { "c" => "mob_cat_cow", "n" => "Übung " + i, "h" => "Ruhig atmen", "s" => spec[0], "t" => spec[1], "r" => spec[2] };
             all.add(ex);
         }
-        var routine = { "id" => "s_1", "tot" => 600, "ex" => all };
-        player = new MobilityPlayer("s_1", "session", routine, clock, new MobilitySignals(signals, new Settings(store)), new Recorder("u1", backend));
+        var routine = { "id" => MobPlay.session, "tot" => 600, "ex" => all };
+        if (MobPlay.plan != null) {
+            routine["p"] = MobPlay.plan;
+        }
+        player = new MobilityPlayer(MobPlay.session, "session", routine, clock, new MobilitySignals(signals, new Settings(store)), new Recorder("u1", backend));
         outbox = new MobilityOutbox(store);
         journal = new MobilityJournal(store);
         player.connect(journal, outbox, null);
@@ -162,7 +172,8 @@ function savedResultHasTheFieldsOfTheWatchRequest(logger as Logger) as Boolean {
     var saved = entry["b"] as Dictionary;
     Expect.field(saved, "kind", "session");
     Expect.field(saved, "request_id", "gm_" + p.uuid);
-    Expect.equal(Expect.valueOf(saved, "session_id"), null);     // the plan version is not known on the watch
+    Expect.field(saved, "session_id", "s_1");                                   // planned: both fields together
+    Expect.field(saved, "plan_version_id", "pv_00000000-0000-4000-8000-000000000001");     // the plan version is not known on the watch
     Test.assert(Uuid.isV4(saved["session_uuid"] as String));
     Expect.field(saved, "started_at_utc", "2023-11-14T22:13:20Z");
     Expect.field(saved, "ended_at_utc", "2023-11-14T22:13:43Z");

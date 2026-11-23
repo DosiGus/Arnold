@@ -265,6 +265,7 @@ export function createMockState(fixtures: ReturnType<typeof loadFixtures>) {
       { hash: string; response: Json; count: number; stored: Json }
     >(),
     mobilitySessions: new Map<string, string>(),
+    mobilityDone: new Set<string>(), // planned routines sent today (the list shows dn)
     health: new Map<string, Json>(),
     fault: null as Fault | null,
     log: [] as LogEntry[],
@@ -405,7 +406,14 @@ function route(
         body: errorBody("VALIDATION_ERROR", "Unbekannte Route."),
       };
     const part = decodeURIComponent(mobilityRoute[1]!);
-    if (part === "today") return cached(state.mobility.list);
+    if (part === "today")
+      return cached({
+        ...state.mobility.list,
+        items: (state.mobility.list.items as Json[]).map((item) => ({
+          ...item,
+          dn: item.dn === true || state.mobilityDone.has(String(item.id)),
+        })),
+      });
     const routine = state.mobility.routines.get(part);
     const entry = (state.mobility.list.items as Json[]).find(
       (item) => item.id === part,
@@ -567,6 +575,16 @@ function route(
         "DUPLICATE_WORKOUT",
         "Diese Aufzeichnung ist schon gespeichert.",
       );
+    // A planned routine: the session and the plan version must be the ones the routine names (like the server).
+    if (request.session_id !== undefined) {
+      const routine = state.mobility?.routines.get(request.session_id);
+      if (!routine || routine.p !== request.plan_version_id)
+        return fail(
+          "VALIDATION_ERROR",
+          "Die Planeinheit gibt es nicht (mehr).",
+        );
+      state.mobilityDone.add(request.session_id);
+    }
     const response = {
       ...envelope,
       workout_id: `wo_${randomUUID()}`,
@@ -1438,6 +1456,24 @@ async function runE2e(port: number, fixturesDir: string, file: string) {
   }
   for (const name of ["morgen-fertig", "einheit-frueh-beendet"])
     check(`mobility ${name}: vom Simulator ausgegeben`, mobility.has(name));
+  const listBefore = await call(
+    "GET",
+    `${BASE}/mobility/today`,
+    undefined,
+    auth,
+  );
+  const dnOf = (list: Json | null, id: unknown) =>
+    ((list?.items as Json[]) ?? []).find((item) => item.id === id)?.dn;
+  const planned = mobility.get("morgen-fertig");
+  check(
+    "mobility morgen-fertig: geplante Routine mit Plan-Version und Einheit",
+    typeof planned?.plan_version_id === "string" &&
+      typeof planned?.session_id === "string",
+  );
+  check(
+    "mobility: vor dem Senden ist die Routine nicht erledigt (dn false)",
+    dnOf(listBefore.body, planned?.session_id) === false,
+  );
   for (const [name, payload] of mobility) {
     const first = await call("POST", `${BASE}/mobility`, payload, auth);
     if (first.status !== 201) console.log(JSON.stringify(first.body));
@@ -1452,6 +1488,18 @@ async function runE2e(port: number, fixturesDir: string, file: string) {
         again.body?.replayed === true &&
         again.body?.workout_id === first.body?.workout_id,
     );
+    if (name === "morgen-fertig") {
+      const after = await call(
+        "GET",
+        `${BASE}/mobility/today`,
+        undefined,
+        auth,
+      );
+      check(
+        "mobility morgen-fertig: danach zählt die Routine als geplante (dn true)",
+        dnOf(after.body, payload.session_id) === true,
+      );
+    }
     const renamed = await call(
       "POST",
       `${BASE}/mobility`,
