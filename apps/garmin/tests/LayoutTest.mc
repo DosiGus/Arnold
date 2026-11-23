@@ -659,3 +659,75 @@ function mobilityPreviewShowsTheRoutineOrSaysItIsNotLoaded(logger as Logger) as 
     PairingLayout.draw(dc, unknown);
     return true;
 }
+
+// MOB-009: the mobility player on every display, in every state, with long German texts.
+(:test)
+module MobPlayLayout {
+    const LONG as String = "Äußere Rotation im Hüftgelenk mit Band";
+    const CUE as String = "Schulterblätter zusammenschieben und die Brust weit öffnen";
+
+    function rig(sides as Number, reps as Number or Null) as MobPlayRig {
+        var r = new MobPlayRig([[sides, 20, reps], [1, 5, null]] as Array);
+        var ex = r.player.exercise();
+        ex["n"] = LONG;
+        ex["h"] = CUE;
+        return r;
+    }
+
+    function check(dc as Dc, f as InstrumentFace, tag as String) as Void {
+        var message = tag + " on " + dc.getWidth() + " px";
+        for (var i = 0; i < f.top.size(); i++) {
+            Test.assertMessage(dc.getTextWidthInPixels(f.top[i], Graphics.FONT_TINY) <= Instrument.scale(dc, 218), message + " top " + f.top[i]);
+        }
+        if (f.sub != null) {
+            Test.assertMessage(dc.getTextWidthInPixels(f.sub as String, Graphics.FONT_SMALL) <= Instrument.scale(dc, 190), message + " sub " + f.sub);
+        }
+        if (f.bottom != null) {
+            Test.assertMessage(dc.getTextWidthInPixels(f.bottom as String, Graphics.FONT_XTINY) <= Instrument.scale(dc, 176), message + " bottom " + f.bottom);
+        }
+        var hero = f.hero as String;
+        Test.assertMessage(hero.find(",") == null && dc.getTextWidthInPixels(hero, Instrument.heroFont()) <= Instrument.scale(dc, 212), message + " hero " + hero);
+        Instrument.draw(dc, f);
+    }
+
+    function summaryFits(dc as Dc, r as MobPlayRig, tag as String) as Void {
+        var lines = MobilityScreen.summary(r.player);
+        Test.assertMessage(LayoutRig.fits(dc, lines) && LayoutRig.litShare(dc, lines) <= 45, tag + " on " + dc.getWidth() + " px");
+        PairingLayout.draw(dc, lines);
+    }
+}
+
+(:test)
+function mobilityPlayerStatesFitEveryDisplay(logger as Logger) as Boolean {
+    var dc = LayoutRig.dc();
+    var two = MobPlayLayout.rig(2, null);
+    MobPlayLayout.check(dc, MobilityScreen.face(two.player), "next");
+    two.go(5 + 7);
+    MobPlayLayout.check(dc, MobilityScreen.face(two.player), "left");
+    two.go(13);
+    MobPlayLayout.check(dc, MobilityScreen.face(two.player), "switch");
+    two.go(3 + 1);
+    MobPlayLayout.check(dc, MobilityScreen.face(two.player), "right");
+    two.player.toggle();
+    MobPlayLayout.check(dc, MobilityScreen.face(two.player), "paused");
+    var reps = MobPlayLayout.rig(2, 12);
+    reps.go(5 + 1);
+    MobPlayLayout.check(dc, MobilityScreen.face(reps.player), "reps left");
+    MobPlayLayout.check(dc, MobilityScreen.face(MobPlayLayout.rig(1, 30).player), "reps only");
+    // the end: done, ended early with a skipped one, saved, nothing to save
+    var done = MobPlayLayout.rig(1, null);
+    done.go(5 + 20 + 5 + 5);
+    MobPlayLayout.summaryFits(dc, done, "done");
+    Test.assert(done.player.save(done.store));
+    MobPlayLayout.summaryFits(dc, done, "saved");
+    var early = MobPlayLayout.rig(1, null);
+    early.go(2);
+    early.player.skip();
+    early.go(5 + 2);
+    early.player.endEarly();
+    MobPlayLayout.summaryFits(dc, early, "early");
+    var none = MobPlayLayout.rig(1, null);
+    none.player.endEarly();
+    MobPlayLayout.summaryFits(dc, none, "nothing");
+    return true;
+}
