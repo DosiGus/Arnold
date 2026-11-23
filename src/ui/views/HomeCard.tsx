@@ -18,6 +18,11 @@ import {
 import { ProgressBar, goalValue } from "../components/home";
 import { HomeActions } from "../components/home-actions";
 import { HomeNextRun } from "../components/home-run";
+import { HomeMobility } from "../components/home-mobility";
+import {
+  MobilityOffer,
+  useMobilityNotAsked,
+} from "../components/mobility-offer";
 import { useNoRunProfile } from "../components/run-offer";
 import type { ArnoldMcpClient } from "../client/ArnoldMcpClient";
 import { dateLabel, recordValue } from "../format";
@@ -78,6 +83,12 @@ export function HomeCard({
   const panelId = useId();
   const noRunProfile = useNoRunProfile(client);
   const home = view.home;
+  // MOB-013: the one-time offer, only for a set-up user who was never asked.
+  // A user with a mobility line has said yes already: no read, no offer.
+  const mobilityOffer = useMobilityNotAsked(
+    client,
+    canWrite && Boolean(view.active_plan) && !home.mobility,
+  );
   // The server decides which day is "today" (UX-016). Without a known time
   // zone it names none, and the card marks nothing rather than guessing.
   const today =
@@ -250,6 +261,15 @@ export function HomeCard({
               onOpenRun={(card) => void client.openRun(card).catch(() => {})}
             />
           )}
+          <HomeMobility
+            line={home.mobility}
+            onOpen={
+              client
+                ? () =>
+                    void client.openMobility("mobility_today").catch(() => {})
+                : undefined
+            }
+          />
           <div className="ac-home-links">
             <button
               type="button"
@@ -486,6 +506,7 @@ export function HomeCard({
             </button>
           </p>
         )}
+        {client && mobilityOffer && <MobilityOffer client={client} />}
       </section>
       <HomeActions
         client={client}

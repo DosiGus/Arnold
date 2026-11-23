@@ -10,6 +10,7 @@ import {
   Rows,
 } from "../components/cards";
 import { RecoveryCard } from "../components/recovery";
+import { PlanMobilitySessions } from "../components/plan-mobility-sessions";
 import { PlanRunSessions } from "../components/plan-run-sessions";
 import { PlanChangeView } from "../components/plan/change-card";
 import { usePlanChange } from "../hooks/usePlanChange";
@@ -107,6 +108,10 @@ function PlanOverviewCard({
   const plan = result.data ? result.data.plan : dashboard.active_plan;
   const canWrite = result.data?.can_write ?? false;
   const runSessions = plan && "run_sessions" in plan ? plan.run_sessions : [];
+  const mobilitySessions =
+    plan && "mobility_sessions" in plan
+      ? (plan.mobility_sessions ?? []).filter((s) => s.status === "active")
+      : [];
   const edit = () => {
     void client.displayMode("fullscreen");
     setEditing(true);
@@ -120,7 +125,7 @@ function PlanOverviewCard({
   useModelContext(
     client,
     plan
-      ? `Arnold zeigt den Trainingsplan „${plan.name}“, Version ${plan.version_no}, Revision ${"row_revision" in plan ? plan.row_revision : "noch nicht geladen"}, plan_version_id ${plan.plan_version_id}. Status ${plan.status}. Trainingstage: ${plan.sessions.map((s) => s.session_name).join(", ")}.${runSessions?.length ? ` Laufeinheiten: ${runSessions.map((s) => s.session_name).join(", ")}.` : ""} ${editing ? "Der Nutzer bearbeitet den Plan im Vollbild." : "Die Karte zeigt den Überblick; Änderungen sind über den Chat oder Plan bearbeiten möglich."}`
+      ? `Arnold zeigt den Trainingsplan „${plan.name}“, Version ${plan.version_no}, Revision ${"row_revision" in plan ? plan.row_revision : "noch nicht geladen"}, plan_version_id ${plan.plan_version_id}. Status ${plan.status}. Trainingstage: ${plan.sessions.map((s) => s.session_name).join(", ")}.${runSessions?.length ? ` Laufeinheiten: ${runSessions.map((s) => s.session_name).join(", ")}.` : ""}${mobilitySessions.length ? ` Mobility: ${mobilitySessions.map((s) => s.session_name).join(", ")}.` : ""} ${editing ? "Der Nutzer bearbeitet den Plan im Vollbild." : "Die Karte zeigt den Überblick; Änderungen sind über den Chat oder Plan bearbeiten möglich."}`
       : "Arnold zeigt den Planüberblick. Es gibt noch keinen Trainingsplan.",
   );
   if (editing)
@@ -177,6 +182,12 @@ function PlanOverviewCard({
         />
       )}
       {runSessions && <PlanRunSessions sessions={runSessions} />}
+      {plan && "mobility_sessions" in plan && (
+        <PlanMobilitySessions
+          sessions={plan.mobility_sessions}
+          strengthSessions={plan.sessions}
+        />
+      )}
       <CardActions
         primary={
           plan
