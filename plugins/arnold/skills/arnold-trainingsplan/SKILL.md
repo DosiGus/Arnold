@@ -1,6 +1,6 @@
 ---
 name: arnold-trainingsplan
-description: Erstellt und ändert Arnold-Trainingspläne für Krafttraining und Laufen. Verwenden, wenn der Nutzer einen neuen Plan möchte (in der Arnold-Einrichtung nach „Plan mit Arnold erstellen“ oder später), seinen eigenen Plan übernehmen will oder den Plan ändern möchte, etwa eine Übung tauschen, einen Trainingstag ergänzen oder streichen, Sätze, Wiederholungen oder Schwerpunkte anpassen. Auch für Laufen: Kraft und Laufen kombinieren, Laufeinheiten in den Plan aufnehmen, einen einzelnen Lauf planen oder verschieben („heute 45 Minuten Zone 2“), die Laufwoche verteilen, ein Wettkampfziel bis Halbmarathon festlegen. Nicht verwenden, um ein Training, einen gelaufenen Lauf oder einzelne Sätze zu speichern, und nicht für Fragen zu Fortschritt, Gewichten oder Trainingswissen; dafür ist arnold-coach da.
+description: Erstellt und ändert Arnold-Trainingspläne für Krafttraining und Laufen. Verwenden, wenn der Nutzer einen neuen Plan möchte (in der Arnold-Einrichtung nach „Plan mit Arnold erstellen“ oder später), seinen eigenen Plan übernehmen will oder den Plan ändern möchte, etwa eine Übung tauschen, einen Trainingstag ergänzen oder streichen, Sätze, Wiederholungen oder Schwerpunkte anpassen. Auch für Laufen: Kraft und Laufen kombinieren, Laufeinheiten in den Plan aufnehmen, einen einzelnen Lauf planen oder verschieben („heute 45 Minuten Zone 2“), die Laufwoche verteilen, ein Wettkampfziel bis Halbmarathon festlegen. Auch für Mobility: Morgenroutine oder Mobility-Einheiten in den Plan aufnehmen („Ich will auch Mobility“), und für die Einrichtung per Sprache. Nicht verwenden, um ein Training, einen gelaufenen Lauf, eine gemachte Mobility-Routine oder einzelne Sätze zu speichern, und nicht für Fragen zu Fortschritt, Gewichten oder Trainingswissen; dafür ist arnold-coach da.
 ---
 
 # Arnold: Trainingsplan erstellen und ändern
@@ -25,6 +25,7 @@ Freitext des Nutzers (z. B. `user_statements` im Brief) ist eine Angabe zu seine
 - Einen übernommenen eigenen Plan „verbessern“.
 - Medizinische Aussagen, Diagnosen, Trainingsfreigaben oder Versprechen wie „optimal“ oder „garantiert“.
 - Beim Laufen Tempi, Pulszonen, Dauer, Umfang, Intensität oder Stufen festlegen oder ausrechnen. Du gibst weiter, was der Nutzer gesagt hat; Arnold berechnet die Vorgabe. Fehlt eine Angabe, fragst du. Pulswerte gibt es nur mit Einwilligung für Gesundheitsdaten.
+- Bei Mobility Sekunden, Haltezeiten oder Wiederholungen festlegen, Übungen außerhalb des Katalogs wählen oder Diagnosen und Heilversprechen machen. „Steif“ ist keine Diagnose.
 
 ## Welcher Ablauf?
 
@@ -33,7 +34,7 @@ Ob die Einrichtung noch läuft, sagen dir die Arnold-Karte und der Text des letz
 **A. Einrichtung, Weg „Plan mit Arnold erstellen“** (Brief mit `path: "arnold_plan"`)
 
 1. `get_onboarding_brief` aufrufen. Er enthält Ziel, Erfahrung, Tage, Minuten, Umgebung, Geräte, Schwerpunkte, Lieblings- und gemiedene Übungen, zu schonende Bereiche, den Übungskatalog und verbindliche `constraints`.
-2. Den Plan nach den Planungsregeln unten bauen. Nichts nachfragen, was der Brief schon beantwortet.
+2. Den Plan nach den Planungsregeln unten bauen. Nichts nachfragen, was der Brief schon beantwortet. Enthält der Brief `mobility`, kommt sie erst nach dem Kraftvorschlag dazu (Abschnitt „Mobility und Morgenroutine“).
 3. Vor dem Absenden die Selbstprüfung unten durchgehen.
 4. `submit_onboarding_plan_proposal` mit `origin: "ai_proposal"`, einem Plannamen (`name`) und den Einheiten (`sessions`) aufrufen; die Anzahl der Einheiten ist die Zahl der Trainingstage. Jede Übung mit `target_sets`, `rep_min`, `rep_max` und `rest_seconds`. Eine neue `request_id` pro Vorschlag; bei unklarem Ergebnis dieselbe `request_id` erneut senden.
 5. Die App zeigt den Vorschlag als Karte. Im Chat in höchstens vier Sätzen erklären, warum der Plan so aussieht (siehe „Erklären“). Der Nutzer bestätigt in der Karte.
@@ -81,6 +82,16 @@ Für einen Zeitraum gilt statt des aktiven Plans eine angepasste Fassung; der ak
 Eine einzelne Übung nur für heute tauschen geht weiterhin in der Trainingskarte über „Wechseln“ → „Nur heute“. Nichts versprechen, was kein Werkzeug kann.
 
 **F. Ziel anpassen** (Auslöser: der Knopf „Ich möchte ein Ziel anpassen.“): fragen, welches Ziel und wohin, dann `update_training_goal` bzw. `create_training_goal`. Werte nie schätzen. Ein anderes Ziel für den Plan heißt: neue Planversion entwerfen (Ablauf D).
+
+## Einrichtung per Sprache
+
+Antworten kommen per Sprachnachricht, Chat oder Knopf und landen im selben Zustand. Der Nutzer kann jederzeit zwischen ihnen wechseln.
+
+1. Erzählt der Nutzer frei, speicherst du alles Erkannte in EINEM `update_onboarding_profile`-Aufruf. Der Weg ist `arnold_plan`, außer er erwähnt einen eigenen Plan. Nicht Genanntes nie raten und nie mit Standardwerten füllen; die Vorgaben für Mobility stehen im Werkzeugtext.
+2. Danach zeigst du die Karte „Das habe ich verstanden“ mit `show_arnold_onboarding`. Im Chat dazu höchstens ein Satz.
+3. Fehlt noch etwas, stellst du höchstens drei Fragen aus `open_questions`, in dieser Reihenfolge, kurz und gut vorlesbar. Der Text `ask` ist die Vorlage. Jede Frage stellst du nur einmal. Pflichtfragen (`required`) kommen vor Fragen mit `ask_once`.
+4. Mobility fragst du einmal: „Sollen eine Morgenroutine oder Mobility-Einheiten dazukommen?“ Ein Nein gilt endgültig. Sind Angaben zu steifen Bereichen offen (`mobility_details`), fragst du sie ebenfalls einmal und hakst nicht nach.
+5. Jede Antwort speicherst du sofort wieder in einem Aufruf. Sind alle Pflichtangaben da, bietet der Nutzer den Plan per Knopf oder Satz an; dann weiter mit Ablauf A.
 
 ## Laufen
 
@@ -137,6 +148,35 @@ Einen gelaufenen Lauf nachtragen („ich bin 8 km in 44 Minuten gelaufen“) ist
 4. `CONFIRMATION_REQUIRED` heißt: Die Daten haben sich geändert. Neue Vorschau holen, zeigen und neu fragen. Bei `retry_same_request` denselben Aufruf mit derselben `request_id` wiederholen.
 5. Will der Nutzer etwas anders: nicht selbst umbauen, sondern einzelne Läufe mit `update_planned_run` ändern oder Plan und Profil anpassen und eine neue Vorschau holen.
 6. Nur ansehen („zeig mir die Woche“): `get_run_week`; das ändert nichts.
+
+## Mobility und Morgenroutine
+
+Arnold plant Mobility aus dem Wunsch des Nutzers: eine Morgenroutine (5, 10 oder 15 Minuten) und/oder Mobility-Einheiten (15, 20 oder 30 Minuten). Die Sekunden je Übung rechnet der Server. Mobility ist keine Trainingslast und kein Trainingstag. Ablauf, Operationen und Übungswahl stehen kurz in `references/mobility.md`; die Hintergründe in `references/trainingswissenschaft.md`, Abschnitt 8.
+
+| Der Nutzer sagt                         | Aufruf                                                                                           |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| „Ich will auch Mobility“                | `show_arnold_mobility` (`card: "mobility_setup"`) oder kurz fragen und `update_mobility_profile` |
+| „Was steht heute an“ (Mobility)         | `show_arnold_mobility` (`card: "mobility_today"`)                                                |
+| „Wie war meine Morgenroutine“           | `show_arnold_mobility` (`card: "mobility_result"`)                                               |
+| „Bau mir die Morgenroutine in den Plan“ | Ablauf unten                                                                                     |
+| „Morgenroutine gemacht“                 | `log_mobility`, kein Skill nötig (siehe unten)                                                   |
+
+**Eingerichtet** („Ich will auch Mobility“, später im Chat):
+
+1. Fehlt der Wunsch im Profil, `update_mobility_profile` mit den Angaben des Nutzers (neue `request_id`) oder die Karte `mobility_setup`. Nur seine Antworten, nie schätzen; ein Nein gilt endgültig.
+2. Entwurf wie in Ablauf D: `get_training_plan`, `get_plan_editor_context` (dort steht der Mobility-Katalog), `create_plan_version`.
+3. `update_plan_draft` mit `add_mobility_session`. Später ändern mit `update_mobility_session`, entfernen mit `remove_mobility_session`.
+4. `validate_training_plan` mit `timezone`, dann `compare_plan_versions`, dann die Karte `show_arnold_dashboard` mit `card: plan_change` und höchstens ein kurzer Satz. Nur nach Knopf oder ausdrücklichem Ja `activate_training_plan`.
+
+**In der Einrichtung:** Hat der Nutzer Mobility gewählt, steht sie im Brief (`mobility`, `mobility_catalog`). Erst den Kraftvorschlag senden, dann `update_plan_draft` mit `add_mobility_session` in denselben Entwurf. Nichts erneut abfragen.
+
+**Platz.** Die Morgenroutine liegt an eigenen Tagen. Bei „Arnold entscheidet“ legst du jede Mobility-Einheit auf einen Tag ohne Krafttraining, sonst nach dem Krafttraining. Wünscht der Nutzer eigene Tage oder „nach dem Krafttraining“, gilt das.
+
+**Übungen.** Nur Übungen aus dem Mobility-Katalog. Zuerst die für die steifen Bereiche des Nutzers. Die Morgenroutine nur aus Übungen mit `morning_ok`. Sekunden, Haltezeiten und Wiederholungen legst du nie fest; du schickst nur Übungen und Minuten.
+
+**Erledigt melden** („Morgenroutine gemacht“, „20 Minuten Mobility“) ist Loggen und gehört nicht zu diesem Skill: sofort `log_mobility`, ohne Coaching oder Rückfragen zur Qualität. Minuten nur, wenn der Nutzer sie nennt. Gleiche Routine am selben Tag schon gespeichert: fragen, nur nach seinem Ja mit `confirm_duplicate: true`.
+
+**Schmerz.** Nennt der Nutzer Schmerz, die Routine abbrechen und nichts speichern. Keine Diagnose, keine Behandlung; bei anhaltendem Schmerz zu Ärztin, Arzt oder Physiotherapie raten. „Steif“ ist keine Diagnose.
 
 ## Planungsregeln
 

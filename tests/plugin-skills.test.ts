@@ -18,6 +18,11 @@ import {
 } from "../src/analytics/running/week-context.js";
 import { RUN_RULES_VERSION } from "../src/analytics/running/version.js";
 import { PlanAdjustmentInputs } from "../src/shared/plan-adjustment-contract.js";
+import { MOBILITY_CATALOG } from "../src/shared/mobility-catalog.js";
+import {
+  MobilityToolInputs,
+  ShowMobilityCardInputSchema,
+} from "../src/shared/mobility-contract.js";
 import { PlanEditSchema } from "../src/shared/plan-contract.js";
 import { ShowRunCardInputSchema } from "../src/shared/run-card-contract.js";
 import {
@@ -676,5 +681,209 @@ describe("adjustment for a while (UX-008)", () => {
       expect(tool in TOOL_ACCESS, tool).toBe(true);
       expect(ARNOLD_INSTRUCTIONS + planSkill, tool).toContain(tool);
     }
+  });
+});
+
+/**
+ * MOB-007: what ChatGPT is told about mobility and the setup by voice. The
+ * skills only name published tools, never promise a health effect, and keep
+ * logging out of the triggers; the typed calls they describe are accepted by
+ * the real schemas.
+ */
+describe("mobility skills (MOB-007)", () => {
+  const plan = read(join(SKILLS, "arnold-trainingsplan", "SKILL.md"));
+  const coach = read(join(SKILLS, "arnold-coach", "SKILL.md"));
+  const reference = read(
+    join(SKILLS, "arnold-trainingsplan", "references", "mobility.md"),
+  );
+  const science = (skill: string) =>
+    read(join(SKILLS, skill, "references", "trainingswissenschaft.md"));
+  const section = (text: string, heading: string) => {
+    const start = text.indexOf(heading);
+    expect(start, heading).toBeGreaterThanOrEqual(0);
+    const next = text.indexOf("\n## ", start + heading.length);
+    return text.slice(start, next === -1 ? undefined : next);
+  };
+  const everything = [
+    ...skillNames.flatMap(markdownOf).map((file) => [file, read(file)]),
+    ["ARNOLD_INSTRUCTIONS", ARNOLD_INSTRUCTIONS],
+  ] as [string, string][];
+
+  it("names the published mobility tools and cards", () => {
+    for (const tool of [
+      "get_mobility_overview",
+      "update_mobility_profile",
+      "log_mobility",
+      "show_arnold_mobility",
+    ])
+      expect(tool in TOOL_ACCESS, tool).toBe(true);
+    for (const tool of [
+      "update_mobility_profile",
+      "show_arnold_mobility",
+      "log_mobility",
+    ])
+      expect(plan, tool).toContain(`\`${tool}\``);
+    for (const card of ["mobility_today", "mobility_result", "mobility_setup"])
+      expect(ShowMobilityCardInputSchema.shape.card.options).toContain(card);
+    for (const card of ["mobility_today", "mobility_result", "mobility_setup"])
+      expect(plan, card).toContain(card);
+  });
+
+  it("names the three mobility plan operations in the skill, its reference and the instructions", () => {
+    for (const op of [
+      "add_mobility_session",
+      "update_mobility_session",
+      "remove_mobility_session",
+    ]) {
+      expect(PLAN_EDITS.has(op), op).toBe(true);
+      expect(plan, op).toContain(op);
+      expect(reference, op).toContain(op);
+      expect(ARNOLD_INSTRUCTIONS, op).toContain(op);
+    }
+  });
+
+  it("teaches calls the real schemas accept", () => {
+    const morning = MOBILITY_CATALOG.filter((e) => e.morning_ok).slice(0, 4);
+    expect(() =>
+      PlanEditSchema.parse({
+        type: "add_mobility_session",
+        kind: "morning",
+        session_name: "Morgenroutine",
+        minutes: 10,
+        exercise_ids: morning.map((e) => e.id),
+        weekdays: [1, 2, 3, 4, 5, 6, 7],
+        placement: "own_day",
+      }),
+    ).not.toThrow();
+    expect(() =>
+      PlanEditSchema.parse({
+        type: "add_mobility_session",
+        kind: "session",
+        session_name: "Hüfte lösen",
+        minutes: 20,
+        exercise_ids: [MOBILITY_CATALOG[0].id],
+        placement: "after_strength",
+        after_session_id: "session-1",
+      }),
+    ).not.toThrow();
+    expect(() =>
+      MobilityToolInputs.update_mobility_profile.parse({
+        request_id: "r1",
+        preference: { wants: false },
+      }),
+    ).not.toThrow();
+    expect(() =>
+      MobilityToolInputs.log_mobility.parse({
+        request_id: "r2",
+        kind: "morning",
+        timezone: TZ,
+      }),
+    ).not.toThrow();
+  });
+
+  it("keeps logging out of the triggers and out of the coach", () => {
+    for (const skill of skillNames) {
+      const { description } = frontmatter(
+        read(join(SKILLS, skill, "SKILL.md")),
+      );
+      expect(description, skill).not.toContain("log_mobility");
+      expect(description.length, skill).toBeLessThanOrEqual(1024);
+    }
+    const { description } = frontmatter(plan);
+    expect(description).toMatch(/Nicht verwenden, um [^.]*Mobility-Routine/);
+    expect(frontmatter(coach).description).toMatch(
+      /Nicht verwenden, um [^.]*Mobility-Routine/,
+    );
+    for (const tool of [
+      "log_mobility",
+      "update_mobility_profile",
+      "add_mobility_session",
+    ])
+      expect(coach, tool).not.toContain(tool);
+    // The coach reads: the adherence value comes from the overview.
+    expect(coach).toContain("get_mobility_overview");
+    expect(coach).toContain("ratio");
+    expect(coach).toContain("noch kein Plan");
+  });
+
+  it("logs a done routine at once and without coaching", () => {
+    expect(plan).toMatch(/sofort `log_mobility`, ohne Coaching/);
+    expect(ARNOLD_INSTRUCTIONS).toMatch(/sofort mit log_mobility speichern/);
+    expect(reference).toMatch(/sofort `log_mobility`, ohne Coaching/);
+  });
+
+  it("asks at most three questions in the voice setup, each once, and never guesses", () => {
+    const setup = section(plan, "## Einrichtung per Sprache");
+    expect(setup).toContain("höchstens drei");
+    expect(setup).toContain("`update_onboarding_profile`");
+    expect(setup).toContain("EINEM");
+    expect(setup).toContain("open_questions");
+    expect(setup).toMatch(/nur einmal/);
+    expect(setup).toMatch(/nie raten/);
+    expect(setup).toContain("show_arnold_onboarding");
+  });
+
+  it("places mobility after the strength proposal and chooses by stiff areas", () => {
+    const mobility = section(plan, "## Mobility und Morgenroutine");
+    expect(mobility).toContain("Kraftvorschlag");
+    expect(mobility).toMatch(/Arnold entscheidet/);
+    expect(mobility).toMatch(
+      /Tag ohne Krafttraining, sonst nach dem Krafttraining/,
+    );
+    expect(mobility).toContain("steifen Bereiche");
+    expect(mobility).toContain("`morning_ok`");
+    expect(mobility).toMatch(
+      /Sekunden, Haltezeiten und Wiederholungen legst du nie fest/,
+    );
+    for (const step of [
+      "validate_training_plan",
+      "compare_plan_versions",
+      "plan_change",
+    ])
+      expect(mobility, step).toContain(step);
+    expect(mobility).toMatch(/keine Trainingslast und kein Trainingstag/);
+    expect(reference).toContain("morning_ok");
+    expect(reference).toMatch(/Kraftvorschlag/);
+  });
+
+  it("sends the same Beweglichkeit section to both skills", () => {
+    const a = section(science("arnold-trainingsplan"), "## 8. Beweglichkeit");
+    const b = section(science("arnold-coach"), "## 8. Beweglichkeit");
+    expect(a).toBe(b);
+    expect(a).toMatch(/schmerzfrei/);
+    expect(a).toMatch(/Halten|halten/);
+    expect(a).toMatch(/abklären lassen/);
+  });
+
+  it("promises no injury prevention, cure or diagnosis anywhere", () => {
+    const forbidden = [
+      /Verletzungen? (vorbeugen|verhindern|vermeiden)/i,
+      /Verletzungsprävention/i,
+      /\bheilt\b/i,
+      /\bTherapie\b/,
+      /Diagnose stellen/i,
+    ];
+    for (const [file, text] of everything)
+      for (const pattern of forbidden)
+        expect(text, `${file} ${pattern}`).not.toMatch(pattern);
+  });
+
+  it("tells the instructions the essentials of mobility", () => {
+    const text = ARNOLD_INSTRUCTIONS.slice(
+      ARNOLD_INSTRUCTIONS.indexOf("Mobility: Mobility und Morgenroutine"),
+    );
+    for (const part of [
+      "update_mobility_profile",
+      "get_mobility_overview",
+      "show_arnold_mobility",
+      "mobility_today",
+      "mobility_result",
+      "mobility_setup",
+      "log_mobility",
+      "weder als Trainingstag noch als Last",
+      "keine Diagnose",
+    ])
+      expect(text, part).toContain(part);
+    expect(text).toMatch(/Schmerz: Routine abbrechen, nichts speichern/);
   });
 });

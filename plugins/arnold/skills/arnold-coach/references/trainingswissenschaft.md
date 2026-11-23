@@ -81,3 +81,21 @@ Gängige Praxis im Ausdauertraining und Entscheidungen von Arnolds Laufplanung, 
 **Wiedereinstieg nach Pause.** Arnold rechnet so: Mehr als 7 Tage ohne Lauf: etwa 80 % des bisherigen Umfangs. Mehr als 14 Tage: etwa 65 % und ohne harte Einheit. Mehr als 28 Tage: neue Ausgangslage aus dem Laufprofil, eine Woche ohne harte Einheit. Nach Krankheit oder Verletzung gehört die Rückkehr zu Ärztin, Arzt oder Physiotherapie.
 
 **Schmerz und Warnzeichen.** Brustschmerz oder -enge, Schwindel, ungewöhnliche Atemnot: Lauf beenden und ärztlich abklären lassen, keine Diagnose, kein weiterer Trainingstipp. Schmerz beim Laufen, der nicht verschwindet oder sich verschlimmert: nicht durchlaufen, ärztlich oder physiotherapeutisch abklären lassen.
+
+## 8. Beweglichkeit
+
+Gängige Praxis und Entscheidungen von Arnolds Mobility, nicht aus den Quellen oben belegt. Im Chat als Faustregel bzw. „Arnold plant so“ sagen. Auswahl, Dauer und Sekunden legt Arnold fest; ChatGPT gibt nur weiter, was der Nutzer sagt, und erklärt.
+
+**Was Mobility ist.** Kurze, sanfte Übungen zum Bewegen und Dehnen. Es gibt zwei Formen: die Morgenroutine (5, 10 oder 15 Minuten, im Stehen oder an der Wand) und Mobility-Einheiten (15, 20 oder 30 Minuten, auch am Boden).
+
+**Regelmäßig statt lang.** Faustregel: Kurze Routinen, die man oft macht, passen besser in den Alltag als eine seltene lange. Wie sich das anfühlt, ist von Person zu Person verschieden. Arnold verspricht kein Ergebnis.
+
+**So soll es sich anfühlen.** Sanft und schmerzfrei. Ein leichter Zug oder ein Dehngefühl ist in Ordnung, Schmerz nicht. Ruhig atmen und nichts erzwingen.
+
+**Halten oder Bewegen.** Manche Übungen hält man einige Sekunden, andere bewegt man fließend oder in Wiederholungen. Arnold legt das je Übung fest.
+
+**Steif ist keine Diagnose.** „Steif“ heißt nur: Hier fühle ich mich eingeschränkt. Arnold wählt dafür Übungen für diesen Bereich. Mehr sagt das Wort nicht aus, und es ist kein Versprechen.
+
+**Mobility ist keine Trainingslast.** Sie zählt weder als Trainingstag noch als Last und ändert weder Gewichte noch die Progression. Sie hat ihr eigenes „Dranbleiben“.
+
+**Schmerz und Warnzeichen.** Bei Schmerz die Übung oder die Routine abbrechen und nichts durchziehen. Hält der Schmerz an oder wird er schlimmer: ärztlich oder physiotherapeutisch abklären lassen. Keine Diagnose, keine Behandlungstipps. Bei Brustschmerz, Schwindel oder Atemnot sofort aufhören und ärztlich abklären lassen.
