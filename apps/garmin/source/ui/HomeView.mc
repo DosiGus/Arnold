@@ -28,6 +28,10 @@ class HomeView extends WatchUi.View {
         _controller.setObserver(method(:onChanged));
         _sync.setObserver(method(:onChanged));
         _run.sync.setObserver(method(:onChanged));
+        var mobility = _run.mobility;
+        if (mobility != null) {
+            (mobility as MobilitySync).setObserver(method(:onChanged));
+        }
         _launcher.sender().setObserver(method(:onSendChanged));
         syncIfNeeded();
         if (_controller.isPaired()) {
@@ -47,6 +51,10 @@ class HomeView extends WatchUi.View {
         _controller.setObserver(null);
         _sync.setObserver(null);
         _run.sync.setObserver(null);
+        var mobility = _run.mobility;
+        if (mobility != null) {
+            (mobility as MobilitySync).setObserver(null);
+        }
         _launcher.sender().setObserver(null);
     }
 
@@ -77,6 +85,14 @@ class HomeView extends WatchUi.View {
         }
         if (_run.sync.state == RunSync.RUN_IDLE || (_run.sync.state == RunSync.RUN_FAILED && _run.sync.problem == RunSync.RUN_PROBLEM_AUTH)) {
             _run.sync.start();
+        }
+        // MOB-008: also when the server has no mobility (404), the state is then DONE and it is not asked again.
+        var mobility = _run.mobility;
+        if (mobility != null) {
+            var loader = mobility as MobilitySync;
+            if (loader.state == MobilitySync.MOB_IDLE || (loader.state == MobilitySync.MOB_FAILED && loader.problem == MobilitySync.MOB_PROBLEM_AUTH)) {
+                loader.start();
+            }
         }
     }
 }
@@ -255,6 +271,7 @@ module HomeFlow {
         var launcher = Session.launcher();
         var run = new RunHome(Session.runSync(), new PairingClock(), new PreStartLauncher());
         run.journal = new RunJournal(new KeyValueStore());
+        run.mobility = Session.mobilitySync();
         return [new HomeView(Session.pairing(), sync, picker, launcher, run), new HomeDelegate(Session.pairing(), sync, picker, launcher, run)];
     }
 }

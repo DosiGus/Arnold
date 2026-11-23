@@ -160,6 +160,11 @@
     <string id="RunAutoPaused">Auto-Pause</string>
     <string id="RunResumeAsk">Lauf fortsetzen?</string>
     <string id="HomeRunResume">Lauf fortsetzen</string>
+    <string id="HomeMobMorning">Morgenroutine: $1$</string>
+    <string id="HomeMobRow">Mobility: $1$</string>
+    <string id="HomeMobPick">Mobility</string>
+    <string id="MobSeconds">$1$ s</string>
+    <string id="MobSecondsSides">2×$1$ s</string>
     <string id="RunType0">Regeneration</string>
     <string id="RunType1">Grundlage</string>
     <string id="RunType2">Langer Lauf</string>

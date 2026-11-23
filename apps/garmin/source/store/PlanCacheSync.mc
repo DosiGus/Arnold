@@ -41,6 +41,7 @@ class PlanSync {
     private var _current as ApiRequest or Null;
     private var _restarted as Boolean;       // a vanished day restarts the run once
     private var _ack as ApiRequest or Null;  // the open confirmation, if any
+    private var _mobilityMark as (Method() as String or Null) or Null;   // MOB-008: mark of a complete mobility sync, or null
 
     // `authRejected` is called on a 401 answer (PairingController.onAuthRejected).
     function initialize(client as ApiClient, planCache as PlanCache, clock as PairingClock, authRejected as Method() as Void) {
@@ -55,6 +56,7 @@ class PlanSync {
         _current = null;
         _restarted = false;
         _ack = null;
+        _mobilityMark = null;
         ackCode = 0;
         state = SYNC_IDLE;
         problem = PROBLEM_NONE;
@@ -63,6 +65,11 @@ class PlanSync {
 
     function setObserver(observer as (Method() as Void) or Null) as Void {
         _observer = observer;
+    }
+
+    // MOB-008: where the mobility mark for the confirmation comes from (MobilitySync.ackMark).
+    function setMobilityMark(provider as (Method() as String or Null) or Null) as Void {
+        _mobilityMark = provider;
     }
 
     // True while a request waits for the phone (Bluetooth link to the phone is down).
@@ -313,7 +320,15 @@ class PlanSync {
             _client.drop(_ack as ApiRequest);
         }
         var handler = new PlanAckHandler(self);
-        _ack = new ApiRequest(Communications.HTTP_REQUEST_METHOD_POST, "/plan/ack", { "v" => mark as String }, handler.method(:onDone));
+        var body = { "v" => mark as String };
+        // MOB-008: the mobility mark goes along only after a complete, successful mobility sync; without
+        // mobility (or on an older server) it is left out.
+        var provider = _mobilityMark;
+        var mobility = provider == null ? null : (provider as Method() as String or Null).invoke();
+        if (mobility != null) {
+            body["mv"] = mobility as String;
+        }
+        _ack = new ApiRequest(Communications.HTTP_REQUEST_METHOD_POST, "/plan/ack", body, handler.method(:onDone));
         _client.enqueue(_ack as ApiRequest);
     }
 
