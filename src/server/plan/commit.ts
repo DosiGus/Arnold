@@ -102,7 +102,8 @@ function assertTracker(dataset: ArnoldDataset, trackerId: string) {
  */
 function assertReceiptHolds(dataset: ArnoldDataset, entry: StoredOperation) {
   for (const change of entry.changes) {
-    const current = dataset[change.table].find(
+    // The 1.2.0 lists are optional; absent means none (and the receipt fails).
+    const current = (dataset[change.table] ?? []).find(
       (row) => entityId(row) === entityId(change.after),
     );
     if (
