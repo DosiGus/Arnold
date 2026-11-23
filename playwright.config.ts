@@ -46,5 +46,17 @@ export default defineConfig({
       url: "http://127.0.0.1:8792/health",
       reuseExistingServer: false,
     },
+    // DATE-001: the start screen on a clock shortly before and after midnight
+    // UTC (22 Nov 23:30 and 23 Nov 00:30 UTC; Berlin is already or just past
+    // the turn of the day). 8840 and 8841.
+    ...[
+      ["8840", "2026-11-22T23:30:00Z"],
+      ["8841", "2026-11-23T00:30:00Z"],
+    ].map(([port, now]) => ({
+      command: "npx tsx tests/fixtures/midnight-server.ts",
+      url: `http://127.0.0.1:${port}/health`,
+      reuseExistingServer: false,
+      env: { E2E_NOW: now, MIDNIGHT_PORT: port },
+    })),
   ],
 });
