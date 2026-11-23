@@ -64,6 +64,16 @@ module Session {
         return _mobility as MobilitySync;
     }
 
+    var _mobilitySender as MobilitySender or Null = null;
+
+    // Sends the finished mobility routines (MOB-010).
+    function mobilitySender() as MobilitySender {
+        if (_mobilitySender == null) {
+            _mobilitySender = new MobilitySender(client(), new MobilityOutbox(new KeyValueStore()), mobilitySync().cache, new PairingClock(), pairing().method(:onAuthRejected));
+        }
+        return _mobilitySender as MobilitySender;
+    }
+
     var _runSender as RunSender or Null = null;
 
     // Sends the finished runs (RUN-018); the heart rate series of a run follows through the health sender of the launcher.
@@ -92,6 +102,7 @@ module Session {
             sender.setHealth(new HealthSender(client(), healthOutbox, outbox, consent, clock, pairing().method(:onAuthRejected)));
             var wipe = new AccountWipe(planSync().cache, runSync().cache, consent, healthOutbox);
             wipe.setMobility(mobilitySync().cache);
+            wipe.setMobilityOutbox(mobilitySender().outbox(), new MobilityJournal(store));
             pairing().setWipeHook(wipe.method(:wipe));
             _launcher = new TrainingLauncher(journal, clock, new Signals(store), sender);
         }
@@ -107,6 +118,8 @@ class AccountWipe {
     private var _consent as HealthConsent;
     private var _health as HealthOutbox;
     private var _mobility as MobilityCache or Null;
+    private var _mobOutbox as MobilityOutbox or Null;
+    private var _mobJournal as MobilityJournal or Null;
 
     function initialize(plan as PlanCache, runs as RunCache, consent as HealthConsent, health as HealthOutbox) {
         _plan = plan;
@@ -114,6 +127,8 @@ class AccountWipe {
         _consent = consent;
         _health = health;
         _mobility = null;
+        _mobOutbox = null;
+        _mobJournal = null;
     }
 
     // MOB-008: the mobility routines of the old account go too.
@@ -121,9 +136,18 @@ class AccountWipe {
         _mobility = cache;
     }
 
+    // MOB-010: so do the results that were waiting to be sent and the routine in progress.
+    function setMobilityOutbox(outbox as MobilityOutbox, journal as MobilityJournal) as Void {
+        _mobOutbox = outbox;
+        _mobJournal = journal;
+    }
+
     function wipe() as Void {
         if (_mobility != null) {
             (_mobility as MobilityCache).clear();
+        }
+        if (_mobOutbox != null && _mobJournal != null) {
+            MobilityHandover.wipe(_mobOutbox as MobilityOutbox, _mobJournal as MobilityJournal);
         }
         _plan.clear();
         _runs.clear();

@@ -15,6 +15,8 @@ class MobPlayRig {
     var signals as RunPatternSignals;
     var store as MemoryStore;
     var player as MobilityPlayer;
+    var outbox as MobilityOutbox;
+    var journal as MobilityJournal;
 
     function initialize(specs as Array) {
         clock = new FakeClock();
@@ -30,6 +32,9 @@ class MobPlayRig {
         }
         var routine = { "id" => "s_1", "tot" => 600, "ex" => all };
         player = new MobilityPlayer("s_1", "session", routine, clock, new MobilitySignals(signals, new Settings(store)), new Recorder("u1", backend));
+        outbox = new MobilityOutbox(store);
+        journal = new MobilityJournal(store);
+        player.connect(journal, outbox, null);
         player.begin();
     }
 
@@ -148,12 +153,16 @@ function savedResultHasTheFieldsOfTheWatchRequest(logger as Logger) as Boolean {
     var p = rig.player;
     rig.go(5 + 10 + 5 + 3);
     p.endEarly();
-    Test.assert(p.save(rig.store));
-    Test.assert(!p.save(rig.store));              // once
+    Test.assert(p.save());
+    Test.assert(!p.save());                       // once
     Expect.equal(rig.backend.count("save"), 1);
-    var saved = rig.store.getValue(MobilityPlayer.LAST_KEY) as Dictionary;
+    Expect.equal(rig.outbox.count(), 1);
+    var entry = rig.outbox.get(p.uuid) as Dictionary;
+    Expect.field(entry, "i", "s_1");
+    var saved = entry["b"] as Dictionary;
     Expect.field(saved, "kind", "session");
-    Expect.field(saved, "session_id", "s_1");
+    Expect.field(saved, "request_id", "gm_" + p.uuid);
+    Expect.equal(Expect.valueOf(saved, "session_id"), null);     // the plan version is not known on the watch
     Test.assert(Uuid.isV4(saved["session_uuid"] as String));
     Expect.field(saved, "started_at_utc", "2023-11-14T22:13:20Z");
     Expect.field(saved, "ended_at_utc", "2023-11-14T22:13:43Z");
@@ -174,7 +183,8 @@ function savedResultHasTheFieldsOfTheWatchRequest(logger as Logger) as Boolean {
     other.go(5 + 10);
     other.player.discard();
     Expect.equal(other.backend.count("discard"), 1);
-    Test.assert(other.store.getValue(MobilityPlayer.LAST_KEY) == null);
+    Expect.equal(other.outbox.count(), 0);
+    Test.assert(other.journal.activeId() == null);
     return true;
 }
 
@@ -261,7 +271,7 @@ function aThirtyMinuteRoutineLeavesNothingBehindAndRedrawsAreFree(logger as Logg
     }
     Test.assert(rig.player.phase == MobilityPlayer.PH_END);
     Expect.equal(rig.player.countOf("done"), 15);
-    Test.assert(rig.player.save(rig.store));
+    Test.assert(rig.player.save());
     var limit = ThreeHours.LIMIT;
     logger.debug("30 min: peak " + peak + " of " + limit + " (before " + baseline + ")");
     Test.assertMessage(peak - baseline < limit * 6 / 100, "grew by " + (peak - baseline));

@@ -199,6 +199,19 @@ class MobilityCache {
         return out;
     }
 
+    // A routine was sent: noted for its local date, so the start screen does not offer it again (MOB-010). Notes of
+    // dates a week back are dropped, so they do not pile up.
+    function markDone(date as String, sessionId as String, now as Number, offsetMinutes as Number) as Void {
+        var list = doneLocal(date);
+        if (list.indexOf(sessionId) < 0) {
+            list.add(sessionId);
+            _store.setValue(StoreKeys.mobDone(date), list as Application.Storage.ValueType);
+        }
+        for (var days = 8; days < 16; days++) {
+            _store.deleteValue(StoreKeys.mobDone(Clock.localDate(now - days * 86400, offsetMinutes)));
+        }
+    }
+
     // Done today: the server says so (only for the date of its list) or this watch noted it.
     function isDone(entry as Dictionary, date as String) as Boolean {
         var listed = listDate();

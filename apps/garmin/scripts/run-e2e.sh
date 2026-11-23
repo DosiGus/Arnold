@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# End-to-end check of the run upload (RUN-018): the simulator builds the requests of three runs (base, intervals,
-# treadmill) in a unit test and prints them; the mock server takes them with the schema of the real server.
+# End-to-end check of the run upload (RUN-018) and the mobility upload (MOB-010): the simulator builds the requests of
+# three runs (base, intervals, treadmill) and of two mobility routines (finished, ended early) in unit tests and prints
+# them; the mock server takes them with the schema of the real server (201, then 200 for the repeat).
 # Usage: run-e2e.sh [device]   (default fr255)
 set -euo pipefail
 source "$(dirname "$0")/env.sh"
@@ -18,7 +19,7 @@ prg="$BIN_DIR/test-$device.prg"
 compile "$device" "$prg" -t
 for attempt in 1 2 3; do
   "$MONKEYDO" "$prg" "$device" -t >"$log" 2>&1 || true
-  grep -q 'RUNPAYLOAD laufband-ohne-hr' "$log" && break
+  grep -q 'RUNPAYLOAD laufband-ohne-hr' "$log" && grep -q 'MOBPAYLOAD einheit-frueh-beendet' "$log" && break
   sleep 3
 done
 cd "$repo"

@@ -49,6 +49,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WatchRunRequestSchema } from "../../../src/shared/run-contract.js";
+import { WatchMobilityRequestSchema } from "../../../src/shared/mobility-contract.js";
 
 const BASE = "/api/watch/v1";
 const BODY_LIMIT = 64 * 1024;
@@ -259,6 +260,11 @@ export function createMockState(fixtures: ReturnType<typeof loadFixtures>) {
       { hash: string; response: Json; count: number; stored: Json }
     >(),
     runSessions: new Map<string, string>(),
+    mobilityUploads: new Map<
+      string,
+      { hash: string; response: Json; count: number; stored: Json }
+    >(),
+    mobilitySessions: new Map<string, string>(),
     health: new Map<string, Json>(),
     fault: null as Fault | null,
     log: [] as LogEntry[],
@@ -339,7 +345,7 @@ function route(
   }
 
   const isWatchRoute =
-    /^\/(device|plan|plan\/recent|plan\/ack|plan\/sessions\/[^/]+|runs|runs\/[^/]+|mobility\/[^/]+|workouts|workouts\/[^/]+\/health)$/.test(
+    /^\/(device|plan|plan\/recent|plan\/ack|plan\/sessions\/[^/]+|runs|runs\/[^/]+|mobility|mobility\/[^/]+|workouts|workouts\/[^/]+\/health)$/.test(
       path,
     );
   if (!isWatchRoute) return null;
@@ -530,6 +536,49 @@ function route(
       stored,
     });
     state.runSessions.set(request.session_uuid, request.request_id);
+    return { status: 201, body: response };
+  }
+  if (method === "POST" && path === "/mobility") {
+    // A finished mobility routine (MOB-010): checked against WatchMobilityRequestSchema of the server (strict keys,
+    // limits), 201 first, 200 for a repeat of the same request, DUPLICATE_WORKOUT for the same recording under a new id.
+    const parsed = WatchMobilityRequestSchema.safeParse(body);
+    if (!parsed.success)
+      return fail(
+        "VALIDATION_ERROR",
+        parsed.error.issues
+          .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+          .join("; ")
+          .slice(0, 300),
+      );
+    const request = parsed.data;
+    const hash = bodyHash(body);
+    const seen = state.mobilityUploads.get(request.request_id);
+    if (seen) {
+      seen.count += 1;
+      if (seen.hash !== hash)
+        return fail(
+          "DUPLICATE_OPERATION",
+          "Gleiche request_id mit anderem Inhalt.",
+        );
+      return { status: 200, body: { ...seen.response, replayed: true } };
+    }
+    if (state.mobilitySessions.has(request.session_uuid))
+      return fail(
+        "DUPLICATE_WORKOUT",
+        "Diese Aufzeichnung ist schon gespeichert.",
+      );
+    const response = {
+      ...envelope,
+      workout_id: `wo_${randomUUID()}`,
+      replayed: false,
+    };
+    state.mobilityUploads.set(request.request_id, {
+      hash,
+      response,
+      count: 1,
+      stored: { ...request },
+    });
+    state.mobilitySessions.set(request.session_uuid, request.request_id);
     return { status: 201, body: response };
   }
   const health = /^\/workouts\/([^/]+)\/health$/.exec(path);
@@ -1371,6 +1420,48 @@ async function runE2e(port: number, fixturesDir: string, file: string) {
       state.runUploads.get(String(payload.request_id))?.count === 2 &&
         state.runSessions.get(String(payload.session_uuid)) ===
           payload.request_id,
+    );
+  }
+  // MOB-010: the mobility results the simulator printed (`MOBPAYLOAD <name> <json>`): the schema of the server accepts
+  // them (201), a repeat is the same recording (200), a new request_id for the same recording is a duplicate (409).
+  const mobilityLines = readFileSync(file, "utf8")
+    .split("\n")
+    .filter((line) => line.includes("MOBPAYLOAD "));
+  const mobility = new Map<string, Json>();
+  for (const line of mobilityLines) {
+    const match = /MOBPAYLOAD (\S+) (\{.*\})\s*$/.exec(line);
+    if (match)
+      mobility.set(
+        match[1]!,
+        JSON.parse(match[2]!.replace(/\\"/g, '"')) as Json,
+      );
+  }
+  for (const name of ["morgen-fertig", "einheit-frueh-beendet"])
+    check(`mobility ${name}: vom Simulator ausgegeben`, mobility.has(name));
+  for (const [name, payload] of mobility) {
+    const first = await call("POST", `${BASE}/mobility`, payload, auth);
+    if (first.status !== 201) console.log(JSON.stringify(first.body));
+    check(
+      `mobility ${name}: Server nimmt die Routine an (201)`,
+      first.status === 201 && first.body?.replayed === false,
+    );
+    const again = await call("POST", `${BASE}/mobility`, payload, auth);
+    check(
+      `mobility ${name}: Wiederholung ist dieselbe Routine (200, replayed)`,
+      again.status === 200 &&
+        again.body?.replayed === true &&
+        again.body?.workout_id === first.body?.workout_id,
+    );
+    const renamed = await call(
+      "POST",
+      `${BASE}/mobility`,
+      { ...payload, request_id: `gm_${randomUUID()}` },
+      auth,
+    );
+    check(
+      `mobility ${name}: dieselbe Aufzeichnung unter neuer Id ist ein Duplikat (409)`,
+      renamed.status === 409 &&
+        JSON.stringify(renamed.body).includes("DUPLICATE_WORKOUT"),
     );
   }
   // A server without the consent: the watch's run without heart rate values loses nothing.

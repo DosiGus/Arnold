@@ -3,7 +3,7 @@ import Toybox.Lang;
 // Static facts about this build. The version is sent to the server later (X-Arnold-Watch).
 (:background)
 module AppInfo {
-    const VERSION as String = "0.2.0";
+    const VERSION as String = "0.3.0";
 
     // True when text looks like MAJOR.MINOR.PATCH with digits only.
     function isSemver(text as String) as Boolean {

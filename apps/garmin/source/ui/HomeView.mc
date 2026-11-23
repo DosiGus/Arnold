@@ -33,10 +33,12 @@ class HomeView extends WatchUi.View {
             (mobility as MobilitySync).setObserver(method(:onChanged));
         }
         _launcher.sender().setObserver(method(:onSendChanged));
+        Session.mobilitySender().setObserver(method(:onChanged));   // a sent routine leaves the top of the start screen
         syncIfNeeded();
         if (_controller.isPaired()) {
             _launcher.sender().sendAll();   // workouts that are still waiting go out when the app opens
             RunHandover.recoverOnOpen();    // runs that are still waiting go out too (RUN-018)
+            MobilityHandover.recoverOnOpen();   // a routine the app lost, and the results that are still waiting (MOB-010)
             SyncPrompts.check(_launcher.sender());
             SyncPrompts.checkStale(_launcher.sender(), _clock.nowSeconds());
         }
@@ -56,6 +58,7 @@ class HomeView extends WatchUi.View {
             (mobility as MobilitySync).setObserver(null);
         }
         _launcher.sender().setObserver(null);
+        Session.mobilitySender().setObserver(null);
     }
 
     function onChanged() as Void {

@@ -1,4 +1,3 @@
-import Toybox.Application;
 import Toybox.Lang;
 
 // Vibration and tone of the mobility player (MOB-009): a short buzz when the side changes, two short ones when
@@ -55,7 +54,7 @@ class MobilityPlayer {
     static const NEXT_S as Number = 5;
     static const SWITCH_S as Number = 3;
     static const MAX_CATCHUP_S as Number = 60;
-    static const LAST_KEY as String = "mob:last";   // the saved result, until it is sent (MOB-010)
+    static const NOTE_EVERY_S as Number = 30;   // the journal is written after every exercise and every 30 s of movement
 
     var phase as Phase;
     var exIdx as Number;
@@ -80,6 +79,9 @@ class MobilityPlayer {
     private var _clock as PairingClock;
     private var _signals as MobilitySignals;
     private var _recorder as Recorder;
+    private var _journal as MobilityJournal or Null;
+    private var _outbox as MobilityOutbox or Null;
+    private var _sendNow as (Method() as Void) or Null;
 
     function initialize(id as String, routineKind as String, routine as Dictionary, clock as PairingClock, signals as MobilitySignals, recorder as Recorder) {
         sessionId = id;
@@ -90,6 +92,9 @@ class MobilityPlayer {
         _clock = clock;
         _signals = signals;
         _recorder = recorder;
+        _journal = null;
+        _outbox = null;
+        _sendNow = null;
         phase = PH_NEXT;
         exIdx = 0;
         side = 0;
@@ -106,6 +111,13 @@ class MobilityPlayer {
         _offset = clock.utcOffsetMinutes();
     }
 
+    // The journal of the routine, the outbox for its result and what starts the sending (MOB-010).
+    function connect(journal as MobilityJournal, outbox as MobilityOutbox, sendNow as (Method() as Void) or Null) as Void {
+        _journal = journal;
+        _outbox = outbox;
+        _sendNow = sendNow;
+    }
+
     // The routine starts: the recording runs and the first exercise is announced.
     function begin() as Void {
         _startedAt = _clock.nowSeconds();
@@ -113,6 +125,26 @@ class MobilityPlayer {
         _offset = _clock.utcOffsetMinutes();
         _recorder.resume();
         _signals.nextExercise();
+        if (_journal != null) {
+            (_journal as MobilityJournal).begin(uuid, headOf());
+            MobilityHandover.live = uuid;
+        }
+    }
+
+    // What the journal keeps: the exercises done so far, the exercise under way with its seconds, the times.
+    hidden function headOf() as Dictionary {
+        return {
+            "st" => phase == PH_END ? MobilityJournal.STATE_ENDED : MobilityJournal.STATE_RUNNING,
+            "id" => sessionId, "k" => kind, "o" => _offset, "a" => _startedAt, "lt" => _clock.nowSeconds(),
+            "tm" => _timerS, "el" => _elapsedS, "ee" => endedEarly ? 1 : 0, "cs" => _spent,
+            "ci" => phase == PH_END ? "" : exercise()["c"], "ex" => _results
+        } as Dictionary;
+    }
+
+    hidden function note() as Void {
+        if (_journal != null) {
+            (_journal as MobilityJournal).saveHead(uuid, headOf());
+        }
     }
 
     function exercise() as Dictionary {
@@ -199,6 +231,9 @@ class MobilityPlayer {
         if (phase == PH_SIDE) {
             _spent++;
             _timerS++;
+            if (_timerS % NOTE_EVERY_S == 0) {
+                note();
+            }
         }
         if (remain > 0) {
             return;
@@ -232,6 +267,7 @@ class MobilityPlayer {
         phase = PH_NEXT;
         remain = NEXT_S;
         _signals.nextExercise();
+        note();   // after the exercise is written down and the next one is announced
     }
 
     hidden function record(status as String) as Void {
@@ -249,6 +285,7 @@ class MobilityPlayer {
         if (!early) {
             _signals.finished();
         }
+        note();
     }
 
     // DOWN: the exercise on screen (or announced) is left out.
@@ -299,19 +336,35 @@ class MobilityPlayer {
         return phase == PH_END && _results.size() > 0;
     }
 
-    // The summary's START: the recording goes to the watch history, the result stays here until it is sent (MOB-010).
-    function save(store as KeyValueStore) as Boolean {
+    // The summary's START: the recording goes to the watch history and the result is frozen in the outbox, which is
+    // sent at once (MOB-010). The journal is dropped with it.
+    function save() as Boolean {
         if (!canSave() || _saved) {
             return false;
         }
         _recorder.save();
-        store.setValue(LAST_KEY, result() as Application.Storage.ValueType);
+        if (_outbox != null) {
+            (_outbox as MobilityOutbox).addResult(result(), _clock.nowSeconds());
+        }
         _saved = true;
+        finish();
+        if (_sendNow != null) {
+            (_sendNow as Method() as Void).invoke();
+        }
         return true;
     }
 
     function discard() as Void {
         _recorder.discard();
+        finish();
+    }
+
+    // The routine is over for this process: nothing of it is "interrupted" any more.
+    hidden function finish() as Void {
+        if (_journal != null) {
+            (_journal as MobilityJournal).discard(uuid);
+        }
+        MobilityHandover.live = null;
     }
 
     // The finished routine as WatchMobilityRequestSchema has it (without request_id and plan_version_id, which
