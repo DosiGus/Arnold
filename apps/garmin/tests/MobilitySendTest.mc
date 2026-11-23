@@ -104,7 +104,7 @@ function aDuplicateCountsAsSentARefusalStaysAndTheTokenGoesToPairing(logger as L
     Test.assert(rig.cache.doneLocal(rig.DAY).indexOf("s_1") >= 0);
     // a refusal stays with the server's text and is dropped after 14 days
     var refused = rig.result("s_2", 1);
-    rig.outbox.addResult(refused, 1000);
+    rig.outbox.addResult(refused, rig.plan.pairing.clock.now);
     rig.sender.sendAll();
     rig.plan.pairing.transport.respond(422, { "error" => { "code" => "VALIDATION_ERROR", "message" => "nein" } });
     var entry = rig.outbox.get(refused["session_uuid"] as String) as Dictionary;
