@@ -33,6 +33,7 @@ import type { DatabaseArnoldRuntime } from "../db/runtime.js";
 import { healthRoutes } from "./health.js";
 import { pairingRoutes } from "./pairing.js";
 import { planRoutes } from "./plan.js";
+import { mobilityRoutes } from "./mobility.js";
 import { runRoutes } from "./runs.js";
 import { workoutRoutes } from "./workouts.js";
 import { safeCode, toolLogEnabled } from "../tool-log.js";
@@ -232,6 +233,7 @@ export function watchRoutes(runtime: DatabaseArnoldRuntime): WatchRoute[] {
     ...workoutRoutes(runtime),
     ...healthRoutes(runtime),
     ...runRoutes(runtime),
+    ...mobilityRoutes(runtime),
   ];
 }
 

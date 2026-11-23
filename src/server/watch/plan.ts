@@ -335,6 +335,8 @@ function withETag(call: WatchCall, body: unknown): WatchReply {
  * UX-007: the watch confirms the mark of a plan it has completely loaded.
  * Stored per device (both ids from the token) with the time; any well-formed
  * mark is kept as sent, so a mark that is no longer current stays "pending".
+ * MOB-006: the optional mobility mark `mv` is stored with it; without `mv` (an
+ * older app) the stored one stays as it was.
  */
 async function acknowledge(
   runtime: DatabaseArnoldRuntime,
@@ -347,11 +349,13 @@ async function acknowledge(
   const deviceId = call.principal!.deviceId;
   await runtime.options.db.asUser(userId, (c) =>
     c.query(
-      `insert into arnold.watch_plan_receipts (user_id, device_id, plan_mark, confirmed_at)
-       values ($1, $2, $3, now())
+      `insert into arnold.watch_plan_receipts (user_id, device_id, plan_mark, mobility_mark, confirmed_at)
+       values ($1, $2, $3, $4, now())
        on conflict (user_id, device_id)
-       do update set plan_mark = excluded.plan_mark, confirmed_at = excluded.confirmed_at`,
-      [userId, deviceId, parsed.data.v],
+       do update set plan_mark = excluded.plan_mark,
+                     mobility_mark = coalesce(excluded.mobility_mark, watch_plan_receipts.mobility_mark),
+                     confirmed_at = excluded.confirmed_at`,
+      [userId, deviceId, parsed.data.v, parsed.data.mv ?? null],
     ),
   );
   return {

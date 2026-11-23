@@ -64,7 +64,7 @@ function value<T>(outcome: WatchOutcome<T>): T {
 }
 
 /** Field paths only, never values: they are the watch's training data. */
-function invalid(error: z.ZodError): WatchApiError {
+export function invalid(error: z.ZodError): WatchApiError {
   const path = error.issues[0]?.path.map(String).join(".") || "body";
   return new WatchApiError(
     "VALIDATION_ERROR",
@@ -76,7 +76,7 @@ function invalid(error: z.ZodError): WatchApiError {
 }
 
 /** What every run route needs: a finished setup and the paired zone. */
-async function userOf(runtime: DatabaseArnoldRuntime, call: WatchCall) {
+export async function userOf(runtime: DatabaseArnoldRuntime, call: WatchCall) {
   const { context, deviceId } = call.principal!;
   const user = await runtime.forUser(context);
   if (await user.onboarding.setupRequired(context))
@@ -96,12 +96,12 @@ async function userOf(runtime: DatabaseArnoldRuntime, call: WatchCall) {
 }
 
 /** A body the watch cannot hold is a server fault, never sent shortened. */
-function withinBudget<T>(body: T, limit: number): T {
+export function withinBudget<T>(body: T, limit: number): T {
   if (jsonBytes(body) > limit) throw new Error("watch budget exceeded");
   return body;
 }
 
-const matches = (header: string | string[] | undefined, tag: string) =>
+export const matches = (header: string | string[] | undefined, tag: string) =>
   (Array.isArray(header) ? header.join(",") : (header ?? ""))
     .split(",")
     .some((candidate) => candidate.trim().replace(/^W\//, "") === tag);
