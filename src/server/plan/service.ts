@@ -83,6 +83,7 @@ interface OwnExercises {
 }
 import { validateProjection, validatePlanVersion } from "./validation.js";
 import { runValidationIssues } from "./run-validation.js";
+import { mobilityValidationIssues } from "./mobility-validation.js";
 import { localDay } from "../run/views.js";
 import {
   applyEdit,
@@ -183,7 +184,8 @@ export class TrainingPlanService {
 
   /**
    * The validation of a projected version, plus the hints for its run sessions
-   * (RUN-008): warnings and recommendations only, never an error, so `valid`
+   * (RUN-008) and mobility sessions (ARN-MOB): warnings and recommendations
+   * only, never an error, so `valid`
    * and `activatable` stay what the structural validation says.
    */
   private checked(
@@ -195,11 +197,10 @@ export class TrainingPlanService {
     ),
     timezone = "UTC",
   ): PlanValidationResult {
-    const extra = runValidationIssues(
-      version,
-      dataset,
-      localDay(this.now(), timezone),
-    );
+    const extra = [
+      ...runValidationIssues(version, dataset, localDay(this.now(), timezone)),
+      ...mobilityValidationIssues(version, dataset),
+    ];
     if (!extra.length) return base;
     return {
       ...base,
@@ -1014,6 +1015,12 @@ export class TrainingPlanService {
         ),
         ...[...model.runSessions.values()].map((state) => state.current),
       ],
+      planMobilitySessions: [
+        ...(dataset.planMobilitySessions ?? []).filter(
+          (row) => row.plan_version_id !== model.plan.plan_version_id,
+        ),
+        ...[...model.mobilitySessions.values()].map((state) => state.current),
+      ],
     };
     return projectVersion(candidate, model.plan);
   }
@@ -1066,6 +1073,12 @@ export class TrainingPlanService {
     const previous = model.planOriginal?.row_revision ?? null;
     const next = model.plan.row_revision;
     const fields: Record<string, { before: unknown; after: unknown }> = {};
+    // Mobility sessions have their own events (no free text); the generic
+    // session events below would carry names and the full routine.
+    const mobilityIds = new Set(model.mobilitySessions.keys());
+    const isMobility = (change: PlanChange) =>
+      change.session_id !== null && mobilityIds.has(change.session_id);
+    changes = changes.filter((change) => !isMobility(change));
     for (const change of changes)
       if (!CHANGE_EVENT[change.kind]) {
         // Changes without an entity-level event type (retargeting, reordering)
@@ -1181,7 +1194,118 @@ export class TrainingPlanService {
             }),
       );
     }
+    if (operation !== "create_plan_version")
+      for (const event of this.mobilityEvents(
+        model,
+        operationId,
+        actor,
+        now,
+        previous,
+        next,
+      ))
+        events.set(`${event.event_type}:${event.entity_id}`, event);
     return [...events.values()];
+  }
+
+  /**
+   * One event per mobility session this operation created, changed or
+   * removed. Kind, minutes, counts and status only: never a name, an exercise
+   * list or any free text.
+   */
+  private mobilityEvents(
+    model: DraftModel,
+    operationId: string,
+    actor: Actor,
+    now: string,
+    previous: number | null,
+    next: number,
+  ): AuditEvent[] {
+    const events: AuditEvent[] = [];
+    for (const state of [...model.mobilitySessions.values()].sort((a, b) =>
+      a.current.session_id < b.current.session_id ? -1 : 1,
+    )) {
+      const { original, current } = state;
+      if (original === current) continue;
+      const sessionId = current.session_id;
+      const detail = (
+        fields: Record<string, { before: unknown; after: unknown }>,
+      ) => ({ previous, next, fields });
+      if (!original) {
+        if (current.status !== "active") continue;
+        events.push(
+          this.event(
+            "MOBILITY_SESSION_CREATED",
+            sessionId,
+            operationId,
+            actor,
+            now,
+            detail({
+              kind: { before: null, after: current.kind },
+              minutes: { before: null, after: current.minutes },
+              exercises: {
+                before: null,
+                after: current.template.exercise_ids.length,
+              },
+              status: { before: null, after: "active" },
+            }),
+          ),
+        );
+        continue;
+      }
+      if (original.status === "active" && current.status === "removed") {
+        events.push(
+          this.event(
+            "MOBILITY_SESSION_REMOVED",
+            sessionId,
+            operationId,
+            actor,
+            now,
+            detail({ status: { before: "active", after: "removed" } }),
+          ),
+        );
+        continue;
+      }
+      const fields: Record<string, { before: unknown; after: unknown }> = {};
+      if (original.minutes !== current.minutes)
+        fields.minutes = { before: original.minutes, after: current.minutes };
+      if (original.placement !== current.placement)
+        fields.placement = {
+          before: original.placement,
+          after: current.placement,
+        };
+      if (original.weekdays.length !== current.weekdays.length)
+        fields.weekdays = {
+          before: original.weekdays.length,
+          after: current.weekdays.length,
+        };
+      if (
+        original.template.exercise_ids.length !==
+        current.template.exercise_ids.length
+      )
+        fields.exercises = {
+          before: original.template.exercise_ids.length,
+          after: current.template.exercise_ids.length,
+        };
+      // A name change is recorded as a change without its text.
+      if (original.session_name !== current.session_name)
+        fields.session_name = { before: null, after: null };
+      if (!Object.keys(fields).length)
+        fields.row_revision = {
+          before: original.row_revision,
+          after: current.row_revision,
+        };
+      events.push(
+        this.event(
+          "MOBILITY_SESSION_UPDATED",
+          sessionId,
+          operationId,
+          actor,
+          now,
+          detail(fields),
+        ),
+      );
+    }
+    return events;
   }
 
   /* --------------------------------------------------------- named wrappers */

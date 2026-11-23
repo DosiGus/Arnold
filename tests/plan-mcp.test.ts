@@ -240,6 +240,76 @@ describe("plan MCP tools", () => {
     expect(context.families).toHaveLength(1);
   });
 
+  it("hands the mobility catalog (without cues) to the model in the text, and describes the operations", async () => {
+    const result = await call("get_plan_editor_context");
+    const text = textOf(result);
+    expect(text).toMatch(/Mobility-Katalog \(Version mob-1;/);
+    expect(text).toMatch(/mob_neck_rolls \| Nackenkreisen \|/);
+    expect(text).toMatch(/morgens ok/);
+    expect(text).not.toMatch(/cue/i);
+    // The structured result keeps its contract.
+    expect(() =>
+      PlanContextSchema.parse(result.structuredContent),
+    ).not.toThrow();
+    const tools = (await client.listTools()).tools;
+    const description = tools.find(
+      (t) => t.name === "update_plan_draft",
+    )!.description!;
+    for (const word of [
+      "add_mobility_session",
+      "update_mobility_session",
+      "remove_mobility_session",
+      "morning_ok",
+      "Sekunden",
+    ])
+      expect(description).toContain(word);
+    expect(
+      tools.find((t) => t.name === "get_plan_editor_context")!.description,
+    ).toMatch(/Mobility-Katalog/);
+  });
+
+  it("adds a mobility session over MCP, times it on the server and rejects a timing error with its code", async () => {
+    const version = await draftViaMcp();
+    const spec = {
+      type: "add_mobility_session",
+      kind: "morning",
+      session_name: "Morgenroutine",
+      minutes: 10,
+      exercise_ids: [
+        "mob_neck_rolls",
+        "mob_neck_side",
+        "mob_shoulder_circles",
+        "mob_arm_circles",
+        "mob_doorway_chest",
+      ],
+      weekdays: [1, 3, 5],
+    };
+    const bad = await write("update_plan_draft", {
+      request_id: "mcp-mob-bad",
+      plan_version_id: version.plan_version_id,
+      expected_row_revision: version.row_revision,
+      edits: [
+        {
+          ...spec,
+          minutes: 5,
+          exercise_ids: [...spec.exercise_ids, "mob_wall_slides"],
+        },
+      ],
+    });
+    expect(bad.ok).toBe(false);
+    expect(bad.error!.details[0]).toMatch(/^MOBILITY_TOO_MANY_EXERCISES: /);
+    const good = await write("update_plan_draft", {
+      request_id: "mcp-mob-good",
+      plan_version_id: version.plan_version_id,
+      expected_row_revision: version.row_revision,
+      edits: [spec],
+    });
+    expect(good.ok).toBe(true);
+    const row = good.result!.plan!.version.mobility_sessions![0];
+    expect(row.template.total_s).toBeGreaterThan(500);
+    expect(row.template.items).toHaveLength(5);
+  });
+
   it("runs the whole edit, review and activation flow over MCP", async () => {
     const version = await draftViaMcp();
     const push = version.sessions.find((s) => s.session_name === "Push")!;

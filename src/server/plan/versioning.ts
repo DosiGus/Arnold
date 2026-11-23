@@ -21,16 +21,20 @@
  *   - a new plan family re-issues its session ids too;
  *   - nothing is ever physically deleted: removal is `status: "removed"`.
  */
+import { buildMobilityRoutine } from "../../analytics/mobility/timing.js";
 import {
   ArnoldPlanItemSchema,
+  ArnoldPlanMobilitySessionSchema,
   ArnoldPlanRunSessionSchema,
   ArnoldPlanVersionSchema,
   type ArnoldDataset,
   type ArnoldExercise,
   type ArnoldPlanItem,
+  type ArnoldPlanMobilitySession,
   type ArnoldPlanRunSession,
   type ArnoldPlanVersion,
 } from "../../shared/arnold-schema-v1.js";
+import { MOBILITY_CATALOG_VERSION } from "../../shared/mobility-catalog.js";
 import type {
   PlanEdit,
   PlannedExerciseInput,
@@ -53,6 +57,16 @@ export type RunSessionState = {
   current: ArnoldPlanRunSession;
 };
 
+export type MobilitySessionState = {
+  /** The row as read from storage; null for a mobility session created in this batch. */
+  original: ArnoldPlanMobilitySession | null;
+  current: ArnoldPlanMobilitySession;
+};
+
+/** At most one active morning routine and four mobility routines in all (ARN-MOB). */
+export const MOBILITY_MAX_ACTIVE = 4;
+export const MOBILITY_MAX_MORNING = 1;
+
 export type DraftModel = {
   plan: ArnoldPlanVersion;
   /** Null while the version itself is being created. */
@@ -67,6 +81,10 @@ export type DraftModel = {
   runSessions: Map<string, RunSessionState>;
   /** Active run session ids in display order. */
   runOrder: string[];
+  /** Mobility routines of the version by session_id (ARN-MOB), removed ones included. */
+  mobilitySessions: Map<string, MobilitySessionState>;
+  /** Active mobility session ids in display order. */
+  mobilityOrder: string[];
 };
 
 export type EditContext = {
@@ -278,6 +296,19 @@ export function loadModel(
         (a.current.session_id < b.current.session_id ? -1 : 1),
     )
     .map((state) => state.current.session_id);
+  const mobilitySessions = new Map<string, MobilitySessionState>(
+    (dataset.planMobilitySessions ?? [])
+      .filter((row) => row.plan_version_id === plan.plan_version_id)
+      .map((row) => [row.session_id, { original: row, current: row }]),
+  );
+  const mobilityOrder = [...mobilitySessions.values()]
+    .filter((state) => state.current.status === "active")
+    .sort(
+      (a, b) =>
+        a.current.session_order - b.current.session_order ||
+        (a.current.session_id < b.current.session_id ? -1 : 1),
+    )
+    .map((state) => state.current.session_id);
   return {
     plan,
     planOriginal: plan,
@@ -287,6 +318,8 @@ export function loadModel(
     sessionNames,
     runSessions,
     runOrder,
+    mobilitySessions,
+    mobilityOrder,
   };
 }
 
@@ -301,6 +334,8 @@ export function newModel(plan: ArnoldPlanVersion): DraftModel {
     sessionNames: new Map(),
     runSessions: new Map(),
     runOrder: [],
+    mobilitySessions: new Map(),
+    mobilityOrder: [],
   };
 }
 
@@ -317,12 +352,19 @@ function nameTaken(
         id !== exceptSessionId &&
         normalizeName(model.sessionNames.get(id) ?? "") === wanted,
     ) ||
-    // Strength and run sessions share one name space inside a version.
+    // Strength, run and mobility sessions share one name space inside a version.
     model.runOrder.some(
       (id) =>
         id !== exceptSessionId &&
         normalizeName(model.runSessions.get(id)?.current.session_name ?? "") ===
           wanted,
+    ) ||
+    model.mobilityOrder.some(
+      (id) =>
+        id !== exceptSessionId &&
+        normalizeName(
+          model.mobilitySessions.get(id)?.current.session_name ?? "",
+        ) === wanted,
     )
   );
 }
@@ -428,6 +470,27 @@ function reviveSession(model: DraftModel, sessionId: string) {
     model.sessionOrder.push(sessionId);
 }
 
+/**
+ * The session_id space of a version is shared by strength, run and mobility
+ * sessions: an id is taken when any of them (removed ones included) has it.
+ */
+function sessionIdTaken(
+  model: DraftModel,
+  ctx: EditContext,
+  sessionId: string,
+): boolean {
+  return (
+    model.runSessions.has(sessionId) ||
+    model.mobilitySessions.has(sessionId) ||
+    model.sessionNames.has(sessionId) ||
+    ctx.dataset.planItems.some(
+      (item) =>
+        item.plan_version_id === model.plan.plan_version_id &&
+        item.session_id === sessionId,
+    )
+  );
+}
+
 function requireRunSession(
   model: DraftModel,
   sessionId: string,
@@ -458,14 +521,7 @@ function addRunSession(
       "VALIDATION_ERROR",
       `Es gibt bereits eine Einheit mit dem Namen "${input.session_name}".`,
     );
-  if (
-    model.runSessions.has(sessionId) ||
-    ctx.dataset.planItems.some(
-      (item) =>
-        item.plan_version_id === model.plan.plan_version_id &&
-        item.session_id === sessionId,
-    )
-  )
+  if (sessionIdTaken(model, ctx, sessionId))
     throw fail("VALIDATION_ERROR", "Diese Einheits-ID ist schon vergeben.");
   const at =
     input.session_order === undefined
@@ -486,6 +542,263 @@ function addRunSession(
   });
   model.runSessions.set(sessionId, { original: null, current: row });
   return sessionId;
+}
+
+function requireMobilitySession(
+  model: DraftModel,
+  sessionId: string,
+): MobilitySessionState {
+  const state = model.mobilitySessions.get(sessionId);
+  if (!state || state.current.status !== "active")
+    throw fail(
+      "SESSION_NOT_FOUND",
+      "Diese Mobility-Einheit gehört nicht zum Entwurf oder ist bereits entfernt.",
+    );
+  return state;
+}
+
+/**
+ * The routine of a mobility session, timed by the server.
+ *
+ * The model chooses exercises and length; the seconds always come from the
+ * timing engine. A timing error rejects the operation with its code in the
+ * details (`MOBILITY_BUDGET_UNREACHABLE: …`), so a caller sees exactly which
+ * rule the selection broke. Nothing is written for a rejected operation.
+ */
+function timedTemplate(
+  kind: ArnoldPlanMobilitySession["kind"],
+  minutes: number,
+  exerciseIds: readonly string[],
+): ArnoldPlanMobilitySession["template"] {
+  const routine = buildMobilityRoutine({
+    kind,
+    minutes,
+    exercise_ids: exerciseIds,
+  });
+  if (!routine.ok)
+    throw fail("VALIDATION_ERROR", routine.message, [
+      `${routine.code}: ${routine.message}`,
+    ]);
+  return {
+    catalog_version: MOBILITY_CATALOG_VERSION,
+    rules_version: routine.rules_version,
+    exercise_ids: [...exerciseIds],
+    items: routine.items,
+    total_s: routine.total_s,
+  } as ArnoldPlanMobilitySession["template"];
+}
+
+/** The row, parsed; a shape violation is reported in the plan vocabulary. */
+function mobilityRow(candidate: unknown): ArnoldPlanMobilitySession {
+  const parsed = ArnoldPlanMobilitySessionSchema.safeParse(candidate);
+  if (!parsed.success)
+    throw fail(
+      "VALIDATION_ERROR",
+      parsed.error.issues[0]?.message ?? "Die Mobility-Einheit ist ungültig.",
+      parsed.error.issues.map(
+        (issue) => `${issue.path.join(".")}: ${issue.message}`,
+      ),
+    );
+  return parsed.data as ArnoldPlanMobilitySession;
+}
+
+/** A mobility session after a strength session needs an active one of the same version. */
+function assertAnchor(model: DraftModel, row: ArnoldPlanMobilitySession) {
+  if (row.placement !== "after_strength") return;
+  if (
+    !row.after_session_id ||
+    !model.sessionOrder.includes(row.after_session_id)
+  )
+    throw fail(
+      "SESSION_NOT_FOUND",
+      "Die Krafteinheit, der die Mobility-Einheit folgt, gehört nicht zum Entwurf oder enthält keine aktive Übung.",
+    );
+}
+
+/** At most one morning routine and four mobility routines at a time. */
+function assertMobilityLimits(
+  model: DraftModel,
+  kind: ArnoldPlanMobilitySession["kind"],
+  exceptSessionId?: string,
+) {
+  const others = model.mobilityOrder
+    .filter((id) => id !== exceptSessionId)
+    .map((id) => model.mobilitySessions.get(id)!.current);
+  if (
+    kind === "morning" &&
+    others.filter((r) => r.kind === "morning").length >= MOBILITY_MAX_MORNING
+  )
+    throw fail(
+      "VALIDATION_ERROR",
+      "Es gibt schon eine Morgenroutine. Eine zweite ist nicht möglich; die vorhandene lässt sich ändern.",
+    );
+  if (others.length >= MOBILITY_MAX_ACTIVE)
+    throw fail(
+      "VALIDATION_ERROR",
+      `Ein Plan hat höchstens ${MOBILITY_MAX_ACTIVE} Mobility-Einheiten einschließlich der Morgenroutine.`,
+    );
+}
+
+type MobilityInput = {
+  session_name: string;
+  kind: ArnoldPlanMobilitySession["kind"];
+  minutes: number;
+  placement: ArnoldPlanMobilitySession["placement"];
+  weekdays: number[];
+  after_session_id: string | null;
+  template: ArnoldPlanMobilitySession["template"];
+  session_order?: number;
+};
+
+/** Inserts a mobility session after the identity, name, limit and anchor checks. */
+function insertMobilitySession(
+  model: DraftModel,
+  ctx: EditContext,
+  input: MobilityInput,
+  sessionId: string,
+): string {
+  if (nameTaken(model, input.session_name))
+    throw fail(
+      "VALIDATION_ERROR",
+      `Es gibt bereits eine Einheit mit dem Namen "${input.session_name}".`,
+    );
+  if (sessionIdTaken(model, ctx, sessionId))
+    throw fail("VALIDATION_ERROR", "Diese Einheits-ID ist schon vergeben.");
+  assertMobilityLimits(model, input.kind);
+  const at =
+    input.session_order === undefined
+      ? model.mobilityOrder.length
+      : Math.min(
+          Math.max(input.session_order - 1, 0),
+          model.mobilityOrder.length,
+        );
+  const row = mobilityRow({
+    plan_mobility_session_id: ctx.id(),
+    plan_version_id: model.plan.plan_version_id,
+    session_id: sessionId,
+    session_order: at + 1,
+    session_name: input.session_name,
+    kind: input.kind,
+    placement: input.placement,
+    weekdays: [...input.weekdays].sort((a, b) => a - b),
+    after_session_id: input.after_session_id,
+    minutes: input.minutes,
+    template: input.template,
+    status: "active",
+    row_revision: 1,
+  });
+  assertAnchor(model, row);
+  model.mobilityOrder.splice(at, 0, sessionId);
+  model.mobilitySessions.set(sessionId, { original: null, current: row });
+  return sessionId;
+}
+
+function addMobilitySession(
+  model: DraftModel,
+  ctx: EditContext,
+  edit: Extract<PlanEdit, { type: "add_mobility_session" }>,
+): string {
+  const morning = edit.kind === "morning";
+  if (morning && edit.placement === "after_strength")
+    throw fail(
+      "VALIDATION_ERROR",
+      "Die Morgenroutine steht an eigenen Tagen, nicht nach dem Krafttraining.",
+    );
+  if (morning && !edit.weekdays?.length)
+    throw fail(
+      "VALIDATION_ERROR",
+      "Die Morgenroutine braucht mindestens einen Wochentag (weekdays, 1 bis 7).",
+    );
+  // A session without a stated placement follows a strength session when one
+  // is named, otherwise it takes its own day.
+  const placement = morning
+    ? "own_day"
+    : (edit.placement ??
+      (edit.after_session_id ? "after_strength" : "own_day"));
+  const weekdays = edit.weekdays ?? [];
+  const template = timedTemplate(edit.kind, edit.minutes, edit.exercise_ids);
+  return insertMobilitySession(
+    model,
+    ctx,
+    {
+      session_name: edit.session_name,
+      kind: edit.kind,
+      minutes: edit.minutes,
+      placement,
+      weekdays,
+      after_session_id: edit.after_session_id ?? null,
+      template,
+      session_order: edit.session_order,
+    },
+    ctx.id(),
+  );
+}
+
+function updateMobilitySession(
+  model: DraftModel,
+  edit: Extract<PlanEdit, { type: "update_mobility_session" }>,
+) {
+  const state = requireMobilitySession(model, edit.session_id);
+  const current = state.current;
+  if (
+    edit.session_name !== undefined &&
+    nameTaken(model, edit.session_name, edit.session_id)
+  )
+    throw fail(
+      "VALIDATION_ERROR",
+      `Es gibt bereits eine Einheit mit dem Namen "${edit.session_name}".`,
+    );
+  const placement = edit.placement ?? current.placement;
+  // Moving between the two placements resets the fields of the one left, so a
+  // stale weekday or anchor never lingers; the shape check then asks for the
+  // fields the new placement needs.
+  const weekdays =
+    edit.weekdays ?? (placement === "after_strength" ? [] : current.weekdays);
+  const after =
+    edit.after_session_id !== undefined
+      ? edit.after_session_id
+      : placement === "own_day"
+        ? null
+        : current.after_session_id;
+  const minutes = edit.minutes ?? current.minutes;
+  const retime = edit.minutes !== undefined || edit.exercise_ids !== undefined;
+  const template = retime
+    ? timedTemplate(
+        current.kind,
+        minutes,
+        edit.exercise_ids ?? current.template.exercise_ids,
+      )
+    : current.template;
+  const row = mobilityRow({
+    ...current,
+    session_name: edit.session_name ?? current.session_name,
+    placement,
+    weekdays: [...weekdays].sort((a, b) => a - b),
+    after_session_id: after,
+    minutes,
+    template,
+  });
+  assertAnchor(model, row);
+  state.current = row;
+}
+
+/**
+ * A strength session a mobility session follows cannot disappear: the removal
+ * is refused with the names, so nothing is left pointing at a day that is gone.
+ */
+function assertNoDanglingMobility(model: DraftModel) {
+  for (const id of model.mobilityOrder) {
+    const row = model.mobilitySessions.get(id)!.current;
+    if (
+      row.placement === "after_strength" &&
+      row.after_session_id !== null &&
+      !model.sessionOrder.includes(row.after_session_id)
+    )
+      throw fail(
+        "VALIDATION_ERROR",
+        `Die Krafteinheit "${model.sessionNames.get(row.after_session_id) ?? "?"}" lässt sich nicht entfernen: Die Mobility-Einheit "${row.session_name}" folgt ihr. Erst die Mobility-Einheit ändern oder entfernen.`,
+      );
+  }
 }
 
 export function applyEdit(
@@ -584,6 +897,7 @@ export function applyEdit(
       const sessionId = requireSession(model, edit.session_id);
       for (const id of [...(model.sessionItems.get(sessionId) ?? [])])
         removeItem(model, model.items.get(id)!);
+      assertNoDanglingMobility(model);
       return;
     }
     case "add_plan_exercise": {
@@ -680,6 +994,7 @@ export function applyEdit(
     }
     case "remove_plan_exercise": {
       removeItem(model, requireItem(model, edit.plan_item_id));
+      assertNoDanglingMobility(model);
       return;
     }
     case "reorder_plan_exercises": {
@@ -751,6 +1066,22 @@ export function applyEdit(
       model.runOrder = model.runOrder.filter((id) => id !== edit.session_id);
       return;
     }
+    case "add_mobility_session": {
+      addMobilitySession(model, ctx, edit);
+      return;
+    }
+    case "update_mobility_session": {
+      updateMobilitySession(model, edit);
+      return;
+    }
+    case "remove_mobility_session": {
+      const state = requireMobilitySession(model, edit.session_id);
+      state.current = { ...state.current, status: "removed" };
+      model.mobilityOrder = model.mobilityOrder.filter(
+        (id) => id !== edit.session_id,
+      );
+      return;
+    }
     case "replace_draft_sessions": {
       // A wholesale redesign. Every existing position is tombstoned and the new
       // structure is built from scratch, so no stale row survives unnoticed.
@@ -762,6 +1093,7 @@ export function applyEdit(
       // check looks at live sessions, and a reused name on a new session id is
       // what the data contract expects.
       for (const session of edit.sessions) addSession(model, ctx, session);
+      assertNoDanglingMobility(model);
       return;
     }
   }
@@ -871,6 +1203,45 @@ export function finalizeModel(model: DraftModel, now: string): EntityChange[] {
     });
   }
 
+  // Mobility sessions: the same rules as run sessions.
+  model.mobilityOrder.forEach((sessionId, index) => {
+    const state = model.mobilitySessions.get(sessionId)!;
+    state.current = { ...state.current, session_order: index + 1 };
+  });
+  for (const state of [...model.mobilitySessions.values()].sort((a, b) =>
+    a.current.session_id < b.current.session_id ? -1 : 1,
+  )) {
+    if (!state.original) {
+      state.current = ArnoldPlanMobilitySessionSchema.parse({
+        ...state.current,
+        row_revision: 1,
+      });
+      changes.push({
+        table: "planMobilitySessions",
+        before: null,
+        after: state.current,
+      });
+      continue;
+    }
+    const normalized = {
+      ...state.current,
+      row_revision: state.original.row_revision,
+    };
+    if (canonical(normalized) === canonical(state.original)) {
+      state.current = state.original;
+      continue;
+    }
+    state.current = ArnoldPlanMobilitySessionSchema.parse({
+      ...state.current,
+      row_revision: state.original.row_revision + 1,
+    });
+    changes.push({
+      table: "planMobilitySessions",
+      before: state.original,
+      after: state.current,
+    });
+  }
+
   // The version's own row is the single optimistic-concurrency token for the
   // whole draft, so any edit advances it even when only positions moved.
   const plan = ArnoldPlanVersionSchema.parse(
@@ -911,11 +1282,17 @@ export function deriveDraft(
     }),
   );
   const sessions = sessionInputsOf(ctx.dataset, source);
-  for (const [sessionId, input] of sessions)
+  // Old to new id of every strength session, so a mobility session that
+  // follows one still points at the same day in the copy.
+  const strengthIds = new Map<string, string>();
+  for (const [sessionId, input] of sessions) {
     // Within the same family a continued session keeps its identity, so
     // historical workouts and the new plan still speak about the same day.
     // A new family is a new routine and re-issues its session ids.
-    addSession(model, ctx, input, options.asNewFamily ? ctx.id() : sessionId);
+    const issued = options.asNewFamily ? ctx.id() : sessionId;
+    strengthIds.set(sessionId, issued);
+    addSession(model, ctx, input, issued);
+  }
   // Run sessions travel with the version: the same rules for identity, and the
   // current level stays what it is (the progression does not start over).
   for (const row of ctx.dataset.planRunSessions
@@ -939,6 +1316,42 @@ export function deriveDraft(
       },
       options.asNewFamily ? ctx.id() : row.session_id,
     );
+  // Mobility routines travel with the version too, with the timing they were
+  // computed with (no new computation: a copy is not a new choice).
+  for (const row of (ctx.dataset.planMobilitySessions ?? [])
+    .filter(
+      (r) =>
+        r.plan_version_id === source.plan_version_id && r.status === "active",
+    )
+    .sort(
+      (a, b) =>
+        a.session_order - b.session_order ||
+        (a.session_id < b.session_id ? -1 : 1),
+    )) {
+    const anchor =
+      row.after_session_id === null
+        ? null
+        : (strengthIds.get(row.after_session_id) ?? null);
+    if (row.after_session_id !== null && anchor === null)
+      throw fail(
+        "VALIDATION_ERROR",
+        `Die Mobility-Einheit "${row.session_name}" folgt einer Krafteinheit, die in dieser Version nicht mehr aktiv ist. Die Version kann so nicht als Grundlage dienen.`,
+      );
+    insertMobilitySession(
+      model,
+      ctx,
+      {
+        session_name: row.session_name,
+        kind: row.kind,
+        minutes: row.minutes,
+        placement: row.placement,
+        weekdays: [...row.weekdays],
+        after_session_id: anchor,
+        template: row.template,
+      },
+      options.asNewFamily ? ctx.id() : row.session_id,
+    );
+  }
   return model;
 }
 

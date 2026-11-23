@@ -140,17 +140,23 @@ export function adjustmentView(
   const sessions = sessionsOfVersion(dataset.planItems, temp.plan_version_id);
   const tempProjection = projectVersion(dataset, temp);
   const baseProjection = projectVersion(dataset, base);
-  // Runs stay as they are (UX-008 c); "today" compares just the one session.
+  // Runs and mobility stay as they are (UX-008 c); "today" compares just the
+  // one session.
   const shown = new Set(sessions.map((s) => s.session_id));
   const from = {
     ...baseProjection,
     run_sessions: undefined,
+    mobility_sessions: undefined,
     sessions:
       adjustment.kind === "today"
         ? baseProjection.sessions.filter((s) => shown.has(s.session_id))
         : baseProjection.sessions,
   };
-  const to = { ...tempProjection, run_sessions: undefined };
+  const to = {
+    ...tempProjection,
+    run_sessions: undefined,
+    mobility_sessions: undefined,
+  };
   return {
     adjustment,
     base_plan_name: base.name,
