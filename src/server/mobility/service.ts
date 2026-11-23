@@ -667,7 +667,11 @@ export class MobilityService {
   ): ArnoldWorkout {
     const workout = ArnoldWorkoutSchema.parse({
       workout_id: this.id(),
-      client_session_id: r.client_session_id,
+      // Left out when there is none: the database does not store a null here,
+      // and a receipt must read back equal to the row to be replayed.
+      ...(r.client_session_id
+        ? { client_session_id: r.client_session_id }
+        : {}),
       workout_date_local: r.date,
       timezone: r.timezone,
       started_at_utc: r.started_at_utc,

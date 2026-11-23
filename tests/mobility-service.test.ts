@@ -397,8 +397,8 @@ describe("log_mobility", () => {
       plan_version_id: morning.plan_version_id,
       session_id: morning.session_id,
       session_name_snapshot: "Morgenroutine",
-      client_session_id: null,
     });
+    expect(workout.client_session_id ?? null).toBeNull();
     expect(
       data.mobilityResults!.find((r) => r.workout_id === first.workout_id),
     ).toMatchObject({
