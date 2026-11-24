@@ -41,7 +41,6 @@ import {
   ScheduleRunWeekResponseSchema,
 } from "../shared/run-contract";
 import { ArnoldToolError, asFailure, type UiFailure } from "./recovery";
-import { readStoredClaim } from "./client/onboarding-claim";
 
 /**
  * A Garmin card: the pairing confirmation or the watches of the account. The
@@ -357,11 +356,8 @@ export class ArnoldClient {
         await this.call("show_arnold_dashboard", input);
         return;
       }
-      // A reload must continue the setup rather than start a second one, so the
-      // stored credential is passed when there is one. Without it the tool
-      // starts fresh, which is the right behaviour for a first visit.
-      const stored = readStoredClaim();
-      await this.call("show_arnold_onboarding", stored ? { ...stored } : {});
+      // The server finds the account's open setup by identity (D-11).
+      await this.call("show_arnold_onboarding", {});
     }
   }
 

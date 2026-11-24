@@ -98,16 +98,6 @@ export function useOnboarding(
       stillCurrent: () => boolean = () => true,
     ) => {
       const token = ++generation.current;
-      if (
-        stateRef.current?.session.status === "COMPLETED" &&
-        !client.getOnboardingClaim()
-      ) {
-        // A completed account no longer needs its expired setup credential.
-        setUi("READY");
-        setError("");
-        setFailure(undefined);
-        return stateRef.current;
-      }
       try {
         const next = await client.onboardingState();
         if (token !== generation.current || !stillCurrent()) return undefined;

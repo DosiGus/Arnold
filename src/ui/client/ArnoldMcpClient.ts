@@ -70,14 +70,6 @@ import {
 } from "../../shared/run-contract";
 import { z } from "zod";
 import type { ArnoldClient } from "../client";
-import {
-  clearStoredClaim,
-  readStoredClaim,
-  writeStoredClaim,
-  type OnboardingClaim,
-} from "./onboarding-claim";
-
-export type { OnboardingClaim };
 
 export type DashboardQuery = {
   /** The user's IANA zone, so the server can tell which day is today. */
@@ -127,8 +119,6 @@ const ONBOARDING_SETUP_KEY = "setup";
 export class ArnoldMcpClient {
   private pendingWrites = new Map<string, string>();
   private pendingPlanWrites = new Map<string, string>();
-  /** Held in memory so an opaque MCP App origin without storage still works. */
-  private onboardingClaim?: OnboardingClaim;
   private profileBuffers = new Map<string, OnboardingProfileBuffer>();
   profileBuffer(
     initial: import("../../shared/onboarding-contract").OnboardingState,
@@ -165,10 +155,7 @@ export class ArnoldMcpClient {
     window.dispatchEvent(new Event("arnold:refresh"));
   }
   async showOnboarding() {
-    await this.client.call(
-      "show_arnold_onboarding",
-      this.getOnboardingClaim() ?? {},
-    );
+    await this.client.call("show_arnold_onboarding", {});
   }
   async deleteAccount(confirmation_token?: string) {
     return DeleteAccountResponseSchema.parse(
@@ -320,37 +307,9 @@ export class ArnoldMcpClient {
 
   /* ------------------------------------------------------------ onboarding */
 
-  /**
-   * Remembers the session secret for this setup.
-   *
-   * Kept in `sessionStorage` so a reload inside the same tab continues the
-   * setup instead of starting a new one, and in memory as the fallback for an
-   * opaque app origin that has no storage at all. It is scoped to the session id
-   * and deliberately not `localStorage`: a setup secret should not outlive the
-   * browser session that created it.
-   */
-  rememberOnboarding(claim: OnboardingClaim) {
-    if (
-      this.onboardingClaim?.onboarding_session_id !==
-      claim.onboarding_session_id
-    )
-      this.pendingOnboarding = undefined;
-    this.onboardingClaim = claim;
-    writeStoredClaim(claim);
-  }
-
-  getOnboardingClaim(): OnboardingClaim | undefined {
-    if (this.onboardingClaim) return this.onboardingClaim;
-    const stored = readStoredClaim();
-    if (stored) this.onboardingClaim = stored;
-    return stored;
-  }
-
   forgetOnboarding() {
     for (const buffer of this.profileBuffers.values()) buffer.suspend();
     this.clearPendingOnboarding();
-    this.onboardingClaim = undefined;
-    clearStoredClaim();
   }
 
   /**
@@ -361,11 +320,10 @@ export class ArnoldMcpClient {
     return {};
   }
 
-  async startOnboarding(request_id: string, resume?: OnboardingClaim) {
+  async startOnboarding(request_id: string) {
     const response = OnboardingResponseSchema.parse(
       await this.client.call("start_arnold_onboarding", {
         request_id,
-        ...(resume ? { resume_session: resume } : {}),
       }),
     );
     return response;
