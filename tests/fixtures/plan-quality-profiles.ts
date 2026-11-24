@@ -478,6 +478,19 @@ export const toOnboardingProfile = (p: QualityProfile): OnboardingProfile =>
       environment: "gym",
       session_minutes: 60,
       ...p.training,
+      // Running is a module with required run details since Onboarding 2.0
+      // (RDS-003); synthetic values for the profiles that run.
+      ...(p.training.primary_goal === "endurance_running" ||
+      (p.training.secondary_goals ?? []).includes("endurance_running")
+        ? {
+            run: {
+              runs_per_week: 2,
+              base_minutes_per_week: 60,
+              longest_run_4w_min: 40,
+              preferred_environment: "outdoor",
+            },
+          }
+        : {}),
     },
     revision: 1,
     updated_at_utc: "2026-05-01T10:00:00Z",

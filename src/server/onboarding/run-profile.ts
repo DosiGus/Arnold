@@ -8,10 +8,18 @@
 import type { OnboardingRun } from "../../shared/onboarding-contract.js";
 import type { RunService } from "../run/service.js";
 
+/**
+ * The run goal the run profile stores when the setup named none. Since
+ * Onboarding 2.0 (D-01) the goal is optional, but the run profile keeps
+ * one; "fitness" is the goal without a race distance, so nothing is
+ * invented: no distance, no date, no target time.
+ */
+export const RUN_GOAL_WITHOUT_ANSWER = "fitness" as const;
+
 /** The `update_run_profile` fields the setup answered; names are the run contract's. */
 function wanted(run: OnboardingRun) {
   return {
-    goal: run.goal,
+    goal: run.goal ?? RUN_GOAL_WITHOUT_ANSWER,
     runs_per_week: run.runs_per_week,
     base_minutes_per_week: run.base_minutes_per_week,
     longest_run_4w_min: run.longest_run_4w_min,

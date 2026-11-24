@@ -104,13 +104,13 @@ describe("mobility catalog (D-MOB-04)", () => {
     }
   });
 
-  it("marks morning_ok exactly for standing and wall exercises", () => {
+  it("marks needs_mat exactly for floor exercises (D-07)", () => {
     for (const e of MOBILITY_CATALOG)
-      expect(e.morning_ok).toBe(
-        e.position === "standing" || e.position === "wall",
+      expect(e.needs_mat).toBe(
+        e.position !== "standing" && e.position !== "wall",
       );
     expect(
-      MOBILITY_CATALOG.filter((e) => e.morning_ok)
+      MOBILITY_CATALOG.filter((e) => !e.needs_mat)
         .map((e) => e.id)
         .sort(),
     ).toEqual([...MORNING_IDS].sort());
@@ -119,7 +119,7 @@ describe("mobility catalog (D-MOB-04)", () => {
   it("covers every area with at least 4 exercises, 3 for the morning (wrists 1)", () => {
     for (const area of MOBILITY_AREAS) {
       const all = MOBILITY_CATALOG.filter((e) => e.areas.includes(area));
-      const morning = all.filter((e) => e.morning_ok);
+      const morning = all.filter((e) => !e.needs_mat);
       expect(all.length, area).toBeGreaterThanOrEqual(4);
       expect(morning.length, area).toBeGreaterThanOrEqual(
         area === "wrists" ? 1 : 3,

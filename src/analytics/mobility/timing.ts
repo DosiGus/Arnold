@@ -19,6 +19,7 @@
  * error, never a routine that silently misses its length.
  */
 import {
+  allowedInMorning,
   mobilityExercise,
   type MobilityExercise,
 } from "../../shared/mobility-catalog.js";
@@ -70,6 +71,11 @@ export type MobilityRoutineRequest = {
   kind: MobilityRoutineKind;
   minutes: number;
   exercise_ids: readonly string[];
+  /**
+   * Whether the user has a mat (D-07). Only `true` lets floor exercises into
+   * the morning routine; absent or false means no mat, as before.
+   */
+  has_mat?: boolean;
 };
 
 export type MobilityRoutineItem = {
@@ -131,7 +137,7 @@ export function buildMobilityRoutine(
         `Die Übung ${exercise.name_de} ist doppelt ausgewählt.`,
       );
     seen.add(id);
-    if (kind === "morning" && !exercise.morning_ok)
+    if (kind === "morning" && !allowedInMorning(exercise, request.has_mat))
       return fail(
         "MOBILITY_NOT_MORNING_SUITABLE",
         `${exercise.name_de} braucht eine Matte und passt nicht in die Morgenroutine.`,

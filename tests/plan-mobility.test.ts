@@ -1422,14 +1422,14 @@ describe("the mobility catalog for the editor", () => {
           "max_s",
           "min_s",
           "mode",
-          "morning_ok",
           "name_de",
+          "needs_mat",
           "per_side",
           "position",
         ].sort(),
       );
     }
-    expect(rows.filter((r) => r.morning_ok)).toHaveLength(20);
+    expect(rows.filter((r) => !r.needs_mat)).toHaveLength(20);
     const text = mobilityCatalogText();
     expect(text).toMatch(/^Mobility-Katalog \(Version mob-1;/);
     expect(text.split("\n")).toHaveLength(41);

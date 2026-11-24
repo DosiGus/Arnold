@@ -12,7 +12,10 @@ import {
 } from "./run-draft";
 import type { OnboardingRun } from "../../../shared/onboarding-contract";
 
-const GOALS: readonly { value: OnboardingRun["goal"]; label: string }[] = [
+const GOALS: readonly {
+  value: NonNullable<OnboardingRun["goal"]>;
+  label: string;
+}[] = [
   { value: "fitness", label: "Fit bleiben" },
   { value: "5k", label: "5 km" },
   { value: "10k", label: "10 km" },

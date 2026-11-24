@@ -78,9 +78,14 @@ describe("openQuestions", () => {
       "run_details",
       "mobility",
     ]);
-    expect(missingRequiredFields(profile).map(String)).toEqual(
-      ids(profile).slice(0, 4),
-    );
+    // The run details are required answers of the running module (D-01).
+    expect(missingRequiredFields(profile).map(String)).toEqual([
+      ...ids(profile).slice(0, 4),
+      "training.run.runs_per_week",
+      "training.run.base_minutes_per_week",
+      "training.run.longest_run_4w_min",
+      "training.run.preferred_environment",
+    ]);
 
     profile = merged(profile, {
       training: {
@@ -348,7 +353,7 @@ describe("mobility never blocks a plan", () => {
     expect(wanted.mobility_catalog![0]).not.toHaveProperty("cue_de");
     const text = wanted.constraints.join("\n");
     expect(text).toContain("add_mobility_session");
-    expect(text).toContain("morning_ok");
+    expect(text).toContain("needs_mat=false");
     expect(text).toContain("ohne Krafttraining");
     expect(text).toContain("steifen Bereichen");
     expect(text).toMatch(/Sekunden/);

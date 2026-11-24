@@ -245,7 +245,8 @@ describe("plan MCP tools", () => {
     const text = textOf(result);
     expect(text).toMatch(/Mobility-Katalog \(Version mob-1;/);
     expect(text).toMatch(/mob_neck_rolls \| Nackenkreisen \|/);
-    expect(text).toMatch(/morgens ok/);
+    expect(text).toMatch(/ohne Matte/);
+    expect(text).toMatch(/Matte \(Boden\)/);
     expect(text).not.toMatch(/cue/i);
     // The structured result keeps its contract.
     expect(() =>
@@ -259,7 +260,7 @@ describe("plan MCP tools", () => {
       "add_mobility_session",
       "update_mobility_session",
       "remove_mobility_session",
-      "morning_ok",
+      "needs_mat",
       "Sekunden",
     ])
       expect(description).toContain(word);

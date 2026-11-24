@@ -8,8 +8,9 @@
  *
  * Seconds are per side (`per_side`); for `reps` and `flow` they are the
  * length of the block. All seconds are multiples of 5, so the engine's 5 s
- * rounding never leaves the bounds. `morning_ok` is true exactly for the
- * exercises done standing or at a wall: the morning routine needs no mat.
+ * rounding never leaves the bounds. `needs_mat` is true exactly for the
+ * exercises on the floor (D-07): the morning routine uses them only when the
+ * user has a mat (`has_mat`), see `allowedInMorning`.
  *
  * Cues are calm execution hints, never a health promise.
  *
@@ -72,13 +73,13 @@ export type MobilityExercise = {
   /** Only for mode reps (4–15), otherwise null. */
   readonly reps: number | null;
   readonly position: MobilityPosition;
-  /** True exactly for standing and wall exercises (no mat). */
-  readonly morning_ok: boolean;
+  /** True exactly for floor exercises: they need a mat (D-07). */
+  readonly needs_mat: boolean;
   readonly cue_de: string;
   readonly cue_en: string;
 };
 
-type Entry<I extends string> = Omit<MobilityExercise, "morning_ok" | "id"> & {
+type Entry<I extends string> = Omit<MobilityExercise, "needs_mat" | "id"> & {
   readonly id: I;
 };
 const entry = <const I extends string>(
@@ -87,8 +88,18 @@ const entry = <const I extends string>(
   Object.freeze({
     ...e,
     areas: Object.freeze([...e.areas]),
-    morning_ok: e.position === "standing" || e.position === "wall",
+    needs_mat: e.position !== "standing" && e.position !== "wall",
   });
+
+/**
+ * Whether an exercise may be part of the morning routine (D-07): standing
+ * and wall exercises always, floor exercises only with a mat. An unanswered
+ * mat question counts as no mat: unknown is never assumed to be there.
+ */
+export const allowedInMorning = (
+  exercise: Pick<MobilityExercise, "needs_mat">,
+  hasMat: boolean | undefined,
+): boolean => !exercise.needs_mat || hasMat === true;
 
 /**
  * The catalog. The order is the display order: first the 20 standing and

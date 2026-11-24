@@ -193,7 +193,7 @@ describe("the one-time offer", () => {
   });
 });
 
-const [first, second] = MOBILITY_CATALOG.filter((e) => e.morning_ok);
+const [first, second] = MOBILITY_CATALOG.filter((e) => !e.needs_mat);
 const template = {
   catalog_version: "mob-1",
   rules_version: "r-1",

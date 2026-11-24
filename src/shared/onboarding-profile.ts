@@ -33,8 +33,14 @@ import {
   SESSION_MINUTES_MIN,
   SPLIT_LABEL,
   WEEKDAY_LABEL,
+  KNOWN_LOAD_ANCHORS,
+  KNOWN_LOAD_GROUPS,
+  modulesOf,
+  RUN_REQUIRED_FIELDS,
   requiredFieldsFor,
   splitsForDays,
+  type KnownLoadGroup,
+  type KnownLoadLift,
   type ExerciseChoice,
   type OnboardingBrief,
   type OnboardingProfile,
@@ -56,17 +62,18 @@ import {
   type MobilityPreference,
 } from "./mobility-contract.js";
 
-/** Whether "Ausdauer und Laufen" is a main or a further goal. */
+/**
+ * Whether the setup includes running: the running module, or for older
+ * setups "Ausdauer und Laufen" as a main or further goal (`modulesOf`).
+ */
 export function wantsRunning(training: OnboardingProfile["training"]): boolean {
-  return (
-    training.primary_goal === "endurance_running" ||
-    (training.secondary_goals ?? []).includes("endurance_running")
-  );
+  return modulesOf(training).running;
 }
 
 /**
- * The run details a running goal needs before a plan can be asked for. They
- * are required answers of the run step; unknown is unknown, never 0.
+ * The run details the running module needs before a plan can be asked for.
+ * They are required answers (`requiredFieldsFor`); unknown is unknown,
+ * never 0.
  */
 export function runSetupState(training: OnboardingProfile["training"]): {
   required: boolean;
@@ -76,19 +83,57 @@ export function runSetupState(training: OnboardingProfile["training"]): {
   return { required, ready: !required || training.run !== undefined };
 }
 
-/** The value behind a required field name. */
-function valueOf(profile: OnboardingProfile, field: RequiredProfileField) {
-  if (field === "path") return profile.path;
-  const key = field.slice("training.".length) as keyof typeof profile.training;
-  return profile.training[key] ?? null;
+/** Whether a required field holds an answer. Unknown is unanswered, never 0. */
+function isAnswered(
+  profile: OnboardingProfile,
+  field: RequiredProfileField,
+): boolean {
+  const training = profile.training;
+  const mobility =
+    training.mobility?.wants === true ? training.mobility : undefined;
+  switch (field) {
+    case "path":
+      return profile.path !== null;
+    case "training.primary_goal":
+    case "training.experience":
+    case "training.days_per_week":
+    case "training.session_minutes":
+    case "training.environment":
+      return training[field.slice("training.".length) as "experience"] != null;
+    // The run details are one answer: stored together or not at all.
+    case "training.run.runs_per_week":
+    case "training.run.base_minutes_per_week":
+    case "training.run.longest_run_4w_min":
+    case "training.run.preferred_environment":
+      return training.run !== undefined;
+    case "training.mobility.stiff_areas":
+      return mobility !== undefined;
+    case "training.mobility.sessions":
+      return mobility?.sessions != null;
+    case "training.mobility.morning.minutes":
+    case "training.mobility.morning.weekdays":
+      return mobility?.morning != null;
+    // Setups from before Onboarding 2.0 (no module choice) never asked for
+    // the mat; they are not held back by it and keep the morning routine
+    // without floor exercises (unknown is no mat, `allowedInMorning`).
+    case "training.has_mat":
+      return training.has_mat !== undefined || training.modules === undefined;
+  }
+}
+
+/** The required answers for this profile's path and modules. */
+export function requiredFieldsOf(
+  profile: OnboardingProfile,
+): RequiredProfileField[] {
+  return requiredFieldsFor(profile.path, modulesOf(profile.training));
 }
 
 /** The required answers that are still missing, in asking order. */
 export function missingRequiredFields(
   profile: OnboardingProfile,
 ): RequiredProfileField[] {
-  return requiredFieldsFor(profile.path).filter(
-    (field) => valueOf(profile, field) === null,
+  return requiredFieldsOf(profile).filter(
+    (field) => !isAnswered(profile, field),
   );
 }
 
@@ -109,6 +154,18 @@ export function firstOpenStep(
 export const isProfileComplete = (profile: OnboardingProfile) =>
   profile.path !== null && missingRequiredFields(profile).length === 0;
 
+const RUN_QUESTION =
+  "Fürs Laufen: Wie oft und wie viele Minuten pro Woche läufst du, wie lang war dein längster Lauf zuletzt und wo läufst du?";
+const MORNING_QUESTION =
+  "An welchen Tagen soll die Morgenroutine sein, und wie lange – 5, 10 oder 15 Minuten?";
+
+/** The open question a missing required field belongs to. */
+function questionId(field: RequiredProfileField): OpenQuestion["id"] {
+  if (field.startsWith("training.run.")) return "run_details";
+  if (field.startsWith("training.mobility.morning.")) return "morning_routine";
+  return field as OpenQuestion["id"];
+}
+
 /** The question a missing required answer is asked with; short enough to read aloud. */
 const REQUIRED_QUESTION: Record<RequiredProfileField, string> = {
   path: "Soll Arnold deinen Plan erstellen, oder möchtest du deinen eigenen Plan übernehmen?",
@@ -121,6 +178,17 @@ const REQUIRED_QUESTION: Record<RequiredProfileField, string> = {
   "training.session_minutes": "Wie lange darf ein Training dauern?",
   "training.environment":
     "Wo trainierst du – im Studio, zuhause, draußen oder gemischt?",
+  "training.run.runs_per_week": RUN_QUESTION,
+  "training.run.base_minutes_per_week": RUN_QUESTION,
+  "training.run.longest_run_4w_min": RUN_QUESTION,
+  "training.run.preferred_environment": RUN_QUESTION,
+  "training.mobility.stiff_areas":
+    "Wo fühlst du dich steif? Wenn nirgends besonders, mache ich eine allgemeine Routine.",
+  "training.mobility.sessions":
+    "Wie oft pro Woche und wie lange sollen Mobility-Einheiten sein, und lieber an eigenen Tagen oder nach dem Krafttraining?",
+  "training.mobility.morning.minutes": MORNING_QUESTION,
+  "training.mobility.morning.weekdays": MORNING_QUESTION,
+  "training.has_mat": "Hast du morgens eine Matte für Übungen am Boden?",
 };
 
 /**
@@ -139,21 +207,37 @@ export function openQuestions(
   profile: OnboardingProfile,
   runSetup: { required: boolean; ready: boolean },
 ): OpenQuestion[] {
-  const questions: OpenQuestion[] = missingRequiredFields(profile).map(
-    (field) => ({
-      id: field,
-      kind: "required" as const,
-      ask: REQUIRED_QUESTION[field],
-      fields: [field],
-    }),
-  );
-  if (runSetup.required && !runSetup.ready)
+  // Fields asked with one question become one question (the run details,
+  // the morning routine's days and minutes).
+  const questions: OpenQuestion[] = [];
+  for (const field of missingRequiredFields(profile)) {
+    const ask = REQUIRED_QUESTION[field];
+    const same = questions.find((question) => question.ask === ask);
+    if (same) same.fields.push(field);
+    else
+      questions.push({
+        id: questionId(field),
+        kind: "required",
+        ask,
+        fields: [field],
+      });
+  }
+  // The running module's details are required answers above; a setup that
+  // wants running but holds no path yet still learns that they will be asked.
+  if (
+    runSetup.required &&
+    !runSetup.ready &&
+    !questions.some((question) => question.id === "run_details")
+  )
     questions.push({
       id: "run_details",
       kind: "required",
-      ask: "Fürs Laufen: Welches Ziel, wie oft pro Woche, wie viele Minuten und wie lang war dein längster Lauf zuletzt?",
-      fields: ["training.run"],
+      ask: RUN_QUESTION,
+      fields: [...RUN_REQUIRED_FIELDS],
     });
+  // Since Onboarding 2.0 the modules decide whether mobility is asked at all;
+  // the old ask-once question remains for setups without a module choice.
+  if (profile.training.modules !== undefined) return questions;
   const mobility = profile.training.mobility;
   if (mobility === undefined)
     questions.push({
@@ -366,7 +450,7 @@ export function buildProgress(
     can_confirm_plan: boolean;
   },
 ): OnboardingProgress {
-  const required = requiredFieldsFor(profile.path);
+  const required = requiredFieldsOf(profile);
   const missing = missingRequiredFields(profile);
   // The path itself counts as the first answer, so choosing a button moves the
   // bar. The own-plan path has no further questions.
@@ -391,6 +475,27 @@ export function buildProgress(
     can_request_plan: context.can_request_plan,
     can_confirm_plan: context.can_confirm_plan,
   };
+}
+
+/**
+ * The anchor lift per movement that fits the place and equipment (D-03):
+ * pressing bench press, else dumbbell bench press or chest press; pulling
+ * lat pulldown, else seated cable row or one-arm row; legs squat, else leg
+ * press or goblet squat. null where none of the three fits: then the setup
+ * does not ask for that movement. An unknown place offers the first of each.
+ */
+export function knownLoadAnchors(
+  environment: OnboardingProfile["training"]["environment"],
+  equipment: OnboardingProfile["training"]["equipment"],
+): Record<KnownLoadGroup, KnownLoadLift | null> {
+  const possible = new Set(
+    exercisesFor(environment, equipment ?? []).map((e) => e.exercise_id),
+  );
+  const pick = (group: KnownLoadGroup) =>
+    KNOWN_LOAD_ANCHORS[group].find((lift) => possible.has(lift)) ?? null;
+  return Object.fromEntries(
+    KNOWN_LOAD_GROUPS.map((group) => [group, pick(group)]),
+  ) as Record<KnownLoadGroup, KnownLoadLift | null>;
 }
 
 /** The picker tiles for where the user trains, in catalog order. */
@@ -487,7 +592,7 @@ export function buildBrief(
           mode: exercise.mode,
           per_side: exercise.per_side,
           position: exercise.position,
-          morning_ok: exercise.morning_ok,
+          needs_mat: exercise.needs_mat,
           default_s: exercise.default_s,
           min_s: exercise.min_s,
           max_s: exercise.max_s,
@@ -552,7 +657,9 @@ export function buildBrief(
         "Jede genannte Übung der passenden exercise_id aus exercise_catalog zuordnen. Gibt es keine passende Übung, sie nicht weglassen: in custom_exercises mit key (custom:1, custom:2 …) und name_de so beschreiben, wie der Nutzer sie nennt, und in der Einheit key als exercise_id verwenden. Arnold legt sie als eigene Übung an. Gerät, Muskel und Lastbasis nur angeben, wenn eindeutig.",
         "Nicht genannte Sätze oder Wiederholungen nicht erfinden: offen lassen und in open_questions nennen; der Nutzer ergänzt sie im Editor.",
         ...shared,
-        ...(mobility ? mobilityConstraints(mobility, true) : []),
+        ...(mobility
+          ? mobilityConstraints(mobility, true, training.has_mat)
+          : []),
       ],
     };
 
@@ -605,11 +712,12 @@ export function buildBrief(
     );
   if (runs)
     constraints.push(
-      "Der Nutzer hat „Ausdauer und Laufen“ gewählt und seine Laufangaben in der Einrichtung gemacht. Sie stehen im Feld running (Ziel, Läufe pro Woche, Minuten pro Woche, längster Lauf, Umfeld, optional Wettkampf, Zielzeit, Referenz) und werden beim Abschluss der Einrichtung ins Laufprofil übernommen. Nicht noch einmal abfragen.",
+      "Der Nutzer möchte laufen und hat seine Laufangaben in der Einrichtung gemacht. Sie stehen im Feld running (optional Ziel, Läufe pro Woche, Minuten pro Woche, längster Lauf, Umfeld, optional Wettkampf, Zielzeit, Referenz) und werden beim Abschluss der Einrichtung ins Laufprofil übernommen. Nicht noch einmal abfragen.",
       "Nach dem Kraftvorschlag Laufeinheiten in denselben Entwurf legen: update_plan_draft mit add_run_session (session_name, run_type, optional preferred_weekday). Anzahl der Läufe = Läufe pro Woche aus dem Laufprofil, im Zweifel eher weniger; höchstens zwei harte Läufe pro Woche. Kraft- und Lauftage so verteilen, dass sie zu den gewählten Trainingstagen passen.",
       "Tempi, Pulszonen, Streckenlängen und Steigerungen nie selbst festlegen oder nennen: Das berechnet Arnold aus dem Laufprofil. Keine Wettkampfzeit versprechen.",
     );
-  if (mobility) constraints.push(...mobilityConstraints(mobility, false));
+  if (mobility)
+    constraints.push(...mobilityConstraints(mobility, false, training.has_mat));
   if (training.focus_muscle_groups?.length)
     constraints.push(
       `Schwerpunkt auf ${training.focus_muscle_groups.map((group) => MUSCLE_GROUP_LABEL[group]).join(", ")}: diese Muskelgruppen etwas häufiger oder mit mehr Sätzen trainieren, ohne die übrigen zu vernachlässigen.`,
@@ -816,6 +924,7 @@ const unique = <T>(values: readonly T[]) => [...new Set(values)];
 function mobilityConstraints(
   mobility: Extract<MobilityPreference, { wants: true }>,
   own: boolean,
+  hasMat: boolean | undefined,
 ): string[] {
   const rules = [
     "Der Nutzer möchte Mobility (Feld mobility und mobility_catalog im Brief) und hat seine Angaben in der Einrichtung gemacht. Nicht noch einmal abfragen.",
@@ -823,7 +932,9 @@ function mobilityConstraints(
   ];
   if (mobility.morning)
     rules.push(
-      "Die Morgenroutine nur aus Übungen mit morning_ok=true zusammenstellen (im Stehen oder an der Wand).",
+      hasMat === true
+        ? "Die Morgenroutine darf Übungen mit needs_mat=true (am Boden) enthalten: Der Nutzer hat eine Matte."
+        : "Die Morgenroutine nur aus Übungen mit needs_mat=false zusammenstellen (im Stehen oder an der Wand): Der Nutzer hat keine Matte angegeben.",
     );
   if (mobility.sessions)
     rules.push(

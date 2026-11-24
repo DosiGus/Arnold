@@ -586,7 +586,7 @@ export class OnboardingService {
     };
   }
 
-  /** Whether the run details a running goal needs have been answered. */
+  /** Whether the run details the running module needs have been answered. */
   private runSetup(profile: OnboardingProfile) {
     return runSetupState(profile.training);
   }
@@ -595,7 +595,7 @@ export class OnboardingService {
     if (this.runSetup(profile).ready) return;
     throw fail(
       "PROFILE_INCOMPLETE",
-      "Für „Ausdauer und Laufen“ fehlen noch die Laufangaben (Ziel, Läufe und Minuten pro Woche, längster Lauf, Umfeld). Der Nutzer trägt sie in der Einrichtung beim Schritt Laufangaben ein.",
+      "Fürs Laufen fehlen noch die Laufangaben (Läufe und Minuten pro Woche, längster Lauf, Umfeld; ein Ziel ist freiwillig). Der Nutzer trägt sie in der Einrichtung beim Schritt Laufangaben ein.",
       ["run_profile: Laufangaben fehlen"],
     );
   }

@@ -277,7 +277,7 @@ describe("buildMobilityRoutine (D-MOB-05)", () => {
       const { min, max } = MOBILITY_LENGTHS[kind][minutes];
       const count = min + Math.floor(random() * (max - min + 1));
       const pool = MOBILITY_CATALOG.filter(
-        (e) => kind === "session" || e.morning_ok,
+        (e) => kind === "session" || !e.needs_mat,
       ).map((e) => e.id);
       const ids: string[] = [];
       while (ids.length < count) {

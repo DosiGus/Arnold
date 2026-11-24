@@ -22,6 +22,7 @@ import {
   MUSCLE_GROUP_LABEL,
   SPLIT_LABEL,
   WEEKDAY_LABEL,
+  knownLoadEntry,
 } from "../../../shared/onboarding-contract";
 import { CardActions, CardNote } from "../cards";
 import { formatNumber } from "../../format";
@@ -111,12 +112,15 @@ export function renderReviewPage({
     ] as const
   )
     .filter(([key]) => known[key] !== undefined)
-    .map(([key, name]) => `${name} ${formatNumber(known[key]!, 1)} kg`)
+    .map(
+      ([key, name]) =>
+        `${name} ${formatNumber(knownLoadEntry(known[key])!.kg, 1)} kg`,
+    )
     .join(" · ");
   const run = training.run;
   const runText = run
     ? [
-        RUN_GOAL_LABEL[run.goal],
+        run.goal ? RUN_GOAL_LABEL[run.goal] : "Laufen ohne Ziel",
         `${run.runs_per_week} ${run.runs_per_week === 1 ? "Lauf" : "Läufe"} pro Woche`,
         `${run.base_minutes_per_week} Min. pro Woche`,
       ].join(" · ")
