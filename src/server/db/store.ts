@@ -64,7 +64,7 @@ const TABLES = {
     table: "plan_adjustments",
     columns: ARNOLD_TABLE_HEADERS.PLAN_ADJUSTMENTS,
   },
-  // Mobility, schema 1.2.0 (migration 009).
+  // Mobility, schema 1.2.0 (migration 009; has_mat migration 010).
   mobilityProfiles: {
     table: "mobility_profiles",
     columns: ARNOLD_TABLE_HEADERS.MOBILITY_PROFILES,
@@ -185,7 +185,15 @@ async function readDataset(
     runs: rows.runs,
     runSegments: rows.runSegments,
     planAdjustments: rows.planAdjustments,
-    ...optionalList("mobilityProfiles", rows.mobilityProfiles),
+    // A profile without a mat answer (null, migration 010) reads back without
+    // has_mat, so rows and receipts written before the column existed still
+    // compare equal; unknown stays unknown, never false.
+    ...optionalList(
+      "mobilityProfiles",
+      (rows.mobilityProfiles as Record<string, unknown>[]).map(
+        ({ has_mat, ...row }) => (has_mat == null ? row : { ...row, has_mat }),
+      ),
+    ),
     ...optionalList("planMobilitySessions", rows.planMobilitySessions),
     ...optionalList("mobilityResults", rows.mobilityResults),
   });

@@ -348,12 +348,13 @@ export class DatabaseUserRuntime {
         logStartWeight(this.service, weightKg, requestId, context),
       recordRunProfile: (run, sessionId, context) =>
         recordSetupRunProfile(this.runs, run, sessionId, context),
-      recordMobilityProfile: (preference, sessionId, context) =>
+      recordMobilityProfile: (preference, sessionId, context, hasMat) =>
         recordSetupMobilityProfile(
           this.mobility,
           preference,
           sessionId,
           context,
+          hasMat,
         ),
     });
     const loggingOptions: LoggingOptions = {

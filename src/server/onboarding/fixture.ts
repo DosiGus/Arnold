@@ -71,12 +71,13 @@ export function createFixtureOnboarding(
       logStartWeight(planning.service, weightKg, requestId, context),
     recordRunProfile: (run, sessionId, context) =>
       recordSetupRunProfile(planning.runs, run, sessionId, context),
-    recordMobilityProfile: (preference, sessionId, context) =>
+    recordMobilityProfile: (preference, sessionId, context, hasMat) =>
       recordSetupMobilityProfile(
         planning.mobility,
         preference,
         sessionId,
         context,
+        hasMat,
       ),
     sessionTtlMs: options.sessionTtlMs,
     clock: options.clock,

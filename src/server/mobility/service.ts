@@ -154,8 +154,10 @@ export function mobilityProfileView(
   row: ArnoldMobilityProfile | undefined,
 ): MobilityProfileView {
   if (!row) return { state: "not_asked", preference: null };
-  if (!row.wants) return { state: "no", preference: { wants: false } };
+  const mat = row.has_mat === undefined ? {} : { has_mat: row.has_mat };
+  if (!row.wants) return { state: "no", preference: { wants: false }, ...mat };
   return {
+    ...mat,
     state: "yes",
     preference: {
       wants: true,
@@ -213,6 +215,7 @@ function preferenceColumns(preference: MobilityPreference) {
 /** Fields whose before/after values an audit event records (no free text). */
 const AUDITED_FIELDS = [
   "wants",
+  "has_mat",
   "morning_minutes",
   "sessions_placement",
   "sessions_per_week",
@@ -463,7 +466,13 @@ export class MobilityService {
         clock: this.clock(),
         build: (data, now) => {
           const changes: EntityChange[] = [];
-          this.buildProfile(input.preference, data, now, changes);
+          this.buildProfile(
+            input.preference,
+            input.has_mat,
+            data,
+            now,
+            changes,
+          );
           return {
             changes,
             result: emptyResult(),
@@ -483,24 +492,32 @@ export class MobilityService {
     }
   }
 
-  /** Writes the answer; an answer that equals the stored one writes nothing. */
+  /**
+   * Writes the answer; an answer that equals the stored one writes nothing.
+   * The mat answer (D-07) is changed only when given; absent keeps the stored
+   * one, and a profile without one stays without (never a silent false).
+   */
   private buildProfile(
     preference: MobilityPreference,
+    hasMat: boolean | undefined,
     data: ArnoldDataset,
     now: string,
     changes: EntityChange[],
   ) {
     const before = data.mobilityProfiles?.[0] ?? null;
     const columns = preferenceColumns(preference);
+    const mat = hasMat ?? before?.has_mat;
     if (
       before &&
       canonical(mobilityProfileView(before).preference) ===
-        canonical(preference)
+        canonical(preference) &&
+      mat === before.has_mat
     )
       return;
     const after = ArnoldMobilityProfileSchema.parse({
       mobility_profile_id: before?.mobility_profile_id ?? this.id(),
       ...columns,
+      ...(mat === undefined ? {} : { has_mat: mat }),
       created_at_utc: before?.created_at_utc ?? now,
       updated_at_utc: now,
       row_revision: (before?.row_revision ?? 0) + 1,

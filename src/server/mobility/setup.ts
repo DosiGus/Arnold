@@ -10,7 +10,8 @@ import type { MobilityPreference } from "../../shared/mobility-contract.js";
 import type { MobilityService } from "./service.js";
 
 /**
- * Writes the setup's mobility answer into the user's profile. The request id
+ * Writes the setup's mobility answer, with the mat answer when one was given,
+ * into the user's profile. The request id
  * comes from the onboarding session, so finishing the setup twice (a retry
  * after an interrupted finish) replays the same write instead of writing
  * again, and an answer changed in the chat afterwards is never overwritten by
@@ -21,11 +22,14 @@ export async function recordSetupMobilityProfile(
   preference: MobilityPreference,
   onboardingSessionId: string,
   context: unknown,
+  /** The setup's mat answer (D-07); absent when the user was not asked. */
+  hasMat?: boolean,
 ): Promise<void> {
   const response = await mobility.updateProfile(
     {
       request_id: `setup-mobility-${onboardingSessionId}`,
       preference,
+      ...(hasMat === undefined ? {} : { has_mat: hasMat }),
     },
     context,
   );
