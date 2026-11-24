@@ -121,6 +121,9 @@ function args(query: Record<string, unknown>): Record<string, unknown> {
   );
 }
 
+/** The account's one setup; the server addresses it by identity (D-11). */
+const ONBOARDING_SETUP_KEY = "setup";
+
 export class ArnoldMcpClient {
   private pendingWrites = new Map<string, string>();
   private pendingPlanWrites = new Map<string, string>();
@@ -130,18 +133,14 @@ export class ArnoldMcpClient {
   profileBuffer(
     initial: import("../../shared/onboarding-contract").OnboardingState,
   ) {
-    const sessionId = initial.session.onboarding_session_id;
+    // One setup per account (D-11): the server finds it by identity.
+    const sessionId = ONBOARDING_SETUP_KEY;
     let buffer = this.profileBuffers.get(sessionId);
     if (!buffer) {
       buffer = new OnboardingProfileBuffer({
         sessionId,
         initial,
         save: (profile, request_id, expected_revision) => {
-          if (this.getOnboardingClaim()?.onboarding_session_id !== sessionId)
-            throw new ArnoldToolError({
-              code: "SESSION_NOT_FOUND",
-              recovery: "start_over",
-            });
           return this.saveOnboardingProfile({
             profile,
             request_id,
@@ -354,14 +353,12 @@ export class ArnoldMcpClient {
     clearStoredClaim();
   }
 
-  /** The claim, or a thrown error: no onboarding call is made without one. */
-  private claim(): OnboardingClaim {
-    const claim = this.getOnboardingClaim();
-    if (!claim)
-      throw new Error(
-        "Für diese Einrichtung liegt kein Sitzungsnachweis vor. Bitte die Einrichtung neu starten.",
-      );
-    return claim;
+  /**
+   * Onboarding calls name no setup (D-11): the server finds it through the
+   * verified identity. Kept as one place in case a call needs addressing again.
+   */
+  private claim(): Record<string, never> {
+    return {};
   }
 
   async startOnboarding(request_id: string, resume?: OnboardingClaim) {
@@ -371,11 +368,6 @@ export class ArnoldMcpClient {
         ...(resume ? { resume_session: resume } : {}),
       }),
     );
-    if (response.ok && response.state && response.session_token)
-      this.rememberOnboarding({
-        onboarding_session_id: response.state.session.onboarding_session_id,
-        session_token: response.session_token,
-      });
     return response;
   }
 
@@ -393,7 +385,7 @@ export class ArnoldMcpClient {
 
   private pendingOnboarding?: { tool: string; input: Record<string, unknown> };
   private onboardingPendingKey() {
-    return `arnold.onboarding.pending.${this.claim().onboarding_session_id}`;
+    return `arnold.onboarding.pending.${ONBOARDING_SETUP_KEY}`;
   }
   private readPendingOnboarding() {
     if (this.pendingOnboarding) return this.pendingOnboarding;

@@ -104,7 +104,6 @@ export class OnboardingProfileBuffer {
   }
   adopt(state: OnboardingState) {
     if (
-      state.session.onboarding_session_id !== this.options.sessionId ||
       state.session.revision < this.confirmed.session.revision ||
       state === this.confirmed
     )

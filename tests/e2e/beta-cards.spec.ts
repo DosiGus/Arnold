@@ -50,10 +50,7 @@ async function visualStates() {
   const started = await service.startOnboarding({
     request_id: crypto.randomUUID(),
   });
-  const claim = {
-    onboarding_session_id: started.state!.session.onboarding_session_id,
-    session_token: started.session_token!,
-  };
+  const claim = {};
   const ready = (
     await service.updateProfile({
       ...claim,

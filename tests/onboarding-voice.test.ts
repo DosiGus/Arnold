@@ -83,10 +83,7 @@ async function startSetup() {
     request_id: rid(),
   });
   expect(response.ok).toBe(true);
-  return {
-    onboarding_session_id: response.state!.session.onboarding_session_id,
-    session_token: response.session_token!,
-  };
+  return {};
 }
 
 const descriptions = async () =>
@@ -258,10 +255,7 @@ async function confirmedSetup(
   profile: OnboardingProfilePatch,
 ) {
   const started = await service.startOnboarding({ request_id: rid() });
-  const claim = {
-    onboarding_session_id: started.state!.session.onboarding_session_id,
-    session_token: started.session_token!,
-  };
+  const claim = {};
   const saved = await service.updateProfile({
     request_id: rid(),
     ...claim,

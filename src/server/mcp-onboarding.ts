@@ -14,9 +14,9 @@
  *
  * Two conventions are load-bearing:
  *
- *   - the session secret appears in `structuredContent` of
- *     `start_arnold_onboarding` and nowhere else. It is never written into a
- *     tool's text output, because that text becomes chat transcript.
+ *   - no tool takes or returns a setup id or a session secret (D-11): the
+ *     service finds the caller's setup through the verified identity, and
+ *     outputs carry no internal setup ids or timestamps (D-20).
  *   - a write answers with the state that was actually stored. A refusal is
  *     `isError` with a machine-readable code and the unchanged state, never a
  *     cheerful message about something that did not happen.
@@ -261,28 +261,9 @@ export function registerOnboardingTools(
       annotations: { ...writing, readOnlyHint: false },
       _meta: { ui: { resourceUri: currentUri } },
     },
-    async (input) => {
+    async () => {
       try {
-        // Continuing needs both halves of the claim; an id alone is not a
-        // permission, so a partial claim opens the caller's own setup instead.
-        if (input.onboarding_session_id && input.session_token) {
-          const state = await onboarding.getOnboardingState(
-            {
-              onboarding_session_id: input.onboarding_session_id,
-              session_token: input.session_token,
-            },
-            actorContext,
-          );
-          return ok(
-            {
-              onboarding_contract: ONBOARDING_CONTRACT,
-              state,
-              resumed: true,
-              source: sourceFor(state, true),
-            },
-            summarize(state),
-          );
-        }
+        // No argument names the setup: the verified identity finds it (D-11).
         const opened = await onboarding.openOnboarding(actorContext);
         return ok(
           {
@@ -290,9 +271,6 @@ export function registerOnboardingTools(
             state: opened.state,
             resumed: opened.resumed,
             source: sourceFor(opened.state, opened.resumed),
-            // The app needs the secret to act on the session it was just given.
-            // Carried in structured content only, never in the text above.
-            session_token: opened.token,
           },
           summarize(opened.state),
         );
@@ -307,7 +285,7 @@ export function registerOnboardingTools(
     {
       title: "Einrichtung starten",
       description:
-        "Startet die Einrichtung ohne Oberfläche und liefert die Sitzungs-ID samt Sitzungsnachweis zurück. In der Regel stattdessen show_arnold_onboarding verwenden. Hat das Konto bereits eine offene Einrichtung, wird sie fortgesetzt statt eine zweite zu beginnen; ist Arnold bereits eingerichtet, wird mit ONBOARDING_ALREADY_COMPLETED abgelehnt. Mit resume_session wird eine bestimmte, noch gültige Einrichtung fortgesetzt; ist sie abgelaufen oder abgebrochen, entsteht automatisch eine neue. Der Sitzungsnachweis ist für alle weiteren Aufrufe erforderlich und darf nicht im Chatverlauf wiederholt werden.",
+        "Startet die Einrichtung ohne Oberfläche; in der Regel stattdessen show_arnold_onboarding verwenden. Eine offene Einrichtung des Kontos wird fortgesetzt, nie verdoppelt; ist Arnold bereits eingerichtet, wird mit ONBOARDING_ALREADY_COMPLETED abgelehnt. Keine Sitzungs-ID nötig: Arnold findet die Einrichtung über die Anmeldung.",
       inputSchema: OnboardingToolInputs.start_arnold_onboarding,
       outputSchema: OnboardingResponseSchema,
       annotations: writing,
@@ -328,7 +306,7 @@ export function registerOnboardingTools(
     },
     async (input) => {
       try {
-        const state = await onboarding.getOnboardingState(input, actorContext);
+        const state = await onboarding.getOnboardingState({}, actorContext);
         return ok(state, summarize(state));
       } catch (error) {
         return failure(error);
@@ -362,7 +340,7 @@ export function registerOnboardingTools(
     },
     async (input) => {
       try {
-        const brief = await onboarding.getBrief(input, actorContext);
+        const brief = await onboarding.getBrief({}, actorContext);
         return ok(
           brief,
           brief.path === "own_plan" || !brief.availability || !brief.goal
@@ -419,7 +397,7 @@ export function registerOnboardingTools(
     },
     async (input) => {
       try {
-        const result = await onboarding.getPlan(input, actorContext);
+        const result = await onboarding.getPlan({}, actorContext);
         return ok(
           result,
           `Entwurf "${result.plan.name}" (Revision ${result.plan.row_revision}): ${result.plan.session_count} Trainingseinheiten, ${result.plan.exercise_count} Übungen. ${
@@ -455,17 +433,9 @@ export function registerOnboardingTools(
         !confirmed.state.setup_finish_available
       )
         return respond(confirmed);
-      const claim = input as {
-        request_id: string;
-        onboarding_session_id: string;
-        session_token: string;
-      };
+      const { request_id } = input as { request_id: string };
       const finished = await onboarding.finishSetup(
-        {
-          request_id: `${claim.request_id}:finish`,
-          onboarding_session_id: claim.onboarding_session_id,
-          session_token: claim.session_token,
-        },
+        { request_id: `${request_id}:finish` },
         actorContext,
       );
       return respond(finished.ok ? finished : confirmed);
@@ -505,7 +475,7 @@ export function registerOnboardingTools(
     {
       title: "Bereitschaft für den Abschluss prüfen",
       description:
-        "Prüft, ob die Einrichtung abgeschlossen werden kann, und liefert die Übergabedaten: Sitzungs-ID, bestätigte Planversion, bestätigte Revision, Profilrevision und Bestätigungszeitpunkt. Status ready_to_finish bedeutet, dass ein gültig bestätigter Plan vorliegt; superseded bedeutet, dass der Plan nach der Bestätigung geändert wurde und erneut bestätigt werden muss; not_ready bedeutet, dass noch keine Bestätigung vorliegt. Aktiviert selbst nichts; das macht finish_arnold_setup.",
+        "Prüft, ob die Einrichtung abgeschlossen werden kann, und liefert die Übergabedaten: bestätigte Revision und Profilrevision. Status ready_to_finish bedeutet, dass ein gültig bestätigter Plan vorliegt; superseded bedeutet, dass der Plan nach der Bestätigung geändert wurde und erneut bestätigt werden muss; not_ready bedeutet, dass noch keine Bestätigung vorliegt. Aktiviert selbst nichts; das macht finish_arnold_setup.",
       inputSchema: OnboardingToolInputs.get_onboarding_handoff,
       outputSchema: z.strictObject({
         handoff: OnboardingHandoffSchema,
@@ -515,14 +485,11 @@ export function registerOnboardingTools(
     },
     async (input) => {
       try {
-        const result = await onboarding.prepareSetupHandoff(
-          input,
-          actorContext,
-        );
+        const result = await onboarding.prepareSetupHandoff({}, actorContext);
         return ok(
           result,
           result.handoff.status === "ready_to_finish"
-            ? `Der Trainingsplan ist bestätigt und für die Einrichtung freigegeben (Planversion ${result.handoff.confirmed_plan_version_id}, Revision ${result.handoff.confirmed_plan_revision}). ${result.state.setup_finish_available ? "finish_arnold_setup schließt die Einrichtung ab." : "Der Abschluss ist in dieser Umgebung nicht verfügbar."}`
+            ? `Der Trainingsplan ist bestätigt und für die Einrichtung freigegeben (Revision ${result.handoff.confirmed_plan_revision}). ${result.state.setup_finish_available ? "finish_arnold_setup schließt die Einrichtung ab." : "Der Abschluss ist in dieser Umgebung nicht verfügbar."}`
             : `Noch nicht übergabebereit: ${result.handoff.blocked_reason}`,
         );
       } catch (error) {

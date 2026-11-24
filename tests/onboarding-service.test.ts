@@ -50,10 +50,7 @@ async function startSetup(service: OnboardingService): Promise<{
   expect(started.ok).toBe(true);
   expect(started.session_token).toBeTruthy();
   return {
-    claim: {
-      onboarding_session_id: started.state!.session.onboarding_session_id,
-      session_token: started.session_token!,
-    },
+    claim: {},
     state: started.state!,
   };
 }
@@ -1320,10 +1317,7 @@ describe("production mode fails closed", () => {
     const service = createProductionOnboarding();
     expect(service.mode).toBe("production");
     await expect(
-      service.getOnboardingState({
-        onboarding_session_id: "onb-anything",
-        session_token: "x".repeat(32),
-      }),
+      service.getOnboardingState({}),
     ).rejects.toMatchObject({ code: "AUTH_REQUIRED" });
   });
 });
@@ -1451,10 +1445,7 @@ describe("one setup per account", () => {
     const service = accountRuntime().onboarding;
     const first = await service.openOnboarding(account("user-1"));
     expect(first.resumed).toBe(false);
-    const claim = {
-      onboarding_session_id: first.state.session.onboarding_session_id,
-      session_token: first.token!,
-    };
+    const claim = {};
     await service.updateProfile(
       { request_id: rid(), ...claim, profile: COMPLETE_PROFILE },
       account("user-1"),

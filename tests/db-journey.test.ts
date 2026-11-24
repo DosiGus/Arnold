@@ -187,10 +187,7 @@ async function setup(subject: string, person: Record<string, unknown> = {}) {
   const opened = OnboardingViewSchema.parse(
     (await call(subject, "show_arnold_onboarding", {})).structuredContent,
   );
-  const claim = {
-    onboarding_session_id: opened.state.session.onboarding_session_id,
-    session_token: opened.session_token!,
-  };
+  const claim = {};
   const profile = OnboardingResponseSchema.parse(
     (
       await call(subject, "update_onboarding_profile", {
@@ -865,10 +862,7 @@ async function profileReady(subject: string) {
   const opened = OnboardingViewSchema.parse(
     (await call(subject, "show_arnold_onboarding", {})).structuredContent,
   );
-  const claim = {
-    onboarding_session_id: opened.state.session.onboarding_session_id,
-    session_token: opened.session_token!,
-  };
+  const claim = {};
   const saved = await response(subject, "update_onboarding_profile", {
     ...claim,
     request_id: randomUUID(),
@@ -940,10 +934,7 @@ describe("setup after interruptions", () => {
     const first = OnboardingViewSchema.parse(
       (await call(alice, "show_arnold_onboarding", {})).structuredContent,
     );
-    const claim = {
-      onboarding_session_id: first.state.session.onboarding_session_id,
-      session_token: first.session_token!,
-    };
+    const claim = {};
     const second = OnboardingViewSchema.parse(
       (await call(alice, "show_arnold_onboarding", {})).structuredContent,
     );

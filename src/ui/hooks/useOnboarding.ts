@@ -82,8 +82,6 @@ export function useOnboarding(
   const adopt = useCallback((next: OnboardingState, follow = true) => {
     if (
       stateRef.current &&
-      stateRef.current.session.onboarding_session_id ===
-        next.session.onboarding_session_id &&
       next.session.revision < stateRef.current.session.revision
     )
       return;
@@ -115,8 +113,6 @@ export function useOnboarding(
         if (token !== generation.current || !stillCurrent()) return undefined;
         if (
           stateRef.current &&
-          next.session.onboarding_session_id ===
-            stateRef.current.session.onboarding_session_id &&
           next.session.revision < stateRef.current.session.revision
         )
           return stateRef.current;
@@ -173,7 +169,7 @@ export function useOnboarding(
       setReloadEpoch((value) => value + 1);
     }
     return unsubscribe;
-  }, [client, state?.session.onboarding_session_id]);
+  }, [client]);
 
   useEffect(() => {
     if (initial) adopt(initial, false);
@@ -197,7 +193,7 @@ export function useOnboarding(
     return () => {
       generation.current++;
     };
-  }, [client, initial?.session.onboarding_session_id, reload]);
+  }, [client, reload]);
 
   /** One control action at a time, using the revision after the profile flush. */
   const send = useCallback(

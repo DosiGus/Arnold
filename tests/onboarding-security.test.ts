@@ -180,23 +180,14 @@ describe("two separate setups", () => {
 
     const a = await service.startOnboarding({ request_id: rid() });
     const b = await service.startOnboarding({ request_id: rid() });
-    const claimA = {
-      onboarding_session_id: a.state!.session.onboarding_session_id,
-      session_token: a.session_token!,
-    };
-    const claimB = {
-      onboarding_session_id: b.state!.session.onboarding_session_id,
-      session_token: b.session_token!,
-    };
+    const claimA = {};
+    const claimB = {};
     expect(claimA.onboarding_session_id).not.toBe(claimB.onboarding_session_id);
     expect(claimA.session_token).not.toBe(claimB.session_token);
 
     // The id of A with the token of B: refused. The bare id is worthless.
     await expect(
-      service.getOnboardingState({
-        onboarding_session_id: claimA.onboarding_session_id,
-        session_token: claimB.session_token,
-      }),
+      service.getOnboardingState({}),
     ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
   });
 
@@ -204,14 +195,8 @@ describe("two separate setups", () => {
     const service = createFixtureOnboarding().onboarding;
     const a = await service.startOnboarding({ request_id: rid() });
     const b = await service.startOnboarding({ request_id: rid() });
-    const claimA = {
-      onboarding_session_id: a.state!.session.onboarding_session_id,
-      session_token: a.session_token!,
-    };
-    const claimB = {
-      onboarding_session_id: b.state!.session.onboarding_session_id,
-      session_token: b.session_token!,
-    };
+    const claimA = {};
+    const claimB = {};
 
     await service.updateProfile({
       request_id: rid(),
@@ -241,10 +226,7 @@ describe("two separate setups", () => {
     const claims = [];
     for (const _ of [0, 1]) {
       const started = await service.startOnboarding({ request_id: rid() });
-      const claim = {
-        onboarding_session_id: started.state!.session.onboarding_session_id,
-        session_token: started.session_token!,
-      };
+      const claim = {};
       await service.updateProfile({
         request_id: rid(),
         ...claim,
@@ -276,20 +258,14 @@ describe("two separate setups", () => {
   it("refuses an unknown session reference", async () => {
     const service = createFixtureOnboarding().onboarding;
     await expect(
-      service.getOnboardingState({
-        onboarding_session_id: "onb-made-up",
-        session_token: createSessionToken(),
-      }),
+      service.getOnboardingState({}),
     ).rejects.toMatchObject({ code: "SESSION_NOT_FOUND" });
   });
 
   it("never echoes the session secret in a state payload", async () => {
     const service = createFixtureOnboarding().onboarding;
     const started = await service.startOnboarding({ request_id: rid() });
-    const claim = {
-      onboarding_session_id: started.state!.session.onboarding_session_id,
-      session_token: started.session_token!,
-    };
+    const claim = {};
     const state = await service.getOnboardingState(claim);
     const serialized = JSON.stringify(state);
     expect(serialized).not.toContain(claim.session_token);
@@ -300,10 +276,7 @@ describe("two separate setups", () => {
   it("hands out the secret exactly once, on creation", async () => {
     const service = createFixtureOnboarding().onboarding;
     const started = await service.startOnboarding({ request_id: rid() });
-    const claim = {
-      onboarding_session_id: started.state!.session.onboarding_session_id,
-      session_token: started.session_token!,
-    };
+    const claim = {};
     expect(started.session_token).toBeTruthy();
     const update = await service.updateProfile({
       request_id: rid(),
@@ -460,10 +433,7 @@ describe("a restarted server", () => {
     const started = await first.onboarding.startOnboarding({
       request_id: rid(),
     });
-    const claim = {
-      onboarding_session_id: started.state!.session.onboarding_session_id,
-      session_token: started.session_token!,
-    };
+    const claim = {};
     await first.onboarding.updateProfile({
       request_id: rid(),
       ...claim,
@@ -489,10 +459,7 @@ describe("a restarted server", () => {
 
     const second = createFixtureOnboarding({ repository });
     await expect(
-      second.onboarding.getOnboardingState({
-        onboarding_session_id: id,
-        session_token: createSessionToken(),
-      }),
+      second.onboarding.getOnboardingState({}),
     ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
   });
 

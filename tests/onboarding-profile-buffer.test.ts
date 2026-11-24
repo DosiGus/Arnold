@@ -26,10 +26,7 @@ async function setup() {
   const started = await runtime.onboarding.startOnboarding({
     request_id: crypto.randomUUID(),
   });
-  const claim = {
-    onboarding_session_id: started.state!.session.onboarding_session_id,
-    session_token: started.session_token!,
-  };
+  const claim = {};
   const chosen = await runtime.onboarding.updateProfile({
     ...claim,
     request_id: crypto.randomUUID(),

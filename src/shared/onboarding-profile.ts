@@ -536,9 +536,7 @@ export function exerciseBudget(minutes: number): { min: number; max: number } {
 export function buildBrief(
   profile: OnboardingProfile,
   input: {
-    onboarding_session_id: string;
     exercises: readonly ArnoldExercise[];
-    now: string;
   },
 ): OnboardingBrief {
   // Guarded by the caller: a brief is only built for a complete profile.
@@ -610,7 +608,6 @@ export function buildBrief(
 
   const base = {
     onboarding_contract: ONBOARDING_CONTRACT as typeof ONBOARDING_CONTRACT,
-    onboarding_session_id: input.onboarding_session_id,
     profile_revision: profile.revision,
     person: personFacts,
     focus_muscle_groups: training.focus_muscle_groups ?? [],
@@ -635,7 +632,6 @@ export function buildBrief(
       "Den Plan nicht als aktiviert oder gespeichert darstellen, bevor der Nutzer ihn bestätigt hat.",
     ],
     ...mobilityBrief,
-    generated_at_utc: input.now,
   };
 
   if (profile.path === "own_plan")

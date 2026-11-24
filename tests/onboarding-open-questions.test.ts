@@ -288,10 +288,7 @@ describe("mobility never blocks a plan", () => {
     const started = await runtime.onboarding.startOnboarding({
       request_id: rid(),
     });
-    const claim = {
-      onboarding_session_id: started.state!.session.onboarding_session_id,
-      session_token: started.session_token!,
-    };
+    const claim = {};
     const saved = await runtime.onboarding.updateProfile({
       request_id: rid(),
       ...claim,

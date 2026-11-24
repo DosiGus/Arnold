@@ -25,8 +25,8 @@
  */
 import { z } from "zod";
 import {
-  OnboardingSessionSchema,
-  type OnboardingSession,
+  OnboardingSessionRecordSchema,
+  type OnboardingSessionRecord,
 } from "../../shared/onboarding-contract.js";
 import {
   InProcessWriteCoordinator,
@@ -41,7 +41,7 @@ import {
  * subject into a tool result.
  */
 export const OnboardingRecordSchema = z.strictObject({
-  session: OnboardingSessionSchema,
+  session: OnboardingSessionRecordSchema,
   /** SHA-256 of the session secret. The secret itself is never stored. */
   token_fingerprint: z.string().length(64),
   /**
@@ -148,7 +148,7 @@ export class RepositoryConflictError extends Error {
 }
 
 /** True once the expiry timestamp has passed. */
-export const isExpired = (session: OnboardingSession, now: Date) =>
+export const isExpired = (session: OnboardingSessionRecord, now: Date) =>
   Date.parse(session.expires_at_utc) <= now.getTime();
 
 const collectable = (record: OnboardingRecord, now: Date) =>

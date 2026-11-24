@@ -148,10 +148,7 @@ async function proposed(
 ) {
   const service = starter();
   const started = await service.startOnboarding({ request_id: rid() });
-  const claim = {
-    onboarding_session_id: started.state!.session.onboarding_session_id,
-    session_token: started.session_token!,
-  };
+  const claim = {};
   const saved = await service.updateProfile({
     request_id: rid(),
     ...claim,
@@ -220,10 +217,7 @@ describe("start weights in the setup's plan proposal", () => {
   it("stores and clears the known weights in the profile", async () => {
     const service = starter();
     const started = await service.startOnboarding({ request_id: rid() });
-    const claim = {
-      onboarding_session_id: started.state!.session.onboarding_session_id,
-      session_token: started.session_token!,
-    };
+    const claim = {};
     const saved = await service.updateProfile({
       request_id: rid(),
       ...claim,

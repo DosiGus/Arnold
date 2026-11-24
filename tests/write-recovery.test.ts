@@ -179,10 +179,7 @@ describe("onboarding service: recovery on every failure", () => {
       clock: () => now,
     }).onboarding;
     const started = await service.startOnboarding({ request_id: randomUUID() });
-    const claim = {
-      onboarding_session_id: started.state!.session.onboarding_session_id,
-      session_token: started.session_token!,
-    };
+    const claim = {};
     now = new Date("2026-05-01T11:00:00Z");
     const refused = await service.updateProfile({
       request_id: randomUUID(),

@@ -16,15 +16,15 @@
  *
  * Four rules shape everything here.
  *
- * First, an `onboarding_session_id` is **not** a user account. It identifies a
- * setup. Where Arnold runs behind a login, the setup belongs to the verified
- * account (one per user, resumed in every chat); without a login it is an
- * anonymous, expiring setup conversation. No field of it becomes a `user_id`.
+ * First, a setup belongs to the verified account: at most one open setup per
+ * user, resumed in every chat. The server finds it through the identity of
+ * the token, never through an argument, so no tool takes or returns a setup
+ * id or a session secret (D-11). Internally a setup still has an id
+ * (`OnboardingSessionRecordSchema`); it never becomes a `user_id` and never
+ * leaves the server.
  *
- * Second, the bare session id is not a credential either. Every addressed
- * operation carries an `OnboardingClaim`, and the server stores only a hash of
- * the secret — see `src/server/onboarding/access.ts`. A client that merely
- * guesses an id gets nothing.
+ * Second, tool outputs carry no internal setup ids and no timestamps (D-20):
+ * `OnboardingSessionSchema` is the stored session without them.
  *
  * Third, onboarding owns no training plan logic. A proposal is handed to the
  * `TrainingPlanService` and what comes back is referenced by `plan_version_id`
@@ -864,20 +864,12 @@ export type OnboardingPlanConfirmation = z.infer<
  * everything in it is safe to log.
  */
 export const OnboardingHandoffSchema = z.strictObject({
-  onboarding_session_id: id,
   status: HandoffStatusSchema,
   confirmed_plan_version_id: id.nullable(),
   confirmed_plan_revision: positiveInt.nullable(),
   profile_revision: nonnegativeInt.nullable(),
-  confirmation_timestamp: ArnoldUtcTimestampSchema.nullable(),
   /** The draft's revision as of *now*. Differs from the confirmed one when superseded. */
   current_plan_revision: positiveInt.nullable(),
-  /**
-   * Opaque value naming this session and confirmed revision. Null until a
-   * confirmed plan exists; never a credential and never sufficient to read a
-   * session.
-   */
-  setup_binding: z.string().min(1).nullable(),
   /** Why the handoff is not ready, when it is not. */
   blocked_reason: z.string().nullable(),
   /** True until the setup is finished. */
@@ -888,11 +880,12 @@ export type OnboardingHandoff = z.infer<typeof OnboardingHandoffSchema>;
 /* ------------------------------------------------------------------ session */
 
 /**
- * The server-side onboarding session. The single authority for setup state.
+ * The stored onboarding session. The single authority for setup state.
  *
- * `onboarding_session_id` identifies a *setup*, not a person.
+ * Server-internal: `onboarding_session_id` identifies a *setup*, not a person,
+ * and never leaves the server (D-11). Tools see `OnboardingSessionSchema`.
  */
-export const OnboardingSessionSchema = z.strictObject({
+export const OnboardingSessionRecordSchema = z.strictObject({
   onboarding_session_id: id,
   status: OnboardingStatusSchema,
   current_step: OnboardingStepSchema,
@@ -917,6 +910,32 @@ export const OnboardingSessionSchema = z.strictObject({
   /** Which tracker the plan draft lives on. */
   tracker_id: id,
 });
+export type OnboardingSessionRecord = z.infer<
+  typeof OnboardingSessionRecordSchema
+>;
+
+/**
+ * The session as tools return it (D-11, D-20): no setup id, no tracker id and
+ * no timestamps. The server finds the setup through the verified identity, so
+ * a caller never needs to name it.
+ */
+export const OnboardingSessionSchema = OnboardingSessionRecordSchema.omit({
+  onboarding_session_id: true,
+  created_at_utc: true,
+  updated_at_utc: true,
+  expires_at_utc: true,
+  tracker_id: true,
+}).extend({
+  plan_draft_reference: OnboardingPlanProposalSchema.omit({
+    proposed_at_utc: true,
+  }).nullable(),
+  confirmed_plan_reference: OnboardingPlanConfirmationSchema.omit({
+    confirmed_at_utc: true,
+  }).nullable(),
+  last_error: z
+    .strictObject({ code: z.string(), message: z.string() })
+    .nullable(),
+});
 export type OnboardingSession = z.infer<typeof OnboardingSessionSchema>;
 
 /* -------------------------------------------------------------------- brief */
@@ -940,7 +959,6 @@ const BriefExerciseRefSchema = z.strictObject({
  */
 export const OnboardingBriefSchema = z.strictObject({
   onboarding_contract: z.literal(ONBOARDING_CONTRACT),
-  onboarding_session_id: id,
   profile_revision: nonnegativeInt,
   path: OnboardingPathSchema,
   /** What to do, in one sentence, for the path the user chose. */
@@ -1032,7 +1050,6 @@ export const OnboardingBriefSchema = z.strictObject({
   constraints: z.array(z.string()),
   /** Named things a proposal must not fabricate. */
   must_not_invent: z.array(z.string()),
-  generated_at_utc: ArnoldUtcTimestampSchema,
 });
 export type OnboardingBrief = z.infer<typeof OnboardingBriefSchema>;
 
@@ -1150,7 +1167,6 @@ export const OnboardingStateSchema = z.strictObject({
     cross_device: z.boolean(),
     note: z.string(),
   }),
-  generated_at_utc: ArnoldUtcTimestampSchema,
 });
 export type OnboardingState = z.infer<typeof OnboardingStateSchema>;
 
@@ -1165,14 +1181,6 @@ export const OnboardingViewSchema = z.strictObject({
   state: OnboardingStateSchema,
   /** Shown once when a session was resumed rather than created. */
   resumed: z.boolean(),
-  /**
-   * The secret for the session this payload opened.
-   *
-   * The app needs it to act on that session at all. Carried in structured
-   * content only, and never written into a tool's text output — that text
-   * becomes chat transcript. Null once the setup is completed.
-   */
-  session_token: z.string().nullable().optional(),
   source: z.strictObject({
     label: z.string(),
     description: z.string(),
@@ -1209,22 +1217,20 @@ export const ONBOARDING_ERROR_CODES = [
 export const OnboardingErrorCodeSchema = z.enum(ONBOARDING_ERROR_CODES);
 export type OnboardingErrorCode = z.infer<typeof OnboardingErrorCodeSchema>;
 
-/* ------------------------------------------------------------------- claims */
+/* ------------------------------------------------------------- addressing */
 
-/**
- * The credential for an addressed operation.
+/*
+ * No onboarding tool names its setup (D-11). The server finds the caller's
+ * open setup through the verified identity of the token; there is no session
+ * id and no session secret in any input or output.
  *
- * The id says *which* session, the token says *whether you may*. Omitting the
- * token is not a shortcut: access control refuses it, which is what keeps a
- * guessed id worthless. See `src/server/onboarding/access.ts`.
+ * Older clients (cards already stored in a chat) still send
+ * `onboarding_session_id` and `session_token`. The top-level input objects are
+ * therefore *stripping* objects: unknown keys are dropped before the service
+ * sees them, so such a field can never select or unlock a setup, and an old
+ * card keeps working instead of failing on a field that no longer matters.
+ * Everything nested stays strict.
  */
-export const OnboardingClaimSchema = z.strictObject({
-  onboarding_session_id: id,
-  session_token: z.string().min(16).max(256),
-});
-export type OnboardingClaim = z.infer<typeof OnboardingClaimSchema>;
-
-const claim = OnboardingClaimSchema.shape;
 const request = { request_id: z.string().min(1).max(128) };
 /** Guards against a write built on a state the caller has not seen. */
 const expected = {
@@ -1234,17 +1240,11 @@ const expected = {
 /* -------------------------------------------------------------- tool inputs */
 
 export const OnboardingToolInputs = {
-  show_arnold_onboarding: z.strictObject({
-    /** Continue a known session; without it the account's setup is opened or started. */
-    onboarding_session_id: id.optional(),
-    session_token: z.string().min(16).max(256).optional(),
-  }),
-  start_arnold_onboarding: z.strictObject({
-    ...request,
-    /** Resume this session instead of starting over, when it is still valid. */
-    resume_session: OnboardingClaimSchema.optional(),
-  }),
-  get_onboarding_state: z.strictObject({ ...claim }),
+  /** Opens the account's open setup, or starts one. */
+  show_arnold_onboarding: z.object({}),
+  /** Continues the account's open setup, or starts one. */
+  start_arnold_onboarding: z.object({ ...request }),
+  get_onboarding_state: z.object({}),
   /**
    * Saves answers, moves to a step, or both.
    *
@@ -1253,9 +1253,8 @@ export const OnboardingToolInputs = {
    * One of `profile` or `step` must be present.
    */
   update_onboarding_profile: z
-    .strictObject({
+    .object({
       ...request,
-      ...claim,
       ...expected,
       profile: OnboardingProfilePatchSchema.optional(),
       step: OnboardingStepSchema.optional(),
@@ -1264,15 +1263,13 @@ export const OnboardingToolInputs = {
       (input) => input.profile !== undefined || input.step !== undefined,
       "Entweder Angaben oder ein Schritt müssen übergeben werden.",
     ),
-  get_onboarding_brief: z.strictObject({ ...claim }),
-  request_onboarding_plan: z.strictObject({
+  get_onboarding_brief: z.object({}),
+  request_onboarding_plan: z.object({
     ...request,
-    ...claim,
     ...expected,
   }),
-  submit_onboarding_plan_proposal: z.strictObject({
+  submit_onboarding_plan_proposal: z.object({
     ...request,
-    ...claim,
     ...expected,
     name: label,
     origin: PlanProposalOriginSchema,
@@ -1283,10 +1280,9 @@ export const OnboardingToolInputs = {
     /** Exercises outside the catalog, referenced by key in `sessions` (B11). */
     custom_exercises: z.array(CustomExerciseInputSchema).max(20).optional(),
   }),
-  get_onboarding_plan: z.strictObject({ ...claim }),
-  confirm_onboarding_plan: z.strictObject({
+  get_onboarding_plan: z.object({}),
+  confirm_onboarding_plan: z.object({
     ...request,
-    ...claim,
     ...expected,
     /** Must name the version *and* the revision the user actually saw. */
     confirmation: z.strictObject({
@@ -1295,18 +1291,16 @@ export const OnboardingToolInputs = {
       confirmed: z.literal(true),
     }),
   }),
-  revise_onboarding_plan: z.strictObject({
+  revise_onboarding_plan: z.object({
     ...request,
-    ...claim,
     ...expected,
     reason: freeText.optional(),
   }),
-  get_onboarding_handoff: z.strictObject({ ...claim }),
+  get_onboarding_handoff: z.object({}),
   /** Activates the confirmed plan and completes the setup. Safe to repeat. */
-  finish_arnold_setup: z.strictObject({ ...request, ...claim }),
-  cancel_onboarding: z.strictObject({
+  finish_arnold_setup: z.object({ ...request }),
+  cancel_onboarding: z.object({
     ...request,
-    ...claim,
     reason: freeText.optional(),
   }),
 } as const;
@@ -1328,11 +1322,6 @@ export const OnboardingResponseSchema = z.strictObject({
   /** True when a repeated request_id returned the already-stored outcome. */
   replayed: z.boolean(),
   state: OnboardingStateSchema.nullable(),
-  /**
-   * Returned by the call that creates or reopens the session. Never echoed in
-   * tool text and never stored in plaintext on the server.
-   */
-  session_token: z.string().nullable(),
   error: toolErrorSchema(OnboardingErrorCodeSchema).nullable(),
 });
 export type OnboardingResponse = z.infer<typeof OnboardingResponseSchema>;

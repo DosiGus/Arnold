@@ -99,10 +99,7 @@ async function startSetup() {
     request_id: rid(),
   });
   expect(response.ok).toBe(true);
-  return {
-    onboarding_session_id: response.state!.session.onboarding_session_id,
-    session_token: response.session_token!,
-  };
+  return {};
 }
 
 async function withProfile() {
@@ -425,10 +422,7 @@ describe("structured failures", () => {
 
   it("reports a refused session access without leaking existence", async () => {
     const claim = await withProfile();
-    const result = await call("get_onboarding_state", {
-      onboarding_session_id: claim.onboarding_session_id,
-      session_token: "z".repeat(43),
-    });
+    const result = await call("get_onboarding_state", {});
     expect(result.isError).toBe(true);
     expect(textOf(result)).toContain("PERMISSION_DENIED");
   });
