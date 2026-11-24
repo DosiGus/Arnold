@@ -1446,7 +1446,7 @@ describe("the mobility catalog for the editor", () => {
 describe("the mat answer reaches the morning routine (D-07)", () => {
   const withFloor = ["mob_cat_cow", "mob_childs_pose", ...M.slice(0, 3)];
   const run = async (hasMat: boolean | undefined) => {
-    const h = await harness();
+    const h = harness();
     const version = await newDraft(h);
     const dataset = await h.dataset();
     const plan = dataset.plans.find(
