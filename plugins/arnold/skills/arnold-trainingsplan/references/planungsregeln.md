@@ -46,7 +46,9 @@ Gezählt werden **Arbeitssätze pro Muskelgruppe und Woche**. Ein Satz zählt vo
 | Fortgeschritten | 10–16                            | 3–4             |
 | Erfahren        | 12–20                            | 3–5             |
 
-- Schwerpunkt-Muskelgruppen (`focus_muscle_groups`): 2–4 Sätze mehr, oder eine zusätzliche Übung.
+- Rahmen für jede Muskelgruppe: 10–20 Sätze pro Woche. Anfänger dürfen darunter bleiben.
+- Schwerpunkt-Muskelgruppen (`focus_muscle_groups`): mindestens 2 Sätze mehr als der Median der übrigen Gruppen, üblich 2–4 mehr, oder eine zusätzliche Übung. Der Server prüft das und lehnt Verstöße ab.
+- Am Beintag keine Rumpf- oder Schulterübung als Pflicht (Crunches, Seitheben und Ähnliches gehören an andere Tage).
 - Bei knapper Zeit lieber das untere Ende für alle als das obere Ende für wenige.
 - Über 20 Sätze für eine Muskelgruppe nur auf Wunsch: mehr bringt weniger dazu und kostet Erholung.
 - Kleine Muskeln (Waden, Bauch, hintere Schulter) dürfen am unteren Ende bleiben.
@@ -82,9 +84,11 @@ Der Brief nennt `availability.session_minutes` und `suggested_exercises_per_sess
 | 75      | 24–27                          | 7–9     |
 | 90      | 28–32                          | 8–10    |
 
-Bei Abweichungen gilt `suggested_exercises_per_session` aus dem Brief.
+Das Zeitbudget gilt für jede einzelne Einheit, nicht im Durchschnitt: Zähle Aufwärmen plus Sätze und Pausen jeder Einheit nach und kürze, bis sie passt. Der Server prüft das und lehnt Verstöße ab. Bei Abweichungen gilt `suggested_exercises_per_session` aus dem Brief.
 
 Übungen mit langem Aufbau (Kreuzheben, schwere Kniebeugen mit Aufwärmsätzen) nicht in Einheiten unter 40 Minuten, außer als einzige Grundübung.
+
+Laufen und Beintag: Laufen kommt zusätzlich zu den Krafttagen, nie statt eines Krafttags. Harte Läufe nicht am Tag nach einem schweren Beintag.
 
 ## 6. Alltag und Studio
 

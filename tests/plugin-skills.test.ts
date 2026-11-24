@@ -823,6 +823,24 @@ describe("mobility skills (MOB-007)", () => {
     expect(setup).toContain("show_arnold_onboarding");
   });
 
+  it("follows the onboarding conversation rules (RDS-006)", () => {
+    const setup = section(plan, "## Einrichtung per Sprache");
+    expect(setup).toContain("erst kurzer Text, dann genau eine Karte");
+    expect(setup).toContain("Sprachnotiz oder um Text");
+    expect(setup).toContain("Höchstens drei Runden");
+    expect(setup).toContain("in den Einstellungen ergänzen");
+    expect(setup).toContain("Pflichtangaben bleiben Pflicht");
+    expect(setup).toContain("ausdrücklichen Ja");
+    expect(setup).toContain("Datenschutzsatz");
+    expect(setup).toContain("ab 16 Jahren");
+    expect(setup).toMatch(/keine Standardwerte ohne Nennung/);
+    expect(setup).toContain("Matte ja oder nein");
+    expect(plan).toContain("nie „aus deinen Richtwerten berechnet“");
+    expect(plan).toContain("mindestens 2 Sätze mehr als der Median");
+    expect(plan).toContain("nie statt eines Krafttags");
+    expect(plan).not.toMatch(/Vorgaben für Mobility stehen im Werkzeugtext/);
+  });
+
   it("places mobility after the strength proposal and chooses by stiff areas", () => {
     const mobility = section(plan, "## Mobility und Morgenroutine");
     expect(mobility).toContain("Kraftvorschlag");
