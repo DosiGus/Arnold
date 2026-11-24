@@ -849,7 +849,8 @@ describe("mobility skills (MOB-007)", () => {
       /Tag ohne Krafttraining, sonst nach dem Krafttraining/,
     );
     expect(mobility).toContain("steifen Bereiche");
-    expect(mobility).toContain("`morning_ok`");
+    expect(mobility).toContain("`needs_mat: false`");
+    expect(mobility).not.toContain("morning_ok");
     expect(mobility).toMatch(
       /Sekunden, Haltezeiten und Wiederholungen legst du nie fest/,
     );
@@ -860,7 +861,8 @@ describe("mobility skills (MOB-007)", () => {
     ])
       expect(mobility, step).toContain(step);
     expect(mobility).toMatch(/keine Trainingslast und kein Trainingstag/);
-    expect(reference).toContain("morning_ok");
+    expect(reference).toContain("needs_mat");
+    expect(reference).not.toContain("morning_ok");
     expect(reference).toMatch(/Kraftvorschlag/);
   });
 
