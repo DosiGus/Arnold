@@ -98,6 +98,13 @@ export function useOnboarding(
       stillCurrent: () => boolean = () => true,
     ) => {
       const token = ++generation.current;
+      if (stateRef.current?.session.status === "COMPLETED") {
+        // A completed account has nothing left to read from the setup.
+        setUi("READY");
+        setError("");
+        setFailure(undefined);
+        return stateRef.current;
+      }
       try {
         const next = await client.onboardingState();
         if (token !== generation.current || !stillCurrent()) return undefined;
