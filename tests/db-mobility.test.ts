@@ -980,6 +980,109 @@ describe("row level security on the mobility tables", () => {
   });
 });
 
+describe("migration 010: has_mat (D-07, RDS-016)", () => {
+  it("adds a nullable column without default, at schema version 10, under the unchanged policy", async () => {
+    const column = await asOwner(
+      async (c) =>
+        (
+          await c.query(
+            `select data_type, is_nullable, column_default
+               from information_schema.columns
+              where table_schema = 'arnold' and table_name = 'mobility_profiles'
+                and column_name = 'has_mat'`,
+          )
+        ).rows,
+    );
+    expect(column).toEqual([
+      { data_type: "boolean", is_nullable: "YES", column_default: null },
+    ]);
+    const version = await asOwner(
+      async (c) =>
+        (
+          await c.query(
+            "select max(version)::int as v from arnold.schema_migrations",
+          )
+        ).rows[0].v,
+    );
+    expect(version).toBe(10);
+    await expect(db.assertReady()).resolves.toBeUndefined();
+    const policy = await asOwner(
+      async (c) =>
+        (
+          await c.query(
+            `select c.relrowsecurity as rls, p.polname, pg_get_expr(p.polqual, p.polrelid) as qual,
+                    pg_get_expr(p.polwithcheck, p.polrelid) as checks
+               from pg_class c join pg_policy p on p.polrelid = c.oid
+              where c.oid = 'arnold.mobility_profiles'::regclass`,
+          )
+        ).rows,
+    );
+    expect(policy).toHaveLength(1);
+    expect(policy[0]).toMatchObject({ rls: true, polname: "own_rows" });
+    expect(policy[0].qual).toContain("current_user_id()");
+    expect(policy[0].checks).toContain("current_user_id()");
+  });
+
+  it("keeps a profile without the answer at null and reads it back without has_mat", async () => {
+    const alice = await newAccount(db);
+    const row = profileRow();
+    await write(alice, [
+      { table: "mobilityProfiles", before: null, after: row },
+    ]);
+    const raw = await db.asUser(alice.userId, (c) =>
+      c.query("select has_mat from arnold.mobility_profiles"),
+    );
+    expect(raw.rows).toEqual([{ has_mat: null }]);
+    const read = (await alice.store.read()).mobilityProfiles![0]!;
+    expect(read).toEqual(row);
+    expect(read).not.toHaveProperty("has_mat");
+
+    // Set and changed through commitWrite with a revision.
+    const withMat = { ...row, has_mat: true, row_revision: 2 };
+    await write(alice, [
+      { table: "mobilityProfiles", before: row, after: withMat },
+    ]);
+    expect((await alice.store.read()).mobilityProfiles![0]).toEqual(withMat);
+    const noMat = { ...withMat, has_mat: false, row_revision: 3 };
+    await write(alice, [
+      { table: "mobilityProfiles", before: withMat, after: noMat },
+    ]);
+    expect((await alice.store.read()).mobilityProfiles![0]).toEqual(noMat);
+  });
+
+  it("another user neither sees nor changes has_mat", async () => {
+    const alice = await newAccount(db);
+    const bob = await newAccount(db);
+    await write(alice, [
+      {
+        table: "mobilityProfiles",
+        before: null,
+        after: profileRow({ has_mat: true }),
+      },
+    ]);
+    const seen = await db.asUser(bob.userId, (c) =>
+      c.query("select has_mat from arnold.mobility_profiles"),
+    );
+    expect(seen.rowCount).toBe(0);
+    const updated = await db.asUser(bob.userId, (c) =>
+      c.query("update arnold.mobility_profiles set has_mat = false"),
+    );
+    expect(updated.rowCount).toBe(0);
+    await rejectsWith(
+      db.asUser(bob.userId, (c) =>
+        c.query(
+          `insert into arnold.mobility_profiles (user_id, mobility_profile_id, wants, has_mat, created_at_utc, updated_at_utc, row_revision)
+           values ($1, 'mp-mat', false, true, $2, $2, 1)`,
+          [alice.userId, STAMP],
+        ),
+      ),
+      "42501",
+    );
+    expect((await alice.store.read()).mobilityProfiles![0]!.has_mat).toBe(true);
+    expect((await bob.store.read()).mobilityProfiles).toBeUndefined();
+  });
+});
+
 describe("account deletion", () => {
   it("removes every mobility row of the account and nothing of anyone else", async () => {
     const alice = await newAccount(db);
@@ -1073,8 +1176,17 @@ describe("rollback script 009 → 8 → 9", () => {
       const before = await snapshot(dataTables);
 
       // Mobility on top: profile, a plan with routines, two done routines.
+      const firstProfile = profileRow();
       await write(alice, [
-        { table: "mobilityProfiles", before: null, after: profileRow() },
+        { table: "mobilityProfiles", before: null, after: firstProfile },
+      ]);
+      // The mat answer (010) in a second write with a receipt of its own.
+      await write(alice, [
+        {
+          table: "mobilityProfiles",
+          before: firstProfile,
+          after: { ...firstProfile, has_mat: true, row_revision: 2 },
+        },
       ]);
       const { plan, morning } = await storePlan(alice);
       await storeRoutine(
@@ -1094,7 +1206,33 @@ describe("rollback script 009 → 8 → 9", () => {
           .rows[0].n,
       ).toBe(2);
 
-      await exec(await readFile("db/rollback/010_down.sql", "utf8"));
+      const profileReceipts = async () =>
+        (
+          await exec(
+            `select count(*)::int as n from arnold.operations
+              where jsonb_path_exists(changes, '$[*] ? (@.table == "mobilityProfiles")')`,
+          )
+        ).rows[0].n;
+      expect(await profileReceipts()).toBe(2);
+
+      // 010 → 9: the column and only the receipt carrying has_mat go; the
+      // profile itself stays.
+      const down10 = await readFile("db/rollback/010_down.sql", "utf8");
+      await exec(down10);
+      expect(await version()).toBe(9);
+      expect(
+        (
+          await exec(
+            `select column_name from information_schema.columns
+              where table_schema = 'arnold' and table_name = 'mobility_profiles'`,
+          )
+        ).rows.map((r) => r.column_name),
+      ).not.toContain("has_mat");
+      expect(await profileReceipts()).toBe(1);
+      expect(
+        (await exec("select wants from arnold.mobility_profiles")).rows,
+      ).toEqual([{ wants: true }]);
+      await expect(exec(down10)).rejects.toThrow(/not applied/);
 
       const down = await readFile("db/rollback/009_down.sql", "utf8");
       await exec(down);
@@ -1130,7 +1268,7 @@ describe("rollback script 009 → 8 → 9", () => {
       expect(checks).toContain("workouts_activity_type_check");
       expect(checks).not.toContain("workouts_mobility_not_in_progress");
 
-      // A server built for schema 9 refuses to start on schema 8.
+      // A server built for schema 10 refuses to start on schema 8.
       await expect(local.assertReady()).rejects.toThrow(
         /Version 8, erwartet 10/,
       );

@@ -245,6 +245,85 @@ describe("the mobility profile", () => {
   });
 });
 
+describe("the mat answer in the profile (D-07, RDS-016)", () => {
+  it("stores has_mat only when given, keeps it when absent and never writes a silent false", async () => {
+    const h = harness();
+    const without = await h.mobility.updateProfile(
+      { request_id: rid(), preference: wanted },
+      undefined,
+    );
+    expect(without.ok).toBe(true);
+    expect(without.profile).not.toHaveProperty("has_mat");
+    expect((await h.dataset()).mobilityProfiles![0]).not.toHaveProperty(
+      "has_mat",
+    );
+
+    // The same preference with a new mat answer is a change.
+    const yes = await h.mobility.updateProfile(
+      { request_id: rid(), preference: wanted, has_mat: true },
+      undefined,
+    );
+    expect(yes.profile).toMatchObject({ state: "yes", has_mat: true });
+    expect((await h.dataset()).mobilityProfiles![0]).toMatchObject({
+      has_mat: true,
+      row_revision: 2,
+    });
+
+    // Absent keeps the stored answer, also when the rest changes.
+    const other = await h.mobility.updateProfile(
+      { request_id: rid(), preference: { wants: false } },
+      undefined,
+    );
+    expect(other.profile).toEqual({
+      state: "no",
+      preference: { wants: false },
+      has_mat: true,
+    });
+    expect((await h.dataset()).mobilityProfiles![0]).toMatchObject({
+      wants: false,
+      has_mat: true,
+      row_revision: 3,
+    });
+
+    // Equal answer and equal mat writes nothing; false is stored when said.
+    await h.mobility.updateProfile(
+      { request_id: rid(), preference: { wants: false }, has_mat: true },
+      undefined,
+    );
+    expect((await h.dataset()).mobilityProfiles![0]!.row_revision).toBe(3);
+    await h.mobility.updateProfile(
+      { request_id: rid(), preference: { wants: false }, has_mat: false },
+      undefined,
+    );
+    expect((await h.dataset()).mobilityProfiles![0]).toMatchObject({
+      has_mat: false,
+      row_revision: 4,
+    });
+  });
+
+  it("audits the mat answer and refuses a value that is not a boolean", async () => {
+    const h = harness();
+    const request_id = rid();
+    await h.mobility.updateProfile(
+      { request_id, preference: wanted, has_mat: true },
+      undefined,
+    );
+    const event = [...h.store.audit.events.values()].find(
+      (e) => e.operation_id === request_id,
+    )!;
+    expect(event.changes).toMatchObject({
+      has_mat: { before: null, after: true },
+    });
+    for (const has_mat of [null, "yes", 1]) {
+      const bad = await h.mobility.updateProfile(
+        { request_id: rid(), preference: wanted, has_mat },
+        undefined,
+      );
+      expect(bad.error?.code).toBe("VALIDATION_ERROR");
+    }
+  });
+});
+
 describe("the overview", () => {
   it("shows today's routines of the active plan, after strength only when it is next", async () => {
     const h = harness();
@@ -1027,10 +1106,11 @@ const TRAINING = {
 async function confirmedSetup(
   service: OnboardingService,
   mobility: MobilityPreference,
+  training: Partial<NonNullable<OnboardingProfilePatch["training"]>> = {},
 ) {
   const profile: OnboardingProfilePatch = {
     path: "arnold_plan",
-    training: { ...TRAINING, mobility },
+    training: { ...TRAINING, mobility, ...training },
   };
   const started = await service.startOnboarding({ request_id: rid() });
   const claim = {};
@@ -1142,5 +1222,43 @@ describe("finishing the setup with a mobility answer", () => {
     });
     expect(done.error).toBeNull();
     expect(done.state!.session.status).toBe("COMPLETED");
+  });
+});
+
+describe("finishing the setup with a mat answer (D-07, RDS-016)", () => {
+  const answer: MobilityPreference = {
+    wants: true,
+    morning: { weekdays: ["mon", "wed", "fri"], minutes: 10 },
+    sessions: null,
+    stiff_areas: [],
+  };
+
+  for (const has_mat of [true, false]) {
+    it(`writes has_mat ${has_mat} from the setup into the stored profile`, async () => {
+      const fixture = createFixtureOnboarding();
+      const claim = await confirmedSetup(fixture.onboarding, answer, {
+        has_mat,
+      });
+      const done = await fixture.onboarding.finishSetup({
+        request_id: rid(),
+        ...claim,
+      });
+      expect(done.ok, done.error?.message).toBe(true);
+      expect((await fixture.store.read()).mobilityProfiles).toMatchObject([
+        { wants: true, morning_minutes: 10, has_mat },
+      ]);
+    });
+  }
+
+  it("leaves has_mat unknown when the setup did not ask", async () => {
+    const fixture = createFixtureOnboarding();
+    const claim = await confirmedSetup(fixture.onboarding, answer);
+    const done = await fixture.onboarding.finishSetup({
+      request_id: rid(),
+      ...claim,
+    });
+    expect(done.ok, done.error?.message).toBe(true);
+    const row = (await fixture.store.read()).mobilityProfiles![0]!;
+    expect(row).not.toHaveProperty("has_mat");
   });
 });
