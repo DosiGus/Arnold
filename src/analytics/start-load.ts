@@ -16,8 +16,10 @@
  *   - body weight allometrically (strength grows slower than mass),
  *   - sex, experience and age by fixed factors,
  *   - the repetition target by the Epley relation,
- *   - and, when the user named the weight of an anchor lift, every exercise
- *     of that anchor's group from the user's own figure instead.
+ *   - and, when the user named a weight and its repetitions for an anchor
+ *     lift, every exercise of that anchor's group from the user's own figure
+ *     instead (D-02): the figure is turned into the weight for 10 by the same
+ *     Epley relation and carried over by the table's proportions.
  *
  * Bodyweight exercises and exercises outside the table get no estimate: an
  * unknown weight stays unknown.
@@ -25,10 +27,40 @@
 
 export type StartLoadLevel = "lighter" | "normal" | "heavier";
 
-/** The anchor lifts the setup asks about, for 8–10 repetitions. */
-export const ANCHOR_LIFTS = ["bench-press", "squat", "lat-pulldown"] as const;
+type Group = "push" | "pull" | "legs";
+
+/**
+ * The anchor lifts the setup may ask about, per movement, in the order the
+ * equipment decides between them (D-03). The setup asks for the first that
+ * fits; any of them, once named, carries over to its whole group.
+ */
+export const ANCHORS: Record<Group, readonly AnchorLift[]> = {
+  push: ["bench-press", "dumbbell-bench-press", "chest-press-machine"],
+  pull: ["lat-pulldown", "seated-cable-row", "one-arm-row"],
+  legs: ["squat", "leg-press", "goblet-squat"],
+};
+export const ANCHOR_LIFTS = [
+  "bench-press",
+  "dumbbell-bench-press",
+  "chest-press-machine",
+  "lat-pulldown",
+  "seated-cable-row",
+  "one-arm-row",
+  "squat",
+  "leg-press",
+  "goblet-squat",
+] as const;
 export type AnchorLift = (typeof ANCHOR_LIFTS)[number];
-export type KnownLoads = Partial<Record<AnchorLift, number>>;
+/** Repetitions a named weight may be for. */
+export const KNOWN_REPS_MIN = 1;
+export const KNOWN_REPS_MAX = 12;
+/**
+ * A named weight: kilograms (in the lift's own load basis) for a number of
+ * clean repetitions. A bare number is the older answer for "8–10" and counts
+ * as 9 repetitions.
+ */
+export type KnownLoad = { kg: number; reps: number } | number;
+export type KnownLoads = Partial<Record<AnchorLift, KnownLoad>>;
 
 export type StartLoadInput = {
   exercise_id: string;
@@ -42,7 +74,6 @@ export type StartLoadInput = {
   level?: StartLoadLevel;
 };
 
-type Group = "push" | "pull" | "legs";
 type Row = {
   /** Fraction of body weight for 10 reps, intermediate man of 80 kg. */
   ratio: number;
@@ -50,12 +81,6 @@ type Row = {
   /** Smallest step the equipment allows, and the lightest sensible load. */
   step: number;
   min: number;
-};
-
-const ANCHOR_OF: Record<Group, AnchorLift> = {
-  push: "bench-press",
-  pull: "lat-pulldown",
-  legs: "squat",
 };
 
 const barbell = (ratio: number, group: Group): Row => ({
@@ -129,8 +154,8 @@ const LEVEL: Record<StartLoadLevel, number> = {
 /** The light side: estimates from answers, and from a named weight. */
 const CAUTION = 0.9;
 const CAUTION_KNOWN = 0.95;
-/** The repetitions a named anchor weight is for ("8–10"). */
-const KNOWN_REPS = 9;
+/** The repetitions an older bare number stands for ("8–10"). */
+const LEGACY_KNOWN_REPS = 9;
 
 /** Weight for `reps` relative to the weight for 10 (Epley). */
 const repFactor = (reps: number) => (1 + 10 / 30) / (1 + reps / 30);
@@ -140,6 +165,42 @@ const ageFactor = (age: number | null | undefined) =>
 
 const round = (row: Row, kg: number) =>
   Math.max(row.min, Math.round(kg / row.step) * row.step);
+
+/** A usable named weight, or null: invalid figures count as not named. */
+function knownFigure(
+  value: KnownLoad | undefined,
+): { kg: number; reps: number } | null {
+  if (value === undefined) return null;
+  const figure =
+    typeof value === "number" ? { kg: value, reps: LEGACY_KNOWN_REPS } : value;
+  if (!Number.isFinite(figure.kg) || figure.kg <= 0) return null;
+  if (
+    !Number.isInteger(figure.reps) ||
+    figure.reps < KNOWN_REPS_MIN ||
+    figure.reps > KNOWN_REPS_MAX
+  )
+    return null;
+  return figure;
+}
+
+/**
+ * The named anchor an exercise follows: the exercise itself when it is a
+ * named anchor, else the first named anchor of its group.
+ */
+function knownAnchor(
+  exerciseId: string,
+  group: Group,
+  known: KnownLoads | undefined,
+): { anchor: AnchorLift; kg: number; reps: number } | null {
+  if (!known) return null;
+  const order = ANCHORS[group];
+  const own = order.find((anchor) => anchor === exerciseId);
+  for (const anchor of own ? [own, ...order] : order) {
+    const figure = knownFigure(known[anchor]);
+    if (figure) return { anchor, ...figure };
+  }
+  return null;
+}
 
 /** True when Arnold can estimate a start weight for this exercise. */
 export function canEstimateStartLoad(exerciseId: string): boolean {
@@ -153,14 +214,14 @@ export function estimateStartLoad(input: StartLoadInput): number | null {
   const reps = Math.min(30, Math.max(1, input.reps ?? 10));
   const level = LEVEL[input.level ?? "normal"];
 
-  const anchor = ANCHOR_OF[row.group];
-  const known = input.known?.[anchor];
-  if (known !== undefined && Number.isFinite(known) && known > 0) {
-    // The user's own figure, carried over by the table's proportions.
-    const at10 = known / repFactor(KNOWN_REPS);
+  const known = knownAnchor(input.exercise_id, row.group, input.known);
+  if (known) {
+    // The user's own figure at their own repetitions, as the weight for 10,
+    // carried over by the table's proportions.
+    const at10 = known.kg / repFactor(known.reps);
     const kg =
       at10 *
-      (row.ratio / TABLE[anchor].ratio) *
+      (row.ratio / TABLE[known.anchor].ratio) *
       repFactor(reps) *
       CAUTION_KNOWN *
       level;

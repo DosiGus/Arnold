@@ -330,21 +330,113 @@ export const HeightSchema = z.number().int().min(120).max(230);
 export const BodyWeightSchema = z.number().min(30).max(300);
 
 /**
- * Weights the user knows for 8–10 clean repetitions of the three anchor
- * lifts. Each is optional; an empty answer means Arnold estimates. Keys are
- * catalog exercise ids.
+ * Weights the user knows for an anchor lift (D-02, D-03): a weight and the
+ * clean repetitions done with it (1–12). Each anchor is optional; an empty
+ * answer ("weiß ich nicht") means Arnold estimates. Keys are catalog
+ * exercise ids.
+ *
+ * The anchors depend on the equipment: per movement the first that fits
+ * (`knownLoadAnchors` in onboarding-profile.ts).
+ *
+ * Older setups stored a bare number, the weight for "8–10" repetitions. It
+ * stays readable and counts as 9 repetitions (`knownLoadEntry`).
  */
+export const KNOWN_LOAD_ANCHORS = {
+  push: ["bench-press", "dumbbell-bench-press", "chest-press-machine"],
+  pull: ["lat-pulldown", "seated-cable-row", "one-arm-row"],
+  legs: ["squat", "leg-press", "goblet-squat"],
+} as const;
+export type KnownLoadGroup = keyof typeof KNOWN_LOAD_ANCHORS;
+export const KNOWN_LOAD_GROUPS = ["push", "pull", "legs"] as const;
 export const KNOWN_LOAD_LIFTS = [
-  "bench-press",
-  "squat",
-  "lat-pulldown",
+  ...KNOWN_LOAD_ANCHORS.push,
+  ...KNOWN_LOAD_ANCHORS.pull,
+  ...KNOWN_LOAD_ANCHORS.legs,
 ] as const;
-export const KnownLoadsSchema = z.strictObject({
-  "bench-press": z.number().positive().max(400).optional(),
-  squat: z.number().positive().max(500).optional(),
-  "lat-pulldown": z.number().positive().max(300).optional(),
-});
+export type KnownLoadLift = (typeof KNOWN_LOAD_LIFTS)[number];
+export const KNOWN_LOAD_REPS_MIN = 1;
+export const KNOWN_LOAD_REPS_MAX = 12;
+/** The repetitions an old bare number stands for ("8–10"). */
+export const LEGACY_KNOWN_LOAD_REPS = 9;
+
+/** Upper bound per anchor, in the lift's own load basis (per dumbbell for dumbbells). */
+const KNOWN_LOAD_MAX_KG: Record<KnownLoadLift, number> = {
+  "bench-press": 400,
+  "dumbbell-bench-press": 120,
+  "chest-press-machine": 400,
+  "lat-pulldown": 300,
+  "seated-cable-row": 300,
+  "one-arm-row": 120,
+  squat: 500,
+  "leg-press": 1000,
+  "goblet-squat": 120,
+};
+
+const knownLoad = (maxKg: number) =>
+  z.union([
+    z.strictObject({
+      kg: z.number().positive().max(maxKg),
+      reps: z.number().int().min(KNOWN_LOAD_REPS_MIN).max(KNOWN_LOAD_REPS_MAX),
+    }),
+    /** Old form: the weight for 8–10 repetitions. Read as 9. */
+    z.number().positive().max(maxKg),
+  ]);
+
+export const KnownLoadsSchema = z.strictObject(
+  Object.fromEntries(
+    KNOWN_LOAD_LIFTS.map((lift) => [
+      lift,
+      knownLoad(KNOWN_LOAD_MAX_KG[lift]).optional(),
+    ]),
+  ) as {
+    [K in KnownLoadLift]: z.ZodOptional<ReturnType<typeof knownLoad>>;
+  },
+);
 export type KnownLoads = z.infer<typeof KnownLoadsSchema>;
+export type KnownLoadEntry = { kg: number; reps: number };
+
+/** One stored answer in the current form; an old bare number counts as 9 reps. */
+export function knownLoadEntry(
+  value: KnownLoads[KnownLoadLift],
+): KnownLoadEntry | undefined {
+  if (value === undefined) return undefined;
+  return typeof value === "number"
+    ? { kg: value, reps: LEGACY_KNOWN_LOAD_REPS }
+    : value;
+}
+
+/** All stored answers in the current form. */
+export function normalizeKnownLoads(
+  loads: KnownLoads | undefined,
+): Partial<Record<KnownLoadLift, KnownLoadEntry>> {
+  const out: Partial<Record<KnownLoadLift, KnownLoadEntry>> = {};
+  for (const lift of KNOWN_LOAD_LIFTS) {
+    const entry = knownLoadEntry(loads?.[lift]);
+    if (entry) out[lift] = entry;
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------------ modules */
+
+/**
+ * What the user trains besides strength (D-01). Strength is always part of
+ * Arnold and has no switch; the morning routine is part of mobility.
+ *
+ * Absent in setups from before Onboarding 2.0: then the modules follow from
+ * the answers (`modulesOf`), so no stored record needs rewriting.
+ */
+export const OnboardingModulesSchema = z
+  .strictObject({
+    running: z.boolean(),
+    mobility: z.boolean(),
+    morning_routine: z.boolean(),
+  })
+  .refine(
+    (modules) => modules.mobility || !modules.morning_routine,
+    "Die Morgenroutine gehört zu Mobility.",
+  );
+export type OnboardingModules = z.infer<typeof OnboardingModulesSchema>;
 
 const StarterExerciseIdSchema = z.enum(STARTER_EXERCISE_IDS);
 const EquipmentSchema = z.enum(EQUIPMENT);
@@ -369,17 +461,19 @@ export const PERSON_BASICS = [
 ] as const;
 
 /**
- * The run details of a running goal ("Ausdauer und Laufen").
+ * The run details of the running module.
  *
  * Field names are those of the run profile (`update_run_profile`). The
  * setup keeps them with the other answers and hands them to the run service
  * when it finishes; the run profile itself cannot be written before an
- * account is set up. Weekly minutes and the longest run are required: a
- * plan with runs cannot be built without them, and unknown is not 0.
- * Race date, target time and reference are optional.
+ * account is set up. Runs per week, weekly minutes, the longest run and the
+ * environment are required: a plan with runs cannot be built without them,
+ * and unknown is not 0. Since Onboarding 2.0 (D-01) the run goal is optional
+ * and no longer tied to the main goal "Ausdauer und Laufen"; race date,
+ * target time and reference stay optional.
  */
 export const OnboardingRunSchema = z.strictObject({
-  goal: RunGoalSchema,
+  goal: RunGoalSchema.optional(),
   race_date: z.iso.date().optional(),
   target_time_s: positiveInt.max(RUN_LIMITS.maxSeconds).optional(),
   reference: z
@@ -424,8 +518,18 @@ export const TrainingSchema = z.strictObject({
   avoided_exercise_ids: z.array(StarterExerciseIdSchema).max(40).optional(),
   /** Weights the user knows; the start weights of the plan follow them. */
   known_loads: KnownLoadsSchema.optional(),
-  /** Only with the goal "Ausdauer und Laufen"; see OnboardingRunSchema. */
+  /**
+   * Running, mobility and morning routine besides strength (D-01). Absent
+   * in older setups: `modulesOf` derives them from the answers.
+   */
+  modules: OnboardingModulesSchema.optional(),
+  /** Only with the running module; see OnboardingRunSchema. */
   run: OnboardingRunSchema.optional(),
+  /**
+   * Whether the user has a mat for the morning routine (D-07). Absent means
+   * not asked; only `true` allows floor exercises in the morning.
+   */
+  has_mat: z.boolean().optional(),
   /**
    * The mobility answer (ARN-MOB). Absent means "not asked yet". Never a
    * required field: a plan by Arnold is built without it.
@@ -469,16 +573,90 @@ export const TRAINING_REQUIRED_FIELDS = [
 ] as const;
 export type TrainingRequiredField = (typeof TRAINING_REQUIRED_FIELDS)[number];
 
-/** A required answer, as the completeness check and the UI both name it. */
-export type RequiredProfileField = "path" | `training.${TrainingRequiredField}`;
+/** Run answers the running module cannot plan without (D-01). */
+export const RUN_REQUIRED_FIELDS = [
+  "training.run.runs_per_week",
+  "training.run.base_minutes_per_week",
+  "training.run.longest_run_4w_min",
+  "training.run.preferred_environment",
+] as const;
 
-/** The required answers for a path, in asking order. */
+/**
+ * Mobility answers (D-01). Stiff areas for every mobility wish; an empty
+ * list is an answer (D-08: a general routine, never invented areas). The
+ * morning routine adds minutes, weekdays and the mat. Without a morning
+ * routine the mobility answer needs its sessions: the mobility contract
+ * keeps a wish only with a morning routine or sessions.
+ */
+export const MOBILITY_REQUIRED_FIELDS = [
+  "training.mobility.stiff_areas",
+] as const;
+export const MOBILITY_SESSIONS_REQUIRED_FIELDS = [
+  "training.mobility.sessions",
+] as const;
+export const MORNING_REQUIRED_FIELDS = [
+  "training.mobility.morning.minutes",
+  "training.mobility.morning.weekdays",
+  "training.has_mat",
+] as const;
+
+/** A required answer, as the completeness check and the UI both name it. */
+export type RequiredProfileField =
+  | "path"
+  | `training.${TrainingRequiredField}`
+  | (typeof RUN_REQUIRED_FIELDS)[number]
+  | (typeof MOBILITY_REQUIRED_FIELDS)[number]
+  | (typeof MOBILITY_SESSIONS_REQUIRED_FIELDS)[number]
+  | (typeof MORNING_REQUIRED_FIELDS)[number];
+
+/** Strength only: what a profile without modules and answers trains. */
+export const STRENGTH_ONLY: OnboardingModules = Object.freeze({
+  running: false,
+  mobility: false,
+  morning_routine: false,
+});
+
+/**
+ * The modules of a profile: the stored choice, or for setups from before
+ * Onboarding 2.0 what their answers imply. Running follows the goal
+ * "Ausdauer und Laufen" or stored run details; mobility follows a "yes" to
+ * mobility, the morning routine a "yes" with a morning routine. Derived on
+ * every read, so no stored record needs a migration.
+ */
+export function modulesOf(training: Training): OnboardingModules {
+  if (training.modules) return training.modules;
+  const mobility = training.mobility;
+  const wantsMobility = mobility?.wants === true;
+  return {
+    running:
+      training.primary_goal === "endurance_running" ||
+      (training.secondary_goals ?? []).includes("endurance_running") ||
+      training.run !== undefined,
+    mobility: wantsMobility,
+    morning_routine: wantsMobility && mobility.morning !== null,
+  };
+}
+
+/**
+ * The required answers for a path and the chosen modules, in asking order.
+ * Strength always counts; running and mobility add their own (D-01).
+ */
 export function requiredFieldsFor(
   path: OnboardingPath | null,
+  modules: OnboardingModules = STRENGTH_ONLY,
 ): RequiredProfileField[] {
   if (path === null) return ["path"];
   if (path === "own_plan") return [];
-  return TRAINING_REQUIRED_FIELDS.map((field) => `training.${field}` as const);
+  const fields: RequiredProfileField[] = TRAINING_REQUIRED_FIELDS.map(
+    (field) => `training.${field}` as const,
+  );
+  if (modules.running) fields.push(...RUN_REQUIRED_FIELDS);
+  if (modules.mobility) {
+    fields.push(...MOBILITY_REQUIRED_FIELDS);
+    if (modules.morning_routine) fields.push(...MORNING_REQUIRED_FIELDS);
+    else fields.push(...MOBILITY_SESSIONS_REQUIRED_FIELDS);
+  }
+  return fields;
 }
 
 /**
@@ -512,7 +690,10 @@ export const TrainingPatchSchema = z
     preferred_exercise_ids: z.array(StarterExerciseIdSchema).max(40).optional(),
     avoided_exercise_ids: z.array(StarterExerciseIdSchema).max(40).optional(),
     known_loads: KnownLoadsSchema.nullable().optional(),
+    modules: OnboardingModulesSchema.optional(),
     run: OnboardingRunSchema.nullable().optional(),
+    /** null removes the answer again ("not asked"). */
+    has_mat: z.boolean().nullable().optional(),
     /** null removes the answer again ("not asked"). */
     mobility: MobilityPreferenceSchema.nullable().optional(),
     notes: freeText.nullable().optional(),
@@ -562,6 +743,11 @@ export const ONBOARDING_VALIDATION_CODES = [
   "PROPOSAL_AVOIDED_EXERCISE",
   "PROPOSAL_EQUIPMENT_MISSING",
   "PROPOSAL_OVER_TIME_BUDGET",
+  // Added with Onboarding 2.0 (RDS-003): required answers per module.
+  "MISSING_RUN_DETAILS",
+  "MISSING_MOBILITY_DETAILS",
+  "MISSING_MORNING_ROUTINE",
+  "MISSING_HAS_MAT",
 ] as const;
 export const OnboardingValidationCodeSchema = z.enum(
   ONBOARDING_VALIDATION_CODES,
@@ -819,7 +1005,7 @@ export const OnboardingBriefSchema = z.strictObject({
         mode: MobilityModeSchema,
         per_side: z.boolean(),
         position: MobilityPositionSchema,
-        morning_ok: z.boolean(),
+        needs_mat: z.boolean(),
         default_s: positiveInt,
         min_s: positiveInt,
         max_s: positiveInt,
@@ -855,7 +1041,7 @@ export type OnboardingBrief = z.infer<typeof OnboardingBriefSchema>;
 /**
  * The questions the setup may still ask, in asking order. `required` ones
  * block a plan by Arnold; `ask_once` ones are asked once and may be skipped
- * (mobility is never required).
+ * (the old mobility question of setups without a module choice).
  */
 export const OPEN_QUESTION_IDS = [
   "path",
@@ -867,6 +1053,11 @@ export const OPEN_QUESTION_IDS = [
   "run_details",
   "mobility",
   "mobility_details",
+  // Added with Onboarding 2.0 (RDS-003): required answers per module.
+  "training.mobility.stiff_areas",
+  "training.mobility.sessions",
+  "morning_routine",
+  "training.has_mat",
 ] as const;
 export const OpenQuestionIdSchema = z.enum(OPEN_QUESTION_IDS);
 export type OpenQuestionId = z.infer<typeof OpenQuestionIdSchema>;
@@ -1278,6 +1469,15 @@ export const REQUIRED_FIELD_LABEL: Record<RequiredProfileField, string> = {
   "training.days_per_week": "Trainingstage",
   "training.session_minutes": "Zeit pro Training",
   "training.environment": "Trainingsort",
+  "training.run.runs_per_week": "Läufe pro Woche",
+  "training.run.base_minutes_per_week": "Laufminuten pro Woche",
+  "training.run.longest_run_4w_min": "Längster Lauf der letzten vier Wochen",
+  "training.run.preferred_environment": "Wo du läufst",
+  "training.mobility.stiff_areas": "Steife Bereiche",
+  "training.mobility.sessions": "Mobility-Einheiten",
+  "training.mobility.morning.minutes": "Minuten der Morgenroutine",
+  "training.mobility.morning.weekdays": "Tage der Morgenroutine",
+  "training.has_mat": "Matte für die Morgenroutine",
 };
 
 /** The finding code raised when a required field is still missing. */
@@ -1291,6 +1491,15 @@ export const MISSING_FIELD_CODE: Record<
   "training.days_per_week": "MISSING_DAYS_PER_WEEK",
   "training.session_minutes": "MISSING_SESSION_MINUTES",
   "training.environment": "MISSING_ENVIRONMENT",
+  "training.run.runs_per_week": "MISSING_RUN_DETAILS",
+  "training.run.base_minutes_per_week": "MISSING_RUN_DETAILS",
+  "training.run.longest_run_4w_min": "MISSING_RUN_DETAILS",
+  "training.run.preferred_environment": "MISSING_RUN_DETAILS",
+  "training.mobility.stiff_areas": "MISSING_MOBILITY_DETAILS",
+  "training.mobility.sessions": "MISSING_MOBILITY_DETAILS",
+  "training.mobility.morning.minutes": "MISSING_MORNING_ROUTINE",
+  "training.mobility.morning.weekdays": "MISSING_MORNING_ROUTINE",
+  "training.has_mat": "MISSING_HAS_MAT",
 };
 
 /** Which step collects which required field, for "fix it where it broke". */
@@ -1301,4 +1510,13 @@ export const FIELD_STEP: Record<RequiredProfileField, OnboardingStep> = {
   "training.days_per_week": "profile",
   "training.session_minutes": "profile",
   "training.environment": "profile",
+  "training.run.runs_per_week": "profile",
+  "training.run.base_minutes_per_week": "profile",
+  "training.run.longest_run_4w_min": "profile",
+  "training.run.preferred_environment": "profile",
+  "training.mobility.stiff_areas": "profile",
+  "training.mobility.sessions": "profile",
+  "training.mobility.morning.minutes": "profile",
+  "training.mobility.morning.weekdays": "profile",
+  "training.has_mat": "profile",
 };

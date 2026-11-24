@@ -185,7 +185,7 @@ export function mobilityCatalogRows() {
     mode: e.mode,
     per_side: e.per_side,
     position: e.position,
-    morning_ok: e.morning_ok,
+    needs_mat: e.needs_mat,
     default_s: e.default_s,
     min_s: e.min_s,
     max_s: e.max_s,
@@ -196,7 +196,7 @@ export function mobilityCatalogRows() {
 export function mobilityCatalogText(): string {
   const lines = mobilityCatalogRows().map(
     (e) =>
-      `${e.id} | ${e.name_de} | ${e.areas.join(",")} | ${e.mode}${e.per_side ? " je Seite" : ""} | ${e.morning_ok ? "morgens ok" : "nur mit Matte"} | ${e.default_s} s (${e.min_s}-${e.max_s})`,
+      `${e.id} | ${e.name_de} | ${e.areas.join(",")} | ${e.mode}${e.per_side ? " je Seite" : ""} | ${e.needs_mat ? "Matte (Boden)" : "ohne Matte"} | ${e.default_s} s (${e.min_s}-${e.max_s})`,
   );
   return `Mobility-Katalog (Version ${MOBILITY_CATALOG_VERSION}; id | Name | Bereiche | Modus | Ort | Sekunden):\n${lines.join("\n")}`;
 }

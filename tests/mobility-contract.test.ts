@@ -258,7 +258,7 @@ describe("old data still parses (additions only)", () => {
           mode: entry.mode,
           per_side: entry.per_side,
           position: entry.position,
-          morning_ok: entry.morning_ok,
+          needs_mat: entry.needs_mat,
           default_s: entry.default_s,
           min_s: entry.min_s,
           max_s: entry.max_s,

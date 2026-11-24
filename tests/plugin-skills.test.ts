@@ -743,7 +743,7 @@ describe("mobility skills (MOB-007)", () => {
   });
 
   it("teaches calls the real schemas accept", () => {
-    const morning = MOBILITY_CATALOG.filter((e) => e.morning_ok).slice(0, 4);
+    const morning = MOBILITY_CATALOG.filter((e) => !e.needs_mat).slice(0, 4);
     expect(() =>
       PlanEditSchema.parse({
         type: "add_mobility_session",
