@@ -1459,14 +1459,7 @@ describe("the mat answer reaches the morning routine (D-07)", () => {
       id: () => `m-${Math.random().toString(36).slice(2)}`,
       has_mat: hasMat,
     };
-    applyEdit(
-      model,
-      {
-        type: "add_mobility_session",
-        ...morning({ exercise_ids: withFloor }),
-      } as never,
-      ctx,
-    );
+    applyEdit(model, morning({ exercise_ids: withFloor }) as never, ctx);
   };
 
   it("refuses floor exercises without a mat", async () => {

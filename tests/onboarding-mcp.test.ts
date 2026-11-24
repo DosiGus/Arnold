@@ -185,6 +185,34 @@ describe("tool discovery", () => {
       expect(names).toContain(expected);
   });
 
+  it("names the required answers per module, without ids or defaults", async () => {
+    const tools = (await client.listTools()).tools;
+    const text = tools
+      .filter((tool) => /onboarding|arnold_setup/.test(tool.name))
+      .map(
+        (tool) =>
+          `${tool.description ?? ""} ${JSON.stringify(tool.inputSchema)}`,
+      )
+      .join("\n");
+    expect(text).not.toMatch(
+      /onboarding_session_id|session_token|tracker_id|onb-/,
+    );
+    const update = tools.find(
+      (t) => t.name === "update_onboarding_profile",
+    )!.description!;
+    expect(update).toMatch(/keine? Standardwert|nichts mit Standardwerten/);
+    for (const needle of [
+      "primary_goal",
+      "session_minutes",
+      "runs_per_week",
+      "longest_run_4w_min",
+      "stiff_areas",
+      "has_mat",
+      "weekdays",
+    ])
+      expect(update).toContain(needle);
+  });
+
   it("describes when to use each tool so a model can choose", async () => {
     const tools = (await client.listTools()).tools;
     const byName = new Map(tools.map((tool) => [tool.name, tool]));
