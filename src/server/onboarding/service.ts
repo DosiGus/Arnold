@@ -103,6 +103,14 @@ import {
   type TransitionEffect,
 } from "./state-machine.js";
 import { loadEstimates, withStartLoads } from "./start-loads.js";
+import {
+  MUSCLE_GROUPS,
+  MUSCLE_GROUP_LABEL,
+} from "../../shared/exercise-starter-catalog.js";
+import {
+  checkPlanQuality,
+  type PlanQualityResult,
+} from "../../analytics/plan-quality.js";
 
 export class OnboardingError extends Error {
   constructor(
@@ -685,6 +693,7 @@ export class OnboardingService {
         validateProfile(session.profile),
         session.profile,
         plan,
+        plan ? await this.catalog() : [],
       ),
       plan,
       plan_validation: validation,
@@ -1146,6 +1155,25 @@ export class OnboardingService {
             fit.errors[0].message,
             fit.errors.map((issue) => `${issue.code}: ${issue.message}`),
           );
+
+        // The quality rules (D-10): a block refuses the proposal with German
+        // sentences the chat can act on; hints never block and come back in
+        // the state's warnings.
+        const quality = planQuality(
+          record.session.profile,
+          input.sessions,
+          await this.catalog(),
+        );
+        if (quality?.blocked) {
+          const blocks = quality.findings.filter(
+            (finding) => finding.severity === "block",
+          );
+          throw fail(
+            "PLAN_PROPOSAL_INVALID",
+            blocks[0].detail,
+            blocks.map((finding) => `${finding.code}: ${finding.detail}`),
+          );
+        }
 
         // "Plan erstellen" and a pasted own plan go straight to a proposal: the
         // proposal phase is opened on the way instead of needing its own call.
@@ -1892,12 +1920,80 @@ function withProposalHints(
   validation: OnboardingValidationResult,
   profile: OnboardingProfile,
   plan: TrainingPlanVersion | null,
+  catalog: readonly ArnoldExercise[],
 ): OnboardingValidationResult {
   if (!plan || profile.path !== "arnold_plan") return validation;
-  const hints = proposalFitIssues(profile, plan.sessions).filter(
-    (issue) => issue.severity === "warning",
-  );
+  const quality = planQuality(profile, plan.sessions, catalog);
+  const hints = [
+    ...proposalFitIssues(profile, plan.sessions).filter(
+      (issue) => issue.severity === "warning",
+    ),
+    ...(quality?.findings ?? [])
+      .filter((finding) => finding.severity === "hint")
+      .map((finding) => ({
+        code: "PLAN_QUALITY_HINT" as const,
+        severity: "warning" as const,
+        message: finding.detail,
+        field: null,
+        step: null,
+      })),
+  ];
   return hints.length
     ? { ...validation, warnings: [...validation.warnings, ...hints] }
     : validation;
+}
+
+/**
+ * The plan quality check (src/analytics/plan-quality.ts) for an Arnold plan,
+ * or null where it does not apply: an own plan is the user's, and without
+ * days and minutes there is no budget to check against. Exercises the
+ * catalog does not know count as unknown, never as a muscle group.
+ */
+function planQuality(
+  profile: OnboardingProfile,
+  sessions: readonly {
+    session_name: string;
+    exercises: readonly { exercise_id: string; target_sets?: number | null }[];
+  }[],
+  catalog: readonly ArnoldExercise[],
+): PlanQualityResult | null {
+  const training = profile.training;
+  if (
+    profile.path !== "arnold_plan" ||
+    training.days_per_week === null ||
+    training.session_minutes === null
+  )
+    return null;
+  return checkPlanQuality({
+    sessions: sessions.map((session) => ({
+      session_name: session.session_name,
+      exercises: session.exercises.map((item) => ({
+        exercise_id: item.exercise_id,
+        target_sets: item.target_sets ?? null,
+      })),
+    })),
+    catalog: catalog.map((exercise) => ({
+      exercise_id: exercise.exercise_id,
+      primary_muscle: muscleGroupOf(exercise.primary_muscle),
+    })),
+    profile: {
+      days_per_week: training.days_per_week,
+      session_minutes: training.session_minutes,
+      focus_muscle_groups: training.focus_muscle_groups ?? [],
+      goal: training.primary_goal,
+    },
+  });
+}
+
+/**
+ * The muscle group key of a catalog entry. The tracker stores the German
+ * label (account/catalog); a key is taken as it is. Anything else is unknown.
+ */
+function muscleGroupOf(primary: string | null | undefined): string | null {
+  if (!primary) return null;
+  if ((MUSCLE_GROUPS as readonly string[]).includes(primary)) return primary;
+  const entry = Object.entries(MUSCLE_GROUP_LABEL).find(
+    ([, label]) => label === primary,
+  );
+  return entry ? entry[0] : null;
 }

@@ -724,6 +724,8 @@ export type OnboardingProfilePatch = z.infer<
 /* --------------------------------------------------------------- validation */
 
 export const ONBOARDING_VALIDATION_CODES = [
+  /** A hint of the plan quality check (src/analytics/plan-quality.ts). */
+  "PLAN_QUALITY_HINT",
   "MISSING_PATH",
   "MISSING_PRIMARY_GOAL",
   "MISSING_EXPERIENCE",

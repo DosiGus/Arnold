@@ -973,7 +973,7 @@ describe("proposal against the profile over MCP (UX-012)", () => {
     expect(response.state!.plan).not.toBeNull();
   });
 
-  it("stores a plan over the time budget with a hint, and none within it", async () => {
+  it("refuses a plan over the time budget with a German sentence (D-10)", async () => {
     const claim = await ready({ session_minutes: 30 });
     const response = await propose(claim, [
       "squat",
@@ -981,16 +981,34 @@ describe("proposal against the profile over MCP (UX-012)", () => {
       "lat-pulldown",
       "leg-curl",
     ]);
-    expect(response.ok, response.error?.message).toBe(true);
-    expect(response.state!.validation.warnings.map((w) => w.code)).toContain(
-      "PROPOSAL_OVER_TIME_BUDGET",
-    );
+    expect(response.ok).toBe(false);
+    expect(response.error?.code).toBe("PLAN_PROPOSAL_INVALID");
+    expect(response.error?.message).toContain("geplant sind 30");
+    expect(response.state?.plan ?? null).toBeNull();
+  });
 
-    const quiet = await ready({ session_minutes: 30 });
-    const fine = await propose(quiet, ["squat", "bench-press", "lat-pulldown"]);
-    expect(fine.ok).toBe(true);
-    expect(fine.state!.validation.warnings.map((w) => w.code)).not.toContain(
+  it("refuses a plan that does not emphasise the focus (D-10)", async () => {
+    const claim = await ready({
+      session_minutes: 90,
+      focus_muscle_groups: ["back"],
+    });
+    const response = await propose(claim, ["squat", "bench-press", "leg-curl"]);
+    expect(response.ok).toBe(false);
+    expect(response.error?.code).toBe("PLAN_PROPOSAL_INVALID");
+    expect(response.error?.message).toContain("Schwerpunkt");
+  });
+
+  it("stores a plan within the rules and passes the hints through (D-10)", async () => {
+    const claim = await ready({ session_minutes: 45 });
+    const fine = await propose(claim, ["squat", "bench-press", "lat-pulldown"]);
+    expect(fine.ok, fine.error?.message).toBe(true);
+    const warnings = fine.state!.validation.warnings;
+    expect(warnings.map((w) => w.code)).not.toContain(
       "PROPOSAL_OVER_TIME_BUDGET",
     );
+    // One day of three sets each is little for muscle gain: a hint, no block.
+    const hints = warnings.filter((w) => w.code === "PLAN_QUALITY_HINT");
+    expect(hints.length).toBeGreaterThan(0);
+    expect(hints[0].message).toContain("Wochensätze");
   });
 });

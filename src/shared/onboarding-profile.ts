@@ -56,10 +56,7 @@ import {
 } from "./onboarding-contract.js";
 import { exercisesFor, starterExercise } from "./exercise-starter-catalog.js";
 import { MOBILITY_CATALOG } from "./mobility-catalog.js";
-import {
-  MobilityPreferenceSchema,
-  type MobilityPreference,
-} from "./mobility-contract.js";
+import { type MobilityPreference } from "./mobility-contract.js";
 
 /**
  * Whether the setup includes running: the running module, or for older
