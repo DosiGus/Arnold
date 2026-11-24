@@ -10,8 +10,6 @@
  * Unknown stays unknown: an exercise without a muscle group or a set count is
  * reported in `unknown`, never counted as 0 and never used to block.
  */
-import type { TrainingSessionInput } from "../shared/plan-contract.js";
-import type { RunType } from "../shared/run-contract.js";
 import { addDays } from "./period.js";
 import {
   isHardRun,
@@ -58,10 +56,21 @@ export interface PlanQualityExercise {
   readonly isolation?: boolean | null;
 }
 
+/** A planned strength exercise (structurally a `PlannedExerciseInput`). */
+export interface PlanQualityItem {
+  readonly exercise_id: string;
+  /** Null or absent = unknown. */
+  readonly target_sets?: number | null;
+}
+
+type RunType = Parameters<typeof isHardRun>[0];
+
 /** A strength session; `weekday` (1 = Monday) only matters for run rules. */
-export type PlanQualitySession = TrainingSessionInput & {
+export interface PlanQualitySession {
+  readonly session_name: string;
+  readonly exercises: readonly PlanQualityItem[];
   readonly weekday?: number | null;
-};
+}
 
 export interface PlanQualityRun {
   readonly session_name: string;
