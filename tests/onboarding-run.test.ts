@@ -31,7 +31,11 @@ const RUN = {
 } as const;
 
 const profileWith = (
-  goals: { primary_goal: string; secondary_goals?: string[] },
+  goals: {
+    primary_goal: string;
+    secondary_goals?: string[];
+    modules?: object;
+  },
   run?: object | null,
 ): OnboardingProfilePatch =>
   ({
@@ -233,7 +237,8 @@ describe("the run gate (fail closed)", () => {
     });
     expect(saved.ok).toBe(true);
     expect(saved.state!.run_setup).toEqual({ required: true, ready: false });
-    expect(saved.state!.progress.profile_complete).toBe(true);
+    // Since Onboarding 2.0 the run details are required answers (RDS-003).
+    expect(saved.state!.progress.profile_complete).toBe(false);
     expect(saved.state!.progress.can_request_plan).toBe(false);
     const request = await service.requestPlanProposal({
       request_id: rid(),
@@ -358,11 +363,19 @@ describe("the hand-over to the run profile", () => {
     expect(after[0].row_revision).toBe(1);
   });
 
-  it("leaves the run profile alone without the running goal", async () => {
+  it("leaves the run profile alone when running is not chosen", async () => {
     const runtime = createFixtureOnboarding();
+    // Stored run details alone mean running (modulesOf); a module choice
+    // without running leaves the run profile alone.
     const claim = await confirmed(
       runtime.onboarding,
-      profileWith({ primary_goal: "strength" }, RUN),
+      profileWith(
+        {
+          primary_goal: "strength",
+          modules: { running: false, mobility: false, morning_routine: false },
+        },
+        RUN,
+      ),
     );
     const finished = await runtime.onboarding.finishSetup({
       request_id: rid(),
