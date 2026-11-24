@@ -99,9 +99,7 @@ describe.each(QUALITY_PROFILES)("$key · $label", (profile) => {
     expect(profile.good).toHaveLength(profile.training.days_per_week!);
     // the brief names the day count and the time the plan is held to
     const brief = buildBrief(onboarding, {
-      onboarding_session_id: "o-1",
       exercises: newTrackerDataset("quality-tracker").exercises,
-      now: "2026-06-01T08:00:00Z",
     });
     const constraints = brief.constraints.join(" ");
     expect(constraints).toContain(

@@ -9,6 +9,7 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
+  OnboardingProfilePatchSchema,
   OnboardingProfileSchema,
   OnboardingStateSchema,
   OpenQuestionSchema,
@@ -21,9 +22,7 @@ import {
   missingRequiredFields,
   openQuestions,
   runSetupState,
-  withMobilityDefaults,
 } from "../src/shared/onboarding-profile";
-import { MOBILITY_DEFAULTS } from "../src/shared/mobility-contract";
 import { createFixtureOnboarding } from "../src/server/onboarding/fixture";
 
 const rid = () => randomUUID();
@@ -203,7 +202,10 @@ describe("openQuestions", () => {
       training: {
         mobility: {
           wants: true,
-          morning: {} as never,
+          morning: {
+            weekdays: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+            minutes: 10,
+          },
           sessions: null,
           stiff_areas: [],
         },
@@ -216,49 +218,8 @@ describe("openQuestions", () => {
   });
 });
 
-describe("the defaults", () => {
-  it("a bare yes means the morning routine: every day, 10 minutes", () => {
-    const value = withMobilityDefaults({ wants: true });
-    expect(value).toEqual({
-      wants: true,
-      morning: {
-        weekdays: [...MOBILITY_DEFAULTS.morning.weekdays],
-        minutes: 10,
-      },
-      sessions: null,
-      stiff_areas: [],
-    });
-    expect(
-      (value as { morning: { weekdays: string[] } }).morning.weekdays,
-    ).toHaveLength(7);
-  });
-
-  it("sessions without details: two per week, 20 minutes, Arnold decides", () => {
-    expect(withMobilityDefaults({ wants: true, sessions: {} })).toEqual({
-      wants: true,
-      morning: null,
-      sessions: { placement: "arnold_decides", per_week: 2, minutes: 20 },
-      stiff_areas: [],
-    });
-  });
-
-  it("what the user named is never overwritten", () => {
-    expect(
-      withMobilityDefaults({
-        wants: true,
-        morning: { minutes: 15 },
-        sessions: { per_week: 3, placement: "own_days" },
-        stiff_areas: ["neck", "neck", "hips"],
-      }),
-    ).toEqual({
-      wants: true,
-      morning: {
-        weekdays: [...MOBILITY_DEFAULTS.morning.weekdays],
-        minutes: 15,
-      },
-      sessions: { placement: "own_days", per_week: 3, minutes: 20 },
-      stiff_areas: ["neck", "hips"],
-    });
+describe("no mobility defaults (D-09)", () => {
+  it("stores a mobility answer exactly as named", () => {
     const profile = merged(empty(), {
       training: {
         mobility: {
@@ -277,8 +238,40 @@ describe("the defaults", () => {
     });
   });
 
+  it("refuses a yes without its details instead of filling them in", () => {
+    for (const mobility of [
+      { wants: true },
+      { wants: true, morning: {}, sessions: null, stiff_areas: [] },
+      { wants: true, morning: null, sessions: {}, stiff_areas: [] },
+    ])
+      expect(
+        OnboardingProfilePatchSchema.safeParse({ training: { mobility } })
+          .success,
+      ).toBe(false);
+  });
+
+  it("leaves the missing details as open questions", () => {
+    const profile = merged(empty(), {
+      path: "arnold_plan",
+      training: {
+        modules: { running: false, mobility: true, morning_routine: true },
+      },
+    });
+    const fields = openQuestions(
+      profile,
+      runSetupState(profile.training),
+    ).flatMap((question) => question.fields);
+    expect(fields).toEqual(
+      expect.arrayContaining(["training.mobility.stiff_areas"]),
+    );
+    expect(profile.training.mobility).toBeUndefined();
+  });
+
   it("a no stays a no", () => {
-    expect(withMobilityDefaults({ wants: false })).toEqual({ wants: false });
+    const profile = merged(empty(), {
+      training: { mobility: { wants: false } },
+    });
+    expect(profile.training.mobility).toEqual({ wants: false });
   });
 });
 
@@ -288,10 +281,7 @@ describe("mobility never blocks a plan", () => {
     const started = await runtime.onboarding.startOnboarding({
       request_id: rid(),
     });
-    const claim = {
-      onboarding_session_id: started.state!.session.onboarding_session_id,
-      session_token: started.session_token!,
-    };
+    const claim = {};
     const saved = await runtime.onboarding.updateProfile({
       request_id: rid(),
       ...claim,
@@ -401,8 +391,6 @@ describe("states saved before mobility existed", () => {
     ]);
     const cancelled = await runtime.onboarding.cancelOnboarding({
       request_id: rid(),
-      onboarding_session_id: started.state!.session.onboarding_session_id,
-      session_token: started.session_token!,
     });
     expect(cancelled.state!.open_questions).toEqual([]);
   });

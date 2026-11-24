@@ -67,7 +67,7 @@ export function OnboardingView({
   // A new or cancelled setup starts at the welcome again.
   useEffect(() => {
     setFormPage(undefined);
-  }, [session?.onboarding_session_id, onb.cancelled]);
+  }, [onb.cancelled]);
   useEffect(() => {
     if (session?.status === "READY_TO_FINISH") onFinishedHandoff?.();
   }, [session?.status, onFinishedHandoff]);
@@ -105,12 +105,7 @@ export function OnboardingView({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [
-    session?.onboarding_session_id,
-    session?.status,
-    state?.plan?.plan_version_id,
-    onb.reload,
-  ]);
+  }, [session?.status, state?.plan?.plan_version_id, onb.reload]);
   useModelContext(
     client,
     state
@@ -486,8 +481,8 @@ export function OnboardingView({
   else if (step === "profile" || (step === "welcome" && formPage))
     card = (
       <ProfileStep
-        key={`${session.onboarding_session_id}-${onb.reloadEpoch}`}
-        sessionKey={session.onboarding_session_id}
+        key={`setup-${onb.reloadEpoch}`}
+        sessionKey="setup"
         profile={session.profile}
         progress={state.progress}
         validation={state.validation}

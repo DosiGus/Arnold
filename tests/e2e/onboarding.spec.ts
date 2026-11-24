@@ -361,32 +361,30 @@ test("cancellation is explicit and offers a controlled restart", async ({
   ).toBeVisible();
 });
 
-test("expiry and a missing session secret never reveal another setup", async ({
+test("an expired setup is never reopened and the page keeps no setup secret", async ({
   page,
 }) => {
+  // D-11: the setup is found by identity, so there is no secret to lose. An
+  // expired setup is not resumed: the account starts from the welcome card.
   await openWizard(page, "http://127.0.0.1:8802");
   await page
     .getByRole("button", { name: "Plan mit Arnold erstellen", exact: true })
     .click();
+  const firstQuestion = page.getByRole("heading", {
+    name: "Ein paar Angaben über dich?",
+  });
+  await expect(firstQuestion).toBeVisible();
   await page.waitForTimeout(2000);
   await page.reload();
   await expect(
-    page.getByRole("heading", { name: "Deine Einrichtung ist abgelaufen" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Neue Einrichtung starten" }).click();
-  await expect(
     page.getByRole("heading", { name: "Willkommen bei Arnold" }),
   ).toBeVisible();
-  await page.evaluate(() =>
-    sessionStorage.setItem(
-      "arnold.onboarding.claim",
-      JSON.stringify({ onboarding_session_id: "missing-secret" }),
+  await expect(firstQuestion).toHaveCount(0);
+  expect(
+    await page.evaluate(() =>
+      sessionStorage.getItem("arnold.onboarding.claim"),
     ),
-  );
-  await page.reload();
-  await expect(
-    page.getByRole("heading", { name: "Willkommen bei Arnold" }),
-  ).toBeVisible();
+  ).toBeNull();
 });
 
 test("question cards are operable by keyboard and pass accessibility checks", async ({

@@ -1,10 +1,10 @@
 /**
- * Session isolation, credentials, persistence and retention.
+ * Session isolation, identity binding, persistence and retention.
  *
- * The rule under test throughout: **a session id submitted by a client is not a
- * permission.** Without a login a setup session is anonymous, so an id alone
- * must be worthless — otherwise anyone who guessed one could read someone
- * else's answers.
+ * The rule under test throughout (D-11): **the verified identity is the only
+ * key to a setup.** No tool takes a setup id or a secret; whatever a client
+ * sends in their place is ignored and selects nothing. Another account never
+ * reaches a setup it did not create, and every failure is closed and coded.
  *
  * The persistence tests cover the other half of §11: a setup must survive a
  * server restart to be resumable at all, and an abandoned one must not be kept
@@ -13,13 +13,13 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
+  AuthenticatedOnboardingAccessControl,
   DenyOnboardingAccessControl,
   FixtureOnboardingAccessControl,
   createSessionToken,
   fingerprintToken,
-  setupBinding,
-  tokenMatches,
 } from "../src/server/onboarding/access";
+import type { AuthenticatedArnoldContext } from "../src/server/auth/identity";
 import {
   InMemoryOnboardingRepository,
   ONBOARDING_RETENTION_MS,
@@ -110,212 +110,210 @@ describe("session tokens", () => {
     expect(fingerprintToken(token)).toBe(stored);
     expect(fingerprintToken(createSessionToken())).not.toBe(stored);
   });
-
-  it("match only the token they were derived from", () => {
-    const token = createSessionToken();
-    const stored = fingerprintToken(token);
-    expect(tokenMatches(stored, token)).toBe(true);
-    expect(tokenMatches(stored, createSessionToken())).toBe(false);
-    expect(tokenMatches(stored, "")).toBe(false);
-    expect(tokenMatches(stored, `${token}x`)).toBe(false);
-  });
 });
+
+const account = (userId: string) =>
+  ({ userId }) as unknown as AuthenticatedArnoldContext;
 
 describe("the fixture access guard", () => {
   const guard = new FixtureOnboardingAccessControl();
 
-  it("accepts the right token", async () => {
-    const token = createSessionToken();
-    const principal = await guard.authorize(
-      record("onb-1", { token }),
-      token,
-      undefined,
-    );
+  it("accepts a setup of its own subject without any secret", async () => {
+    const principal = await guard.authorize(record("onb-1"));
     expect(principal.verified).toBe(true);
     expect(principal.kind).toBe("fixture");
   });
 
-  it("refuses a wrong or absent token", async () => {
-    const stored = record("onb-1");
-    await expect(
-      guard.authorize(stored, createSessionToken(), undefined),
-    ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
-    await expect(guard.authorize(stored, "", undefined)).rejects.toMatchObject({
-      code: "AUTH_REQUIRED",
-    });
-  });
-
   it("refuses a session owned by another subject", async () => {
-    const token = createSessionToken();
-    const foreign = {
-      ...record("onb-1", { token }),
-      owner_subject: "someone-else",
-    };
-    await expect(
-      guard.authorize(foreign, token, undefined),
-    ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+    const foreign = { ...record("onb-1"), owner_subject: "someone-else" };
+    await expect(guard.authorize(foreign)).rejects.toMatchObject({
+      code: "PERMISSION_DENIED",
+    });
   });
 });
 
 describe("the production guard", () => {
-  it("refuses everything until Task 007", async () => {
+  it("refuses everything without an identity binding", async () => {
     const guard = new DenyOnboardingAccessControl();
     expect(guard.mode).toBe("production");
     await expect(guard.establish(undefined)).rejects.toMatchObject({
       code: "AUTH_REQUIRED",
     });
-    const token = createSessionToken();
+    await expect(guard.authorize(record("onb-1"))).rejects.toMatchObject({
+      code: "AUTH_REQUIRED",
+    });
+  });
+});
+
+describe("the account guard", () => {
+  const guard = new AuthenticatedOnboardingAccessControl("user-1");
+
+  it("refuses a caller that is not its verified account", async () => {
+    await expect(guard.establish(account("user-2"))).rejects.toMatchObject({
+      code: "AUTH_REQUIRED",
+    });
+    await expect(guard.establish(undefined)).rejects.toMatchObject({
+      code: "AUTH_REQUIRED",
+    });
+  });
+
+  it("refuses a setup another account created", async () => {
+    const foreign = { ...record("onb-1"), owner_subject: "user-2" };
     await expect(
-      guard.authorize(record("onb-1", { token }), token, undefined),
-    ).rejects.toMatchObject({ code: "AUTH_REQUIRED" });
+      guard.authorize(foreign, account("user-1")),
+    ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+    const own = { ...record("onb-2"), owner_subject: "user-1" };
+    await expect(
+      guard.authorize(own, account("user-1")),
+    ).resolves.toMatchObject({ subject: "user-1", kind: "authenticated" });
   });
 });
 
 /* -------------------------------------------------------------- isolation */
 
-describe("two separate setups", () => {
-  it("cannot read each other even with a known id", async () => {
-    const runtime = createFixtureOnboarding();
-    const service = runtime.onboarding;
+/** Two accounts on one store, each behind its own guard, as in production. */
+function twoAccounts(
+  options: { clock?: () => Date; sessionTtlMs?: number } = {},
+) {
+  const repository = new InMemoryOnboardingRepository();
+  const runtime = (userId: string) =>
+    createFixtureOnboarding({
+      ...options,
+      repository,
+      access: new AuthenticatedOnboardingAccessControl(userId),
+    }).onboarding;
+  return {
+    repository,
+    one: runtime("user-1"),
+    two: runtime("user-2"),
+    ctx1: account("user-1"),
+    ctx2: account("user-2"),
+  };
+}
 
-    const a = await service.startOnboarding({ request_id: rid() });
-    const b = await service.startOnboarding({ request_id: rid() });
-    const claimA = {
-      onboarding_session_id: a.state!.session.onboarding_session_id,
-      session_token: a.session_token!,
-    };
-    const claimB = {
-      onboarding_session_id: b.state!.session.onboarding_session_id,
-      session_token: b.session_token!,
-    };
-    expect(claimA.onboarding_session_id).not.toBe(claimB.onboarding_session_id);
-    expect(claimA.session_token).not.toBe(claimB.session_token);
-
-    // The id of A with the token of B: refused. The bare id is worthless.
-    await expect(
-      service.getOnboardingState({
-        onboarding_session_id: claimA.onboarding_session_id,
-        session_token: claimB.session_token,
-      }),
-    ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+describe("binding by identity", () => {
+  it("works without a setup id or a secret", async () => {
+    const { one, ctx1 } = twoAccounts();
+    const started = await one.startOnboarding({ request_id: rid() }, ctx1);
+    expect(started.ok).toBe(true);
+    const saved = await one.updateProfile(
+      { request_id: rid(), profile: COMPLETE },
+      ctx1,
+    );
+    expect(saved.ok).toBe(true);
+    const state = await one.getOnboardingState({}, ctx1);
+    expect(state.session.profile.training.days_per_week).toBe(3);
   });
 
-  it("keeps their answers apart", async () => {
-    const service = createFixtureOnboarding().onboarding;
-    const a = await service.startOnboarding({ request_id: rid() });
-    const b = await service.startOnboarding({ request_id: rid() });
-    const claimA = {
-      onboarding_session_id: a.state!.session.onboarding_session_id,
-      session_token: a.session_token!,
-    };
-    const claimB = {
-      onboarding_session_id: b.state!.session.onboarding_session_id,
-      session_token: b.session_token!,
-    };
-
-    await service.updateProfile({
-      request_id: rid(),
-      ...claimA,
-      profile: { ...COMPLETE, training: { ...TRAINING, days_per_week: 3 } },
+  it("finds nothing for an account without a setup", async () => {
+    const { two, ctx2 } = twoAccounts();
+    await expect(two.getOnboardingState({}, ctx2)).rejects.toMatchObject({
+      code: "SESSION_NOT_FOUND",
     });
-    await service.updateProfile({
-      request_id: rid(),
-      ...claimB,
-      profile: {
-        ...COMPLETE,
-        training: { ...TRAINING, days_per_week: 6, primary_goal: "strength" },
+    const write = await two.updateProfile(
+      { request_id: rid(), profile: COMPLETE },
+      ctx2,
+    );
+    expect(write.ok).toBe(false);
+    expect(write.error?.code).toBe("SESSION_NOT_FOUND");
+  });
+
+  it("never reaches another account's setup, whatever the client sends", async () => {
+    const { repository, one, two, ctx1, ctx2 } = twoAccounts();
+    await one.startOnboarding({ request_id: rid() }, ctx1);
+    await one.updateProfile({ request_id: rid(), profile: COMPLETE }, ctx1);
+    const stored = (await repository.findLatestByOwner("user-1"))!;
+
+    // Legacy fields naming user 1's setup are stripped and select nothing.
+    const legacy = {
+      onboarding_session_id: stored.session.onboarding_session_id,
+      session_token: "x".repeat(43),
+    };
+    await expect(two.getOnboardingState(legacy, ctx2)).rejects.toMatchObject({
+      code: "SESSION_NOT_FOUND",
+    });
+    const write = await two.updateProfile(
+      {
+        request_id: rid(),
+        ...legacy,
+        profile: { training: { days_per_week: 6 } },
       },
+      ctx2,
+    );
+    expect(write.ok).toBe(false);
+    expect(write.error?.code).toBe("SESSION_NOT_FOUND");
+    // User 2's guard with user 1's identity is refused outright.
+    await expect(two.getOnboardingState({}, ctx1)).rejects.toMatchObject({
+      code: "AUTH_REQUIRED",
     });
-
-    const stateA = await service.getOnboardingState(claimA);
-    const stateB = await service.getOnboardingState(claimB);
-    expect(stateA.session.profile.training.days_per_week).toBe(3);
-    expect(stateA.session.profile.training.primary_goal).toBe("muscle_gain");
-    expect(stateB.session.profile.training.days_per_week).toBe(6);
-    expect(stateB.session.profile.training.primary_goal).toBe("strength");
+    // User 1's answers are untouched.
+    const own = await one.getOnboardingState({}, ctx1);
+    expect(own.session.profile.training.days_per_week).toBe(3);
   });
 
-  it("keeps their plan drafts apart", async () => {
-    const runtime = createFixtureOnboarding();
-    const service = runtime.onboarding;
-    const claims = [];
-    for (const _ of [0, 1]) {
-      const started = await service.startOnboarding({ request_id: rid() });
-      const claim = {
-        onboarding_session_id: started.state!.session.onboarding_session_id,
-        session_token: started.session_token!,
-      };
-      await service.updateProfile({
+  it("keeps the answers of two accounts apart", async () => {
+    const { one, two, ctx1, ctx2 } = twoAccounts();
+    await one.startOnboarding({ request_id: rid() }, ctx1);
+    await two.startOnboarding({ request_id: rid() }, ctx2);
+    await one.updateProfile({ request_id: rid(), profile: COMPLETE }, ctx1);
+    await two.updateProfile(
+      {
         request_id: rid(),
-        ...claim,
-        profile: COMPLETE,
-      });
-      await service.requestPlanProposal({ request_id: rid(), ...claim });
-      const brief = await service.getBrief(claim);
-      await service.submitPlanProposal({
-        request_id: rid(),
-        ...claim,
-        name: `Plan ${claims.length + 1}`,
-        origin: "ai_proposal",
-        sessions: [
-          {
-            session_name: "Ganzkörper",
-            exercises: [{ exercise_id: brief.exercise_catalog[0].exercise_id }],
-          },
-        ],
-      });
-      claims.push(claim);
-    }
-    const first = await service.getOnboardingState(claims[0]);
-    const second = await service.getOnboardingState(claims[1]);
-    expect(first.plan!.plan_version_id).not.toBe(second.plan!.plan_version_id);
-    expect(first.plan!.name).toBe("Plan 1");
-    expect(second.plan!.name).toBe("Plan 2");
+        profile: {
+          ...COMPLETE,
+          training: { ...TRAINING, days_per_week: 5, primary_goal: "strength" },
+        },
+      },
+      ctx2,
+    );
+    const a = await one.getOnboardingState({}, ctx1);
+    const b = await two.getOnboardingState({}, ctx2);
+    expect(a.session.profile.training.primary_goal).toBe("muscle_gain");
+    expect(b.session.profile.training.days_per_week).toBe(5);
+    expect(b.session.profile.training.primary_goal).toBe("strength");
   });
 
-  it("refuses an unknown session reference", async () => {
-    const service = createFixtureOnboarding().onboarding;
-    await expect(
-      service.getOnboardingState({
-        onboarding_session_id: "onb-made-up",
-        session_token: createSessionToken(),
-      }),
-    ).rejects.toMatchObject({ code: "SESSION_NOT_FOUND" });
+  it("fails closed on an expired setup", async () => {
+    let now = new Date("2026-05-01T10:00:00Z");
+    const { one, ctx1 } = twoAccounts({
+      clock: () => now,
+      sessionTtlMs: 60_000,
+    });
+    await one.startOnboarding({ request_id: rid() }, ctx1);
+    now = new Date("2026-05-01T11:00:00Z");
+    await expect(one.getOnboardingState({}, ctx1)).rejects.toMatchObject({
+      code: "SESSION_EXPIRED",
+    });
+    const write = await one.updateProfile(
+      { request_id: rid(), profile: COMPLETE },
+      ctx1,
+    );
+    expect(write.error?.code).toBe("SESSION_EXPIRED");
   });
 
-  it("never echoes the session secret in a state payload", async () => {
+  it("fails closed on a cancelled setup", async () => {
+    const { one, ctx1 } = twoAccounts();
+    await one.startOnboarding({ request_id: rid() }, ctx1);
+    const cancelled = await one.cancelOnboarding({ request_id: rid() }, ctx1);
+    expect(cancelled.ok).toBe(true);
+    await expect(one.getOnboardingState({}, ctx1)).rejects.toMatchObject({
+      code: "SESSION_CANCELLED",
+    });
+    const write = await one.updateProfile(
+      { request_id: rid(), profile: COMPLETE },
+      ctx1,
+    );
+    expect(write.error?.code).toBe("SESSION_CANCELLED");
+  });
+
+  it("never echoes internals in a state payload", async () => {
     const service = createFixtureOnboarding().onboarding;
-    const started = await service.startOnboarding({ request_id: rid() });
-    const claim = {
-      onboarding_session_id: started.state!.session.onboarding_session_id,
-      session_token: started.session_token!,
-    };
-    const state = await service.getOnboardingState(claim);
-    const serialized = JSON.stringify(state);
-    expect(serialized).not.toContain(claim.session_token);
+    await service.startOnboarding({ request_id: rid() });
+    const serialized = JSON.stringify(await service.getOnboardingState({}));
+    expect(serialized).not.toContain("session_token");
     expect(serialized).not.toContain("token_fingerprint");
     expect(serialized).not.toContain("owner_subject");
-  });
-
-  it("hands out the secret exactly once, on creation", async () => {
-    const service = createFixtureOnboarding().onboarding;
-    const started = await service.startOnboarding({ request_id: rid() });
-    const claim = {
-      onboarding_session_id: started.state!.session.onboarding_session_id,
-      session_token: started.session_token!,
-    };
-    expect(started.session_token).toBeTruthy();
-    const update = await service.updateProfile({
-      request_id: rid(),
-      ...claim,
-      profile: { training: { days_per_week: 3 } },
-    });
-    expect(update.session_token).toBeNull();
-    const resumed = await service.startOnboarding({
-      request_id: rid(),
-      resume_session: claim,
-    });
-    expect(resumed.session_token).toBeNull();
+    expect(serialized).not.toContain("onb-");
   });
 });
 
@@ -460,10 +458,7 @@ describe("a restarted server", () => {
     const started = await first.onboarding.startOnboarding({
       request_id: rid(),
     });
-    const claim = {
-      onboarding_session_id: started.state!.session.onboarding_session_id,
-      session_token: started.session_token!,
-    };
+    const claim = {};
     await first.onboarding.updateProfile({
       request_id: rid(),
       ...claim,
@@ -479,60 +474,30 @@ describe("a restarted server", () => {
     expect(resumed.resume.cross_device).toBe(false);
   });
 
-  it("still refuses a wrong token", async () => {
+  it("finds nothing for another subject on the same store", async () => {
     const repository = new InMemoryOnboardingRepository();
     const first = createFixtureOnboarding({ repository });
-    const started = await first.onboarding.startOnboarding({
-      request_id: rid(),
-    });
-    const id = started.state!.session.onboarding_session_id;
+    await first.onboarding.startOnboarding({ request_id: rid() });
 
-    const second = createFixtureOnboarding({ repository });
+    const second = createFixtureOnboarding({
+      repository,
+      access: new FixtureOnboardingAccessControl("another-synthetic-subject"),
+    });
     await expect(
-      second.onboarding.getOnboardingState({
-        onboarding_session_id: id,
-        session_token: createSessionToken(),
-      }),
-    ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+      second.onboarding.getOnboardingState({}),
+    ).rejects.toMatchObject({ code: "SESSION_NOT_FOUND" });
   });
 
-  it("stores no plaintext secret", async () => {
+  it("stores only a fingerprint and hands out no secret", async () => {
     const repository = new InMemoryOnboardingRepository();
     const runtime = createFixtureOnboarding({ repository });
     const started = await runtime.onboarding.startOnboarding({
       request_id: rid(),
     });
-    const token = started.session_token!;
-    const stored = JSON.stringify(
-      await repository.getSession(started.state!.session.onboarding_session_id),
+    expect(JSON.stringify(started)).not.toContain("token");
+    const stored = await repository.findLatestByOwner(
+      "synthetic-onboarding-fixture",
     );
-    expect(stored).not.toContain(token);
-    expect(stored).toContain("token_fingerprint");
-  });
-});
-
-/* --------------------------------------------------------- setup binding */
-
-describe("the setup binding", () => {
-  it("is stable for one confirmed revision and differs across revisions", () => {
-    const stored = record("onb-1");
-    const first = setupBinding(stored, 1);
-    expect(setupBinding(stored, 1)).toBe(first);
-    expect(setupBinding(stored, 2)).not.toBe(first);
-  });
-
-  it("differs between two sessions", () => {
-    expect(setupBinding(record("onb-1"), 1)).not.toBe(
-      setupBinding(record("onb-2"), 1),
-    );
-  });
-
-  it("does not reveal the session secret", () => {
-    const token = createSessionToken();
-    const stored = record("onb-1", { token });
-    const binding = setupBinding(stored, 1);
-    expect(binding).toHaveLength(64);
-    expect(binding).not.toContain(token);
-    expect(binding).not.toContain(stored.token_fingerprint);
+    expect(stored!.token_fingerprint).toHaveLength(64);
   });
 });

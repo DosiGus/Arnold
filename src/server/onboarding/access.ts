@@ -1,25 +1,22 @@
 /**
  * Access control for onboarding sessions.
  *
- * The rule this module exists to enforce: **a session id submitted by a client
- * is not a permission.** Without a login a setup session is anonymous — and
- * an anonymous resource addressed by a guessable id would be readable by
- * anyone who guessed it. Three mechanisms prevent that.
+ * The rule this module exists to enforce: **the caller's verified identity is
+ * the only key to a setup** (D-11). No tool takes a setup id or a session
+ * secret; the service looks up the open setup of the principal established
+ * here, and checks the stored owner against it once more before acting.
  *
- * First, a session is created with a 256-bit secret. The client keeps it; the
- * server stores only its SHA-256. A stolen database holds no usable tokens, and
- * the secret never appears in a log line or a tool's text output.
+ * Production fails closed. `DenyOnboardingAccessControl` refuses every call
+ * with `AUTH_REQUIRED`, and `AuthenticatedOnboardingAccessControl` grants only
+ * the verified account it was built for. The fixture guard grants one fixed
+ * synthetic subject: the local single-user demo without a login. Behind a
+ * login, fixture deployments run one sandbox per account (fixture-sandboxes).
  *
- * Second, the comparison is constant-time. A timing oracle on a session token
- * is a real way to brute-force one.
- *
- * Third, production fails closed. `ProductionOnboardingAccessControl` refuses
- * every call with `AUTH_REQUIRED` until a verified identity provider is wired
- * in, so switching the mode on cannot accidentally expose anonymous sessions.
- * The fixture guard is the only one that grants anything, and it only ever
- * grants its own synthetic subject.
+ * A setup still stores the hash of a random secret (`token_fingerprint`): the
+ * column predates D-11 and stays without a migration. The secret is never
+ * handed out and opens nothing.
  */
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { OnboardingErrorCode } from "../../shared/onboarding-contract.js";
 import type { OnboardingRecord } from "./repository.js";
 import { currentArnoldContext } from "../auth/guarded-server.js";
@@ -60,57 +57,27 @@ export interface OnboardingAccessControl {
   /** The principal allowed to create a new session, or a refusal. */
   establish(context: unknown): Promise<OnboardingPrincipal>;
   /**
-   * The principal allowed to act on an existing session, or a refusal.
-   *
-   * Receives the stored record *and* the presented secret, because ownership is
-   * exactly "this caller holds the secret this session was created with".
+   * The principal allowed to act on an existing session, or a refusal:
+   * ownership is "this record was created by the verified caller".
    */
   authorize(
     record: OnboardingRecord,
-    presentedToken: string,
     context: unknown,
   ): Promise<OnboardingPrincipal>;
 }
 
-/** A 256-bit URL-safe secret. Returned to the client once and never stored. */
+/** A 256-bit URL-safe secret. Only its hash is stored; it is never handed out. */
 export const createSessionToken = () => randomBytes(32).toString("base64url");
 
 export const fingerprintToken = (token: string) =>
   createHash("sha256").update(token).digest("hex");
 
-/** Constant-time comparison of two hex fingerprints. */
-export function tokenMatches(fingerprint: string, presented: string): boolean {
-  const expected = Buffer.from(fingerprint, "hex");
-  const actual = Buffer.from(fingerprintToken(presented), "hex");
-  return expected.length === actual.length && timingSafeEqual(expected, actual);
-}
-
 /**
- * True when the presented secret is one this setup handed out: the first one
- * or one given to a later card. Every candidate is compared, so the time taken
- * does not reveal which one matched.
- */
-export function recordTokenMatches(
-  record: OnboardingRecord,
-  presented: string,
-): boolean {
-  let matched = false;
-  for (const fingerprint of [
-    record.token_fingerprint,
-    ...(record.extra_token_fingerprints ?? []),
-  ])
-    matched = tokenMatches(fingerprint, presented) || matched;
-  return matched;
-}
-
-/**
- * The local test guard.
+ * The local guard: one fixed synthetic subject, no login.
  *
- * Grants one fixed synthetic subject, and only when the presented secret
- * matches the one the session was created with. Two sessions created by this
- * guard therefore still cannot read each other — which is the isolation
- * property Task 006 §22-E asks for, and it holds even though both share a
- * subject.
+ * Every caller is the same subject, so there is one setup per deployment.
+ * That is the single-user local demo; behind a login each account gets its
+ * own fixture sandbox and with it its own guard.
  */
 export class FixtureOnboardingAccessControl implements OnboardingAccessControl {
   readonly mode = "fixture" as const;
@@ -125,27 +92,11 @@ export class FixtureOnboardingAccessControl implements OnboardingAccessControl {
     return this.principal();
   }
 
-  async authorize(
-    record: OnboardingRecord,
-    presentedToken: string,
-    _context?: unknown,
-  ) {
-    if (!presentedToken)
-      throw new OnboardingAccessError(
-        "AUTH_REQUIRED",
-        "Für diese Einrichtungssitzung fehlt der Sitzungsnachweis.",
-      );
-    if (!recordTokenMatches(record, presentedToken))
-      // Deliberately the same wording as an unknown session: whether an id
-      // exists is itself information a caller without the secret may not have.
-      throw new OnboardingAccessError(
-        "PERMISSION_DENIED",
-        "Diese Einrichtungssitzung ist nicht zugänglich.",
-      );
+  async authorize(record: OnboardingRecord, _context?: unknown) {
     if (record.owner_subject !== this.subject)
       throw new OnboardingAccessError(
         "PERMISSION_DENIED",
-        "Diese Einrichtungssitzung gehört zu einem anderen Kontext.",
+        "Diese Einrichtung ist nicht zugänglich.",
       );
     return this.principal();
   }
@@ -173,14 +124,13 @@ export class DenyOnboardingAccessControl implements OnboardingAccessControl {
   }
   async authorize(
     _record: OnboardingRecord,
-    _presentedToken: string,
     _context?: unknown,
   ): Promise<OnboardingPrincipal> {
     this.deny();
   }
 }
 
-/** A verified Arnold account plus the existing session secret are both required. */
+/** A verified Arnold account; it may act only on setups it created. */
 export class AuthenticatedOnboardingAccessControl implements OnboardingAccessControl {
   readonly mode = "production" as const;
   readonly perOwner = true;
@@ -195,40 +145,13 @@ export class AuthenticatedOnboardingAccessControl implements OnboardingAccessCon
       );
     return { subject: caller.userId, kind: "authenticated", verified: true };
   }
-  async authorize(record: OnboardingRecord, token: string, context?: unknown) {
+  async authorize(record: OnboardingRecord, context?: unknown) {
     const principal = await this.establish(context);
-    if (
-      record.owner_subject !== principal.subject ||
-      !recordTokenMatches(record, token)
-    )
+    if (record.owner_subject !== principal.subject)
       throw new OnboardingAccessError(
         "PERMISSION_DENIED",
         "Diese Einrichtungssitzung ist nicht zugänglich.",
       );
     return principal;
   }
-}
-
-/**
- * An opaque name for "this session with this confirmed revision".
- *
- * Derived from the session id, the confirmed revision and the stored token
- * fingerprint, so it is stable for one confirmed plan, changes when the plan
- * changes, and cannot be inverted back into the session secret. It is a
- * *binding*, not a credential.
- */
-export function setupBinding(
-  record: OnboardingRecord,
-  confirmedRevision: number,
-): string {
-  return createHash("sha256")
-    .update(
-      [
-        "arnold.onboarding.oauth-binding/1",
-        record.session.onboarding_session_id,
-        String(confirmedRevision),
-        record.token_fingerprint,
-      ].join("|"),
-    )
-    .digest("hex");
 }

@@ -95,7 +95,6 @@ describe("recovery field", () => {
       request_id: "req_1",
       replayed: false,
       state: null,
-      session_token: null,
     };
     expect(
       OnboardingResponseSchema.safeParse({ ...base, error: reauthError })

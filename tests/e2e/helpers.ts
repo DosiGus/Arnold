@@ -10,6 +10,12 @@ export async function openCard(
   await expect(page.locator(`main[data-card="${card}"]`)).toBeVisible();
 }
 export async function openWizard(page: Page, base = "http://127.0.0.1:8800") {
+  // The setup belongs to the account (D-11), so a test starts from a clean
+  // slate: an open setup of an earlier test is cancelled first.
+  await page.goto(`${base}/health`);
+  await callTool(page, "cancel_onboarding", {
+    request_id: `reset-${Math.random().toString(36).slice(2)}`,
+  });
   await page.goto(`${base}/preview?onboarding=1`);
   await expect(
     wizard(page).getByRole("heading", { name: "Willkommen bei Arnold" }),
@@ -41,10 +47,8 @@ export async function callTool(
     { name, args },
   );
 }
-export const storedClaim = (page: Page) =>
-  page.evaluate(() =>
-    JSON.parse(sessionStorage.getItem("arnold.onboarding.claim") ?? "{}"),
-  );
+/** The setup is found by identity (D-11): calls name no setup. */
+export const storedClaim = async (_page: Page) => ({});
 /** Picks an answer tile (radio or checkbox) by its title. */
 export async function choose(page: Page, title: string) {
   await wizard(page)

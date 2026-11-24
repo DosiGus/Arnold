@@ -15,10 +15,7 @@ const runtime = createFixtureOnboarding();
 const started = await runtime.onboarding.startOnboarding({
   request_id: randomUUID(),
 });
-const claim = {
-  onboarding_session_id: started.state!.session.onboarding_session_id,
-  session_token: started.session_token!,
-};
+const claim = {};
 const fresh = started.state!;
 const readyResponse = await runtime.onboarding.updateProfile({
   ...claim,

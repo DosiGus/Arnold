@@ -213,10 +213,7 @@ describe("old data still parses (additions only)", () => {
   it("gives an old onboarding state without open_questions an empty list", async () => {
     const service = createFixtureOnboarding().onboarding;
     const started = await service.startOnboarding({ request_id: randomUUID() });
-    const claim = {
-      onboarding_session_id: started.state!.session.onboarding_session_id,
-      session_token: started.session_token!,
-    };
+    const claim = {};
     const state = await service.getOnboardingState(claim);
     const { open_questions: _drop, ...old } = JSON.parse(JSON.stringify(state));
     expect(OnboardingStateSchema.parse(old).open_questions).toEqual([]);

@@ -83,10 +83,7 @@ async function startSetup() {
     request_id: rid(),
   });
   expect(response.ok).toBe(true);
-  return {
-    onboarding_session_id: response.state!.session.onboarding_session_id,
-    session_token: response.session_token!,
-  };
+  return {};
 }
 
 const descriptions = async () =>
@@ -201,8 +198,8 @@ describe("a free narration", () => {
     expect(text).not.toContain("füllt in der App die Karten");
     expect(text).toContain("Sprachnachricht");
     // No secret in the transcript text.
-    expect(text).not.toContain(claim.session_token);
-    expect(text).not.toContain(claim.onboarding_session_id);
+    expect(text).not.toContain("session_token");
+    expect(text).not.toContain("onb-");
   });
 
   it("asks for mobility once when the profile is otherwise complete", async () => {
@@ -258,10 +255,7 @@ async function confirmedSetup(
   profile: OnboardingProfilePatch,
 ) {
   const started = await service.startOnboarding({ request_id: rid() });
-  const claim = {
-    onboarding_session_id: started.state!.session.onboarding_session_id,
-    session_token: started.session_token!,
-  };
+  const claim = {};
   const saved = await service.updateProfile({
     request_id: rid(),
     ...claim,
@@ -357,9 +351,7 @@ describe("finishing with a mobility answer", () => {
     const done = await service.finishSetup({ request_id: rid(), ...claim });
     expect(done.ok, done.error?.message).toBe(true);
     expect(done.state!.session.status).toBe("COMPLETED");
-    expect(calls).toEqual([
-      { preference: WANTS, session: claim.onboarding_session_id },
-    ]);
+    expect(calls).toEqual([{ preference: WANTS, session: expect.any(String) }]);
     expect(statusAtCall).toBe("COMPLETED");
     expect(done.state!.open_questions).toEqual([]);
   });
@@ -377,7 +369,7 @@ describe("finishing with a mobility answer", () => {
     const done = await service.finishSetup({ request_id: rid(), ...claim });
     expect(done.ok, done.error?.message).toBe(true);
     expect(calls).toEqual([
-      { preference: { wants: false }, session: claim.onboarding_session_id },
+      { preference: { wants: false }, session: expect.any(String) },
     ]);
   });
 
@@ -395,9 +387,7 @@ describe("finishing with a mobility answer", () => {
     expect(second.ok, second.error?.message).toBe(true);
     expect(second.replayed).toBe(true);
     expect(second.state!.session.status).toBe("COMPLETED");
-    expect([...stored.entries()]).toEqual([
-      [claim.onboarding_session_id, WANTS],
-    ]);
+    expect([...stored.values()]).toEqual([WANTS]);
   });
 
   it("reports a failure of the option and lets the finish be repeated", async () => {

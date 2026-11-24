@@ -43,17 +43,14 @@ const COMPLETE_PROFILE: OnboardingProfilePatch = {
 
 /** Starts a setup and returns the handle a caller needs for everything else. */
 async function startSetup(service: OnboardingService): Promise<{
-  claim: { onboarding_session_id: string; session_token: string };
+  claim: Record<string, never>;
   state: NonNullable<OnboardingResponse["state"]>;
 }> {
   const started = await service.startOnboarding({ request_id: rid() });
   expect(started.ok).toBe(true);
-  expect(started.session_token).toBeTruthy();
+  expect(started).not.toHaveProperty("session_token");
   return {
-    claim: {
-      onboarding_session_id: started.state!.session.onboarding_session_id,
-      session_token: started.session_token!,
-    },
+    claim: {},
     state: started.state!,
   };
 }
@@ -130,16 +127,12 @@ async function withProposal(runtime = createFixtureOnboarding()) {
 /* ------------------------------------------------------------- the basics */
 
 describe("starting a setup", () => {
-  it("creates a session with a secret and an expiry", async () => {
-    const { claim, state } = await startSetup(
-      createFixtureOnboarding().onboarding,
-    );
+  it("creates a session without handing out a secret or timestamps", async () => {
+    const { state } = await startSetup(createFixtureOnboarding().onboarding);
     expect(state.session.status).toBe("COLLECTING_PROFILE");
     expect(state.session.revision).toBe(1);
-    expect(claim.session_token.length).toBeGreaterThanOrEqual(16);
-    expect(Date.parse(state.session.expires_at_utc)).toBeGreaterThan(
-      Date.parse(state.session.created_at_utc),
-    );
+    expect(state.session).not.toHaveProperty("expires_at_utc");
+    expect(state.session).not.toHaveProperty("created_at_utc");
     // Nothing is confirmed, nothing is finished.
     expect(state.handoff.status).toBe("not_ready");
     expect(state.handoff.finish_pending).toBe(true);
@@ -151,11 +144,11 @@ describe("starting a setup", () => {
     expect(OnboardingStateSchema.safeParse(state).success).toBe(true);
   });
 
-  it("reports an onboarding session id that is not a user id", async () => {
+  it("reports neither a setup id nor a user id", async () => {
     const { state } = await startSetup(createFixtureOnboarding().onboarding);
     // A deliberate naming guard: nothing in the contract may become a user id.
     expect(state.session).not.toHaveProperty("user_id");
-    expect(state.session.onboarding_session_id).toMatch(/^onb-/);
+    expect(state.session).not.toHaveProperty("onboarding_session_id");
   });
 });
 
@@ -686,9 +679,9 @@ describe("confirming the plan", () => {
     expect(first.ok).toBe(true);
     expect(second.ok).toBe(true);
     expect(second.replayed).toBe(true);
-    expect(
-      second.state!.session.confirmed_plan_reference!.confirmed_at_utc,
-    ).toBe(first.state!.session.confirmed_plan_reference!.confirmed_at_utc);
+    expect(second.state!.session.confirmed_plan_reference).toEqual(
+      first.state!.session.confirmed_plan_reference,
+    );
   });
 });
 
@@ -731,7 +724,7 @@ describe("a change after the confirmation", () => {
     const { handoff, state } = await service.prepareSetupHandoff(claim);
     expect(handoff.status).toBe("superseded");
     expect(state.session.status).toBe("REVIEWING_PLAN");
-    expect(handoff.setup_binding).toBeNull();
+    expect(handoff).not.toHaveProperty("setup_binding");
     // The message names both revisions so the user learns what happened.
     expect(handoff.blocked_reason).toContain(String(plan.row_revision));
     expect(handoff.confirmed_plan_revision).toBe(plan.row_revision);
@@ -877,10 +870,10 @@ describe("a change after the confirmation", () => {
     expect(accepted.state!.handoff.status).toBe("ready_to_finish");
   });
 
-  it("produces a different setup binding for a different revision", async () => {
+  it("binds the handoff to the newly confirmed revision", async () => {
     const { runtime, service, claim, plan, confirmedState } = await confirmed();
-    const first = confirmedState.handoff.setup_binding;
-    expect(first).toBeTruthy();
+    const first = confirmedState.handoff.confirmed_plan_revision;
+    expect(first).toBe(plan.row_revision);
     const edit = await runtime.plans.updatePlanDraft({
       request_id: rid(),
       plan_version_id: plan.plan_version_id,
@@ -904,8 +897,10 @@ describe("a change after the confirmation", () => {
         confirmed: true,
       },
     });
-    expect(again.state!.handoff.setup_binding).toBeTruthy();
-    expect(again.state!.handoff.setup_binding).not.toBe(first);
+    expect(again.state!.handoff.confirmed_plan_revision).toBe(
+      next.row_revision,
+    );
+    expect(again.state!.handoff.confirmed_plan_revision).not.toBe(first);
   });
 });
 
@@ -917,7 +912,7 @@ describe("the setup handoff", () => {
     const { handoff } = await service.prepareSetupHandoff(claim);
     expect(handoff.status).toBe("not_ready");
     expect(handoff.confirmed_plan_version_id).toBeNull();
-    expect(handoff.setup_binding).toBeNull();
+    expect(handoff).not.toHaveProperty("setup_binding");
     expect(handoff.blocked_reason).toBeTruthy();
   });
 
@@ -937,7 +932,8 @@ describe("the setup handoff", () => {
     expect(handoff.status).toBe("ready_to_finish");
     // Everything in the handoff is safe to log: no token, no profile content.
     const text = JSON.stringify(handoff);
-    expect(text).not.toContain(claim.session_token);
+    expect(text).not.toContain("session_token");
+    expect(text).not.toContain("onb-");
     expect(text).not.toContain("muscle_gain");
     expect(handoff.confirmed_plan_version_id).toBe(plan.plan_version_id);
     expect(handoff.finish_pending).toBe(true);
@@ -1012,9 +1008,13 @@ describe("finishing the setup", () => {
   it("completes a finish that was interrupted after the activation", async () => {
     const { runtime, service, claim, plan } = await confirmedSetup();
     // The activation went through, then the process died before the setup
-    // was marked completed: same request id as finishSetup uses.
+    // was marked completed: same request id as finishSetup uses, built from
+    // the internal setup id that never leaves the server.
+    const stored = await runtime.onboardingRepository.findLatestByOwner(
+      "synthetic-onboarding-fixture",
+    );
     const activated = await runtime.plans.activateTrainingPlan({
-      request_id: `setup-${claim.onboarding_session_id}-${plan.plan_version_id}-${plan.row_revision}`,
+      request_id: `setup-${stored!.session.onboarding_session_id}-${plan.plan_version_id}-${plan.row_revision}`,
       plan_version_id: plan.plan_version_id,
       expected_row_revision: plan.row_revision,
       confirmation: {
@@ -1159,9 +1159,10 @@ describe("expiry", () => {
     expect(refused.ok).toBe(false);
     expect(refused.error?.code).toBe("SESSION_EXPIRED");
 
-    const state = await service.getOnboardingState(claim);
-    expect(state.session.status).toBe("EXPIRED");
-    expect(state.allowed_events).toEqual(["CANCEL"]);
+    // Reading fails closed as well: an expired setup is not shown.
+    await expect(service.getOnboardingState(claim)).rejects.toMatchObject({
+      code: "SESSION_EXPIRED",
+    });
   });
 
   it("refuses a brief and a proposal on an expired session", async () => {
@@ -1200,11 +1201,8 @@ describe("expiry", () => {
       resume_session: claim,
     });
     expect(restarted.ok).toBe(true);
-    expect(restarted.session_token).toBeTruthy();
-    // A new session, not the expired one revived.
-    expect(restarted.state!.session.onboarding_session_id).not.toBe(
-      claim.onboarding_session_id,
-    );
+    // A new session, not the expired one revived: the answers are gone.
+    expect(restarted.state!.session.profile.training.days_per_week).toBeNull();
     expect(restarted.state!.session.status).toBe("COLLECTING_PROFILE");
   });
 });
@@ -1229,12 +1227,9 @@ describe("resuming", () => {
       resume_session: claim,
     });
     expect(resumed.ok).toBe(true);
-    expect(resumed.state!.session.onboarding_session_id).toBe(
-      claim.onboarding_session_id,
-    );
     expect(resumed.state!.session.profile.training.days_per_week).toBe(3);
-    // No new secret is handed out for a session that already has one.
-    expect(resumed.session_token).toBeNull();
+    // No secret is handed out, neither new nor old.
+    expect(resumed).not.toHaveProperty("session_token");
   });
 
   it("states honestly that cross-device resumption is not available", async () => {
@@ -1319,12 +1314,9 @@ describe("production mode fails closed", () => {
   it("refuses to read any session", async () => {
     const service = createProductionOnboarding();
     expect(service.mode).toBe("production");
-    await expect(
-      service.getOnboardingState({
-        onboarding_session_id: "onb-anything",
-        session_token: "x".repeat(32),
-      }),
-    ).rejects.toMatchObject({ code: "AUTH_REQUIRED" });
+    await expect(service.getOnboardingState({})).rejects.toMatchObject({
+      code: "AUTH_REQUIRED",
+    });
   });
 });
 
@@ -1337,7 +1329,8 @@ describe("setup state stays out of the training data", () => {
     // The config says onboarding state is backend-only, and it is.
     expect(dataset.config.onboarding_storage).toBe("BACKEND_ONLY");
     const serialized = JSON.stringify(dataset);
-    expect(serialized).not.toContain(state.session.onboarding_session_id);
+    expect(state.session).not.toHaveProperty("onboarding_session_id");
+    expect(serialized).not.toContain("onb-");
     expect(serialized).not.toContain("COLLECTING_PROFILE");
     expect(serialized).not.toContain("primary_goal");
     expect(serialized).not.toContain("arnold_plan");
@@ -1402,11 +1395,12 @@ describe("the audit trail", () => {
 
     // No session secret and no free text in the trail.
     const serialized = JSON.stringify(events);
-    expect(serialized).not.toContain(claim.session_token);
+    expect(serialized).not.toContain("session_token");
     for (const event of events.filter((e) =>
       e.event_type.startsWith("ONBOARDING_"),
     ))
-      expect(event.entity_id).toBe(claim.onboarding_session_id);
+      // The internal setup id stays in the audit log, never in a tool output.
+      expect(event.entity_id).toMatch(/^onb-/);
   });
 
   it("records that a confirmation was invalidated", async () => {
@@ -1451,52 +1445,33 @@ describe("one setup per account", () => {
     const service = accountRuntime().onboarding;
     const first = await service.openOnboarding(account("user-1"));
     expect(first.resumed).toBe(false);
-    const claim = {
-      onboarding_session_id: first.state.session.onboarding_session_id,
-      session_token: first.token!,
-    };
     await service.updateProfile(
-      { request_id: rid(), ...claim, profile: COMPLETE_PROFILE },
+      { request_id: rid(), profile: COMPLETE_PROFILE },
       account("user-1"),
     );
 
-    // A new chat has no secret. It gets the same setup, with a fresh one.
+    // A new chat carries nothing but the identity and gets the same setup.
     const again = await service.openOnboarding(account("user-1"));
     expect(again.resumed).toBe(true);
-    expect(again.state.session.onboarding_session_id).toBe(
-      claim.onboarding_session_id,
-    );
     expect(again.state.session.profile.training.days_per_week).toBe(3);
     expect(again.state.resume.cross_device).toBe(true);
-    expect(again.token).toBeTruthy();
-    expect(again.token).not.toBe(claim.session_token);
+    expect(again).not.toHaveProperty("token");
 
-    // The new secret works, and so does the old one: the first chat's card
-    // stays usable. Another account gets in with neither.
+    // Every tool finds it without an id or a secret.
     await expect(
-      service.getOnboardingState(
-        { ...claim, session_token: again.token! },
-        account("user-1"),
-      ),
+      service.getOnboardingState({}, account("user-1")),
     ).resolves.toBeTruthy();
+    // A caller who is not this guard's account is refused outright.
     await expect(
-      service.getOnboardingState(claim, account("user-1")),
-    ).resolves.toBeTruthy();
-    await expect(
-      service.getOnboardingState(claim, account("user-2")),
+      service.getOnboardingState({}, account("user-2")),
     ).rejects.toMatchObject({ code: "AUTH_REQUIRED" });
-    await expect(
-      service.getOnboardingState(
-        { ...claim, session_token: "z".repeat(43) },
-        account("user-1"),
-      ),
-    ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
   });
 
   it("does the same through start_arnold_onboarding", async () => {
     const service = accountRuntime().onboarding;
-    const first = await service.startOnboarding(
-      { request_id: rid() },
+    await service.startOnboarding({ request_id: rid() }, account("user-1"));
+    await service.updateProfile(
+      { request_id: rid(), profile: COMPLETE_PROFILE },
       account("user-1"),
     );
     const second = await service.startOnboarding(
@@ -1504,18 +1479,15 @@ describe("one setup per account", () => {
       account("user-1"),
     );
     expect(second.ok).toBe(true);
-    expect(second.state!.session.onboarding_session_id).toBe(
-      first.state!.session.onboarding_session_id,
-    );
+    expect(second.state!.session.profile.training.days_per_week).toBe(3);
   });
 
   it("never starts again once the account is set up", async () => {
     const repository = new InMemoryOnboardingRepository();
     const service = accountRuntime(repository).onboarding;
     const opened = await service.openOnboarding(account("user-1"));
-    const record = (await repository.getSession(
-      opened.state.session.onboarding_session_id,
-    ))!;
+    expect(opened.state.session.status).toBe("COLLECTING_PROFILE");
+    const record = (await repository.findLatestByOwner("user-1"))!;
     await repository.updateSession(
       {
         ...record,
@@ -1538,7 +1510,7 @@ describe("one setup per account", () => {
     // Opening the app shows the finished setup, read-only, without a secret.
     const shown = await service.openOnboarding(account("user-1"));
     expect(shown.state.session.status).toBe("COMPLETED");
-    expect(shown.token).toBeNull();
+    expect(shown).not.toHaveProperty("token");
     expect(await service.setupRequired(account("user-1"))).toBe(false);
   });
 
@@ -1570,14 +1542,14 @@ describe("one setup per account", () => {
     expect(await ready.setupRequired(account("user-1"))).toBe(false);
   });
 
-  it("never applies to anonymous setups", async () => {
+  it("never applies to the local fixture, which shares one setup", async () => {
     const service = createFixtureOnboarding().onboarding;
     expect(await service.setupRequired()).toBe(false);
     const first = await service.openOnboarding();
+    expect(first.resumed).toBe(false);
+    // One synthetic subject means one setup per local deployment.
     const second = await service.openOnboarding();
-    // Without a verified account there is nothing to find a setup by.
-    expect(second.state.session.onboarding_session_id).not.toBe(
-      first.state.session.onboarding_session_id,
-    );
+    expect(second.resumed).toBe(true);
+    expect(second.state.session.revision).toBe(first.state.session.revision);
   });
 });

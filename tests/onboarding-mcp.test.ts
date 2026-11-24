@@ -99,10 +99,7 @@ async function startSetup() {
     request_id: rid(),
   });
   expect(response.ok).toBe(true);
-  return {
-    onboarding_session_id: response.state!.session.onboarding_session_id,
-    session_token: response.session_token!,
-  };
+  return {};
 }
 
 async function withProfile() {
@@ -186,6 +183,34 @@ describe("tool discovery", () => {
       "get_plan_editor_context",
     ])
       expect(names).toContain(expected);
+  });
+
+  it("names the required answers per module, without ids or defaults", async () => {
+    const tools = (await client.listTools()).tools;
+    const text = tools
+      .filter((tool) => /onboarding|arnold_setup/.test(tool.name))
+      .map(
+        (tool) =>
+          `${tool.description ?? ""} ${JSON.stringify(tool.inputSchema)}`,
+      )
+      .join("\n");
+    expect(text).not.toMatch(
+      /onboarding_session_id|session_token|tracker_id|onb-/,
+    );
+    const update = tools.find(
+      (t) => t.name === "update_onboarding_profile",
+    )!.description!;
+    expect(update).toMatch(/keine? Standardwert|nichts mit Standardwerten/);
+    for (const needle of [
+      "primary_goal",
+      "session_minutes",
+      "runs_per_week",
+      "longest_run_4w_min",
+      "stiff_areas",
+      "has_mat",
+      "weekdays",
+    ])
+      expect(update).toContain(needle);
   });
 
   it("describes when to use each tool so a model can choose", async () => {
@@ -308,47 +333,143 @@ describe("tool discovery", () => {
   });
 });
 
+/* ------------------------------------------------- no internals in output */
+
+/** Keys that belong to the stored setup and never to a tool output (D-11, D-20). */
+const INTERNAL_KEYS = new Set([
+  "onboarding_session_id",
+  "session_token",
+  "tracker_id",
+  "token_fingerprint",
+  "owner_subject",
+  "setup_binding",
+  "confirmation_timestamp",
+  "created_at_utc",
+  "updated_at_utc",
+  "expires_at_utc",
+  "proposed_at_utc",
+  "confirmed_at_utc",
+  "generated_at_utc",
+]);
+
+/**
+ * Every internal key or setup id found in an output. The plan projection
+ * (`plan`) keeps its own ids and timestamps until the cards are rebuilt
+ * (RDS-007/009): the editor and the confirmation need them.
+ */
+function internals(value: unknown, path = "$"): string[] {
+  if (typeof value === "string") return value.includes("onb-") ? [path] : [];
+  if (Array.isArray(value))
+    return value.flatMap((item, index) => internals(item, `${path}[${index}]`));
+  if (value && typeof value === "object")
+    return Object.entries(value).flatMap(([key, item]) =>
+      key === "plan"
+        ? []
+        : // The profile keeps its field, always emptied in outputs.
+          INTERNAL_KEYS.has(key) && !(key === "updated_at_utc" && item === null)
+          ? [`${path}.${key}`]
+          : internals(item, `${path}.${key}`),
+    );
+  return [];
+}
+
+describe("onboarding outputs", () => {
+  it("carry no setup id, secret, tracker id or session timestamp", async () => {
+    const outputs: Record<string, CallToolResult> = {};
+    const record = async (name: string, args: Record<string, unknown> = {}) => {
+      const result = await call(name, args);
+      expect(result.isError, `${name}: ${textOf(result)}`).toBeFalsy();
+      outputs[`${name}#${Object.keys(outputs).length}`] = result;
+      return result;
+    };
+    await record("show_arnold_onboarding");
+    await record("start_arnold_onboarding", { request_id: rid() });
+    await record("update_onboarding_profile", {
+      request_id: rid(),
+      profile: COMPLETE,
+    });
+    await record("get_onboarding_state");
+    await record("request_onboarding_plan", { request_id: rid() });
+    const brief = OnboardingBriefSchema.parse(
+      (await record("get_onboarding_brief")).structuredContent,
+    );
+    const ids = brief.exercise_catalog.slice(0, 3).map((e) => e.exercise_id);
+    const submitted = OnboardingResponseSchema.parse(
+      (
+        await record("submit_onboarding_plan_proposal", {
+          request_id: rid(),
+          name: "Push/Pull/Legs",
+          origin: "ai_proposal",
+          sessions: ["Push", "Pull", "Legs"].map((session_name, index) => ({
+            session_name,
+            exercises: [
+              {
+                exercise_id: ids[index],
+                target_sets: 3,
+                rep_min: 8,
+                rep_max: 12,
+              },
+            ],
+          })),
+        })
+      ).structuredContent,
+    );
+    const plan = submitted.state!.plan!;
+    await record("get_onboarding_plan");
+    await record("get_onboarding_handoff");
+    await record("confirm_onboarding_plan", {
+      request_id: rid(),
+      confirmation: {
+        plan_version_id: plan.plan_version_id,
+        row_revision: plan.row_revision,
+        confirmed: true,
+      },
+    });
+    await record("finish_arnold_setup", { request_id: rid() });
+
+    for (const [name, result] of Object.entries(outputs)) {
+      expect(internals(result.structuredContent), name).toEqual([]);
+      const text = JSON.stringify(result.content);
+      expect(text, name).not.toContain("onb-");
+      expect(text, name).not.toContain("session_token");
+    }
+  });
+});
+
 /* ------------------------------------------------------------ opening the app */
 
 describe("show_arnold_onboarding", () => {
-  it("starts a setup and carries its contract and secret", async () => {
+  it("starts a setup and carries its contract, but no id or secret", async () => {
     const result = await call("show_arnold_onboarding");
     const view = OnboardingViewSchema.parse(result.structuredContent);
     expect(view.onboarding_contract).toBe(ONBOARDING_CONTRACT);
     expect(view.resumed).toBe(false);
     expect(view.state.session.status).toBe("COLLECTING_PROFILE");
-    expect(view.session_token).toBeTruthy();
-    // The secret must not land in the chat transcript.
-    expect(textOf(result)).not.toContain(view.session_token);
+    expect(result.structuredContent).not.toHaveProperty("session_token");
+    expect(JSON.stringify(result.structuredContent)).not.toContain("onb-");
   });
 
-  it("continues a known setup with its credential", async () => {
-    const claim = await withProfile();
+  it("continues the caller's setup without any credential", async () => {
+    await withProfile();
     const view = OnboardingViewSchema.parse(
-      (await call("show_arnold_onboarding", claim)).structuredContent,
+      (await call("show_arnold_onboarding")).structuredContent,
     );
     expect(view.resumed).toBe(true);
-    expect(view.state.session.onboarding_session_id).toBe(
-      claim.onboarding_session_id,
-    );
     expect(view.state.session.profile.training.days_per_week).toBe(3);
   });
 
-  it("refuses a session id without its credential", async () => {
-    const claim = await withProfile();
-    // An id alone is not a permission, so this starts a *new* setup instead of
-    // opening the existing one.
+  it("ignores a legacy session id instead of selecting by it", async () => {
+    await withProfile();
     const view = OnboardingViewSchema.parse(
       (
         await call("show_arnold_onboarding", {
-          onboarding_session_id: claim.onboarding_session_id,
+          onboarding_session_id: "onb-someone-else",
+          session_token: "x".repeat(43),
         })
       ).structuredContent,
     );
-    expect(view.state.session.onboarding_session_id).not.toBe(
-      claim.onboarding_session_id,
-    );
-    expect(view.state.session.profile.training.days_per_week).toBeNull();
+    // Still the caller's own setup: the identity decides, not the arguments.
+    expect(view.state.session.profile.training.days_per_week).toBe(3);
   });
 });
 
@@ -423,14 +544,10 @@ describe("structured failures", () => {
     expect(payload.state?.session.status).toBe("COLLECTING_PROFILE");
   });
 
-  it("reports a refused session access without leaking existence", async () => {
-    const claim = await withProfile();
-    const result = await call("get_onboarding_state", {
-      onboarding_session_id: claim.onboarding_session_id,
-      session_token: "z".repeat(43),
-    });
+  it("reports a missing setup with its code", async () => {
+    const result = await call("get_onboarding_state", {});
     expect(result.isError).toBe(true);
-    expect(textOf(result)).toContain("PERMISSION_DENIED");
+    expect(textOf(result)).toContain("SESSION_NOT_FOUND");
   });
 
   it("reports a stale confirmation with its code", async () => {
@@ -503,8 +620,8 @@ describe("the flow a chat turn drives", () => {
     expect(state.progress.profile_complete).toBe(true);
     // The summary line is readable without exposing ids or secrets.
     expect(textOf(result)).toContain("Muskeln aufbauen");
-    expect(textOf(result)).not.toContain(claim.session_token);
-    expect(textOf(result)).not.toContain(claim.onboarding_session_id);
+    expect(textOf(result)).not.toContain("session_token");
+    expect(textOf(result)).not.toContain("onb-");
   });
 
   it("serves a brief that constrains the proposal", async () => {
@@ -633,8 +750,8 @@ describe("confirmation over MCP", () => {
     expect(handoff.status).toBe("ready_to_finish");
     expect(handoff.finish_pending).toBe(true);
     expect(handoff.confirmed_plan_version_id).toBe(plan.plan_version_id);
-    expect(handoff.setup_binding).toBeTruthy();
-    expect(JSON.stringify(handoff)).not.toContain(claim.session_token);
+    expect(handoff).not.toHaveProperty("setup_binding");
+    expect(JSON.stringify(handoff)).not.toContain("token");
     expect(textOf(result)).toContain("finish_arnold_setup");
     // Reading the handoff activates nothing.
     const dataset = await runtime.store.read();
@@ -682,7 +799,6 @@ describe("confirmation over MCP", () => {
       (result.structuredContent as { handoff: unknown }).handoff,
     );
     expect(handoff.status).toBe("superseded");
-    expect(handoff.setup_binding).toBeNull();
     expect(textOf(result)).toContain("Noch nicht übergabebereit");
     const finish = await write("finish_arnold_setup", {
       request_id: rid(),
@@ -810,9 +926,9 @@ describe("cancelling over MCP", () => {
       resume_session: claim,
     });
     expect(restarted.ok).toBe(true);
-    expect(restarted.state!.session.onboarding_session_id).not.toBe(
-      claim.onboarding_session_id,
-    );
+    // A new setup: the cancelled answers are not carried over.
+    expect(restarted.state!.session.profile.training.days_per_week).toBeNull();
+    expect(restarted.state!.session.status).toBe("COLLECTING_PROFILE");
   });
 });
 
@@ -885,7 +1001,7 @@ describe("proposal against the profile over MCP (UX-012)", () => {
     expect(response.state!.plan).not.toBeNull();
   });
 
-  it("stores a plan over the time budget with a hint, and none within it", async () => {
+  it("refuses a plan over the time budget with a German sentence (D-10)", async () => {
     const claim = await ready({ session_minutes: 30 });
     const response = await propose(claim, [
       "squat",
@@ -893,16 +1009,34 @@ describe("proposal against the profile over MCP (UX-012)", () => {
       "lat-pulldown",
       "leg-curl",
     ]);
-    expect(response.ok, response.error?.message).toBe(true);
-    expect(response.state!.validation.warnings.map((w) => w.code)).toContain(
-      "PROPOSAL_OVER_TIME_BUDGET",
-    );
+    expect(response.ok).toBe(false);
+    expect(response.error?.code).toBe("PLAN_PROPOSAL_INVALID");
+    expect(response.error?.message).toContain("geplant sind 30");
+    expect(response.state?.plan ?? null).toBeNull();
+  });
 
-    const quiet = await ready({ session_minutes: 30 });
-    const fine = await propose(quiet, ["squat", "bench-press", "lat-pulldown"]);
-    expect(fine.ok).toBe(true);
-    expect(fine.state!.validation.warnings.map((w) => w.code)).not.toContain(
+  it("refuses a plan that does not emphasise the focus (D-10)", async () => {
+    const claim = await ready({
+      session_minutes: 90,
+      focus_muscle_groups: ["back"],
+    });
+    const response = await propose(claim, ["squat", "bench-press", "leg-curl"]);
+    expect(response.ok).toBe(false);
+    expect(response.error?.code).toBe("PLAN_PROPOSAL_INVALID");
+    expect(response.error?.message).toContain("Schwerpunkt");
+  });
+
+  it("stores a plan within the rules and passes the hints through (D-10)", async () => {
+    const claim = await ready({ session_minutes: 45 });
+    const fine = await propose(claim, ["squat", "bench-press", "lat-pulldown"]);
+    expect(fine.ok, fine.error?.message).toBe(true);
+    const warnings = fine.state!.validation.warnings;
+    expect(warnings.map((w) => w.code)).not.toContain(
       "PROPOSAL_OVER_TIME_BUDGET",
     );
+    // One day of three sets each is little for muscle gain: a hint, no block.
+    const hints = warnings.filter((w) => w.code === "PLAN_QUALITY_HINT");
+    expect(hints.length).toBeGreaterThan(0);
+    expect(hints[0].message).toContain("Wochensätze");
   });
 });

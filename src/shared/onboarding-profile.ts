@@ -56,11 +56,7 @@ import {
 } from "./onboarding-contract.js";
 import { exercisesFor, starterExercise } from "./exercise-starter-catalog.js";
 import { MOBILITY_CATALOG } from "./mobility-catalog.js";
-import {
-  MOBILITY_DEFAULTS,
-  MobilityPreferenceSchema,
-  type MobilityPreference,
-} from "./mobility-contract.js";
+import { type MobilityPreference } from "./mobility-contract.js";
 
 /**
  * Whether the setup includes running: the running module, or for older
@@ -536,9 +532,7 @@ export function exerciseBudget(minutes: number): { min: number; max: number } {
 export function buildBrief(
   profile: OnboardingProfile,
   input: {
-    onboarding_session_id: string;
     exercises: readonly ArnoldExercise[];
-    now: string;
   },
 ): OnboardingBrief {
   // Guarded by the caller: a brief is only built for a complete profile.
@@ -610,7 +604,6 @@ export function buildBrief(
 
   const base = {
     onboarding_contract: ONBOARDING_CONTRACT as typeof ONBOARDING_CONTRACT,
-    onboarding_session_id: input.onboarding_session_id,
     profile_revision: profile.revision,
     person: personFacts,
     focus_muscle_groups: training.focus_muscle_groups ?? [],
@@ -635,7 +628,6 @@ export function buildBrief(
       "Den Plan nicht als aktiviert oder gespeichert darstellen, bevor der Nutzer ihn bestätigt hat.",
     ],
     ...mobilityBrief,
-    generated_at_utc: input.now,
   };
 
   if (profile.path === "own_plan")
@@ -955,60 +947,6 @@ function mobilityConstraints(
 }
 
 /**
- * Fills the gaps of a mobility answer with Arnold's defaults.
- *
- * "Yes, a morning routine" without days or length becomes every day, 10
- * minutes; sessions without details become two per week of 20 minutes with
- * Arnold deciding the placement. A "yes" naming neither a routine nor
- * sessions means the morning routine, the lighter reading. Values the user
- * named stay as they are. An answer that is not readable even after this is
- * returned unchanged for the schema to refuse; nothing is guessed.
- */
-export function withMobilityDefaults(value: unknown): MobilityPreference {
-  const loose = (value ?? {}) as Record<string, unknown>;
-  if (loose.wants !== true) return value as MobilityPreference;
-  const object = (input: unknown): Record<string, unknown> | null =>
-    input !== null && typeof input === "object"
-      ? (input as Record<string, unknown>)
-      : null;
-  const morning = object(loose.morning);
-  const sessions = object(loose.sessions);
-  const named = morning !== null || sessions !== null;
-  const completed = {
-    wants: true,
-    morning:
-      morning !== null || !named
-        ? {
-            ...MOBILITY_DEFAULTS.morning,
-            weekdays: [...MOBILITY_DEFAULTS.morning.weekdays],
-            ...Object.fromEntries(
-              Object.entries(morning ?? {}).filter(
-                ([, v]) => v !== undefined && v !== null,
-              ),
-            ),
-          }
-        : null,
-    sessions:
-      sessions !== null
-        ? {
-            placement: "arnold_decides",
-            ...MOBILITY_DEFAULTS.sessions,
-            ...Object.fromEntries(
-              Object.entries(sessions).filter(
-                ([, v]) => v !== undefined && v !== null,
-              ),
-            ),
-          }
-        : null,
-    stiff_areas: Array.isArray(loose.stiff_areas)
-      ? unique(loose.stiff_areas as string[])
-      : [],
-  };
-  const parsed = MobilityPreferenceSchema.safeParse(completed);
-  return parsed.success ? parsed.data : (value as MobilityPreference);
-}
-
-/**
  * Applies a patch to a profile.
  *
  * Absent keys stay, `null` removes an optional answer, an empty list removes
@@ -1036,10 +974,10 @@ export function mergeProfile(
     else training[key] = Array.isArray(value) ? unique(value) : value;
   }
 
-  // Mobility: what the user did not name gets Arnold's default, what they
-  // named is never overwritten. `null` was removed above ("not asked").
-  if (patch.training?.mobility)
-    training.mobility = withMobilityDefaults(patch.training.mobility);
+  // Mobility is stored exactly as named (D-09): no defaults. An answer
+  // missing a part is refused by the patch schema, and the module's missing
+  // fields stay in `open_questions`. `null` was removed above ("not asked").
+  if (patch.training?.mobility) training.mobility = patch.training.mobility;
 
   const days = patch.training?.training_days;
   if (days?.length) {

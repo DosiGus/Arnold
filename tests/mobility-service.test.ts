@@ -1033,10 +1033,7 @@ async function confirmedSetup(
     training: { ...TRAINING, mobility },
   };
   const started = await service.startOnboarding({ request_id: rid() });
-  const claim = {
-    onboarding_session_id: started.state!.session.onboarding_session_id,
-    session_token: started.session_token!,
-  };
+  const claim = {};
   const saved = await service.updateProfile({
     request_id: rid(),
     ...claim,

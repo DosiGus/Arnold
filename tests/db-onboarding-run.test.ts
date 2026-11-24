@@ -178,10 +178,7 @@ async function open(subject: string) {
   const opened = OnboardingViewSchema.parse(
     (await call(subject, "show_arnold_onboarding", {})).structuredContent,
   );
-  return {
-    onboarding_session_id: opened.state.session.onboarding_session_id,
-    session_token: opened.session_token!,
-  };
+  return {};
 }
 
 async function saveProfile(

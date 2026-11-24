@@ -52,10 +52,7 @@ const profileWith = (
 
 async function startSetup(service: OnboardingService) {
   const started = await service.startOnboarding({ request_id: rid() });
-  return {
-    onboarding_session_id: started.state!.session.onboarding_session_id,
-    session_token: started.session_token!,
-  };
+  return {};
 }
 
 /** Drives a setup with a saved profile to a confirmed plan. */

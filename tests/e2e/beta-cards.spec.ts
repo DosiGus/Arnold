@@ -50,10 +50,7 @@ async function visualStates() {
   const started = await service.startOnboarding({
     request_id: crypto.randomUUID(),
   });
-  const claim = {
-    onboarding_session_id: started.state!.session.onboarding_session_id,
-    session_token: started.session_token!,
-  };
+  const claim = {};
   const ready = (
     await service.updateProfile({
       ...claim,
@@ -134,11 +131,7 @@ async function visualStates() {
   };
 }
 const visuals = visualStates();
-async function mockOnboarding(
-  page: Page,
-  state: OnboardingState,
-  secret: string,
-) {
+async function mockOnboarding(page: Page, state: OnboardingState) {
   await page.route("**/mcp", async (route) => {
     const name = route.request().postDataJSON()?.params?.name;
     if (name === "show_arnold_onboarding")
@@ -146,7 +139,6 @@ async function mockOnboarding(
         onboarding_contract: ONBOARDING_CONTRACT,
         state,
         resumed: false,
-        session_token: secret,
         source: {
           label: "Synthetische Vorschau",
           description: "Nur Demo-Daten",
@@ -224,10 +216,10 @@ for (const width of [375, 1024])
         ),
         fullPage: true,
       });
-      const { states, claim } = await visuals;
+      const { states } = await visuals;
       for (const [name, state] of Object.entries(states)) {
         await page.unroute("**/mcp");
-        await mockOnboarding(page, state, claim.session_token);
+        await mockOnboarding(page, state);
         await page.goto(`${BASE}/preview?onboarding=1`);
         await expect(
           page.locator('main[data-card="onboarding"]'),
@@ -512,9 +504,7 @@ test("chat-selected history opens the requested session and still lets another s
   await expect(cancelled).toHaveAttribute("aria-expanded", "false");
 });
 
-test("a completed setup in a new chat opens as completed without the old secret", async ({
-  page,
-}) => {
+test("a completed setup in a new chat opens as completed", async ({ page }) => {
   const { states } = await visuals;
   await page.route("**/mcp", async (route) => {
     const name = route.request().postDataJSON()?.params?.name;
@@ -523,7 +513,6 @@ test("a completed setup in a new chat opens as completed without the old secret"
         onboarding_contract: ONBOARDING_CONTRACT,
         state: states.done,
         resumed: true,
-        session_token: null,
         source: {
           label: "Synthetische Vorschau",
           description: "Nur Demo-Daten",

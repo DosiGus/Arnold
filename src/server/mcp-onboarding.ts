@@ -14,9 +14,9 @@
  *
  * Two conventions are load-bearing:
  *
- *   - the session secret appears in `structuredContent` of
- *     `start_arnold_onboarding` and nowhere else. It is never written into a
- *     tool's text output, because that text becomes chat transcript.
+ *   - no tool takes or returns a setup id or a session secret (D-11): the
+ *     service finds the caller's setup through the verified identity, and
+ *     outputs carry no internal setup ids or timestamps (D-20).
  *   - a write answers with the state that was actually stored. A refusal is
  *     `isError` with a machine-readable code and the unchanged state, never a
  *     cheerful message about something that did not happen.
@@ -261,28 +261,9 @@ export function registerOnboardingTools(
       annotations: { ...writing, readOnlyHint: false },
       _meta: { ui: { resourceUri: currentUri } },
     },
-    async (input) => {
+    async () => {
       try {
-        // Continuing needs both halves of the claim; an id alone is not a
-        // permission, so a partial claim opens the caller's own setup instead.
-        if (input.onboarding_session_id && input.session_token) {
-          const state = await onboarding.getOnboardingState(
-            {
-              onboarding_session_id: input.onboarding_session_id,
-              session_token: input.session_token,
-            },
-            actorContext,
-          );
-          return ok(
-            {
-              onboarding_contract: ONBOARDING_CONTRACT,
-              state,
-              resumed: true,
-              source: sourceFor(state, true),
-            },
-            summarize(state),
-          );
-        }
+        // No argument names the setup: the verified identity finds it (D-11).
         const opened = await onboarding.openOnboarding(actorContext);
         return ok(
           {
@@ -290,9 +271,6 @@ export function registerOnboardingTools(
             state: opened.state,
             resumed: opened.resumed,
             source: sourceFor(opened.state, opened.resumed),
-            // The app needs the secret to act on the session it was just given.
-            // Carried in structured content only, never in the text above.
-            session_token: opened.token,
           },
           summarize(opened.state),
         );
@@ -307,7 +285,7 @@ export function registerOnboardingTools(
     {
       title: "Einrichtung starten",
       description:
-        "Startet die Einrichtung ohne Oberfläche und liefert die Sitzungs-ID samt Sitzungsnachweis zurück. In der Regel stattdessen show_arnold_onboarding verwenden. Hat das Konto bereits eine offene Einrichtung, wird sie fortgesetzt statt eine zweite zu beginnen; ist Arnold bereits eingerichtet, wird mit ONBOARDING_ALREADY_COMPLETED abgelehnt. Mit resume_session wird eine bestimmte, noch gültige Einrichtung fortgesetzt; ist sie abgelaufen oder abgebrochen, entsteht automatisch eine neue. Der Sitzungsnachweis ist für alle weiteren Aufrufe erforderlich und darf nicht im Chatverlauf wiederholt werden.",
+        "Startet die Einrichtung ohne Oberfläche; in der Regel stattdessen show_arnold_onboarding verwenden. Eine offene Einrichtung des Kontos wird fortgesetzt, nie verdoppelt; ist Arnold bereits eingerichtet, wird mit ONBOARDING_ALREADY_COMPLETED abgelehnt. Keine Sitzungs-ID nötig: Arnold findet die Einrichtung über die Anmeldung.",
       inputSchema: OnboardingToolInputs.start_arnold_onboarding,
       outputSchema: OnboardingResponseSchema,
       annotations: writing,
@@ -341,7 +319,7 @@ export function registerOnboardingTools(
     {
       title: "Trainingsprofil speichern oder ändern",
       description:
-        "Speichert Angaben, die der Nutzer per Sprache oder im Chat nennt; die App speichert ihre Button-Eingaben selbst. Alles auf einmal speichern: „Kraft und Laufen, viermal die Woche“ ergibt EINEN Aufruf mit primary_goal, secondary_goals und days_per_week. path: arnold_plan (Arnold erstellt den Plan) oder own_plan (eigener Plan). person (alles freiwillig): age_years, sex (female, male, diverse), height_cm, body_weight_kg, protect_areas (shoulder, elbow, wrist, neck, lower_back, hip, knee – Bereiche, die geschont werden sollen; keine Diagnosen erfragen oder speichern); null entfernt eine Angabe. training: primary_goal (muscle_gain, strength, fat_loss, general_fitness, endurance_running = Ausdauer und Laufen), secondary_goals (weitere Ziele aus derselben Liste, max. 3), experience (beginner, intermediate, advanced), days_per_week (1–7) oder training_days als feste Wochentage (mon … sun, bestimmt dann die Anzahl), session_minutes, environment (gym, home, outdoor, mixed), equipment, split (auto, full_body, upper_lower, push_pull_legs, body_part), focus_muscle_groups (max. 3), mobility ({wants:false} oder {wants:true, morning:{weekdays, minutes 5|10|15} oder null, sessions:{placement own_days|after_strength|arnold_decides, per_week 1–3, minutes 15|20|30} oder null, stiff_areas aus neck, shoulders, upper_back, lower_back, hips, hamstrings, calves_ankles, wrists}; ohne Angabe Morgenroutine alle sieben Tage mit 10 Minuten, Einheiten arnold_decides, 2 pro Woche, 20 Minuten; steif heißt nicht Schmerz, Schmerzbereiche gehören nach protect_areas; null = nicht gefragt), preferred_exercise_ids und avoided_exercise_ids aus den exercise_choices des Einrichtungsstands, notes. Übergebene Felder werden zusammengeführt, nicht übergebene bleiben unverändert – für 'doch nur dreimal pro Woche' genügt training.days_per_week. Mit step allein wird nur zu einem früheren Schritt zurückgewechselt. Ändert der Nutzer Angaben nach einer Planbestätigung, wird die Bestätigung ungültig.",
+        "Speichert, was der Nutzer per Sprache oder im Chat nennt (Button-Eingaben der App werden selbst gespeichert). Alles Genannte in EINEM Aufruf („Kraft und Laufen, viermal die Woche“ = primary_goal, secondary_goals, days_per_week); nichts raten, nichts mit Standardwerten füllen: Fehlendes steht in open_questions und wird höchstens dreimal je Runde erfragt. path: arnold_plan oder own_plan. Pflichtangaben bei arnold_plan: Ziel (training.primary_goal), Erfahrung (experience), Tage pro Woche (days_per_week oder training_days), Minuten pro Einheit (session_minutes), Ort (environment). Module in training.modules {running, mobility, morning_routine}; je Modul zusätzlich Pflicht: Laufen = training.run (runs_per_week, base_minutes_per_week, longest_run_4w_min, preferred_environment); Mobility = training.mobility ({wants:false} oder {wants:true, morning, sessions, stiff_areas}; stiff_areas aus neck, shoulders, upper_back, lower_back, hips, hamstrings, calves_ankles, wrists, eine leere Liste ist eine Antwort; steif heißt nicht Schmerz) plus die Einheiten (sessions: placement own_days, after_strength oder arnold_decides, per_week 1–3, minutes 15, 20 oder 30); Morgenroutine = mobility.morning (weekdays, minutes 5, 10 oder 15) und training.has_mat (Matte ja oder nein). Freiwillig: person (age_years, sex, height_cm, body_weight_kg, protect_areas – keine Diagnosen; Schmerzbereiche gehören nach protect_areas, nicht zu stiff_areas), secondary_goals (max. 3), equipment, split, focus_muscle_groups (max. 3), preferred_exercise_ids und avoided_exercise_ids aus den exercise_choices, notes. null entfernt eine freiwillige Angabe. Übergebene Felder werden zusammengeführt, nicht übergebene bleiben; für „doch nur dreimal pro Woche“ genügt training.days_per_week. Mit step allein wird nur zu einem früheren Schritt gewechselt. Eine Änderung nach der Planbestätigung macht die Bestätigung ungültig.",
       inputSchema: OnboardingToolInputs.update_onboarding_profile,
       outputSchema: OnboardingResponseSchema,
       annotations: writing,
@@ -455,17 +433,9 @@ export function registerOnboardingTools(
         !confirmed.state.setup_finish_available
       )
         return respond(confirmed);
-      const claim = input as {
-        request_id: string;
-        onboarding_session_id: string;
-        session_token: string;
-      };
+      const { request_id } = input as { request_id: string };
       const finished = await onboarding.finishSetup(
-        {
-          request_id: `${claim.request_id}:finish`,
-          onboarding_session_id: claim.onboarding_session_id,
-          session_token: claim.session_token,
-        },
+        { request_id: `${request_id}:finish` },
         actorContext,
       );
       return respond(finished.ok ? finished : confirmed);
@@ -505,7 +475,7 @@ export function registerOnboardingTools(
     {
       title: "Bereitschaft für den Abschluss prüfen",
       description:
-        "Prüft, ob die Einrichtung abgeschlossen werden kann, und liefert die Übergabedaten: Sitzungs-ID, bestätigte Planversion, bestätigte Revision, Profilrevision und Bestätigungszeitpunkt. Status ready_to_finish bedeutet, dass ein gültig bestätigter Plan vorliegt; superseded bedeutet, dass der Plan nach der Bestätigung geändert wurde und erneut bestätigt werden muss; not_ready bedeutet, dass noch keine Bestätigung vorliegt. Aktiviert selbst nichts; das macht finish_arnold_setup.",
+        "Prüft, ob die Einrichtung abgeschlossen werden kann, und liefert die Übergabedaten: bestätigte Revision und Profilrevision. Status ready_to_finish bedeutet, dass ein gültig bestätigter Plan vorliegt; superseded bedeutet, dass der Plan nach der Bestätigung geändert wurde und erneut bestätigt werden muss; not_ready bedeutet, dass noch keine Bestätigung vorliegt. Aktiviert selbst nichts; das macht finish_arnold_setup.",
       inputSchema: OnboardingToolInputs.get_onboarding_handoff,
       outputSchema: z.strictObject({
         handoff: OnboardingHandoffSchema,
@@ -522,7 +492,7 @@ export function registerOnboardingTools(
         return ok(
           result,
           result.handoff.status === "ready_to_finish"
-            ? `Der Trainingsplan ist bestätigt und für die Einrichtung freigegeben (Planversion ${result.handoff.confirmed_plan_version_id}, Revision ${result.handoff.confirmed_plan_revision}). ${result.state.setup_finish_available ? "finish_arnold_setup schließt die Einrichtung ab." : "Der Abschluss ist in dieser Umgebung nicht verfügbar."}`
+            ? `Der Trainingsplan ist bestätigt und für die Einrichtung freigegeben (Revision ${result.handoff.confirmed_plan_revision}). ${result.state.setup_finish_available ? "finish_arnold_setup schließt die Einrichtung ab." : "Der Abschluss ist in dieser Umgebung nicht verfügbar."}`
             : `Noch nicht übergabebereit: ${result.handoff.blocked_reason}`,
         );
       } catch (error) {

@@ -39,15 +39,6 @@ function Boot() {
       ? "dark"
       : "light";
     client.onPayload = (next) => {
-      // A freshly started setup arrives with its session secret. It is stored
-      // in the client immediately, because every later onboarding call needs
-      // it — a session id alone is not a permission.
-      if (next.contract === "onboarding" && next.onboarding.session_token)
-        mcp.rememberOnboarding({
-          onboarding_session_id:
-            next.onboarding.state.session.onboarding_session_id,
-          session_token: next.onboarding.session_token,
-        });
       setPayload(next);
       setError("");
     };
