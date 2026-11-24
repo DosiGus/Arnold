@@ -91,6 +91,12 @@ export type EditContext = {
   dataset: ArnoldDataset;
   now: string;
   id: () => string;
+  /**
+   * Whether the user has a mat (D-07). Only `true` lets floor exercises into a
+   * morning routine; absent means no mat. The profile has no stored answer
+   * yet, so the plan service leaves it unset.
+   */
+  has_mat?: boolean;
 };
 
 const fail = planError;
@@ -569,11 +575,13 @@ function timedTemplate(
   kind: ArnoldPlanMobilitySession["kind"],
   minutes: number,
   exerciseIds: readonly string[],
+  hasMat?: boolean,
 ): ArnoldPlanMobilitySession["template"] {
   const routine = buildMobilityRoutine({
     kind,
     minutes,
     exercise_ids: exerciseIds,
+    has_mat: hasMat,
   });
   if (!routine.ok)
     throw fail("VALIDATION_ERROR", routine.message, [
@@ -716,7 +724,12 @@ function addMobilitySession(
     : (edit.placement ??
       (edit.after_session_id ? "after_strength" : "own_day"));
   const weekdays = edit.weekdays ?? [];
-  const template = timedTemplate(edit.kind, edit.minutes, edit.exercise_ids);
+  const template = timedTemplate(
+    edit.kind,
+    edit.minutes,
+    edit.exercise_ids,
+    ctx.has_mat,
+  );
   return insertMobilitySession(
     model,
     ctx,
@@ -737,6 +750,7 @@ function addMobilitySession(
 function updateMobilitySession(
   model: DraftModel,
   edit: Extract<PlanEdit, { type: "update_mobility_session" }>,
+  hasMat?: boolean,
 ) {
   const state = requireMobilitySession(model, edit.session_id);
   const current = state.current;
@@ -767,6 +781,7 @@ function updateMobilitySession(
         current.kind,
         minutes,
         edit.exercise_ids ?? current.template.exercise_ids,
+        hasMat,
       )
     : current.template;
   const row = mobilityRow({
@@ -1071,7 +1086,7 @@ export function applyEdit(
       return;
     }
     case "update_mobility_session": {
-      updateMobilitySession(model, edit);
+      updateMobilitySession(model, edit, ctx.has_mat);
       return;
     }
     case "remove_mobility_session": {

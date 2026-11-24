@@ -8,6 +8,11 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  applyEdit,
+  loadModel,
+  type EditContext,
+} from "../src/server/plan/versioning";
+import {
   createFixturePlanning,
   planFixtureDataset,
 } from "../src/server/plan/fixture";
@@ -1435,5 +1440,41 @@ describe("the mobility catalog for the editor", () => {
     expect(text.split("\n")).toHaveLength(41);
     expect(text).toMatch(/mob_neck_rolls \| Nackenkreisen \|/);
     expect(text).not.toMatch(/cue/);
+  });
+});
+
+describe("the mat answer reaches the morning routine (D-07)", () => {
+  const withFloor = ["mob_cat_cow", "mob_childs_pose", ...M.slice(0, 3)];
+  const run = async (hasMat: boolean | undefined) => {
+    const h = await harness();
+    const version = await newDraft(h);
+    const dataset = await h.dataset();
+    const plan = dataset.plans.find(
+      (p) => p.plan_version_id === version.plan_version_id,
+    )!;
+    const model = loadModel(dataset, plan);
+    const ctx: EditContext = {
+      dataset,
+      now: NOW,
+      id: () => `m-${Math.random().toString(36).slice(2)}`,
+      has_mat: hasMat,
+    };
+    applyEdit(
+      model,
+      {
+        type: "add_mobility_session",
+        ...morning({ exercise_ids: withFloor }),
+      } as never,
+      ctx,
+    );
+  };
+
+  it("refuses floor exercises without a mat", async () => {
+    await expect(run(undefined)).rejects.toThrow(/Matte|MOBILITY/);
+    await expect(run(false)).rejects.toThrow(/Matte|MOBILITY/);
+  });
+
+  it("allows floor exercises with a mat", async () => {
+    await expect(run(true)).resolves.toBeUndefined();
   });
 });
