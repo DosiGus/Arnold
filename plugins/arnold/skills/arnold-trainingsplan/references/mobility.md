@@ -8,7 +8,8 @@ Gespeichert im Profil (`update_mobility_profile`, `get_mobility_overview` zeigt 
 
 - Nein: `wants: false`. Das gilt endgültig, nicht noch einmal fragen.
 - Ja, mit einer Morgenroutine (Wochentage `mon` … `sun`, 5, 10 oder 15 Minuten) und/oder Mobility-Einheiten (`own_days`, `after_strength` oder `arnold_decides`; 1 bis 3 pro Woche; 15, 20 oder 30 Minuten) und steifen Bereichen.
-- Ohne Details und mit Ja gelten die Vorgaben des Werkzeugtexts: Morgenroutine alle sieben Tage, 10 Minuten; zwei Einheiten pro Woche, 20 Minuten; Arnold entscheidet.
+- Ohne Details und mit Ja fragst du nach: Es gibt keine Standardwerte. Pflicht sind die steifen Bereiche; bei der Morgenroutine Minuten, Wochentage und Matte ja oder nein. Nie raten, nie „7 Tage, 10 Minuten“ voreintragen. Optional: Bereiche schonen, Notizen.
+- Morgenroutine und Mobility-Einheiten können gleichzeitig bestehen.
 
 ## Ablauf nach der Einrichtung („Ich will auch Mobility“)
 
@@ -35,14 +36,14 @@ Sekunden, Haltezeiten und Wiederholungen schickst du nie mit: Arnold berechnet s
 
 - Morgenroutine: `kind: "morning"`, an eigenen Tagen (`weekdays`, ISO, 1 = Montag), Minuten 5, 10 oder 15. Nie nach einer Krafteinheit.
 - Einheit an einem eigenen Tag: `kind: "session"`, `placement: "own_day"`, genau ein Wochentag, Minuten 15, 20 oder 30.
-- Einheit nach dem Kraft�training: `kind: "session"`, `placement: "after_strength"`, `after_session_id` der Krafteinheit, kein Wochentag.
+- Einheit nach dem Krafttraining: `kind: "session"`, `placement: "after_strength"`, `after_session_id` der Krafteinheit, kein Wochentag.
 - „Arnold entscheidet“: ein Tag ohne Krafttraining; ist keiner frei, nach dem Krafttraining.
 - Bei mehr als einer Einheit pro Woche bekommt jede einen eigenen Tag bzw. eine eigene Krafteinheit und einen eigenen Namen nach dem Inhalt („Hüfte lösen“, „Schultern und Nacken“), ohne Wochentag.
 
 ## Übungswahl
 
 - Nur `exercise_id` aus dem Mobility-Katalog (Brief oder `get_plan_editor_context`), nie erfinden.
-- Zuerst Übungen für die steifen Bereiche des Nutzers (Nacken, Schultern, oberer Rücken, unterer Rücken, Hüfte, Beinrückseite, Waden und Sprunggelenke, Handgelenke). Ohne Angabe eine ausgewogene Mischung.
+- Zuerst Übungen für die steifen Bereiche des Nutzers (Nacken, Schultern, oberer Rücken, unterer Rücken, Hüfte, Beinrückseite, Waden und Sprunggelenke, Handgelenke). Ohne Angabe eine allgemeine Ganzkörperroutine, nie erfundene Bereiche. Bodenübungen nur, wenn der Nutzer eine Matte hat.
 - Morgens nur Übungen mit `morning_ok`.
 - Eine Übung höchstens einmal pro Routine; so viele, wie in die Minuten passen, nie mehr als 15.
 - Steif ist keine Diagnose. Keine medizinischen Aussagen, keine Heilversprechen.
