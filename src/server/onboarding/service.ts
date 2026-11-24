@@ -932,7 +932,7 @@ export class OnboardingService {
     raw: unknown,
     context?: unknown,
   ): Promise<OnboardingState> {
-    const input = OnboardingToolInputs.get_onboarding_state.parse(raw);
+    OnboardingToolInputs.get_onboarding_state.parse(raw);
     const { record } = await this.open(context);
     return this.project(record);
   }
@@ -1039,7 +1039,7 @@ export class OnboardingService {
 
   /** The structured brief ChatGPT builds a proposal from. */
   async getBrief(raw: unknown, context?: unknown) {
-    const input = OnboardingToolInputs.get_onboarding_brief.parse(raw);
+    OnboardingToolInputs.get_onboarding_brief.parse(raw);
     const { record } = await this.open(context);
     if (isExpired(record.session, this.clock()))
       throw fail(
@@ -1248,7 +1248,7 @@ export class OnboardingService {
 
   /** The referenced draft with its plan-service validation. */
   async getPlan(raw: unknown, context?: unknown) {
-    const input = OnboardingToolInputs.get_onboarding_plan.parse(raw);
+    OnboardingToolInputs.get_onboarding_plan.parse(raw);
     const { record } = await this.open(context);
     if (!record.session.plan_draft_reference)
       throw fail(
@@ -1467,7 +1467,7 @@ export class OnboardingService {
     raw: unknown,
     context?: unknown,
   ): Promise<{ handoff: OnboardingHandoff; state: OnboardingState }> {
-    const input = OnboardingToolInputs.get_onboarding_handoff.parse(raw);
+    OnboardingToolInputs.get_onboarding_handoff.parse(raw);
     const { record, principal } = await this.open(context);
     const { plan } = await this.referencedPlan(record);
     const handoff = this.handoffFor(record, plan);

@@ -306,7 +306,7 @@ export function registerOnboardingTools(
     },
     async (input) => {
       try {
-        const state = await onboarding.getOnboardingState({}, actorContext);
+        const state = await onboarding.getOnboardingState(input, actorContext);
         return ok(state, summarize(state));
       } catch (error) {
         return failure(error);
@@ -340,7 +340,7 @@ export function registerOnboardingTools(
     },
     async (input) => {
       try {
-        const brief = await onboarding.getBrief({}, actorContext);
+        const brief = await onboarding.getBrief(input, actorContext);
         return ok(
           brief,
           brief.path === "own_plan" || !brief.availability || !brief.goal
@@ -397,7 +397,7 @@ export function registerOnboardingTools(
     },
     async (input) => {
       try {
-        const result = await onboarding.getPlan({}, actorContext);
+        const result = await onboarding.getPlan(input, actorContext);
         return ok(
           result,
           `Entwurf "${result.plan.name}" (Revision ${result.plan.row_revision}): ${result.plan.session_count} Trainingseinheiten, ${result.plan.exercise_count} Übungen. ${
@@ -485,7 +485,10 @@ export function registerOnboardingTools(
     },
     async (input) => {
       try {
-        const result = await onboarding.prepareSetupHandoff({}, actorContext);
+        const result = await onboarding.prepareSetupHandoff(
+          input,
+          actorContext,
+        );
         return ok(
           result,
           result.handoff.status === "ready_to_finish"

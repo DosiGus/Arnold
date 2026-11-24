@@ -558,9 +558,7 @@ describe("the brief for a plan by Arnold", () => {
 
 describe("the brief for an own plan", () => {
   const value = buildBrief(ownPlan(), {
-    onboarding_session_id: "onb-test",
     exercises: dataset.exercises,
-    now: "2026-05-01T12:00:00Z",
   });
 
   it("matches its schema and states the task", () => {

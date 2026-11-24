@@ -192,16 +192,14 @@ describe("onboarding service: recovery on every failure", () => {
     });
   });
 
-  it("a wrong session secret needs no retry", async () => {
+  it("a missing setup needs no retry", async () => {
     const service = createFixtureOnboarding().onboarding;
-    const started = await service.startOnboarding({ request_id: randomUUID() });
     const refused = await service.updateProfile({
       request_id: randomUUID(),
-      onboarding_session_id: started.state!.session.onboarding_session_id,
-      session_token: "x".repeat(43),
       profile: { training: { days_per_week: 3 } },
     });
     expect(refused.ok).toBe(false);
+    expect(refused.error!.code).toBe("SESSION_NOT_FOUND");
     expect(RecoverySchema.parse(refused.error!.recovery)).toBe(
       recoveryFor(refused.error!.code, refused.error!.retryable),
     );

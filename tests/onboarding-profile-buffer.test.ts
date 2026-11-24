@@ -53,7 +53,7 @@ async function setup() {
   const buffer = (initial: OnboardingState, implementation = save) =>
     new OnboardingProfileBuffer({
       initial,
-      sessionId: claim.onboarding_session_id,
+      sessionId: "setup",
       save: implementation,
     });
   return { runtime, claim, initial: chosen.state!, calls, save, buffer };
@@ -151,9 +151,9 @@ describe("local onboarding answers over a slow or unreliable MCP connection", ()
     });
     restored.start();
     expect(await restored.flush()).toBe(true);
-    expect(restored.state.session.onboarding_session_id).toBe(
-      s.claim.onboarding_session_id,
-    );
+    expect(restored.state.session.profile.person).toMatchObject({
+      height_cm: 181,
+    });
   });
 
   it("refuses to silently overwrite a chat update, then saves only after explicit retry", async () => {

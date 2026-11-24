@@ -322,7 +322,7 @@ describe("signed-in users with the database", () => {
       (await call(alice, "show_arnold_onboarding", {})).structuredContent,
     );
     expect(again.state.session.status).toBe("COMPLETED");
-    expect(again.session_token).toBeNull();
+    expect(again).not.toHaveProperty("session_token");
     const dashboard = await call(alice, "get_arnold_dashboard", {});
     expect(dashboard.isError, JSON.stringify(dashboard.content)).toBeFalsy();
     const view = ArnoldDashboardViewSchema.parse(dashboard.structuredContent);
@@ -934,29 +934,22 @@ describe("setup after interruptions", () => {
     const first = OnboardingViewSchema.parse(
       (await call(alice, "show_arnold_onboarding", {})).structuredContent,
     );
-    const claim = {};
     const second = OnboardingViewSchema.parse(
       (await call(alice, "show_arnold_onboarding", {})).structuredContent,
     );
-    expect(second.state.session.onboarding_session_id).toBe(
-      claim.onboarding_session_id,
-    );
-    expect(second.session_token).not.toBe(claim.session_token);
+    // The same setup, found by the account alone.
+    expect(second.resumed).toBe(true);
+    expect(second.state.session.revision).toBe(first.state.session.revision);
 
     // Both cards read and write the same setup, with the revision check.
-    expect(
-      (await call(alice, "get_onboarding_state", claim)).isError,
-    ).toBeFalsy();
+    expect((await call(alice, "get_onboarding_state", {})).isError).toBeFalsy();
     const saved = await response(alice, "update_onboarding_profile", {
-      ...claim,
       request_id: randomUUID(),
       expected_revision: first.state.session.revision,
       profile: { training: { days_per_week: 4 } },
     });
     expect(saved.ok, saved.error?.message).toBe(true);
     const stale = await response(alice, "update_onboarding_profile", {
-      ...claim,
-      session_token: second.session_token!,
       request_id: randomUUID(),
       expected_revision: first.state.session.revision,
       profile: { training: { days_per_week: 2 } },
@@ -964,16 +957,17 @@ describe("setup after interruptions", () => {
     expect(stale.error?.code).toBe("REVISION_CONFLICT");
     expect(stale.state?.session.profile.training.days_per_week).toBe(4);
 
-    // Another account gets nowhere with either secret.
-    for (const token of [claim.session_token, second.session_token!])
-      expect(
-        (
-          await call(bob, "get_onboarding_state", {
-            ...claim,
-            session_token: token,
-          })
-        ).isError,
-      ).toBe(true);
+    // Another account never reaches it, whatever it sends.
+    const foreign = await call(bob, "get_onboarding_state", {
+      onboarding_session_id: "onb-guess",
+      session_token: "x".repeat(43),
+    });
+    if (!foreign.isError) {
+      const state = foreign.structuredContent as {
+        session: { profile: { training: { days_per_week: number | null } } };
+      };
+      expect(state.session.profile.training.days_per_week).not.toBe(4);
+    }
   });
 
   it("replays a lost request-plan answer with its original revision", async () => {

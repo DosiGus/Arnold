@@ -398,8 +398,6 @@ describe("states saved before mobility existed", () => {
     ]);
     const cancelled = await runtime.onboarding.cancelOnboarding({
       request_id: rid(),
-      onboarding_session_id: started.state!.session.onboarding_session_id,
-      session_token: started.session_token!,
     });
     expect(cancelled.state!.open_questions).toEqual([]);
   });

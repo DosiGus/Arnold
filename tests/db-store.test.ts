@@ -363,9 +363,8 @@ describe("PostgresOnboardingRepository", () => {
       audit: account.store.audit,
     });
     const opened = await service.openOnboarding({ userId: account.userId });
-    const record = (await repository.getSession(
-      opened.state.session.onboarding_session_id,
-    ))!;
+    expect(opened.state.session.status).toBe("COLLECTING_PROFILE");
+    const record = (await repository.findLatestByOwner(account.userId))!;
     return { account, repository, record };
   }
 

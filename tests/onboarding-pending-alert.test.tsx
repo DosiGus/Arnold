@@ -10,12 +10,10 @@ import { createFixtureOnboarding } from "../src/server/onboarding/fixture";
 import { ProfileStep } from "../src/ui/components/onboarding";
 
 const runtime = createFixtureOnboarding();
-const started = await runtime.onboarding.startOnboarding({
+await runtime.onboarding.startOnboarding({
   request_id: randomUUID(),
 });
 const chosen = await runtime.onboarding.updateProfile({
-  onboarding_session_id: started.state!.session.onboarding_session_id,
-  session_token: started.session_token!,
   request_id: randomUUID(),
   // A person answer makes the card open on the goal question.
   profile: { path: "arnold_plan", person: { age_years: 30 } },
