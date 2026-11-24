@@ -1,5 +1,8 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { KnownLoads } from "../../../shared/onboarding-contract";
+import {
+  knownLoadEntry,
+  type KnownLoads,
+} from "../../../shared/onboarding-contract";
 import { MiniNumber } from "./controls";
 import type { PageFrame } from "./page-frame";
 import { TITLE } from "./pages";
@@ -47,7 +50,7 @@ export function renderLoadsPage({
             key={lift.key}
             label={lift.label}
             unit="kg"
-            value={loads[lift.key]}
+            value={knownLoadEntry(loads[lift.key])?.kg}
             min={1}
             max={lift.max}
             decimals
