@@ -105,3 +105,11 @@ export {
   type ScoreSnapshotInput,
   type Scores,
 } from "./scores.js";
+export {
+  checkPlanQuality,
+  type PlanQualityExercise,
+  type PlanQualityFinding,
+  type PlanQualityInput,
+  type PlanQualityResult,
+  type PlanQualitySession,
+} from "./plan-quality.js";
