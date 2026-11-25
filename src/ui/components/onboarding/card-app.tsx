@@ -14,6 +14,7 @@ import {
   RUN_REFERENCE_NEXT_MESSAGE,
   RUN_REFERENCE_SKIP_MESSAGE,
 } from "./run-reference-card";
+import { PlanCard, PLAN_NEXT_MESSAGE } from "./plan-card";
 import { ChecklistCard } from "./checklist-card";
 import { ModulesCard, MODULES_NEXT_MESSAGE } from "./modules-card";
 import { PersonCard, PERSON_NEXT_MESSAGE } from "./person-card";
@@ -32,7 +33,10 @@ export function OnboardingCardApp({
   card: OnboardingCard;
   initial: OnboardingState;
 }) {
-  const { state, saving, reload, save } = useOnboardingCard(client, initial);
+  const { state, saving, reload, save, confirmPlan } = useOnboardingCard(
+    client,
+    initial,
+  );
   const { profile } = state.session;
   return (
     <div onClick={() => void reload()}>
@@ -71,6 +75,15 @@ export function OnboardingCardApp({
               skipped ? RUN_REFERENCE_SKIP_MESSAGE : RUN_REFERENCE_NEXT_MESSAGE,
             )
           }
+        />
+      ) : card === "plan" ? (
+        <PlanCard
+          client={client}
+          state={state}
+          saving={saving}
+          onConfirm={confirmPlan}
+          onChanged={reload}
+          onDone={() => void client.askChat(PLAN_NEXT_MESSAGE)}
         />
       ) : (
         <ChecklistCard state={state} />

@@ -20,6 +20,11 @@ import {
   validateProfile,
   validateProposalAgainstProfile,
 } from "../src/server/onboarding/profile";
+import {
+  AgeInputSchema,
+  AgeSchema,
+  PersonPatchSchema,
+} from "../src/shared/onboarding-contract";
 import { mergeProfile } from "../src/server/onboarding/service";
 import { planFixtureDataset } from "../src/server/plan/fixture";
 import { newTrackerDataset } from "../src/server/account/catalog";
@@ -125,6 +130,16 @@ describe("the two paths", () => {
 });
 
 describe("the Person card", () => {
+  it("takes an age from 16 on in a patch; 15 is refused, a stored 14 still reads (D-16)", () => {
+    const patch = (age: number) =>
+      PersonPatchSchema.safeParse({ age_years: age }).success;
+    expect(patch(15)).toBe(false);
+    expect(patch(16)).toBe(true);
+    expect(AgeInputSchema.safeParse(15).success).toBe(false);
+    expect(AgeInputSchema.safeParse(16).success).toBe(true);
+    expect(AgeSchema.safeParse(14).success).toBe(true);
+  });
+
   it("is optional: an empty card never blocks", () => {
     expect(validateProfile(complete()).valid).toBe(true);
     expect(isPersonComplete(complete())).toBe(false);

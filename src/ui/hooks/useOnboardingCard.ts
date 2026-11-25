@@ -23,6 +23,9 @@ export const SAVE_FAILED = "Das hat nicht geklappt. Versuch es noch einmal.";
 export const SAVE_CONFLICT =
   "Dein Stand hatte sich geändert. Ich habe ihn neu geladen. Prüf die Angaben und tippe noch einmal auf Weiter.";
 
+export const PLAN_MOVED =
+  "Dein Plan hat sich geändert. Ich habe ihn neu geladen. Prüf ihn und tippe noch einmal auf Plan bestätigen.";
+
 export type CardSaveResult =
   { ok: true } | { ok: false; message: string; conflict: boolean };
 
@@ -115,5 +118,47 @@ export function useOnboardingCard(
     [client, reload],
   );
 
-  return { state, saving, reload, save };
+  /**
+   * Confirms the plan shown on the card, exactly the version and revision the
+   * user sees. A moved draft is refused by the server and read again.
+   */
+  const confirmPlan = useCallback(async (): Promise<CardSaveResult> => {
+    const plan = stateRef.current.plan;
+    if (!plan || writing.current)
+      return { ok: false, message: SAVE_FAILED, conflict: false };
+    writing.current = true;
+    setSaving(true);
+    try {
+      const response = await client.confirmOnboardingPlan({
+        request_id: newRequestId(),
+        expected_revision: stateRef.current.session.revision,
+        confirmation: {
+          plan_version_id: plan.plan_version_id,
+          row_revision: plan.row_revision,
+          confirmed: true,
+        },
+      });
+      if (response.ok && response.state) {
+        generation.current += 1;
+        if (alive.current) setState(response.state);
+        return { ok: true };
+      }
+      if (
+        response.error?.code === "REVISION_CONFLICT" ||
+        response.error?.code === "STALE_CONFIRMATION"
+      ) {
+        writing.current = false;
+        await reload();
+        return { ok: false, message: PLAN_MOVED, conflict: true };
+      }
+      return { ok: false, message: SAVE_FAILED, conflict: false };
+    } catch {
+      return { ok: false, message: SAVE_FAILED, conflict: false };
+    } finally {
+      writing.current = false;
+      if (alive.current) setSaving(false);
+    }
+  }, [client, reload]);
+
+  return { state, saving, reload, save, confirmPlan };
 }

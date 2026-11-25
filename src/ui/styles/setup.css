@@ -740,3 +740,116 @@
 .oc-anchor .ac-chip {
   justify-self: start;
 }
+
+/* Card "Plan": tiles per training day, and the fullscreen editor */
+.oc-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.oc-tile {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--ac-radius);
+}
+.oc-tile.open {
+  grid-column: 1 / -1;
+  background: var(--soft);
+}
+.arnold-cards .oc-tile > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: var(--ac-tap);
+  padding: 0.75rem;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+}
+.arnold-cards .oc-tile > button:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+.oc-tile-text {
+  display: grid;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.oc-tile-text small,
+.oc-exercise-values small,
+.oc-exercise-name small {
+  color: var(--muted);
+}
+.oc-tile-list,
+.oc-edit-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0 0.75rem 0.5rem;
+  list-style: none;
+}
+.oc-exercise,
+.oc-edit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--border);
+}
+.oc-exercise:first-child,
+.oc-edit-row:first-child {
+  border-top: 0;
+}
+.oc-exercise-name {
+  display: grid;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.oc-exercise-values {
+  display: grid;
+  flex: none;
+  justify-items: end;
+  text-align: end;
+}
+.oc-edit-list {
+  padding: 0;
+}
+.oc-edit-day h3 {
+  margin: 0.5rem 0 0.25rem;
+  font-size: 1rem;
+}
+.oc-edit-row[data-changed] {
+  border-inline-start: 3px solid var(--text);
+  padding-inline-start: 0.5rem;
+}
+.oc-stepper {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.5rem;
+}
+.oc-stepper strong,
+.oc-stepper-fixed {
+  min-width: 4.5rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.oc-stepper-fixed {
+  flex: none;
+  font-weight: 500;
+}
+.arnold-cards .oc-stepper .ac-round.small {
+  width: var(--ac-tap);
+  height: var(--ac-tap);
+  min-width: var(--ac-tap);
+  min-height: var(--ac-tap);
+}
