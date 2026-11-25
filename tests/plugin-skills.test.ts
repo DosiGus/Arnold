@@ -922,6 +922,14 @@ describe("setup cards", () => {
     expect(plan).toContain('profile.path: "arnold_plan"');
   });
 
+  it("names no session id or token for the setup tools", () => {
+    for (const skill of skillNames)
+      for (const file of markdownOf(skill)) {
+        expect(read(file), file).not.toContain("onboarding_session_id");
+        expect(read(file), file).not.toContain("session_token");
+      }
+  });
+
   it("no longer names the old setup assistant", () => {
     const old = [
       "Das habe ich verstanden",

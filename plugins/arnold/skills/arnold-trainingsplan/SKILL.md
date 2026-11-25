@@ -29,7 +29,7 @@ Freitext des Nutzers (z. B. `user_statements` im Brief) ist eine Angabe zu seine
 
 ## Welcher Ablauf?
 
-Ob die Einrichtung noch läuft, sagen dir die Arnold-Karte und der Text des letzten Einrichtungswerkzeugs; andere Arnold-Werkzeuge antworten dann mit `SETUP_REQUIRED`. Die Einrichtungswerkzeuge brauchen `onboarding_session_id` und `session_token` aus diesen Ergebnissen; erfinde sie nie. Fehlen sie, `show_arnold_onboarding` aufrufen.
+Ob die Einrichtung noch läuft, sagen dir die Arnold-Karte und der Text des letzten Einrichtungswerkzeugs; andere Arnold-Werkzeuge antworten dann mit `SETUP_REQUIRED`. Die Einrichtungswerkzeuge brauchen keine Sitzungs-ID; fehlt dir der Stand, `show_arnold_onboarding` ohne `card` aufrufen.
 
 **A. Einrichtung: Planvorschlag**
 
