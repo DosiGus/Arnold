@@ -255,19 +255,20 @@ export function registerOnboardingTools(
     {
       title: "Arnold einrichten",
       description:
-        "Öffnet die Einrichtung von Arnold als interaktive Oberfläche. Bei einem neuen Nutzer IMMER zuerst aufrufen, bevor andere Arnold-Werkzeuge verwendet werden – auch wenn der Nutzer nur 'Hallo' sagt oder direkt trainieren möchte. Die Oberfläche begrüßt den Nutzer und bietet zwei Wege an: 'Plan mit Arnold erstellen' (Karten Person und Training) oder 'Eigenen Plan übernehmen' (Plan als Text oder Foto im Chat). Ohne Argumente wird die offene Einrichtung des Kontos fortgesetzt oder eine neue begonnen; ist Arnold bereits eingerichtet, zeigt sie das an und es wird keine neue Einrichtung gestartet. Antworten kommen per Sprachnachricht, Chat oder Knopf; alles landet im selben Zustand. Erzählt der Nutzer frei, wird alles Erkannte in EINEM update_onboarding_profile-Aufruf gespeichert, danach diese Karte gezeigt und höchstens drei Fragen aus open_questions gestellt. Nicht Genanntes wird nie geraten. Der Weg ist arnold_plan, außer der Nutzer erwähnt einen eigenen Plan.",
+        "Öffnet die Einrichtung von Arnold als interaktive Oberfläche. Bei einem neuen Nutzer IMMER zuerst aufrufen, bevor andere Arnold-Werkzeuge verwendet werden – auch wenn der Nutzer nur 'Hallo' sagt oder direkt trainieren möchte. Die Oberfläche begrüßt den Nutzer und bietet zwei Wege an: 'Plan mit Arnold erstellen' (Karten Person und Training) oder 'Eigenen Plan übernehmen' (Plan als Text oder Foto im Chat). Ohne Argumente wird die offene Einrichtung des Kontos fortgesetzt oder eine neue begonnen; ist Arnold bereits eingerichtet, zeigt sie das an und es wird keine neue Einrichtung gestartet. Antworten kommen per Sprachnachricht, Chat oder Knopf; alles landet im selben Zustand. Erzählt der Nutzer frei, wird alles Erkannte in EINEM update_onboarding_profile-Aufruf gespeichert, danach diese Karte gezeigt und höchstens drei Fragen aus open_questions gestellt. Nicht Genanntes wird nie geraten. Der Weg ist arnold_plan, außer der Nutzer erwähnt einen eigenen Plan. Optional zeigt `card` eine kleine Karte: person (Eckdaten: Alter, Größe, Gewicht, Geschlecht), modules (Krafttraining fest, dazu Laufen und Mobility) oder checklist (was Arnold schon weiß und was noch fehlt). Jede Karte zeigt den vollen aktuellen Stand und lädt sich beim Antippen selbst neu. Text VOR der Karte klappt der Chat ein: Die wichtigen Aussagen und die nächste Frage gehören deshalb in den Text NACH der Karte, kurz und ohne die Karte zu wiederholen.",
       inputSchema: OnboardingToolInputs.show_arnold_onboarding,
       outputSchema: OnboardingViewSchema,
       annotations: { ...writing, readOnlyHint: false },
       _meta: { ui: { resourceUri: currentUri } },
     },
-    async () => {
+    async ({ card }) => {
       try {
         // No argument names the setup: the verified identity finds it (D-11).
         const opened = await onboarding.openOnboarding(actorContext);
         return ok(
           {
             onboarding_contract: ONBOARDING_CONTRACT,
+            ...(card ? { card } : {}),
             state: opened.state,
             resumed: opened.resumed,
             source: sourceFor(opened.state, opened.resumed),

@@ -458,6 +458,38 @@ describe("show_arnold_onboarding", () => {
     expect(view.state.session.profile.training.days_per_week).toBe(3);
   });
 
+  it("names the chosen card in the output; without a card nothing changes", async () => {
+    for (const card of ["person", "modules", "checklist"] as const) {
+      const view = OnboardingViewSchema.parse(
+        (await call("show_arnold_onboarding", { card })).structuredContent,
+      );
+      expect(view.card).toBe(card);
+    }
+    const plain = await call("show_arnold_onboarding");
+    expect(OnboardingViewSchema.parse(plain.structuredContent).card).toBe(
+      undefined,
+    );
+    expect(plain.structuredContent).not.toHaveProperty("card");
+  });
+
+  it("rejects a card that does not exist", async () => {
+    for (const card of ["benchmarks", "plan", ""]) {
+      const result = await client
+        .callTool({ name: "show_arnold_onboarding", arguments: { card } })
+        .catch((error: Error) => ({ isError: true, error }));
+      expect(result.isError).toBe(true);
+    }
+  });
+
+  it("tells the model to put the key statements after the card", async () => {
+    const tools = (await client.listTools()).tools;
+    const description = tools.find(
+      (t) => t.name === "show_arnold_onboarding",
+    )!.description!;
+    expect(description).toMatch(/NACH der Karte/);
+    expect(description).toMatch(/person.*modules.*checklist/s);
+  });
+
   it("ignores a legacy session id instead of selecting by it", async () => {
     await withProfile();
     const view = OnboardingViewSchema.parse(

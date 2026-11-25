@@ -609,3 +609,108 @@
   background: var(--surface-strong);
   border: 1px solid var(--border);
 }
+
+/* Onboarding cards (Eckdaten, Module, Checkliste). */
+.oc-title:focus {
+  outline: none;
+}
+.oc-form {
+  display: grid;
+  gap: 0.875rem;
+}
+.oc-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+  gap: 0.75rem 0.5rem;
+}
+.oc-field {
+  display: grid;
+  align-content: start;
+  gap: 0.375rem;
+  min-width: 0;
+}
+.oc-field label,
+.oc-group-label {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.oc-input {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  min-height: 3.25rem;
+  padding-inline: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--ac-radius-inner);
+  background: var(--surface-strong);
+}
+.oc-input:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.arnold-cards .oc-input input {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 3rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 1.25rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.arnold-cards .oc-input input:focus-visible {
+  outline: none;
+}
+.oc-input small {
+  flex: none;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.oc-field.invalid .oc-input {
+  border-color: var(--ac-warn-text);
+}
+.oc-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.25rem;
+  min-height: 0;
+  color: var(--ac-warn-text);
+  font-size: 0.75rem;
+}
+.oc-msg svg {
+  flex: none;
+  margin-top: 0.1rem;
+}
+.oc-group {
+  display: grid;
+  gap: 0.375rem;
+}
+.oc-note {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.oc-privacy {
+  color: var(--muted);
+}
+.oc-status {
+  min-height: 0;
+  margin: 0;
+}
+.oc-status:empty {
+  display: none;
+}
+.arnold-cards .ac-chip.oc-fixed {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  cursor: default;
+}
+.oc-summary span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

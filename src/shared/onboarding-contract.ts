@@ -417,6 +417,11 @@ export function normalizeKnownLoads(
   return out;
 }
 
+/** The conversation cards of the new setup (more follow in later packages). */
+export const ONBOARDING_CARDS = ["person", "modules", "checklist"] as const;
+export const OnboardingCardSchema = z.enum(ONBOARDING_CARDS);
+export type OnboardingCard = z.infer<typeof OnboardingCardSchema>;
+
 /* ------------------------------------------------------------------ modules */
 
 /**
@@ -1180,6 +1185,8 @@ export type OnboardingState = z.infer<typeof OnboardingStateSchema>;
  */
 export const OnboardingViewSchema = z.strictObject({
   onboarding_contract: z.literal(ONBOARDING_CONTRACT),
+  /** The card the UI shows; absent when the setup opens as before. */
+  card: OnboardingCardSchema.optional(),
   state: OnboardingStateSchema,
   /** Shown once when a session was resumed rather than created. */
   resumed: z.boolean(),
@@ -1242,8 +1249,13 @@ const expected = {
 /* -------------------------------------------------------------- tool inputs */
 
 export const OnboardingToolInputs = {
-  /** Opens the account's open setup, or starts one. */
-  show_arnold_onboarding: z.object({}),
+  /**
+   * Opens the account's open setup, or starts one. `card` picks one of the
+   * small conversation cards; without it the setup opens as before.
+   */
+  show_arnold_onboarding: z.object({
+    card: OnboardingCardSchema.optional(),
+  }),
   /** Continues the account's open setup, or starts one. */
   start_arnold_onboarding: z.object({ ...request }),
   get_onboarding_state: z.object({}),

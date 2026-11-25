@@ -11,6 +11,7 @@ import {
   type ArnoldDashboardView,
 } from "../shared/arnold-view";
 import {
+  OnboardingCardSchema,
   OnboardingResponseSchema,
   OnboardingViewSchema,
   type OnboardingView,
@@ -357,7 +358,14 @@ export class ArnoldClient {
         return;
       }
       // The server finds the account's open setup by identity (D-11).
-      await this.call("show_arnold_onboarding", {});
+      // `?onboarding=1&card=person|modules|checklist` opens one card.
+      const onboardingCard = OnboardingCardSchema.safeParse(
+        new URLSearchParams(location.search).get("card"),
+      );
+      await this.call(
+        "show_arnold_onboarding",
+        onboardingCard.success ? { card: onboardingCard.data } : {},
+      );
     }
   }
 
