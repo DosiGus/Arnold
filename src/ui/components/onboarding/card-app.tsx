@@ -4,6 +4,16 @@ import type {
 } from "../../../shared/onboarding-contract";
 import type { ArnoldMcpClient } from "../../client/ArnoldMcpClient";
 import { useOnboardingCard } from "../../hooks/useOnboardingCard";
+import {
+  BenchmarksCard,
+  BENCHMARKS_NEXT_MESSAGE,
+  BENCHMARKS_SKIP_MESSAGE,
+} from "./benchmarks-card";
+import {
+  RunReferenceCard,
+  RUN_REFERENCE_NEXT_MESSAGE,
+  RUN_REFERENCE_SKIP_MESSAGE,
+} from "./run-reference-card";
 import { ChecklistCard } from "./checklist-card";
 import { ModulesCard, MODULES_NEXT_MESSAGE } from "./modules-card";
 import { PersonCard, PERSON_NEXT_MESSAGE } from "./person-card";
@@ -39,6 +49,28 @@ export function OnboardingCardApp({
           saving={saving}
           onSave={save}
           onDone={() => void client.askChat(MODULES_NEXT_MESSAGE)}
+        />
+      ) : card === "benchmarks" ? (
+        <BenchmarksCard
+          state={state}
+          saving={saving}
+          onSave={save}
+          onDone={(skipped) =>
+            void client.askChat(
+              skipped ? BENCHMARKS_SKIP_MESSAGE : BENCHMARKS_NEXT_MESSAGE,
+            )
+          }
+        />
+      ) : card === "run_reference" ? (
+        <RunReferenceCard
+          state={state}
+          saving={saving}
+          onSave={save}
+          onDone={(skipped) =>
+            void client.askChat(
+              skipped ? RUN_REFERENCE_SKIP_MESSAGE : RUN_REFERENCE_NEXT_MESSAGE,
+            )
+          }
         />
       ) : (
         <ChecklistCard state={state} />
