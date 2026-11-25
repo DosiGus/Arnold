@@ -181,13 +181,13 @@ export function createHttpApp(options: ServerOptions = {}) {
     [];
   // Built before the binding check, because whether a public address is
   // acceptable depends on whether bearer validation is actually active.
-  const authConfig = options.auth ? undefined : loadAuthConfig(env);
-  const auth = options.auth ?? buildAuthSurface({ config: authConfig! });
+  const auth =
+    options.auth ?? buildAuthSurface({ config: loadAuthConfig(env) });
   // The card resources carry the app's own origin; none without a configured
   // address (the development default is no origin to announce).
-  const uiOrigin = env.ARNOLD_PUBLIC_BASE_URL
-    ? uiDomain(authConfig?.publicBaseUrl)
-    : undefined;
+  // Independent of the auth branch: bootstrap always passes its own `auth`,
+  // having checked this very variable with loadAuthConfig.
+  const uiOrigin = uiDomain(env.ARNOLD_PUBLIC_BASE_URL);
   if (
     options.database &&
     (auth.summary.mode !== "oidc" || options.database.options.auth !== auth)

@@ -8,6 +8,8 @@ import {
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
 import { createHttpApp } from "../src/server/http";
+import { buildAuthSurface } from "../src/server/auth/router";
+import { loadAuthConfig } from "../src/server/auth/config";
 import { uiDomain } from "../src/server/ui-resource";
 import {
   bundleTag,
@@ -40,11 +42,17 @@ describe("UI resource URIs", () => {
 
 type UiMeta = { ui?: Record<string, unknown> };
 
-async function cardMeta(env: Record<string, string>) {
+async function cardMeta(env: Record<string, string>, withAuth = false) {
   const root = mkdtempSync(join(tmpdir(), "arnold-root-"));
   mkdirSync(join(root, "dist/ui"), { recursive: true });
   writeFileSync(join(root, "dist/ui/dashboard.html"), "<html>stub</html>");
-  const http = createHttpApp({ env, root }).listen(0, "127.0.0.1");
+  const http = createHttpApp({
+    env,
+    root,
+    ...(withAuth
+      ? { auth: buildAuthSurface({ config: loadAuthConfig(env) }) }
+      : {}),
+  }).listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => http.once("listening", resolve));
   const port = (http.address() as { port: number }).port;
   const client = new Client({ name: "ui-domain", version: "1.0.0" });
@@ -85,6 +93,19 @@ describe("_meta.ui.domain of the card resources", () => {
       expect(ui?.csp).toEqual({ connectDomains: [], resourceDomains: [] });
       expect(ui?.prefersBorder).toBe(false);
     }
+  });
+
+  it("is set also when the caller passes its own auth (as bootstrap does)", async () => {
+    const env = {
+      ARNOLD_ENV: "development",
+      ARNOLD_PUBLIC_BASE_URL: "https://example.test",
+    };
+    const meta = await cardMeta(env, true);
+    for (const ui of [...meta.listed, meta.read])
+      expect(ui?.domain).toBe("https://example.test");
+    const none = await cardMeta({}, true);
+    for (const ui of [...none.listed, none.read])
+      expect(ui).not.toHaveProperty("domain");
   });
 
   it("is left out in development without a configured address", async () => {
