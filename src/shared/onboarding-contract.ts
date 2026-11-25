@@ -418,7 +418,13 @@ export function normalizeKnownLoads(
 }
 
 /** The conversation cards of the new setup (more follow in later packages). */
-export const ONBOARDING_CARDS = ["person", "modules", "checklist"] as const;
+export const ONBOARDING_CARDS = [
+  "person",
+  "modules",
+  "checklist",
+  "benchmarks",
+  "run_reference",
+] as const;
 export const OnboardingCardSchema = z.enum(ONBOARDING_CARDS);
 export type OnboardingCard = z.infer<typeof OnboardingCardSchema>;
 
