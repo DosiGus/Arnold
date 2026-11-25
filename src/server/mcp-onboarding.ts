@@ -222,6 +222,7 @@ export function registerOnboardingTools(
   onboarding?: OnboardingService,
   uiFile?: string,
   actorContext?: unknown,
+  uiDomain?: string,
 ) {
   if (!onboarding) return;
 
@@ -239,6 +240,7 @@ export function registerOnboardingTools(
         description:
           "Geführte Einrichtung von Arnold: Begrüßung mit Wahl des Weges, Angaben zu Person und Training oder Übernahme eines eigenen Plans, Planvorschlag, Planbearbeitung und Bestätigung.",
         legacyUris: LEGACY_ONBOARDING_URIS,
+        domain: uiDomain,
       })
     : onboardingResourceUri(uiFile);
 

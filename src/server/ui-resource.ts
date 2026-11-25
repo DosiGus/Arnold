@@ -54,12 +54,27 @@ export const dashboardResourceUri = (file: string | undefined) =>
 export const onboardingResourceUri = (file: string | undefined) =>
   `ui://arnold/onboarding-v2-${bundleTag(file)}.html`;
 
-const UI_META = {
-  ui: {
-    prefersBorder: false,
-    csp: { connectDomains: [] as string[], resourceDomains: [] as string[] },
-  },
-};
+/**
+ * `_meta.ui` of a card resource. `domain` is the app's own origin (from the
+ * checked configuration) and is left out when none is configured. The CSP
+ * stays empty: one bundle, no external assets.
+ */
+export function uiMeta(domain?: string) {
+  return {
+    ui: {
+      prefersBorder: false,
+      csp: { connectDomains: [] as string[], resourceDomains: [] as string[] },
+      ...(domain ? { domain } : {}),
+    },
+  };
+}
+
+/** The origin of the configured public address, or undefined when unset. */
+export function uiDomain(
+  publicBaseUrl: string | URL | undefined,
+): string | undefined {
+  return publicBaseUrl ? new URL(publicBaseUrl).origin : undefined;
+}
 
 /**
  * Registers one UI bundle under its current URI, the fixed URIs of earlier
@@ -75,9 +90,13 @@ export function registerUiBundle(
     legacyName: string;
     description: string;
     legacyUris: readonly string[];
+    /** Origin for `_meta.ui.domain`; omitted when not configured. */
+    domain?: string;
   },
 ): string {
-  const { kind, file, name, legacyName, description, legacyUris } = options;
+  const { kind, file, name, legacyName, description, legacyUris, domain } =
+    options;
+  const UI_META = uiMeta(domain);
   const currentUri = `ui://arnold/${kind}-v2-${bundleTag(file)}.html`;
   const read = async (uri: string) => ({
     contents: [
