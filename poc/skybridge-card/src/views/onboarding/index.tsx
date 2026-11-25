@@ -18,7 +18,10 @@ import {
   WearableStep,
   Welcome,
 } from "./steps.js";
+import { AppShell } from "./app.js";
+import type { Screen } from "./dashboard.js";
 import { useSetup } from "./use-setup.js";
+import { useState } from "react";
 
 const STEP_INDEX = {
   welcome: 0,
@@ -38,6 +41,7 @@ export default function Onboarding() {
 
 function Flow({ initial }: { initial: OnboardingView }) {
   const s = useSetup(initial);
+  const [screen, setScreen] = useState<"setup" | Screen>("setup");
   const sendFollowUp = useSendFollowUpMessage();
   const { view } = s;
   const building = s.busy === "plan";
@@ -45,7 +49,7 @@ function Flow({ initial }: { initial: OnboardingView }) {
   const missing = view.required
     .filter((r) => r.value === null)
     .map((r) => r.label);
-  const context = `Einrichtung, Schritt "${view.phase}". Ziel: ${view.profile.goal ?? "fehlt"}, Tage: ${view.profile.days ?? "fehlt"}, Minuten: ${view.profile.minutes ?? "fehlt"}. ${missing.length ? `Es fehlt noch: ${missing.join(", ")}.` : "Alle Pflichtangaben da."}`;
+  const context = `Einrichtung, Schritt "${view.phase}". Ziele: ${view.profile.goals?.join(", ") || "fehlt"}, Tage: ${view.profile.days ?? "fehlt"}, Minuten: ${view.profile.minutes ?? "fehlt"}. ${missing.length ? `Es fehlt noch: ${missing.join(", ")}.` : "Alle Pflichtangaben da."}`;
 
   const key = building
     ? "building"
@@ -53,12 +57,34 @@ function Flow({ initial }: { initial: OnboardingView }) {
       ? "own"
       : view.phase;
 
+  if (screen !== "setup")
+    return (
+      <DataLLM content="Dashboard mit Beispieldaten: nächstes Training, Woche, Scores, Ziele, Rekorde.">
+        <main className="mx-auto flex w-full max-w-xl flex-col gap-6 p-4">
+          <AppShell
+            initial={screen}
+            view={view}
+            onAsk={(t) => void sendFollowUp(t)}
+            onEditProfile={() => {
+              setScreen("setup");
+              void s.goTo("profile");
+            }}
+          />
+        </main>
+      </DataLLM>
+    );
+
   return (
     <DataLLM content={context}>
       <main className="mx-auto flex w-full max-w-xl flex-col gap-6 p-4">
         <div className="flex items-center gap-3">
           <div className="flex-1">
-            <Stepper index={STEP_INDEX[view.phase]} />
+            <Stepper
+              index={STEP_INDEX[view.phase]}
+              onStep={(i) =>
+                void s.goTo(i === 0 ? "welcome" : i === 1 ? "profile" : "plan")
+              }
+            />
           </div>
           <Button
             color="secondary"
@@ -115,9 +141,9 @@ function Flow({ initial }: { initial: OnboardingView }) {
             {key === "done" && (
               <Done
                 view={view}
-                onNext={() =>
-                  void sendFollowUp("Zeig mir mein nächstes Training.")
-                }
+                onNext={() => setScreen("training")}
+                onDashboard={() => setScreen("dashboard")}
+                onSettings={() => setScreen("settings")}
               />
             )}
           </div>

@@ -32,6 +32,7 @@ export function useSetup(initial: OnboardingView) {
   const wearableTool = useCallTool("set_wearable");
   const finishTool = useCallTool("finish_setup");
   const resetTool = useCallTool("reset_setup");
+  const goTool = useCallTool("go_to_step");
 
   const accept = useCallback((next: OnboardingView) => {
     confirmed.current = next;
@@ -124,6 +125,8 @@ export function useSetup(initial: OnboardingView) {
     chooseWearable: (choice: "connect" | "later") =>
       run("wearable", () => wearableTool.callToolAsync({ choice })),
     finish: () => run("finish", () => finishTool.callToolAsync()),
+    goTo: (step: "welcome" | "profile" | "plan") =>
+      run("goto", () => goTool.callToolAsync({ step })),
     reset: () => run("reset", () => resetTool.callToolAsync()),
   };
 }

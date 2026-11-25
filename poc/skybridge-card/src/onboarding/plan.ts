@@ -1,4 +1,11 @@
-import type { PlanDay, PlanExercise, Profile, Plan } from "./model.js";
+import { levelOf } from "./model.js";
+import type {
+  MobFocus,
+  Plan,
+  PlanDay,
+  PlanExercise,
+  Profile,
+} from "./model.js";
 
 type Tpl = {
   id: string;
@@ -39,7 +46,11 @@ const ROUND = (kg: number) => Math.max(2.5, Math.round(kg / 2.5) * 2.5);
 
 function exercises(p: Profile, list: Tpl[]): PlanExercise[] {
   const level =
-    p.experience === "advanced" ? 1.15 : p.experience === "beginner" ? 0.8 : 1;
+    levelOf(p.strengthStand) === "advanced"
+      ? 1.15
+      : levelOf(p.strengthStand) === "beginner"
+        ? 0.8
+        : 1;
   const sex = p.sex === "female" ? 0.7 : 1;
   const trimmed = (p.minutes ?? 60) <= 40 ? list.slice(0, 4) : list;
   return trimmed.map((t) => {
@@ -55,9 +66,7 @@ function exercises(p: Profile, list: Tpl[]): PlanExercise[] {
   });
 }
 
-/** Deterministic demo generator. In the real app ChatGPT builds the plan from the brief. */
-export function buildPlan(p: Profile): Plan {
-  const days = p.days ?? 3;
+function strengthPlan(p: Profile, days: number): Plan {
   const mk = (
     id: string,
     name: string,
@@ -65,6 +74,7 @@ export function buildPlan(p: Profile): Plan {
     list: Tpl[],
   ): PlanDay => ({
     id,
+    kind: "strength",
     name,
     focus,
     exercises: exercises(p, list),
@@ -117,4 +127,163 @@ export function buildPlan(p: Profile): Plan {
     mk("legs", "Beine", "Beine, Rumpf", [SQUAT, RDL, LEGPRESS, PLANK]),
   ];
   return { split: "Push / Pull / Beine", days: ppl.concat(ppl).slice(0, days) };
+}
+
+const info = (id: string, name: string, detail: string): PlanExercise => ({
+  id,
+  name,
+  sets: 1,
+  reps: "",
+  kg: null,
+  estimated: false,
+  detail,
+});
+
+function runDays(p: Profile, count: number): PlanDay[] {
+  const goals = p.runGoals ?? [];
+  const beginner = p.runStand?.recent === "none" || p.runStand?.years === "lt1";
+  const mins = Math.min(p.minutes ?? 45, 60);
+  const easy = Math.max(20, Math.min(mins, beginner ? 30 : 40));
+  const kinds: ("easy" | "interval" | "long")[] = [];
+  if (goals.includes("faster")) kinds.push("interval");
+  if (goals.includes("longer")) kinds.push("long");
+  while (kinds.length < count) kinds.push("easy");
+  return kinds.slice(0, count).map((k, i): PlanDay => {
+    const id = `run${i + 1}`;
+    if (k === "interval")
+      return {
+        id,
+        kind: "run",
+        name: "Intervalllauf",
+        focus: "Tempo",
+        exercises: [
+          info(`${id}a`, "Einlaufen", "10 Min. locker"),
+          info(
+            `${id}b`,
+            "Intervalle",
+            beginner
+              ? "5 × 1 Min. zügig, 2 Min. Trabpause"
+              : "6 × 3 Min. zügig, 90 s Trabpause",
+          ),
+          info(`${id}c`, "Auslaufen", "5 Min. locker"),
+        ],
+      };
+    if (k === "long")
+      return {
+        id,
+        kind: "run",
+        name: "Langer Lauf",
+        focus: "Ausdauer",
+        exercises: [
+          info(
+            `${id}a`,
+            "Lockerer Dauerlauf",
+            `${beginner ? 35 : Math.max(50, mins)} Min. im Gesprächstempo`,
+          ),
+        ],
+      };
+    return {
+      id,
+      kind: "run",
+      name: "Lockerer Lauf",
+      focus: "Grundlage",
+      exercises: [
+        info(
+          `${id}a`,
+          beginner ? "Laufen und Gehen im Wechsel" : "Lockerer Dauerlauf",
+          beginner
+            ? `${easy} Min., 2 Min. laufen, 1 Min. gehen`
+            : `${easy} Min. im Gesprächstempo`,
+        ),
+      ],
+    };
+  });
+}
+
+const MOB: Record<MobFocus, [string, string][]> = {
+  neck: [
+    ["Nackendehnung seitlich", "2 × 30 s je Seite"],
+    ["Schulterkreisen", "2 × 10 rückwärts"],
+  ],
+  lower_back: [
+    ["Katze und Kuh", "2 × 10"],
+    ["Beckenkippen auf dem Rücken", "2 × 12"],
+  ],
+  hips: [
+    ["Hüftbeuger-Dehnung", "2 × 40 s je Seite"],
+    ["90/90 Hüftrotation", "2 × 8 je Seite"],
+  ],
+  knees: [
+    ["Kniestabilisierung am Band", "2 × 12 je Seite"],
+    ["Wandsitz", "2 × 30 s"],
+  ],
+  ankles: [
+    ["Sprunggelenkkreisen", "2 × 10 je Seite"],
+    ["Wadendehnung an der Wand", "2 × 40 s je Seite"],
+  ],
+  general: [
+    ["Tiefe Hocke halten", "2 × 40 s"],
+    ["Weltbeste Dehnung", "2 × 5 je Seite"],
+  ],
+};
+
+function mobilityDays(p: Profile): PlanDay[] {
+  const foci = p.mobilityFocus?.length
+    ? p.mobilityFocus
+    : (["general"] as MobFocus[]);
+  const rows = foci.flatMap((f) => MOB[f]);
+  if (p.job === "sitting" && !foci.includes("hips"))
+    rows.push(...MOB.hips.slice(0, 1));
+  const half = Math.ceil(rows.length / 2);
+  return [rows.slice(0, Math.max(3, half)), rows.slice(-Math.max(3, half))].map(
+    (r, i): PlanDay => ({
+      id: `mob${i + 1}`,
+      kind: "mobility",
+      name: i === 0 ? "Mobility A" : "Mobility B",
+      focus: "ca. 15 Min.",
+      exercises: r.slice(0, 6).map(([n, d], k) => info(`mob${i}${k}`, n, d)),
+    }),
+  );
+}
+
+function morningDay(p: Profile): PlanDay {
+  const all: [string, string][] = [
+    ["Aufwachen und Atmen", "1 Min. tief atmen"],
+    ["Katze und Kuh", "1 Min."],
+    ["Hüftkreisen", "1 Min."],
+    ["Kniebeugen ohne Gewicht", "10 Wiederholungen"],
+    ["Schultern lösen", "1 Min."],
+    ["Streckung im Stand", "1 Min."],
+  ];
+  const n =
+    (p.morningMinutes ?? 10) <= 5 ? 3 : (p.morningMinutes ?? 10) <= 10 ? 5 : 6;
+  return {
+    id: "morning",
+    kind: "morning",
+    name: "Morgenroutine",
+    focus: `Täglich · ${p.morningMinutes ?? 10} Min.`,
+    exercises: all.slice(0, n).map(([a, b], i) => info(`m${i}`, a, b)),
+  };
+}
+
+/** Deterministic demo generator. In the real app ChatGPT builds the plan from the brief. */
+export function buildPlan(p: Profile): Plan {
+  const days = p.days ?? 3;
+  const runs = p.run
+    ? p.strength
+      ? Math.min(2, Math.max(1, days - 2))
+      : Math.min(5, Math.max(2, days))
+    : 0;
+  const strength = p.strength ? Math.max(2, p.run ? days - runs : days) : 0;
+  const parts: PlanDay[] = [];
+  let split = "";
+  if (p.strength) {
+    const sp = strengthPlan(p, strength);
+    parts.push(...sp.days);
+    split = sp.split;
+  }
+  if (runs) parts.push(...runDays(p, runs));
+  if (p.mobility) parts.push(...mobilityDays(p));
+  if (p.morning) parts.push(morningDay(p));
+  return { split: split || "Eigener Mix", days: parts };
 }

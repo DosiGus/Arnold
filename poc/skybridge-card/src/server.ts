@@ -1,10 +1,24 @@
 import { Skybridge } from "skybridge/server";
 import { z } from "zod";
-import { GOALS, LEVELS, PLACES, SEXES, Setup } from "./onboarding/model.js";
+import {
+  GOALS,
+  JOBS,
+  MOB_FOCUS,
+  PLACES,
+  RUN_GOALS,
+  SEXES,
+  Setup,
+} from "./onboarding/model.js";
 import { buildPlan } from "./onboarding/plan.js";
 
 // POC: synthetic data only, one in-memory setup. No database, no login.
 const setup = new Setup();
+
+const standSchema = z.object({
+  recent: z.enum(["regular", "irregular", "none", "gt10", "lt10"]).optional(),
+  years: z.enum(["lt1", "1to3", "gt3"]).optional(),
+  pause: z.enum(["none", "lt3m", "3to12m", "gt12m"]).optional(),
+});
 
 const ok = (text: string) => ({
   structuredContent: { state: setup.view() },
@@ -59,20 +73,27 @@ export const app = new Skybridge({
         {
           name: "update_profile",
           description:
-            "Saves what the user said (text or voice note). Only values the user actually gave, never guesses. Call it as soon as the user mentions goal, experience, days, minutes, place, body data, running or mobility.",
+            "Saves what the user said (text or voice note). Only values the user actually gave, never guesses. Call it as soon as the user mentions goals (several allowed), training status (recent regularity or, for running, number of runs in the last 3 months: gt10, lt10, none; years; last break), days, minutes, training places (several allowed), body data, strength training, running, mobility or a morning routine.",
           inputSchema: {
             path: z.enum(["arnold_plan", "own_plan"]).optional(),
-            goal: z.enum(GOALS).optional(),
-            experience: z.enum(LEVELS).optional(),
+            goals: z.array(z.enum(GOALS)).max(4).optional(),
+            strengthStand: standSchema.optional(),
             days: z.number().int().min(1).max(7).optional(),
             minutes: z.number().int().min(20).max(150).optional(),
-            place: z.enum(PLACES).optional(),
+            places: z.array(z.enum(PLACES)).max(3).optional(),
             age: z.number().int().min(16).max(100).optional(),
             height: z.number().int().min(120).max(230).optional(),
             weight: z.number().min(30).max(300).optional(),
             sex: z.enum(SEXES).optional(),
             run: z.boolean().optional(),
             mobility: z.boolean().optional(),
+            strength: z.boolean().optional(),
+            morning: z.boolean().optional(),
+            runGoals: z.array(z.enum(RUN_GOALS)).max(4).optional(),
+            runStand: standSchema.optional(),
+            mobilityFocus: z.array(z.enum(MOB_FOCUS)).max(7).optional(),
+            morningMinutes: z.number().int().min(5).max(30).optional(),
+            job: z.enum(JOBS).optional(),
             notes: z.string().max(400).optional(),
           },
           annotations: writes("Angaben speichern"),
@@ -166,6 +187,39 @@ export const app = new Skybridge({
             };
           setup.done = true;
           return ok("Einrichtung abgeschlossen.");
+        },
+      )
+      .registerTool(
+        {
+          name: "show_dashboard",
+          description:
+            "Use this when the user asks for their dashboard, overview or weekly status. Shows next training, week, scores, goals and records.",
+          inputSchema: {},
+          annotations: readOnly("Dashboard zeigen"),
+          view: { component: "dashboard" },
+        },
+        async () => ({
+          structuredContent: { state: setup.view() },
+          content: [
+            {
+              type: "text" as const,
+              text: "Dashboard gezeigt (Beispieldaten).",
+            },
+          ],
+        }),
+      )
+      .registerTool(
+        {
+          name: "go_to_step",
+          description:
+            "Goes back to an earlier setup step so the user can edit it.",
+          inputSchema: { step: z.enum(["welcome", "profile", "plan"]) },
+          annotations: writes("Schritt zurück"),
+          _meta: { ui: { visibility: ["app"] } },
+        },
+        async ({ step }) => {
+          setup.goTo(step);
+          return ok("Zurück zum früheren Schritt.");
         },
       )
       .registerTool(
