@@ -34,7 +34,9 @@ export function ChecklistCard({ state }: { state: OnboardingState }) {
           items={fields.map((field) => ({
             key: field,
             label: REQUIRED_FIELD_LABEL[field],
-            value: missing.has(field) ? undefined : fieldValue(field, profile),
+            value: missing.has(field)
+              ? undefined
+              : (fieldValue(field, profile) ?? "Angegeben"),
           }))}
         />
       ) : (
