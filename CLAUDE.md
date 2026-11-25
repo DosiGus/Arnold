@@ -8,6 +8,7 @@ MCP-App (Node/Express + React) für Training; Login über WorkOS, Daten in Postg
 npm run check        # vor jedem Merge: Build, Typecheck, Vitest, Playwright
 npm test             # nur Vitest (startet selbst eine lokale Postgres für tests/db-*)
 npm run build:ui     # nach UI-Änderungen, bevor /preview oder /host neu geladen wird
+npm run dev:preview  # lokale Vorschau mit erfundenen Daten, baut die UI bei Änderungen neu, Enter = Daten zurücksetzen (Einrichtung: /preview?onboarding=1)
 npm run format       # Prettier
 npm run lint         # ESLint (läuft auch in der CI)
 npm run db:migrate   # Migrationen anwenden (DATABASE_ADMIN_URL)
