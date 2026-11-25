@@ -465,6 +465,7 @@ describe("show_arnold_onboarding", () => {
       "checklist",
       "benchmarks",
       "run_reference",
+      "plan",
     ] as const) {
       const view = OnboardingViewSchema.parse(
         (await call("show_arnold_onboarding", { card })).structuredContent,
@@ -479,7 +480,7 @@ describe("show_arnold_onboarding", () => {
   });
 
   it("rejects a card that does not exist", async () => {
-    for (const card of ["plan", "welcome", ""]) {
+    for (const card of ["welcome", "start", ""]) {
       const result = await client
         .callTool({ name: "show_arnold_onboarding", arguments: { card } })
         .catch((error: Error) => ({ isError: true, error }));
@@ -496,6 +497,10 @@ describe("show_arnold_onboarding", () => {
     expect(description).toMatch(/person.*modules.*checklist/s);
     expect(description).toMatch(/benchmarks.*run_reference/s);
     expect(description).toMatch(/übersprungen.*nie sagen/s);
+    expect(description).toMatch(
+      /plan \(Planvorschlag.*zwei Aktionen.*Selbst bearbeiten/s,
+    );
+    expect(description).toMatch(/gespeicherten Wert/);
   });
 
   it("ignores a legacy session id instead of selecting by it", async () => {

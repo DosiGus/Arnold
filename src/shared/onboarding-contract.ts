@@ -325,7 +325,10 @@ export const DaysPerWeekSchema = z
   .min(DAYS_PER_WEEK_MIN)
   .max(DAYS_PER_WEEK_MAX);
 
+/** Stored profiles may still hold an age from before D-16, so reading stays at 14. */
 export const AgeSchema = z.number().int().min(14).max(100);
+/** What a caller may enter or patch from now on (D-16): at least 16. */
+export const AgeInputSchema = z.number().int().min(16).max(100);
 export const HeightSchema = z.number().int().min(120).max(230);
 export const BodyWeightSchema = z.number().min(30).max(300);
 
@@ -424,6 +427,7 @@ export const ONBOARDING_CARDS = [
   "checklist",
   "benchmarks",
   "run_reference",
+  "plan",
 ] as const;
 export const OnboardingCardSchema = z.enum(ONBOARDING_CARDS);
 export type OnboardingCard = z.infer<typeof OnboardingCardSchema>;
@@ -678,7 +682,7 @@ export function requiredFieldsFor(
  * replace the stored list, so sending `[]` clears one.
  */
 export const PersonPatchSchema = z.strictObject({
-  age_years: AgeSchema.nullable().optional(),
+  age_years: AgeInputSchema.nullable().optional(),
   sex: SexSchema.nullable().optional(),
   height_cm: HeightSchema.nullable().optional(),
   body_weight_kg: BodyWeightSchema.nullable().optional(),
