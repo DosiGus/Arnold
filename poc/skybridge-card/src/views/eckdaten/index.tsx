@@ -7,10 +7,12 @@ import { SegmentedControl } from "@openai/apps-sdk-ui/components/SegmentedContro
 import { useState } from "react";
 import { DataLLM } from "skybridge/web";
 import { useCallTool, useToolInfo } from "../../helpers.js";
+import { useHostTheme } from "../../use-host-theme.js";
 
 type Geschlecht = "weiblich" | "maennlich" | "divers" | "keine_angabe";
 
 export default function Eckdaten() {
+  useHostTheme();
   const info = useToolInfo<"show_eckdaten">();
   const save = useCallTool("save_eckdaten");
   const [alter, setAlter] = useState("");
