@@ -15,8 +15,12 @@ export type WeightDevice = {
 
 export function deviceOf(item: PlannedExercise): WeightDevice | undefined {
   const c = conventionsOf(item);
-  if (c.load_basis === "bodyweight_only") return undefined;
   const equipment = item.exercise_equipment.toLowerCase();
+  if (
+    c.load_basis === "bodyweight_only" ||
+    /körpergewicht|bodyweight/.test(equipment)
+  )
+    return undefined;
   if (
     c.load_basis === "machine_display" ||
     /machine|cable|kabel|masch/.test(equipment)
