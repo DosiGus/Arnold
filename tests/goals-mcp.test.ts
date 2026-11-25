@@ -16,6 +16,7 @@ import { ArnoldDashboardViewSchema } from "../src/shared/arnold-view";
 import { CONFIRMATION_RULES } from "../src/server/auth/confirmation-rules";
 import { TOOL_ACCESS } from "../src/server/auth/tool-access";
 import { SETUP_GATED_TOOLS } from "../src/server/onboarding/setup-gate";
+import { asCard } from "./fixtures/card-view";
 
 const GOAL_TOOLS = [
   "create_training_goal",
@@ -27,7 +28,7 @@ const GOAL_TOOLS = [
 
 let client: Client, http: Server;
 const call = async (name: string, args: Record<string, unknown> = {}) =>
-  (await client.callTool({ name, arguments: args })) as CallToolResult;
+  asCard((await client.callTool({ name, arguments: args })) as CallToolResult);
 const write = async (name: string, args: Record<string, unknown>) =>
   WriteResponseSchema.parse((await call(name, args)).structuredContent);
 const dashboard = async () =>

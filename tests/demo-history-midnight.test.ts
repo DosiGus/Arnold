@@ -19,6 +19,7 @@ import { createFixturePlanning } from "../src/server/plan/fixture";
 import { demoHistoryDataset } from "../src/server/plan/demo-history";
 import { WriteResponseSchema } from "../src/shared/workout-contract";
 import { berlinToday } from "./fixtures/berlin-today";
+import { asCard } from "./fixtures/card-view";
 
 // 23 Nov 2026 is a Monday: the day with a weight and a legs workout.
 const CLOCKS = [
@@ -84,22 +85,26 @@ describe.each(CLOCKS)("clock at %s", (instant) => {
         ),
       ),
     );
-    const result = (await client.callTool({
-      name: "log_body_weight",
-      arguments: {
-        request_id: "midnight-1",
-        measured_on: today,
-        timezone: "Europe/Berlin",
-        weight_kg: 81.3,
-      },
-    })) as CallToolResult;
+    const result = asCard(
+      (await client.callTool({
+        name: "log_body_weight",
+        arguments: {
+          request_id: "midnight-1",
+          measured_on: today,
+          timezone: "Europe/Berlin",
+          weight_kg: 81.3,
+        },
+      })) as CallToolResult,
+    );
     const response = WriteResponseSchema.parse(result.structuredContent);
     expect(response.error).toBeNull();
     expect(response.ok).toBe(true);
-    const view = (await client.callTool({
-      name: "get_arnold_dashboard",
-      arguments: { timezone: "Europe/Berlin" },
-    })) as CallToolResult;
+    const view = asCard(
+      (await client.callTool({
+        name: "get_arnold_dashboard",
+        arguments: { timezone: "Europe/Berlin" },
+      })) as CallToolResult,
+    );
     const home = (view.structuredContent as { home: Record<string, unknown> })
       .home;
     expect(home.latest_body_weight).toEqual({ date: today, weight_kg: 81.3 });

@@ -22,12 +22,15 @@ import {
   masterTemplateDataset,
   singleSetDataset,
 } from "./fixtures/arnold-dashboard";
+import { asCard } from "./fixtures/card-view";
 
 let client: Client;
 let http: Server;
 let source: StaticArnoldDataSource;
 const call = (name: string, args = {}) =>
-  client.callTool({ name, arguments: args }) as Promise<CallToolResult>;
+  client
+    .callTool({ name, arguments: args })
+    .then((result) => asCard(result as CallToolResult));
 const dashboard = async (args = {}) =>
   ArnoldDashboardViewSchema.parse(
     (await call("get_arnold_dashboard", args)).structuredContent,

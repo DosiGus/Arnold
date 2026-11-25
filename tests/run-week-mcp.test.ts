@@ -29,6 +29,7 @@ import {
   ScheduleRunWeekResponseSchema,
 } from "../src/shared/run-contract";
 import { exercise, set, workout } from "./fixtures/arnold-analytics";
+import { asCard } from "./fixtures/card-view";
 
 type Runtime = ReturnType<typeof createFixturePlanning>;
 const tz = "Europe/Berlin";
@@ -88,7 +89,9 @@ async function start(dataset = planFixtureDataset("active_ppl")) {
   clients.push(client);
   servers.push(http);
   const call = async (name: string, args: Record<string, unknown> = {}) =>
-    (await client.callTool({ name, arguments: args })) as CallToolResult;
+    asCard(
+      (await client.callTool({ name, arguments: args })) as CallToolResult,
+    );
   return { runtime, client, call };
 }
 afterEach(async () => {

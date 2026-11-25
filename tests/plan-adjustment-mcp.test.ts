@@ -20,13 +20,14 @@ import {
 } from "../src/shared/plan-adjustment-contract";
 import { TOOL_ACCESS } from "../src/server/auth/tool-access";
 import { CONFIRMATION_RULES } from "../src/server/auth/confirmation-rules";
+import { asCard } from "./fixtures/card-view";
 
 const NOW = "2026-11-17T09:00:00Z";
 let client: Client;
 let http: Server;
 
 const call = async (name: string, args: Record<string, unknown> = {}) =>
-  (await client.callTool({ name, arguments: args })) as CallToolResult;
+  asCard((await client.callTool({ name, arguments: args })) as CallToolResult);
 const textOf = (result: CallToolResult) => {
   const block = result.content[0];
   return block && block.type === "text" ? block.text : "";

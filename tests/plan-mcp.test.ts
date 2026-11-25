@@ -22,13 +22,14 @@ import {
   type PlanWriteResponse,
 } from "../src/shared/plan-contract";
 import { ArnoldDashboardViewSchema } from "../src/shared/arnold-view";
+import { asCard } from "./fixtures/card-view";
 
 let client: Client;
 let http: Server;
 let runtime: ReturnType<typeof createFixturePlanning>;
 
 const call = async (name: string, args: Record<string, unknown> = {}) =>
-  (await client.callTool({ name, arguments: args })) as CallToolResult;
+  asCard((await client.callTool({ name, arguments: args })) as CallToolResult);
 
 /** First text block of a tool result, which is where every message lands. */
 const textOf = (result: CallToolResult) => {

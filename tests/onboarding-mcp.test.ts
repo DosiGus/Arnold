@@ -36,6 +36,7 @@ import {
 } from "../src/shared/plan-contract";
 import { ArnoldDashboardViewSchema } from "../src/shared/arnold-view";
 import { cardForState } from "../src/shared/onboarding-card";
+import { asCard } from "./fixtures/card-view";
 
 let client: Client;
 let http: Server;
@@ -44,7 +45,7 @@ let runtime: ReturnType<typeof createFixtureOnboarding>;
 const rid = () => randomUUID();
 
 const call = async (name: string, args: Record<string, unknown> = {}) =>
-  (await client.callTool({ name, arguments: args })) as CallToolResult;
+  asCard((await client.callTool({ name, arguments: args })) as CallToolResult);
 
 const textOf = (result: CallToolResult) => {
   const block = result.content[0];

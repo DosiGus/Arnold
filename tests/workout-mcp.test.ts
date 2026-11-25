@@ -13,6 +13,7 @@ import {
   WriteResponseSchema,
 } from "../src/shared/workout-contract";
 import { ArnoldDashboardViewSchema } from "../src/shared/arnold-view";
+import { asCard } from "./fixtures/card-view";
 const setInput = (extra = {}) => ({
   exercise_id: "fixture-bench",
   set_type: "working",
@@ -28,7 +29,7 @@ const setInput = (extra = {}) => ({
 
 let client: Client, http: Server;
 const call = async (name: string, args: Record<string, unknown> = {}) =>
-  (await client.callTool({ name, arguments: args })) as CallToolResult;
+  asCard((await client.callTool({ name, arguments: args })) as CallToolResult);
 const write = async (name: string, args: Record<string, unknown>) =>
   WriteResponseSchema.parse((await call(name, args)).structuredContent);
 async function start(request_id = "start") {

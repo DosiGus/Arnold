@@ -25,6 +25,7 @@ import {
   type OnboardingResponse,
 } from "../src/shared/onboarding-contract";
 import type { MobilityPreference } from "../src/shared/mobility-contract";
+import { asCard } from "./fixtures/card-view";
 
 const rid = () => randomUUID();
 
@@ -43,7 +44,7 @@ let http: Server;
 let runtime: ReturnType<typeof createFixtureOnboarding>;
 
 const call = async (name: string, args: Record<string, unknown> = {}) =>
-  (await client.callTool({ name, arguments: args })) as CallToolResult;
+  asCard((await client.callTool({ name, arguments: args })) as CallToolResult);
 const textOf = (result: CallToolResult) => {
   const block = result.content[0];
   return block && block.type === "text" ? block.text : "";

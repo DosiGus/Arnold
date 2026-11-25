@@ -11,6 +11,7 @@ import {
 import type { Server } from "node:http";
 import { createHttpApp } from "../src/server/http";
 import { ArnoldDashboardViewSchema } from "../src/shared/arnold-view";
+import { asCard } from "./fixtures/card-view";
 
 let http: Server;
 let client: Client;
@@ -18,10 +19,12 @@ let exerciseId: string;
 let workoutId: string;
 
 const call = async (args: Record<string, unknown>) =>
-  (await client.callTool({
-    name: "show_arnold_dashboard",
-    arguments: args,
-  })) as CallToolResult;
+  asCard(
+    (await client.callTool({
+      name: "show_arnold_dashboard",
+      arguments: args,
+    })) as CallToolResult,
+  );
 const meta = (result: CallToolResult) =>
   (result._meta as { arnold?: Record<string, unknown> })?.arnold;
 
@@ -37,8 +40,12 @@ beforeAll(async () => {
     ),
   );
   const dashboard = ArnoldDashboardViewSchema.parse(
-    (await client.callTool({ name: "get_arnold_dashboard", arguments: {} }))
-      .structuredContent,
+    asCard(
+      (await client.callTool({
+        name: "get_arnold_dashboard",
+        arguments: {},
+      })) as CallToolResult,
+    ).structuredContent,
   );
   exerciseId = dashboard.exercises[0].exercise_id;
   workoutId = dashboard.recent_workouts[0].workout_id;

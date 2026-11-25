@@ -10,6 +10,8 @@ import { createFixtureLogging } from "../src/server/workout/fixture.js";
 import { demoHistoryDataset } from "../src/server/plan/demo-history.js";
 import { isTimeZone, referenceDay } from "../src/server/reference-day.js";
 import { ArnoldDashboardViewSchema } from "../src/shared/arnold-view.js";
+import { asCard } from "./fixtures/card-view";
+import type { CallToolResult } from "@modelcontextprotocol/client";
 
 describe("referenceDay", () => {
   const cases: [string, string, string][] = [
@@ -83,7 +85,12 @@ async function open(
   const client = new Client({ name: "reference-day", version: "1.0.0" });
   await Promise.all([server.connect(b), client.connect(a)]);
   try {
-    const result = await client.callTool({ name: tool, arguments: args });
+    const result = asCard(
+      (await client.callTool({
+        name: tool,
+        arguments: args,
+      })) as CallToolResult,
+    );
     if (result.isError) throw new Error("tool error");
     return ArnoldDashboardViewSchema.parse(result.structuredContent);
   } finally {
