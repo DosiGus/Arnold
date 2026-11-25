@@ -1,32 +1,3 @@
-/* ------------------------------------------------------------------ setup */
-/* The setup card: header with progress, choice tiles, folds, review. */
-.ac-head:has(.ac-setup-head) {
-  display: block;
-}
-.ac-head:has(.ac-setup-head) > .ac-label {
-  display: block;
-  color: inherit;
-  font-size: inherit;
-}
-.ac-setup-head {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  min-height: var(--ac-tap);
-}
-.ac-setup-head .ac-label-col {
-  flex: 1;
-  padding: 0;
-}
-.arnold-cards .ac-setup-head .ac-icon-btn {
-  margin: 0;
-  flex: none;
-}
-.ac-setup-menu {
-  padding: 0.25rem 0.75rem;
-  border-radius: var(--ac-radius-inner);
-  background: var(--soft);
-}
 .arnold-cards .ac-menu-item.danger {
   color: var(--ac-bad);
 }
@@ -91,10 +62,6 @@
   border: 0;
   background: var(--ac-accent);
   color: var(--ac-on-accent);
-}
-.ac-folds {
-  display: grid;
-  gap: 0.5rem;
 }
 .ac-fold {
   border: 1px solid var(--border);
@@ -172,11 +139,6 @@
   min-width: 0;
   padding-inline: 0;
 }
-.ac-mini-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(6.25rem, 1fr));
-  gap: 0.5rem;
-}
 /* A labelled number typed in directly, the unit inside the field. */
 .ac-mini {
   display: grid;
@@ -235,99 +197,6 @@
   color: var(--ac-bad);
   font-size: 0.75rem;
 }
-.ac-hint-line {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: var(--muted);
-  font-size: 0.8125rem;
-}
-.ac-hint-line.on {
-  color: var(--ac-accent-text);
-}
-/* "Wie oft und wie lange?": two plus/minus rows in one frame */
-.ac-rhythm {
-  display: grid;
-  padding: 0.25rem 1rem;
-  border: 1px solid var(--border);
-  border-radius: var(--ac-radius);
-}
-.ac-rhythm .ac-day-step {
-  min-height: 4rem;
-}
-.ac-rhythm .ac-day-step + .ac-day-step {
-  border-top: 1px solid var(--border);
-}
-.ac-rhythm .ac-day-step-label {
-  color: var(--text);
-  font-size: 1rem;
-}
-.ac-rhythm .ac-day-count {
-  min-width: 4.75rem;
-  font-size: 1.25rem;
-}
-.ac-rhythm-hint {
-  padding: 0.25rem 0 0.75rem;
-  color: var(--muted);
-  font-size: 0.8125rem;
-}
-.arnold-cards .ac-textarea {
-  width: 100%;
-  min-height: 5.25rem;
-  padding: 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: var(--ac-radius-inner);
-  background: var(--card);
-  color: var(--text);
-  font: inherit;
-  resize: vertical;
-}
-.ac-paths {
-  display: grid;
-  gap: 0.625rem;
-}
-.arnold-cards .ac-btn.ac-path {
-  justify-content: flex-start;
-  gap: 0.875rem;
-  min-height: 4.5rem;
-  padding: 0.875rem 1rem;
-  border: 1px solid var(--border);
-  border-radius: var(--ac-radius);
-  background: transparent;
-  color: var(--text);
-  text-align: start;
-}
-.arnold-cards .ac-btn.ac-path.primary-path {
-  background: var(--soft);
-}
-.arnold-cards .ac-btn.ac-path:hover:not(:disabled) {
-  background: var(--hover);
-}
-.ac-path-icon {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 0.75rem;
-  background: var(--ac-accent);
-  color: var(--ac-on-accent);
-}
-.ac-path-icon.muted {
-  background: var(--hover);
-  color: var(--text);
-}
-.ac-path-text {
-  display: grid;
-  flex: 1;
-  gap: 2px;
-  min-width: 0;
-}
-.ac-path-text span {
-  color: var(--muted);
-  font-size: 0.8125rem;
-  font-weight: 400;
-}
 .ac-plan-hero {
   display: grid;
   gap: 0.75rem;
@@ -338,112 +207,6 @@
 .ac-plan-hero p {
   font-size: 1rem;
   line-height: 1.45;
-}
-.ac-plan-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-}
-.ac-plan-pills .ac-pill {
-  padding: 0.375rem 0.75rem;
-  border-radius: 999px;
-  font-size: 0.875rem;
-}
-.ac-review-rows {
-  display: grid;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.ac-review-rows li {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.625rem 0;
-}
-.ac-review-rows li + li {
-  border-top: 1px solid var(--border);
-}
-.ac-review-icon {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: 0.75rem;
-  background: var(--soft);
-}
-.ac-review-text {
-  display: grid;
-  flex: 1;
-  gap: 1px;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.ac-review-text small {
-  color: var(--muted);
-  font-size: 0.75rem;
-}
-.ac-review-text strong {
-  font-size: 0.9375rem;
-  font-weight: 500;
-}
-.arnold-cards .ac-review-rows .ac-icon-btn {
-  margin: 0;
-  flex: none;
-}
-.ac-next-box {
-  display: grid;
-  gap: 2px;
-  padding: 0.875rem 1rem;
-  border-radius: var(--ac-radius);
-  background: var(--soft);
-}
-.ac-next-box small {
-  color: var(--muted);
-  font-size: 0.8125rem;
-}
-.ac-next-box strong {
-  font-size: 1.25rem;
-  font-weight: 500;
-}
-.ac-next-box .ac-text {
-  font-size: 0.875rem;
-  font-weight: 500;
-}
-.arnold-cards .ac-weight-link {
-  border-style: dashed;
-  background: transparent;
-}
-.ac-skeleton-rows {
-  display: grid;
-  gap: 0.5rem;
-}
-.ac-skeleton-rows > span {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: var(--ac-radius);
-}
-.ac-skeleton-rows i {
-  flex: none;
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 0.75rem;
-  background: var(--soft);
-}
-.ac-skeleton-rows > span > span {
-  display: grid;
-  flex: 1;
-  gap: 0.375rem;
-}
-.ac-skeleton-rows b {
-  display: block;
-  height: 0.625rem;
-  border-radius: 0.3125rem;
-  background: var(--soft);
 }
 .ac-sessions {
   display: grid;
@@ -497,39 +260,6 @@
 .ac-session-text small {
   color: var(--muted);
   font-size: 0.8125rem;
-}
-.ac-steps-list {
-  display: grid;
-  gap: 0.5rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  counter-reset: step;
-}
-.ac-steps-list li {
-  position: relative;
-  display: grid;
-  gap: 2px;
-  padding: 0.75rem 0.875rem 0.75rem 3.25rem;
-  border-radius: var(--ac-radius-inner);
-  background: var(--soft);
-  counter-increment: step;
-}
-.ac-steps-list li::before {
-  content: counter(step);
-  position: absolute;
-  top: 50%;
-  left: 0.875rem;
-  display: grid;
-  place-items: center;
-  width: 1.75rem;
-  height: 1.75rem;
-  margin-top: -0.875rem;
-  border-radius: 50%;
-  background: var(--ac-accent);
-  color: var(--ac-on-accent);
-  font-size: 0.8125rem;
-  font-weight: 500;
 }
 
 @media (prefers-reduced-motion: reduce) {
