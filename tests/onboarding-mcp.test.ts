@@ -35,6 +35,7 @@ import {
   TrainingPlanVersionSchema,
 } from "../src/shared/plan-contract";
 import { ArnoldDashboardViewSchema } from "../src/shared/arnold-view";
+import { cardForState } from "../src/shared/onboarding-card";
 
 let client: Client;
 let http: Server;
@@ -227,7 +228,7 @@ describe("tool discovery", () => {
       /IMMER zuerst/,
     );
     expect(byName.get("show_arnold_onboarding")!.description).toMatch(
-      /Eigenen Plan übernehmen/,
+      /Karte zum aktuellen Stand/,
     );
     expect(byName.get("start_arnold_onboarding")!.description).toMatch(
       /fortgesetzt|resume_session/i,
@@ -263,7 +264,7 @@ describe("tool discovery", () => {
   it("tells the chat what comes next after every step", async () => {
     const claim = await startSetup();
     const welcome = await call("get_onboarding_state", claim);
-    expect(textOf(welcome)).toMatch(/zwei Buttons/);
+    expect(textOf(welcome)).toMatch(/Karte zeigen/);
     const own = await write("update_onboarding_profile", {
       request_id: rid(),
       ...claim,
@@ -458,7 +459,7 @@ describe("show_arnold_onboarding", () => {
     expect(view.state.session.profile.training.days_per_week).toBe(3);
   });
 
-  it("names the chosen card in the output; without a card nothing changes", async () => {
+  it("names the chosen card in the output; without a card the server picks the card for the state", async () => {
     for (const card of [
       "person",
       "modules",
@@ -472,11 +473,11 @@ describe("show_arnold_onboarding", () => {
       );
       expect(view.card).toBe(card);
     }
-    const plain = await call("show_arnold_onboarding");
-    expect(OnboardingViewSchema.parse(plain.structuredContent).card).toBe(
-      undefined,
+    const plain = OnboardingViewSchema.parse(
+      (await call("show_arnold_onboarding")).structuredContent,
     );
-    expect(plain.structuredContent).not.toHaveProperty("card");
+    expect(plain.card).toBe(cardForState(plain.state));
+    expect(plain.card).toBe("person");
   });
 
   it("rejects a card that does not exist", async () => {

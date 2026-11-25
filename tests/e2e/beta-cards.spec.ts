@@ -522,9 +522,7 @@ test("a completed setup in a new chat opens as completed", async ({ page }) => {
     await route.continue();
   });
   await page.goto(`${BASE}/preview?onboarding=1`);
-  await expect(
-    page.locator('main[data-ocard="start"]'),
-  ).toBeVisible();
+  await expect(page.locator('main[data-ocard="start"]')).toBeVisible();
   await expect(page.locator("body")).not.toContainText("Google");
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
