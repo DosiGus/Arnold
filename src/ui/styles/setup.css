@@ -853,3 +853,14 @@
   min-width: var(--ac-tap);
   min-height: var(--ac-tap);
 }
+
+/* RDS-010: the code field of the watch card */
+.arnold-cards .oc-input input.oc-code {
+  font-size: 1.5rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.arnold-cards .oc-input input.oc-code::placeholder {
+  letter-spacing: 0.12em;
+  opacity: 0.5;
+}

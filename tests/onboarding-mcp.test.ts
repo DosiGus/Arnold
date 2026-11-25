@@ -480,7 +480,7 @@ describe("show_arnold_onboarding", () => {
   });
 
   it("rejects a card that does not exist", async () => {
-    for (const card of ["welcome", "start", ""]) {
+    for (const card of ["welcome", "home", ""]) {
       const result = await client
         .callTool({ name: "show_arnold_onboarding", arguments: { card } })
         .catch((error: Error) => ({ isError: true, error }));
