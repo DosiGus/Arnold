@@ -239,7 +239,7 @@ export function registerOnboardingTools(
         name: "Arnold Einrichtung",
         legacyName: "Arnold Einrichtung (bisherige Karten)",
         description:
-          "Geführte Einrichtung von Arnold: Begrüßung mit Wahl des Weges, Angaben zu Person und Training oder Übernahme eines eigenen Plans, Planvorschlag, Planbearbeitung und Bestätigung.",
+          "Geführte Einrichtung von Arnold als Gespräch mit kleinen Karten: Eckdaten, Module, Checkliste, Richtwerte, Laufreferenz, Planvorschlag mit Bearbeitung im Vollbild, Garmin-Uhr und Start.",
         legacyUris: LEGACY_ONBOARDING_URIS,
         domain: uiDomain,
       })
