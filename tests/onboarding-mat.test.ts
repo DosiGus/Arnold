@@ -33,7 +33,7 @@ const morning = (exercise_ids: string[]) => ({
   weekdays: [1, 3, 5],
 });
 
-const TRAINING = {
+const TRAINING: NonNullable<OnboardingProfilePatch["training"]> = {
   primary_goal: "muscle_gain",
   experience: "intermediate",
   days_per_week: 3,
@@ -45,7 +45,7 @@ const TRAINING = {
     sessions: null,
     stiff_areas: [],
   },
-} as const;
+};
 
 type Fixture = ReturnType<typeof createFixtureOnboarding>;
 
