@@ -17,6 +17,12 @@ import {
 import { PlanCard, PLAN_NEXT_MESSAGE } from "./plan-card";
 import { ChecklistCard } from "./checklist-card";
 import { ModulesCard, MODULES_NEXT_MESSAGE } from "./modules-card";
+import {
+  WearableCard,
+  WEARABLE_LATER_MESSAGE,
+  WEARABLE_NEXT_MESSAGE,
+} from "./wearable-card";
+import { StartCardLoader } from "./start-card";
 import { PersonCard, PERSON_NEXT_MESSAGE } from "./person-card";
 
 /**
@@ -85,6 +91,18 @@ export function OnboardingCardApp({
           onChanged={reload}
           onDone={() => void client.askChat(PLAN_NEXT_MESSAGE)}
         />
+      ) : card === "wearable" ? (
+        <WearableCard
+          client={client}
+          state={state}
+          onDone={(later) =>
+            void client.askChat(
+              later ? WEARABLE_LATER_MESSAGE : WEARABLE_NEXT_MESSAGE,
+            )
+          }
+        />
+      ) : card === "start" ? (
+        <StartCardLoader client={client} state={state} />
       ) : (
         <ChecklistCard state={state} />
       )}

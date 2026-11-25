@@ -428,6 +428,8 @@ export const ONBOARDING_CARDS = [
   "benchmarks",
   "run_reference",
   "plan",
+  "wearable",
+  "start",
 ] as const;
 export const OnboardingCardSchema = z.enum(ONBOARDING_CARDS);
 export type OnboardingCard = z.infer<typeof OnboardingCardSchema>;
