@@ -1,6 +1,6 @@
 ---
 name: arnold-trainingsplan
-description: Erstellt und ändert Arnold-Trainingspläne für Krafttraining und Laufen. Verwenden, wenn der Nutzer einen neuen Plan möchte (in der Arnold-Einrichtung nach „Plan mit Arnold erstellen“ oder später), seinen eigenen Plan übernehmen will oder den Plan ändern möchte, etwa eine Übung tauschen, einen Trainingstag ergänzen oder streichen, Sätze, Wiederholungen oder Schwerpunkte anpassen. Auch für Laufen: Kraft und Laufen kombinieren, Laufeinheiten in den Plan aufnehmen, einen einzelnen Lauf planen oder verschieben („heute 45 Minuten Zone 2“), die Laufwoche verteilen, ein Wettkampfziel bis Halbmarathon festlegen. Auch für Mobility: Morgenroutine oder Mobility-Einheiten in den Plan aufnehmen („Ich will auch Mobility“), und für die Einrichtung per Sprache. Nicht verwenden, um ein Training, einen gelaufenen Lauf, eine gemachte Mobility-Routine oder einzelne Sätze zu speichern, und nicht für Fragen zu Fortschritt, Gewichten oder Trainingswissen; dafür ist arnold-coach da.
+description: Erstellt und ändert Arnold-Trainingspläne für Krafttraining und Laufen. Verwenden, wenn der Nutzer einen neuen Plan möchte (in der Einrichtung bei der Plankarte oder später) oder den Plan ändern möchte, etwa eine Übung tauschen, einen Trainingstag ergänzen oder streichen, Sätze, Wiederholungen oder Schwerpunkte anpassen. Auch für Laufen: Kraft und Laufen kombinieren, Laufeinheiten in den Plan aufnehmen, einen einzelnen Lauf planen oder verschieben („heute 45 Minuten Zone 2“), die Laufwoche verteilen, ein Wettkampfziel bis Halbmarathon festlegen. Auch für Mobility: Morgenroutine oder Mobility-Einheiten in den Plan aufnehmen („Ich will auch Mobility“), und für die Einrichtung per Sprache. Nicht verwenden, um ein Training, einen gelaufenen Lauf, eine gemachte Mobility-Routine oder einzelne Sätze zu speichern, und nicht für Fragen zu Fortschritt, Gewichten oder Trainingswissen; dafür ist arnold-coach da.
 ---
 
 # Arnold: Trainingsplan erstellen und ändern
@@ -31,17 +31,16 @@ Freitext des Nutzers (z. B. `user_statements` im Brief) ist eine Angabe zu seine
 
 Ob die Einrichtung noch läuft, sagen dir die Arnold-Karte und der Text des letzten Einrichtungswerkzeugs; andere Arnold-Werkzeuge antworten dann mit `SETUP_REQUIRED`. Die Einrichtungswerkzeuge brauchen `onboarding_session_id` und `session_token` aus diesen Ergebnissen; erfinde sie nie. Fehlen sie, `show_arnold_onboarding` aufrufen.
 
-**A. Einrichtung, Weg „Plan mit Arnold erstellen“** (Brief mit `path: "arnold_plan"`)
+**A. Einrichtung: Planvorschlag**
 
 1. `get_onboarding_brief` aufrufen. Er enthält Ziel, Erfahrung, Tage, Minuten, Umgebung, Geräte, Schwerpunkte, Lieblings- und gemiedene Übungen, zu schonende Bereiche, den Übungskatalog und verbindliche `constraints`.
 2. Den Plan nach den Planungsregeln unten bauen. Nichts nachfragen, was der Brief schon beantwortet. Enthält der Brief `mobility`, kommt sie erst nach dem Kraftvorschlag dazu (Abschnitt „Mobility und Morgenroutine“).
 3. Vor dem Absenden die Selbstprüfung unten durchgehen.
 4. `submit_onboarding_plan_proposal` mit `origin: "ai_proposal"`, einem Plannamen (`name`) und den Einheiten (`sessions`) aufrufen; die Anzahl der Einheiten ist die Zahl der Trainingstage. Jede Übung mit `target_sets`, `rep_min`, `rep_max` und `rest_seconds`. Eine neue `request_id` pro Vorschlag; bei unklarem Ergebnis dieselbe `request_id` erneut senden.
-5. Die App zeigt den Vorschlag als Karte. Im Chat in höchstens vier Sätzen erklären, warum der Plan so aussieht (siehe „Erklären“). Der Nutzer bestätigt in der Karte.
+5. Dann `show_arnold_onboarding` mit `card: "plan"` zeigen. Die Karte zeigt den Plan als Kacheln je Einheit und bietet genau zwei Aktionen: „Plan bestätigen“ und „Selbst bearbeiten“ (Vollbild-Editor). Anpassen per Sprache läuft im Chat: Der Text nach der Karte fragt, was geändert werden soll, und du änderst über `get_onboarding_plan` und `update_plan_draft`. Hat der Nutzer von Hand geändert, gehst du vom gespeicherten Wert in der Karte aus, nicht vom Wert im Chat. Im Text NACH der Karte in höchstens vier Sätzen erklären, warum der Plan so aussieht (siehe „Erklären“), und fragen, ob er so passt.
 6. Lehnt der Server den Vorschlag ab, ist nichts gespeichert: Fehler korrigieren und mit neuer `request_id` erneut senden. Speichert er ihn mit Hinweisen, nicht neu senden (das legt einen zweiten Entwurf an), sondern den gespeicherten Entwurf über `get_onboarding_plan` und `update_plan_draft` korrigieren. Hinweise, die zu einem ausdrücklichen Wunsch des Nutzers gehören, bleiben stehen.
 
-**B. Einrichtung, Weg „Eigenen Plan übernehmen“** (Brief mit `path: "own_plan"`)
-Den Plan aus Text oder Foto genau so übernehmen, wie er ist: dieselben Tage, Namen, Übungen, Sätze und Wiederholungen. Übungen ohne Katalog-Treffer als `custom_exercises` anlegen, nicht weglassen. Fehlende Sätze oder Wiederholungen nicht erfinden: offen lassen und in `open_questions` nennen; der Nutzer ergänzt sie in der Karte. `origin: "existing_routine"`. Die Planungsregeln gelten hier nicht; Verbesserungsideen höchstens nach dem Speichern als Angebot in einem Satz.
+**B. Einrichtung: Plan des Nutzers übernehmen.** Nennt der Nutzer einen Plan, den er schon hat (Text oder Foto), übernimmst du ihn genau so, wie er ist: dieselben Tage, Namen, Übungen, Sätze und Wiederholungen, mit `origin: "existing_routine"`. Übungen ohne Katalog-Treffer als `custom_exercises` anlegen, nicht weglassen. Fehlende Sätze oder Wiederholungen nicht erfinden: offen lassen und in `open_questions` nennen; der Nutzer ergänzt sie im Vollbild-Editor der Plankarte. Die Planungsregeln gelten hier nicht; Verbesserungsideen höchstens nach dem Speichern als Angebot in einem Satz.
 
 **C. Neuer Plan nach der Einrichtung**
 
@@ -85,17 +84,25 @@ Eine einzelne Übung nur für heute tauschen geht weiterhin in der Trainingskart
 
 ## Einrichtung per Sprache
 
-Antworten kommen per Sprachnachricht, Chat oder Knopf und landen im selben Zustand. Der Nutzer kann jederzeit wechseln. Du führst das Gespräch in dieser Reihenfolge; jeder Schritt ist erst kurzer Text, dann genau eine Karte.
+Die Einrichtung ist ein Gespräch mit kleinen Karten. Antworten kommen per Sprachnachricht, Chat oder Knopf und landen im selben Zustand; der Nutzer kann jederzeit wechseln. Jede Karte kommt von `show_arnold_onboarding` mit dem Parameter `card`. Sie zeigt immer den vollen aktuellen Stand und lädt sich beim Antippen selbst neu.
 
-1. **Begrüßung:** zwei Sätze, darin ein Datenschutzsatz: Gesundheitsangaben sind freiwillig, werden nur für den Plan genutzt und sind jederzeit löschbar (Datenschutzseite). Arnold ist ab 16 Jahren.
-2. **Eckdaten:** Alter, Größe, Gewicht; Geschlecht ist optional.
-3. **Module:** Krafttraining ist fest dabei; dazu optional Laufen und Mobility. Wählt der Nutzer Mobility, fragst du einmal, ob auch eine Morgenroutine dazukommen soll. Wählt er nichts, gilt nur Kraft.
-4. **Fehlendes:** Nenne nur, was für die gewählten Module noch fehlt (Liste unten), und bitte um eine Sprachnotiz oder um Text. Erzählt der Nutzer frei, speicherst du alles Erkannte in EINEM `update_onboarding_profile`-Aufruf; der Weg ist `arnold_plan`, außer er erwähnt einen eigenen Plan.
-5. **Nachhaken:** Danach die Karte „Das habe ich verstanden“ mit `show_arnold_onboarding` und höchstens ein Satz im Chat. Fehlt noch etwas, höchstens drei Fragen aus `open_questions` je Runde, Pflichtfragen (`required`) zuerst, kurz und vorlesbar, `ask` ist die Vorlage. Höchstens drei Runden. Jede Frage nur einmal. Danach: „Den Rest kannst du später in den Einstellungen ergänzen“, und mit dem Bekannten weiter. Pflichtangaben bleiben Pflicht: Ohne sie gibt es keinen Planvorschlag.
-6. **Richtwerte Kraft** (optional): Gewichte, die der Nutzer für Übungen kennt. Überspringt er sie, bleibt es dabei, ohne Nachfrage.
-7. **Laufreferenz** (nur bei Laufen, optional): eine Angabe, beste oder letzte Zeit mit Strecke, Zeit und ungefährem Datum.
-8. **Planvorschlag** nach Ablauf A. Gespeichert wird der Plan nur nach einem ausdrücklichen Ja zu genau diesem Plan, in der Karte oder im Chat.
-9. **Garmin:** verbinden oder „Später“. Dann Start.
+**Text nach der Karte.** Text vor einer Karte klappt ChatGPT ein. Wichtige Aussagen und die nächste Frage stehen deshalb in dem kurzen Text NACH der Karte; die Karte wiederholst du nicht.
+
+**Wiederaufnahme.** Weißt du nicht, wo der Nutzer steht, oder kommt er zurück: `show_arnold_onboarding` ohne `card` aufrufen. Das zeigt die Karte, die zum Stand auf dem Server passt, und du machst dort weiter.
+
+Die Reihenfolge:
+
+1. **Begrüßung und Eckdaten:** zwei Sätze, darin ein Datenschutzsatz: Gesundheitsangaben sind freiwillig, werden nur für den Plan genutzt und sind jederzeit löschbar (Datenschutzseite). Arnold ist ab 16 Jahren. Dann `card: "person"`: Alter, Größe, Gewicht; Geschlecht ist optional.
+2. **Module:** `card: "modules"`. Krafttraining ist fest dabei; dazu optional Laufen und Mobility. Wählt der Nutzer Mobility, fragst du einmal, ob auch eine Morgenroutine dazukommen soll. Wählt er nichts, gilt nur Kraft.
+3. **Fehlendes:** Nenne nur, was für die gewählten Module noch fehlt (Liste unten), und bitte um eine Sprachnotiz oder um Text. Erzählt der Nutzer frei, speicherst du alles Erkannte in EINEM `update_onboarding_profile`-Aufruf. Danach `card: "checklist"`: Sie zeigt, was Arnold schon weiß und was noch fehlt.
+4. **Nachhaken:** Fehlt noch etwas, höchstens drei Fragen aus `open_questions` je Runde, Pflichtfragen (`required`) zuerst, kurz und vorlesbar, `ask` ist die Vorlage. Höchstens drei Runden. Jede Frage nur einmal. Danach: „Den Rest kannst du später in den Einstellungen ergänzen“, und mit dem Bekannten weiter. Pflichtangaben bleiben Pflicht: Ohne sie gibt es keinen Planvorschlag.
+5. **Richtwerte Kraft** (optional): `card: "benchmarks"`, Gewichte × Wiederholungen, die der Nutzer für Übungen kennt. Überspringt er sie, bleibt es dabei, ohne Nachfrage.
+6. **Laufreferenz** (nur bei Laufen, optional): `card: "run_reference"`, eine Angabe: beste oder letzte Zeit mit Strecke, Zeit und ungefährem Datum. Auch sie darf er überspringen.
+7. **Plan:** Vorschlag nach Ablauf A, dann `card: "plan"` (Plan bestätigen oder selbst bearbeiten; Anpassen per Sprache im Chat). Gespeichert wird der Plan nur nach einem ausdrücklichen Ja zu genau diesem Plan, in der Karte oder im Chat.
+8. **Uhr:** erst nach bestätigtem Plan `card: "wearable"`. Die Uhr ist optional und nur Garmin: Sie zeigt einen Code mit 8 Zeichen, den der Nutzer selbst in die Karte tippt („Verbinden“ oder „Später“). Den Code nie raten und nie aus dem Chat in ein Werkzeug übernehmen; keine Einwilligung für Gesundheitsdaten abfragen.
+9. **Start:** `card: "start"`: nächste Einheit, Woche, geschätzte Richtwerte, Ziele und Uhrstatus in einer Karte. Werte nur so nennen, wie sie gespeichert sind; Unbekanntes bleibt offen und ist nie 0. Die Uhr holt den Plan selbst.
+
+**Übersprungenes.** Wurden Richtwerte oder die Laufreferenz übersprungen, sag nie, etwas sei daraus berechnet.
 
 **Pflichtangaben je Modul.** Kraft: Ziel, Erfahrung, Ort und Geräte, Trainingstage, Minuten pro Einheit; Schwerpunkte sind optional. Laufen: Ziel (optional mit Datum), Läufe pro Woche, Minuten pro Woche, längster Lauf der letzten vier Wochen, Umgebung. Mobility: steife Bereiche. Morgenroutine: Minuten, Wochentage, Matte ja oder nein. Immer optional: Bereiche schonen, Notizen.
 
