@@ -918,12 +918,15 @@ describe("setup cards", () => {
     expect(plan).toContain(`card: "${card}"`);
   });
 
+  it("sends the path arnold_plan with the first profile update", () => {
+    expect(plan).toContain('profile.path: "arnold_plan"');
+  });
+
   it("no longer names the old setup assistant", () => {
     const old = [
       "Das habe ich verstanden",
       "Eigenen Plan übernehmen",
       "Plan mit Arnold erstellen",
-      "arnold_plan",
       "own_plan",
       "Wizard",
     ];
