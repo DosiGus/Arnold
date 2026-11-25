@@ -223,10 +223,10 @@ describe("a free narration", () => {
     );
   });
 
-  it("keeps the welcome text of the two buttons", async () => {
+  it("keeps the welcome text of the card hint", async () => {
     const claim = await startSetup();
     const text = textOf(await call("get_onboarding_state", claim));
-    expect(text).toMatch(/zwei Buttons/);
+    expect(text).toMatch(/Karte zeigen/);
     expect(text).toContain("Offene Fragen");
   });
 });
