@@ -35,9 +35,13 @@ export function ChecklistCard({ state }: { state: OnboardingState }) {
           items={fields.map((field) => ({
             key: field,
             label: REQUIRED_FIELD_LABEL[field],
+            // Without a stored way the server lists only "path" as missing,
+            // so an empty field counts as missing on its own.
             value: missing.has(field)
               ? undefined
-              : (fieldValue(field, profile) ?? "Angegeben"),
+              : profile.path === null
+                ? fieldValue(field, profile)
+                : (fieldValue(field, profile) ?? "Angegeben"),
           }))}
         />
       ) : (

@@ -46,5 +46,8 @@ describe("the checklist without a stored way", () => {
     expect(state.session.profile.path).toBeNull();
     expect(html).toContain("Pflichtangaben");
     expect(html).not.toMatch(/Weg|Plan mit Arnold/);
+    // Empty answers still read "fehlt noch", not "Angegeben".
+    expect(html).toContain("fehlt noch");
+    expect(html).not.toContain("Angegeben");
   });
 });
