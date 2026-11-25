@@ -11,7 +11,7 @@ Dieses Paket verbindet den Arnold-MCP-Server mit zwei Skills. Der Server bleibt 
 | `skills/*/references/`         | Planungsregeln, Trainingswissenschaft (mit Laufen), Daten lesen |
 | `skills/*/agents/openai.yaml`  | MCP-Abhängigkeit des Skills                                     |
 
-Das Onboarding braucht keinen Skill: Es wird vom Server und den Einrichtungs-Werkzeugen geführt. Die Server-Anweisungen gelten weiter auch für Nutzer, die Arnold ohne Plugin verbinden.
+Die Einrichtung führt der Skill arnold-trainingsplan mit den Einrichtungskarten des Servers (`show_arnold_onboarding` mit `card`). Die Server-Anweisungen gelten weiter auch für Nutzer, die Arnold ohne Plugin verbinden.
 
 ## Stand der Tests (7. November 2026)
 

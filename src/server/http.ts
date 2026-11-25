@@ -21,7 +21,7 @@ import { buildAuthSurface, type AuthSurface } from "./auth/router.js";
 import type { DatabaseArnoldRuntime } from "./db/runtime.js";
 import { registerAccountTools } from "./account/mcp-account.js";
 import { registerWatchTools } from "./mcp-watch.js";
-import { dashboardResourceUri } from "./ui-resource.js";
+import { dashboardResourceUri, uiDomain } from "./ui-resource.js";
 import { withArnoldContext } from "./auth/guarded-server.js";
 import { FixtureSandboxes } from "./fixture-sandboxes.js";
 import { mountWatchApi } from "./watch/router.js";
@@ -183,6 +183,11 @@ export function createHttpApp(options: ServerOptions = {}) {
   // acceptable depends on whether bearer validation is actually active.
   const auth =
     options.auth ?? buildAuthSurface({ config: loadAuthConfig(env) });
+  // The card resources carry the app's own origin; none without a configured
+  // address (the development default is no origin to announce).
+  // Independent of the auth branch: bootstrap always passes its own `auth`,
+  // having checked this very variable with loadAuthConfig.
+  const uiOrigin = uiDomain(env.ARNOLD_PUBLIC_BASE_URL);
   if (
     options.database &&
     (auth.summary.mode !== "oidc" || options.database.options.auth !== auth)
@@ -361,6 +366,7 @@ export function createHttpApp(options: ServerOptions = {}) {
         auth.guard,
         userRuntime?.runs,
         userRuntime?.mobility,
+        uiOrigin,
       );
       if (options.database) {
         const uri = dashboardResourceUri(

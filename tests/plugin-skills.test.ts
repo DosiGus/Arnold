@@ -23,6 +23,7 @@ import {
   MobilityToolInputs,
   ShowMobilityCardInputSchema,
 } from "../src/shared/mobility-contract.js";
+import { ONBOARDING_CARDS } from "../src/shared/onboarding-contract.js";
 import { PlanEditSchema } from "../src/shared/plan-contract.js";
 import { ShowRunCardInputSchema } from "../src/shared/run-card-contract.js";
 import {
@@ -825,7 +826,7 @@ describe("mobility skills (MOB-007)", () => {
 
   it("follows the onboarding conversation rules (RDS-006)", () => {
     const setup = section(plan, "## Einrichtung per Sprache");
-    expect(setup).toContain("erst kurzer Text, dann genau eine Karte");
+    expect(setup).toContain("Text vor einer Karte klappt ChatGPT ein");
     expect(setup).toContain("Sprachnotiz oder um Text");
     expect(setup).toContain("Höchstens drei Runden");
     expect(setup).toContain("in den Einstellungen ergänzen");
@@ -905,5 +906,40 @@ describe("mobility skills (MOB-007)", () => {
     ])
       expect(text, part).toContain(part);
     expect(text).toMatch(/Schmerz: Routine abbrechen, nichts speichern/);
+  });
+});
+
+describe("setup cards", () => {
+  const plan = skillNames.includes("arnold-trainingsplan")
+    ? read(join(SKILLS, "arnold-trainingsplan", "SKILL.md"))
+    : "";
+
+  it.each([...ONBOARDING_CARDS])("names the setup card %s", (card) => {
+    expect(plan).toContain(`card: "${card}"`);
+  });
+
+  it("sends the path arnold_plan with the first profile update", () => {
+    expect(plan).toContain('profile.path: "arnold_plan"');
+  });
+
+  it("names no session id or token for the setup tools", () => {
+    for (const skill of skillNames)
+      for (const file of markdownOf(skill)) {
+        expect(read(file), file).not.toContain("onboarding_session_id");
+        expect(read(file), file).not.toContain("session_token");
+      }
+  });
+
+  it("no longer names the old setup assistant", () => {
+    const old = [
+      "Das habe ich verstanden",
+      "Eigenen Plan übernehmen",
+      "Plan mit Arnold erstellen",
+      "own_plan",
+      "Wizard",
+    ];
+    for (const skill of skillNames)
+      for (const file of markdownOf(skill))
+        for (const name of old) expect(read(file), file).not.toContain(name);
   });
 });

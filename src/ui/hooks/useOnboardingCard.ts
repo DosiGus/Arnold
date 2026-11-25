@@ -29,6 +29,20 @@ export const PLAN_MOVED =
 export type CardSaveResult =
   { ok: true } | { ok: false; message: string; conflict: boolean };
 
+/**
+ * The setup has no welcome page that picks the way any more (D-17: "Eigener
+ * Plan" is deferred). The first card that saves sets the way: while none is
+ * stored the patch carries `arnold_plan`; a stored way is never changed.
+ */
+export function withPath(
+  patch: OnboardingProfilePatch,
+  storedPath: OnboardingState["session"]["profile"]["path"],
+): OnboardingProfilePatch {
+  return storedPath === null && patch.path === undefined
+    ? { path: "arnold_plan", ...patch }
+    : patch;
+}
+
 export function useOnboardingCard(
   client: ArnoldMcpClient,
   initial: OnboardingState,
@@ -80,7 +94,8 @@ export function useOnboardingCard(
   }, [reload]);
 
   const save = useCallback(
-    async (profile: OnboardingProfilePatch): Promise<CardSaveResult> => {
+    async (patch: OnboardingProfilePatch): Promise<CardSaveResult> => {
+      const profile = withPath(patch, stateRef.current.session.profile.path);
       if (writing.current)
         return { ok: false, message: SAVE_FAILED, conflict: false };
       writing.current = true;

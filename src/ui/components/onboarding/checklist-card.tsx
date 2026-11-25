@@ -21,8 +21,9 @@ import {
 export function ChecklistCard({ state }: { state: OnboardingState }) {
   const { profile } = state.session;
   const modules = modulesOf(profile.training);
+  // The way is not a question for the user (D-17): never listed here.
   const missing = new Set(state.progress.missing_fields);
-  const fields = requiredFieldsFor(profile.path, modules);
+  const fields = requiredFieldsFor(profile.path ?? "arnold_plan", modules);
   const known = personLine(profile.person);
   return (
     <CardFrame tag="Checkliste" title="Das weiß ich schon" card="checklist">
@@ -34,9 +35,13 @@ export function ChecklistCard({ state }: { state: OnboardingState }) {
           items={fields.map((field) => ({
             key: field,
             label: REQUIRED_FIELD_LABEL[field],
+            // Without a stored way the server lists only "path" as missing,
+            // so an empty field counts as missing on its own.
             value: missing.has(field)
               ? undefined
-              : (fieldValue(field, profile) ?? "Angegeben"),
+              : profile.path === null
+                ? fieldValue(field, profile)
+                : (fieldValue(field, profile) ?? "Angegeben"),
           }))}
         />
       ) : (

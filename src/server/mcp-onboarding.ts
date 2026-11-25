@@ -30,6 +30,7 @@ import { failureText, recoveryFor } from "../shared/write-recovery.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/server";
 import { registerAppTool } from "@modelcontextprotocol/ext-apps/server";
+import { cardForState } from "../shared/onboarding-card.js";
 import {
   GOAL_LABEL,
   ONBOARDING_CONTRACT,
@@ -175,14 +176,14 @@ function summarize(state: OnboardingState): string {
       ? `${where}. Den Nutzer bitten, seinen Plan als Text oder Foto in den Chat zu geben, falls noch nicht geschehen. Dann get_onboarding_brief aufrufen und den Plan mit submit_onboarding_plan_proposal (origin existing_routine) übergeben.`
       : `${where}. Jetzt den Plan erstellen: get_onboarding_brief aufrufen und daraus mit submit_onboarding_plan_proposal (origin ai_proposal) einen Vorschlag übergeben.${run}`;
   if (session.profile.path === null)
-    return `${where}. Der Nutzer sieht die Begrüßung mit zwei Buttons: "Plan mit Arnold erstellen" oder "Eigenen Plan übernehmen". Kurz begrüßen und die Wahl abwarten. Erzählt der Nutzer schon etwas, alles Erkannte in einem Aufruf mit update_onboarding_profile speichern, nichts raten.${questions}`;
+    return `${where}. Kurz begrüßen und die Karte zeigen (show_arnold_onboarding). Erzählt der Nutzer schon etwas, alles Erkannte in einem Aufruf mit update_onboarding_profile speichern, nichts raten.${questions}`;
   if (session.profile.path === "own_plan")
     return `${where}. Der Nutzer übernimmt seinen eigenen Plan. Ihn bitten, den Plan als Text einzufügen oder ein Foto davon zu schicken. Dann get_onboarding_brief aufrufen und den Plan mit submit_onboarding_plan_proposal (origin existing_routine) übergeben.${questions}`;
   if (progress.profile_complete && !state.run_setup.ready)
     return `${where}. Angaben bis auf die Laufangaben vollständig.${run}${questions}`;
   if (progress.profile_complete)
     return `${where}. Angaben vollständig: ${training.primary_goal ? GOAL_LABEL[training.primary_goal] : "—"}, ${training.days_per_week} Tage pro Woche, ${training.session_minutes} Minuten je Einheit. Sobald der Nutzer "Plan erstellen" wählt oder darum bittet: get_onboarding_brief aufrufen und mit submit_onboarding_plan_proposal (origin ai_proposal) einen Vorschlag übergeben.${run}${questions}`;
-  return `${where}. Der Nutzer kann die Angaben per Sprachnachricht, im Chat oder mit den Karten "Person" (freiwillig) und "Training" in der App machen; alles landet im selben Zustand. Noch offen: ${progress.missing_fields
+  return `${where}. Der Nutzer kann die Angaben per Sprachnachricht, im Chat oder mit den Karten in der App machen; alles landet im selben Zustand. Noch offen: ${progress.missing_fields
     .map(
       (field) =>
         REQUIRED_FIELD_LABEL[field as keyof typeof REQUIRED_FIELD_LABEL] ??
@@ -222,6 +223,7 @@ export function registerOnboardingTools(
   onboarding?: OnboardingService,
   uiFile?: string,
   actorContext?: unknown,
+  uiDomain?: string,
 ) {
   if (!onboarding) return;
 
@@ -239,6 +241,7 @@ export function registerOnboardingTools(
         description:
           "Geführte Einrichtung von Arnold: Begrüßung mit Wahl des Weges, Angaben zu Person und Training oder Übernahme eines eigenen Plans, Planvorschlag, Planbearbeitung und Bestätigung.",
         legacyUris: LEGACY_ONBOARDING_URIS,
+        domain: uiDomain,
       })
     : onboardingResourceUri(uiFile);
 
@@ -255,7 +258,7 @@ export function registerOnboardingTools(
     {
       title: "Arnold einrichten",
       description:
-        "Öffnet die Einrichtung von Arnold als interaktive Oberfläche. Bei einem neuen Nutzer IMMER zuerst aufrufen, bevor andere Arnold-Werkzeuge verwendet werden – auch wenn der Nutzer nur 'Hallo' sagt oder direkt trainieren möchte. Die Oberfläche begrüßt den Nutzer und bietet zwei Wege an: 'Plan mit Arnold erstellen' (Karten Person und Training) oder 'Eigenen Plan übernehmen' (Plan als Text oder Foto im Chat). Ohne Argumente wird die offene Einrichtung des Kontos fortgesetzt oder eine neue begonnen; ist Arnold bereits eingerichtet, zeigt sie das an und es wird keine neue Einrichtung gestartet. Antworten kommen per Sprachnachricht, Chat oder Knopf; alles landet im selben Zustand. Erzählt der Nutzer frei, wird alles Erkannte in EINEM update_onboarding_profile-Aufruf gespeichert, danach diese Karte gezeigt und höchstens drei Fragen aus open_questions gestellt. Nicht Genanntes wird nie geraten. Der Weg ist arnold_plan, außer der Nutzer erwähnt einen eigenen Plan. Optional zeigt `card` eine kleine Karte: person (Eckdaten: Alter, Größe, Gewicht, Geschlecht), modules (Krafttraining fest, dazu Laufen und Mobility), checklist (was Arnold schon weiß und was noch fehlt), benchmarks (Richtwerte Kraft: bekannte Gewichte × Wiederholungen, optional, überspringbar) oder run_reference (Laufreferenz: beste oder letzte Zeit, nur mit dem Modul Laufen, überspringbar) oder plan (Planvorschlag als Kacheln je Einheit mit genau zwei Aktionen: Plan bestätigen und Selbst bearbeiten im Vollbild; erst zeigen, wenn ein Plan-Entwurf vorliegt; Anpassen per Sprache bleibt im Chat, also nach der Karte fragen, was geändert werden soll; hat der Nutzer von Hand geändert, vom gespeicherten Wert in der Karte ausgehen, nicht vom Wert im Chat). Danach, erst nach bestätigtem Plan: wearable (Garmin verbinden: die Uhr zeigt einen Code mit 8 Zeichen, den der Nutzer in die Karte eintippt; genau zwei Aktionen Verbinden und Später; die Uhr ist optional, nur Garmin, keine Einwilligung für Gesundheitsdaten abfragen; Code nie selbst raten oder aus dem Chat in ein Werkzeug übernehmen) und zum Abschluss start (Arnold ist bereit: nächste Einheit, Woche, geschätzte Richtwerte, Ziele und Uhrstatus in einer Karte mit den Aktionen Einheit ansehen und Plan öffnen; Werte nur wie gespeichert nennen, Unbekanntes bleibt offen und ist nie 0; die Uhr holt den Plan selbst). Wurden Richtwerte oder die Laufreferenz übersprungen, nie sagen, etwas sei daraus berechnet. Jede Karte zeigt den vollen aktuellen Stand und lädt sich beim Antippen selbst neu. Text VOR der Karte klappt der Chat ein: Die wichtigen Aussagen und die nächste Frage gehören deshalb in den Text NACH der Karte, kurz und ohne die Karte zu wiederholen.",
+        "Öffnet die Einrichtung von Arnold als interaktive Oberfläche. Bei einem neuen Nutzer IMMER zuerst aufrufen, bevor andere Arnold-Werkzeuge verwendet werden – auch wenn der Nutzer nur 'Hallo' sagt oder direkt trainieren möchte. Die Oberfläche zeigt kleine Karten im Gespräch. Ohne `card` wird die Karte zum aktuellen Stand gezeigt (Wiederaufnahme: der Server wählt sie aus dem Zustand). Ohne Argumente wird die offene Einrichtung des Kontos fortgesetzt oder eine neue begonnen; ist Arnold bereits eingerichtet, zeigt sie das an und es wird keine neue Einrichtung gestartet. Antworten kommen per Sprachnachricht, Chat oder Knopf; alles landet im selben Zustand. Erzählt der Nutzer frei, wird alles Erkannte in EINEM update_onboarding_profile-Aufruf gespeichert, danach diese Karte gezeigt und höchstens drei Fragen aus open_questions gestellt. Nicht Genanntes wird nie geraten. Der Weg ist arnold_plan. Optional zeigt `card` eine kleine Karte: person (Eckdaten: Alter, Größe, Gewicht, Geschlecht), modules (Krafttraining fest, dazu Laufen und Mobility), checklist (was Arnold schon weiß und was noch fehlt), benchmarks (Richtwerte Kraft: bekannte Gewichte × Wiederholungen, optional, überspringbar) oder run_reference (Laufreferenz: beste oder letzte Zeit, nur mit dem Modul Laufen, überspringbar) oder plan (Planvorschlag als Kacheln je Einheit mit genau zwei Aktionen: Plan bestätigen und Selbst bearbeiten im Vollbild; erst zeigen, wenn ein Plan-Entwurf vorliegt; Anpassen per Sprache bleibt im Chat, also nach der Karte fragen, was geändert werden soll; hat der Nutzer von Hand geändert, vom gespeicherten Wert in der Karte ausgehen, nicht vom Wert im Chat). Danach, erst nach bestätigtem Plan: wearable (Garmin verbinden: die Uhr zeigt einen Code mit 8 Zeichen, den der Nutzer in die Karte eintippt; genau zwei Aktionen Verbinden und Später; die Uhr ist optional, nur Garmin, keine Einwilligung für Gesundheitsdaten abfragen; Code nie selbst raten oder aus dem Chat in ein Werkzeug übernehmen) und zum Abschluss start (Arnold ist bereit: nächste Einheit, Woche, geschätzte Richtwerte, Ziele und Uhrstatus in einer Karte mit den Aktionen Einheit ansehen und Plan öffnen; Werte nur wie gespeichert nennen, Unbekanntes bleibt offen und ist nie 0; die Uhr holt den Plan selbst). Wurden Richtwerte oder die Laufreferenz übersprungen, nie sagen, etwas sei daraus berechnet. Jede Karte zeigt den vollen aktuellen Stand und lädt sich beim Antippen selbst neu. Text VOR der Karte klappt der Chat ein: Die wichtigen Aussagen und die nächste Frage gehören deshalb in den Text NACH der Karte, kurz und ohne die Karte zu wiederholen.",
       inputSchema: OnboardingToolInputs.show_arnold_onboarding,
       outputSchema: OnboardingViewSchema,
       annotations: { ...writing, readOnlyHint: false },
@@ -268,7 +271,7 @@ export function registerOnboardingTools(
         return ok(
           {
             onboarding_contract: ONBOARDING_CONTRACT,
-            ...(card ? { card } : {}),
+            card: card ?? cardForState(opened.state),
             state: opened.state,
             resumed: opened.resumed,
             source: sourceFor(opened.state, opened.resumed),

@@ -348,6 +348,7 @@ export function createArnoldMcpServer(
   guard?: ArnoldToolGuard,
   runs?: RunService,
   mobility?: MobilityService,
+  uiDomain?: string,
 ) {
   const bare = new McpServer(
     { name: "arnold", version: "0.5.0" },
@@ -425,6 +426,7 @@ export function createArnoldMcpServer(
     legacyName: "Arnold (bisherige Karten)",
     description: `Interaktiver Trainingsbegleiter Arnold auf Basis des Arnold-Schemas v1. Quelle: ${sourceLabel}.`,
     legacyUris: LEGACY_DASHBOARD_URIS,
+    domain: uiDomain,
   });
 
   /**
@@ -689,6 +691,6 @@ export function createArnoldMcpServer(
   // Onboarding is its own app resource and tool set. Registering it last keeps
   // the dashboard surface above byte-for-byte unchanged for a deployment that
   // publishes no onboarding at all.
-  registerOnboardingTools(server, onboarding, uiFile, actorContext);
+  registerOnboardingTools(server, onboarding, uiFile, actorContext, uiDomain);
   return server;
 }

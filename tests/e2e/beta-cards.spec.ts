@@ -222,7 +222,7 @@ for (const width of [375, 1024])
         await mockOnboarding(page, state);
         await page.goto(`${BASE}/preview?onboarding=1`);
         await expect(
-          page.locator('main[data-card="onboarding"]'),
+          page.locator('main[data-card="onboarding-card"]'),
         ).toBeVisible();
         await capture(`setup-${name}`);
         const a11y = await new AxeBuilder({ page })
@@ -522,15 +522,7 @@ test("a completed setup in a new chat opens as completed", async ({ page }) => {
     await route.continue();
   });
   await page.goto(`${BASE}/preview?onboarding=1`);
-  await expect(
-    page.getByRole("heading", {
-      name: "Bereit für dein erstes Training",
-      exact: true,
-    }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Erstes Training starten", exact: true }),
-  ).toBeVisible();
+  await expect(page.locator('main[data-ocard="start"]')).toBeVisible();
   await expect(page.locator("body")).not.toContainText("Google");
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
