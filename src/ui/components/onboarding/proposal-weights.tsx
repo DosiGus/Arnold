@@ -27,7 +27,7 @@ const newRequestId = () =>
     : `req-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 /** The load convention of a planned exercise: its own, else the catalog's. */
-function conventionsOf(item: PlannedExercise): SetConventions {
+export function conventionsOf(item: PlannedExercise): SetConventions {
   const starter = starterExercise(item.exercise_id);
   return {
     load_basis: item.target_load_basis ?? starter?.load_basis ?? "total",
@@ -41,7 +41,7 @@ function conventionsOf(item: PlannedExercise): SetConventions {
   };
 }
 
-const volumeOf = (item: PlannedExercise) =>
+export const volumeOf = (item: PlannedExercise) =>
   item.target_sets && (item.rep_min || item.rep_max)
     ? `${item.target_sets} × ${item.rep_min ?? item.rep_max}${item.rep_max && item.rep_min && item.rep_max !== item.rep_min ? `–${item.rep_max}` : ""}`
     : item.target_sets
