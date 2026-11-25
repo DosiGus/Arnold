@@ -37,3 +37,14 @@ describe("a payload without card", () => {
     expect(html).not.toContain("Plan mit Arnold erstellen");
   });
 });
+
+describe("the checklist without a stored way", () => {
+  it("lists no way as a missing answer", () => {
+    const html = renderToStaticMarkup(
+      <OnboardingCardApp client={client} card="checklist" initial={state} />,
+    );
+    expect(state.session.profile.path).toBeNull();
+    expect(html).toContain("Pflichtangaben");
+    expect(html).not.toMatch(/Weg|Plan mit Arnold/);
+  });
+});

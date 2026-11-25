@@ -21,8 +21,9 @@ import {
 export function ChecklistCard({ state }: { state: OnboardingState }) {
   const { profile } = state.session;
   const modules = modulesOf(profile.training);
+  // The way is not a question for the user (D-17): never listed here.
   const missing = new Set(state.progress.missing_fields);
-  const fields = requiredFieldsFor(profile.path, modules);
+  const fields = requiredFieldsFor(profile.path ?? "arnold_plan", modules);
   const known = personLine(profile.person);
   return (
     <CardFrame tag="Checkliste" title="Das weiß ich schon" card="checklist">
