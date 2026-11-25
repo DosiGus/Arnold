@@ -4,6 +4,7 @@ import { ArnoldClient, type ArnoldPayload } from "./client";
 import { ArnoldDashboardApp } from "./ArnoldDashboardApp";
 import { ArnoldMcpClient } from "./client/ArnoldMcpClient";
 import { OnboardingView } from "./views/OnboardingView";
+import { OnboardingCardApp } from "./components/onboarding";
 import "./style.css";
 import { AccountCard } from "./views/AccountCard";
 import { GarminCard } from "./views/GarminCard";
@@ -82,6 +83,12 @@ function Boot() {
     <RunCardApp client={mcp} initial={payload.run} />
   ) : payload.contract === "mobility" ? (
     <MobilityCardApp client={mcp} initial={payload.mobility} />
+  ) : payload.contract === "onboarding" && payload.onboarding.card ? (
+    <OnboardingCardApp
+      client={mcp}
+      card={payload.onboarding.card}
+      initial={payload.onboarding.state}
+    />
   ) : payload.contract === "onboarding" ? (
     <OnboardingView
       client={mcp}

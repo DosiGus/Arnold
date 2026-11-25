@@ -11,3 +11,4 @@ export { renderMobilityPage } from "./mobility-page";
 export { WelcomeStep } from "./welcome-step";
 export { ProfileStep } from "./profile-step";
 export { UnderstoodStep, hasUnderstood } from "./understood-step";
+export { OnboardingCardApp } from "./card-app";
