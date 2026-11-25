@@ -257,6 +257,38 @@ export class OnboardingService {
 
   constructor(private options: OnboardingServiceOptions) {
     this.mode = options.access.mode;
+    // RDS-017: until the setup is finished the mobility profile is not stored,
+    // so the plan service asks the open setup for the mat answer (D-07).
+    options.plans?.useSetupMat((context) => this.openSetupHasMat(context));
+  }
+
+  /**
+   * The mat answer of the caller's open setup, for the plan service. The
+   * setup is found through the verified identity in `context` and the access
+   * check, never through tool arguments. A finished, cancelled or expired
+   * setup, a missing answer or any failure gives `undefined` (unknown).
+   */
+  async openSetupHasMat(context: unknown): Promise<boolean | undefined> {
+    try {
+      const principal = await this.options.access.establish(context);
+      const record = await this.options.repository.findLatestByOwner(
+        principal.subject,
+      );
+      if (!record) return undefined;
+      await this.options.access.authorize(record, context);
+      const { session } = record;
+      if (
+        session.status === "COMPLETED" ||
+        session.status === "CANCELLED" ||
+        session.status === "EXPIRED" ||
+        isExpired(session, this.clock())
+      )
+        return undefined;
+      const answer = session.profile.training.has_mat;
+      return typeof answer === "boolean" ? answer : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   private now() {
