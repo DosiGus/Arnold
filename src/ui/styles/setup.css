@@ -847,3 +847,9 @@
   flex: none;
   font-weight: 500;
 }
+.arnold-cards .oc-stepper .ac-round.small {
+  width: var(--ac-tap);
+  height: var(--ac-tap);
+  min-width: var(--ac-tap);
+  min-height: var(--ac-tap);
+}

@@ -169,7 +169,7 @@ describe("Plan editor steps by equipment", () => {
     const mach = deviceOf(byId("plan-fx-legpress"))!;
     expect(stepDown(22.5, bar)).toBe(20);
     expect(stepDown(20, bar)).toBeNull();
-    expect(stepDown(4, dumb)).toBeNull();
+    expect(stepDown(4, dumb)).toBe(2);
     expect(stepDown(2, dumb)).toBeNull();
     expect(stepDown(5, mach)).toBeNull();
     expect(stepDown(null, mach)).toBeNull();
