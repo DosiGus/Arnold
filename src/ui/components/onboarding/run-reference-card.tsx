@@ -201,7 +201,7 @@ export function RunReferenceCard({
             </div>
             {choice === "other" && (
               <div className={`oc-field ${errors.distance ? "invalid" : ""}`}>
-                <label htmlFor={`${base}-km`}>Strecke</label>
+                <label htmlFor={`${base}-km`}>Strecke in km</label>
                 <span className="oc-input">
                   <input
                     id={`${base}-km`}
