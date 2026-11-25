@@ -1,6 +1,4 @@
 import { expect, type Page } from "@playwright/test";
-export const wizard = (page: Page) =>
-  page.locator('main[data-card="onboarding"]');
 export async function openCard(
   page: Page,
   card: string,
@@ -8,18 +6,6 @@ export async function openCard(
 ) {
   await page.goto(`${base}/preview?card=${card}`);
   await expect(page.locator(`main[data-card="${card}"]`)).toBeVisible();
-}
-export async function openWizard(page: Page, base = "http://127.0.0.1:8800") {
-  // The setup belongs to the account (D-11), so a test starts from a clean
-  // slate: an open setup of an earlier test is cancelled first.
-  await page.goto(`${base}/health`);
-  await callTool(page, "cancel_onboarding", {
-    request_id: `reset-${Math.random().toString(36).slice(2)}`,
-  });
-  await page.goto(`${base}/preview?onboarding=1`);
-  await expect(
-    wizard(page).getByRole("heading", { name: "Willkommen bei Arnold" }),
-  ).toBeVisible();
 }
 export async function callTool(
   page: Page,
@@ -46,120 +32,4 @@ export async function callTool(
     },
     { name, args },
   );
-}
-/** The setup is found by identity (D-11): calls name no setup. */
-export const storedClaim = async (_page: Page) => ({});
-/** Picks an answer tile (radio or checkbox) by its title. */
-export async function choose(page: Page, title: string) {
-  await wizard(page)
-    .locator("label.ac-option-tile")
-    .filter({
-      has: page.locator("strong", { hasText: new RegExp(`^${title}$`) }),
-    })
-    .first()
-    .click();
-}
-/** Taps minus or plus on a setup stepper row until it shows the target. */
-export async function stepTo(page: Page, label: string, target: number) {
-  const row = wizard(page).getByRole("group", { name: label, exact: true });
-  for (let i = 0; i < 20; i++) {
-    const shown = parseInt(
-      (await row.locator("output").textContent()) ?? "",
-      10,
-    );
-    if (shown === target) return;
-    await row
-      .getByRole("button", {
-        name: `${label} ${shown < target ? "mehr" : "weniger"}`,
-      })
-      .click();
-  }
-  await expect(row.locator("output")).toContainText(String(target));
-}
-/** Sets "Wie oft und wie lange?". */
-export async function setRhythm(page: Page, days: number, minutes: number) {
-  await stepTo(page, "Tage pro Woche", days);
-  await stepTo(page, "Minuten pro Training", minutes);
-}
-/** Opens the three-dot menu of the setup card and picks an entry. */
-export async function setupMenu(page: Page, entry: string) {
-  await wizard(page)
-    .getByRole("button", { name: "Weitere Aktionen", exact: true })
-    .click();
-  await wizard(page).getByRole("button", { name: entry, exact: true }).click();
-}
-/**
- * The mobility question (MOB-011) follows the wishes and the run page while
- * the server lists it as open. It is optional: this skips it.
- */
-export async function skipMobility(page: Page) {
-  const main = wizard(page);
-  await expect(
-    main.getByRole("heading", { name: "Mobility oder Morgenroutine dazu?" }),
-  ).toBeVisible();
-  await main.getByRole("button", { name: "Überspringen", exact: true }).click();
-}
-export const next = (page: Page) =>
-  wizard(page).getByRole("button", { name: "Weiter", exact: true }).click();
-export async function fillProfile(page: Page, known: { bench?: string } = {}) {
-  const main = wizard(page);
-  await main
-    .getByRole("button", { name: /^Plan mit Arnold erstellen/ })
-    .click();
-  await main.getByRole("button", { name: "Überspringen", exact: true }).click();
-  await expect(
-    main.getByRole("heading", { name: "Was ist dein Ziel?", exact: true }),
-  ).toBeVisible();
-  await choose(page, "Muskeln aufbauen");
-  await next(page);
-  await choose(page, "Fortgeschritten");
-  await next(page);
-  await setRhythm(page, 3, 60);
-  await next(page);
-  await choose(page, "Fitnessstudio");
-  await next(page);
-  // Someone with training behind them in a gym is asked for known weights.
-  await expect(
-    main.getByRole("heading", { name: "Kennst du deine Gewichte?" }),
-  ).toBeVisible();
-  if (known.bench) {
-    await main.getByRole("textbox", { name: "Bankdrücken" }).fill(known.bench);
-    await next(page);
-  } else
-    await main
-      .getByRole("button", { name: "Überspringen", exact: true })
-      .click();
-  await expect(
-    main.getByRole("heading", { name: "Deine Wünsche für den Plan" }),
-  ).toBeVisible();
-  await main.getByRole("button", { name: "Überspringen", exact: true }).click();
-  await skipMobility(page);
-  await expect(
-    main.getByRole("heading", { name: "So wird dein Plan" }),
-  ).toBeVisible();
-  await expect(main).toHaveAttribute("data-profile-save", "saved");
-}
-export async function submitProposal(page: Page, origin = "ai_proposal") {
-  await expect(wizard(page)).toHaveAttribute("data-profile-save", "saved");
-  const claim = await storedClaim(page);
-  const brief = await callTool(page, "get_onboarding_brief", claim);
-  const result = await callTool(page, "submit_onboarding_plan_proposal", {
-    ...claim,
-    request_id: crypto.randomUUID(),
-    name: "Mein Testplan",
-    origin,
-    sessions: ["Push", "Pull", "Beine"].map((session_name, i) => ({
-      session_name,
-      exercises: [
-        {
-          exercise_id: brief.exercise_catalog[i].exercise_id,
-          target_sets: 3,
-          rep_min: 8,
-          rep_max: 12,
-        },
-      ],
-    })),
-  });
-  expect(result.ok).toBe(true);
-  return claim;
 }

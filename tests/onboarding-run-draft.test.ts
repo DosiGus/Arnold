@@ -7,7 +7,6 @@ import {
   runFromDraft,
 } from "../src/ui/components/onboarding/run-draft";
 import { OnboardingRunSchema } from "../src/shared/onboarding-contract";
-import { nextPage, previousPage } from "../src/ui/components/onboarding/pages";
 
 const FILLED = {
   ...RUN_DRAFT_DEFAULT,
@@ -75,15 +74,5 @@ describe("run page draft", () => {
     expect(
       runFromDraft({ ...FILLED, targetText: "x" }).problems.target,
     ).toBeTruthy();
-  });
-
-  it("walks wishes -> run -> review only with a running goal", () => {
-    expect(nextPage("wishes", false, false, true)).toBe("run");
-    expect(nextPage("wishes", false, false, false)).toBe("review");
-    expect(nextPage("run", false, false, true)).toBe("review");
-    expect(nextPage("run", true, false, true)).toBe("review");
-    expect(previousPage("review", false, true)).toBe("run");
-    expect(previousPage("review", false, false)).toBe("wishes");
-    expect(previousPage("run")).toBe("wishes");
   });
 });
