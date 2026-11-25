@@ -42,6 +42,26 @@ import {
   ScheduleRunWeekResponseSchema,
 } from "../shared/run-contract";
 import { ArnoldToolError, asFailure, type UiFailure } from "./recovery";
+import { mergeModelOutput } from "../shared/model-output-contract";
+
+/**
+ * D-20: the server keeps ids and bookkeeping timestamps out of what the model
+ * sees and hands them to the card in `_meta.arnold.internal`. Merged back here,
+ * once, before anything reads the result, so every view keeps its contract.
+ */
+function withInternals(result: CallToolResult): CallToolResult {
+  const internal = (result._meta?.arnold as Record<string, unknown> | undefined)
+    ?.internal;
+  if (internal === undefined || result.structuredContent === undefined)
+    return result;
+  return {
+    ...result,
+    structuredContent: mergeModelOutput(
+      result.structuredContent,
+      internal,
+    ) as CallToolResult["structuredContent"],
+  };
+}
 
 /**
  * A Garmin card: the pairing confirmation or the watches of the account. The
@@ -145,6 +165,7 @@ export class ArnoldClient {
    * response says nothing about whether the overview on screen is current.
    */
   private publish(result: CallToolResult, stale = false, notify = true) {
+    result = withInternals(result);
     // A structured write failure is an *answer*, not a transport problem: the
     // server definitively rejected the operation and said why. Passing it
     // through lets the caller show the reason and carry on, instead of leaving
@@ -223,7 +244,8 @@ export class ArnoldClient {
         { autoResize: true },
       );
       let initialResultReceived = false;
-      this.app.ontoolresult = (result) => {
+      this.app.ontoolresult = (received) => {
+        const result = withInternals(received as CallToolResult);
         try {
           // Hosts can replay the original tool result when a chat is reopened.
           // Reconcile before mounting the dashboard so the initial view cannot

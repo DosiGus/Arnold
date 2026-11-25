@@ -23,6 +23,7 @@ import type { MobilityService } from "./mobility/service.js";
 import type { RunService } from "./run/service.js";
 import { registerOnboardingTools } from "./mcp-onboarding.js";
 import { gateUntilSetUp } from "./onboarding/setup-gate.js";
+import { hideModelInternals } from "./mcp-model-output.js";
 import { DashboardCardSchema } from "../shared/dashboard-cards.js";
 import { guardToolRegistrations } from "./auth/guarded-server.js";
 import type { ArnoldToolGuard } from "./auth/tool-guard.js";
@@ -350,9 +351,13 @@ export function createArnoldMcpServer(
   mobility?: MobilityService,
   uiDomain?: string,
 ) {
-  const bare = new McpServer(
-    { name: "arnold", version: "0.5.0" },
-    onboarding ? { instructions: ARNOLD_INSTRUCTIONS } : undefined,
+  // D-20: patched first, so every registration below — and account and
+  // watch tools added later — advertises and returns no internals.
+  const bare = hideModelInternals(
+    new McpServer(
+      { name: "arnold", version: "0.5.0" },
+      onboarding ? { instructions: ARNOLD_INSTRUCTIONS } : undefined,
+    ),
   );
   // Patched before any registration, so the tools registered here and the ones
   // added by registerWorkoutTools / registerPlanTools / registerOnboardingTools
