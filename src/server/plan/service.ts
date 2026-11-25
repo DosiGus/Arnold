@@ -129,8 +129,33 @@ const CHANGE_EVENT: Partial<
   exercise_replaced: { event: "PLAN_EXERCISE_REPLACED", entity: "item" },
 };
 
+/**
+ * The mat answer of the caller's open setup (D-07, RDS-017), for the time
+ * before the mobility profile is stored. Resolves the setup from the verified
+ * identity in `context`, never from tool arguments; `undefined` means no open
+ * setup or no answer.
+ */
+export type SetupMatSource = (context: unknown) => Promise<boolean | undefined>;
+
+/** Plan edits whose routine timing depends on the mat answer. */
+const MAT_EDITS = new Set(["add_mobility_session", "update_mobility_session"]);
+const editsTheMorningTiming = (raw: unknown) =>
+  !!raw &&
+  typeof raw === "object" &&
+  "edits" in raw &&
+  Array.isArray(raw.edits) &&
+  raw.edits.some(
+    (edit: unknown) =>
+      !!edit &&
+      typeof edit === "object" &&
+      "type" in edit &&
+      MAT_EDITS.has(String(edit.type)),
+  );
+
 export class TrainingPlanService {
   readonly mode: WriteMode;
+  /** RDS-017: the open setup's mat answer, registered by the setup service. */
+  private setupMat: SetupMatSource | null = null;
   /** UX-008: adjustments for a while, on the same store and identity. */
   readonly adjustments: PlanAdjustmentService;
 
@@ -427,6 +452,31 @@ export class TrainingPlanService {
 
   /* ----------------------------------------------------------------- writes */
 
+  /**
+   * Registers where the mat answer of an open setup comes from (D-07). The
+   * setup service of the same user runtime calls this once; the stored
+   * mobility profile still takes precedence.
+   */
+  useSetupMat(source: SetupMatSource) {
+    this.setupMat = source;
+  }
+
+  /** The open setup's mat answer; any failure reads as unknown (no floor). */
+  private async setupHasMat(
+    operation: PlanWriteOperation,
+    raw: unknown,
+    context: unknown,
+  ): Promise<boolean | undefined> {
+    if (!this.setupMat || operation !== "update_plan_draft") return undefined;
+    if (!editsTheMorningTiming(raw)) return undefined;
+    try {
+      const answer = await this.setupMat(context);
+      return typeof answer === "boolean" ? answer : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   async execute(
     operation: PlanWriteOperation,
     raw: unknown,
@@ -442,6 +492,7 @@ export class TrainingPlanService {
     try {
       const actor = await this.actor(context);
       const input = PlanWriteInputs[operation].parse(raw);
+      const setupHasMat = await this.setupHasMat(operation, raw, context);
       const outcome = await commitWrite<PlanWriteResult>({
         trackerId: this.options.trackerId,
         store: this.options.store,
@@ -450,7 +501,14 @@ export class TrainingPlanService {
         actorSubject: actor.subject,
         clock: this.options.clock ?? (() => new Date()),
         build: (dataset, now) =>
-          this.build(operation, input, hideTemporary(dataset), actor, now),
+          this.build(
+            operation,
+            input,
+            hideTemporary(dataset),
+            actor,
+            now,
+            setupHasMat,
+          ),
       });
       return PlanWriteResponseSchema.parse({
         ok: true,
@@ -491,6 +549,7 @@ export class TrainingPlanService {
     dataset: ArnoldDataset,
     actor: Actor,
     now: string,
+    setupHasMat?: boolean,
   ): CommitPlan<PlanWriteResult> {
     const warnings: string[] = [];
     // B11: the user's own exercises are created in the same write as the plan.
@@ -504,14 +563,14 @@ export class TrainingPlanService {
           `${ownExercises.changes.length} eigene Übung(en) angelegt. Gerät, Muskel und Lastbasis bei Bedarf im Plan-Editor ergänzen.`,
         );
     }
-    // The mat answer comes from the stored mobility profile (D-07). Only a
-    // stored true lets floor exercises into the morning; no answer stays
-    // unknown (no floor exercises, nothing written).
+    // The mat answer (D-07): the stored mobility profile first; before it
+    // exists, the open setup's answer (RDS-017); otherwise unknown. Only true
+    // lets floor exercises into the morning; nothing here writes the answer.
     const ctx: EditContext = {
       dataset,
       now,
       id: () => this.newId(),
-      has_mat: dataset.mobilityProfiles?.[0]?.has_mat,
+      has_mat: dataset.mobilityProfiles?.[0]?.has_mat ?? setupHasMat,
     };
 
     if (
