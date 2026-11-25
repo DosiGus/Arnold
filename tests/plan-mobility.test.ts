@@ -1471,3 +1471,78 @@ describe("the mat answer reaches the morning routine (D-07)", () => {
     await expect(run(true)).resolves.toBeUndefined();
   });
 });
+
+describe("the plan service reads the mat answer from the stored profile (D-07, RDS-016)", () => {
+  const withFloor = ["mob_cat_cow", "mob_childs_pose", ...M.slice(0, 3)];
+  const stored = (has_mat: boolean | undefined) =>
+    ({
+      ...planFixtureDataset("active_ppl"),
+      mobilityProfiles: [
+        ArnoldMobilityProfileSchema.parse({
+          mobility_profile_id: "mp-mat",
+          wants: true,
+          morning_weekdays: [1, 3, 5],
+          morning_minutes: 10,
+          sessions_placement: null,
+          sessions_per_week: null,
+          sessions_minutes: null,
+          stiff_areas: [],
+          ...(has_mat === undefined ? {} : { has_mat }),
+          created_at_utc: "2026-06-01T07:00:00.000Z",
+          updated_at_utc: "2026-06-01T07:00:00.000Z",
+          row_revision: 1,
+        }),
+      ],
+    }) as ArnoldDataset;
+
+  it("lets floor exercises into the morning with a stored mat", async () => {
+    const h = harness("active_ppl", { dataset: stored(true) });
+    const version = await edit(
+      h,
+      await newDraft(h),
+      morning({ exercise_ids: withFloor }),
+    );
+    const routine = mobilityOf(version, "Morgenroutine");
+    expect(routine.template.exercise_ids).toEqual(withFloor);
+  });
+
+  it("refuses floor exercises with a stored no, an unknown answer or no profile", async () => {
+    for (const dataset of [
+      stored(false),
+      stored(undefined),
+      planFixtureDataset("active_ppl"),
+    ]) {
+      const h = harness("active_ppl", { dataset });
+      const draft = await newDraft(h);
+      const failed = await rejected(
+        h,
+        draft,
+        morning({ exercise_ids: withFloor }),
+      );
+      expect(JSON.stringify(failed)).toMatch(/Matte|MOBILITY/);
+      // Standing exercises still work, and the unknown answer stays unknown.
+      await edit(h, draft, morning());
+      expect((await h.dataset()).mobilityProfiles?.[0]?.has_mat).toBe(
+        dataset.mobilityProfiles?.[0]?.has_mat,
+      );
+    }
+  });
+
+  it("retimes an update with floor exercises only with a stored mat", async () => {
+    const yes = harness("active_ppl", { dataset: stored(true) });
+    const draft = await edit(yes, await newDraft(yes), morning());
+    const id = mobilityOf(draft, "Morgenroutine").session_id;
+    await edit(yes, draft, {
+      type: "update_mobility_session",
+      session_id: id,
+      exercise_ids: withFloor,
+    });
+    const no = harness("active_ppl", { dataset: stored(undefined) });
+    const draftNo = await edit(no, await newDraft(no), morning());
+    await rejected(no, draftNo, {
+      type: "update_mobility_session",
+      session_id: mobilityOf(draftNo, "Morgenroutine").session_id,
+      exercise_ids: withFloor,
+    });
+  });
+});

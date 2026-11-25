@@ -310,6 +310,8 @@ export const MobilityProfileViewSchema = z
   .strictObject({
     state: MobilityProfileStateSchema,
     preference: MobilityPreferenceSchema.nullable(),
+    /** The stored mat answer (D-07); absent means not asked yet. */
+    has_mat: z.boolean().optional(),
   })
   .refine(
     (v) =>
@@ -408,6 +410,16 @@ export const MobilityToolInputs = {
   update_mobility_profile: z.strictObject({
     request_id: requestId,
     preference: MobilityPreferenceSchema,
+    /**
+     * Mat for floor exercises in the morning routine (D-07). Only what the
+     * user said; absent keeps the stored answer (or "not asked yet").
+     */
+    has_mat: z
+      .boolean()
+      .optional()
+      .describe(
+        "Matte für Bodenübungen in der Morgenroutine, nur wenn der Nutzer es sagt; weglassen lässt die gespeicherte Antwort unverändert.",
+      ),
   }),
   log_mobility: z.strictObject({
     request_id: requestId,

@@ -93,8 +93,8 @@ export type EditContext = {
   id: () => string;
   /**
    * Whether the user has a mat (D-07). Only `true` lets floor exercises into a
-   * morning routine; absent means no mat. The profile has no stored answer
-   * yet, so the plan service leaves it unset.
+   * morning routine; absent means no mat. The plan service takes it from the
+   * stored mobility profile (migration 010).
    */
   has_mat?: boolean;
 };

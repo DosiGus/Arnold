@@ -298,6 +298,8 @@ export const ARNOLD_TABLE_HEADERS = {
     "sessions_per_week",
     "sessions_minutes",
     "stiff_areas",
+    // ARN-REDESIGN D-07 (migration 010).
+    "has_mat",
     "created_at_utc",
     "updated_at_utc",
     "row_revision",
@@ -891,6 +893,13 @@ export const ArnoldMobilityProfileSchema = z
       .union([z.literal(15), z.literal(20), z.literal(30)])
       .nullable(),
     stiff_areas: z.array(MobilityAreaSchema).max(8),
+    /**
+     * Mat for floor exercises in the morning routine (D-07, migration 010).
+     * Absent means "not asked yet": no floor exercises in the morning, and
+     * never stored as false without the user's answer (D-09). Independent of
+     * `wants`: it is a fact about the user's home, not a mobility detail.
+     */
+    has_mat: z.boolean().optional(),
     ...technical,
   })
   .refine(chronological, {

@@ -99,7 +99,7 @@ export function registerMobilityTools(
   server.registerTool(
     "update_mobility_profile",
     {
-      description: `Speichert die Antwort des Nutzers zu Mobility: wants false (keine Details) oder wants true mit Morgenroutine (Wochentage mon…sun, 5/10/15 Minuten) und/oder Mobility-Einheiten (own_days, after_strength oder arnold_decides; 1–3 pro Woche; 15/20/30 Minuten) und steifen Bereichen. Sagt der Nutzer „Ich will auch Mobility“, zuerst dieses Tool, danach die Planänderung über update_plan_draft (Mobility-Routinen). ${NEVER} Erfolg wird erst gemeldet, wenn Änderung, Protokoll und Quittung gemeinsam gespeichert sind. Bei retry_same_request denselben Aufruf mit derselben request_id wiederholen.`,
+      description: `Speichert die Antwort des Nutzers zu Mobility: wants false (keine Details) oder wants true mit Morgenroutine (Wochentage mon…sun, 5/10/15 Minuten) und/oder Mobility-Einheiten (own_days, after_strength oder arnold_decides; 1–3 pro Woche; 15/20/30 Minuten) und steifen Bereichen. has_mat (Matte für Bodenübungen in der Morgenroutine) nur senden, wenn der Nutzer es sagt; weglassen behält die gespeicherte Antwort. Sagt der Nutzer „Ich will auch Mobility“, zuerst dieses Tool, danach die Planänderung über update_plan_draft (Mobility-Routinen). ${NEVER} Erfolg wird erst gemeldet, wenn Änderung, Protokoll und Quittung gemeinsam gespeichert sind. Bei retry_same_request denselben Aufruf mit derselben request_id wiederholen.`,
       inputSchema: MobilityToolInputs.update_mobility_profile,
       outputSchema: UpdateMobilityProfileResponseSchema,
       annotations: {

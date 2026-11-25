@@ -504,7 +504,15 @@ export class TrainingPlanService {
           `${ownExercises.changes.length} eigene Übung(en) angelegt. Gerät, Muskel und Lastbasis bei Bedarf im Plan-Editor ergänzen.`,
         );
     }
-    const ctx: EditContext = { dataset, now, id: () => this.newId() };
+    // The mat answer comes from the stored mobility profile (D-07). Only a
+    // stored true lets floor exercises into the morning; no answer stays
+    // unknown (no floor exercises, nothing written).
+    const ctx: EditContext = {
+      dataset,
+      now,
+      id: () => this.newId(),
+      has_mat: dataset.mobilityProfiles?.[0]?.has_mat,
+    };
 
     if (
       operation === "activate_training_plan" ||

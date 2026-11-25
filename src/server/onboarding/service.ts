@@ -180,6 +180,8 @@ export interface OnboardingServiceOptions {
     preference: MobilityPreference,
     onboardingSessionId: string,
     context: unknown,
+    /** The mat answer of the setup (D-07); absent when not given. */
+    hasMat?: boolean,
   ) => Promise<void>;
   clock?: () => Date;
   id?: () => string;
@@ -1735,6 +1737,7 @@ export class OnboardingService {
         mobility,
         session.onboarding_session_id,
         context,
+        session.profile.training.has_mat ?? undefined,
       );
     } catch {
       throw new OnboardingError(

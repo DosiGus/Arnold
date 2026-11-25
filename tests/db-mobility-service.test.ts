@@ -645,3 +645,109 @@ describe("setup with a mobility answer (database)", () => {
     expect(await profileRows(alice)).toEqual([]);
   });
 });
+
+describe("the mat answer on Postgres (D-07, RDS-016)", () => {
+  const FLOOR_MORNING = {
+    ...MORNING,
+    exercise_ids: [
+      "mob_cat_cow",
+      "mob_childs_pose",
+      "mob_neck_rolls",
+      "mob_neck_side",
+      "mob_shoulder_circles",
+    ],
+  };
+  const wantsMorning = {
+    wants: true,
+    morning: { weekdays: ["mon", "wed", "fri"], minutes: 10 },
+    sessions: null,
+    stiff_areas: [],
+  } as const;
+
+  async function draftWithFloorMorning(plans: TrainingPlanService) {
+    const created = await plans.execute("create_training_plan", {
+      request_id: randomUUID(),
+      name: "Testplan",
+      days_per_week: 2,
+      sessions: [
+        {
+          session_name: "A",
+          exercises: [
+            { exercise_id: "squat", target_sets: 3, rep_min: 6, rep_max: 8 },
+          ],
+        },
+      ],
+    });
+    expect(created.error).toBeNull();
+    const draft = created.result!.plan!.version;
+    return plans.execute("update_plan_draft", {
+      request_id: randomUUID(),
+      plan_version_id: draft.plan_version_id,
+      expected_row_revision: draft.row_revision,
+      edits: [FLOOR_MORNING],
+    });
+  }
+
+  it("the morning routine takes floor exercises only from a stored true, per user", async () => {
+    const withMat = await newAccount(db);
+    const unknown = await newAccount(db);
+    const withoutMat = await newAccount(db);
+    const a = servicesFor(withMat);
+    const u = servicesFor(unknown);
+    const n = servicesFor(withoutMat);
+    expect(
+      (
+        await a.mobility.updateProfile(
+          {
+            request_id: randomUUID(),
+            preference: wantsMorning,
+            has_mat: true,
+          },
+          undefined,
+        )
+      ).ok,
+    ).toBe(true);
+    expect(
+      (
+        await u.mobility.updateProfile(
+          { request_id: randomUUID(), preference: wantsMorning },
+          undefined,
+        )
+      ).ok,
+    ).toBe(true);
+    expect(
+      (
+        await n.mobility.updateProfile(
+          {
+            request_id: randomUUID(),
+            preference: wantsMorning,
+            has_mat: false,
+          },
+          undefined,
+        )
+      ).ok,
+    ).toBe(true);
+
+    const stored = (userId: string) =>
+      db.asUser(
+        userId,
+        async (c) =>
+          (await c.query("select has_mat from arnold.mobility_profiles")).rows,
+      );
+    expect(await stored(withMat.userId)).toEqual([{ has_mat: true }]);
+    expect(await stored(unknown.userId)).toEqual([{ has_mat: null }]);
+    expect(await stored(withoutMat.userId)).toEqual([{ has_mat: false }]);
+
+    expect((await draftWithFloorMorning(a.plans)).error).toBeNull();
+    for (const services of [u, n]) {
+      const refused = await draftWithFloorMorning(services.plans);
+      expect(refused.error?.code).toBe("VALIDATION_ERROR");
+      expect(JSON.stringify(refused.error)).toMatch(/MOBILITY|Matte/);
+    }
+    // Unknown stays unknown: nothing wrote a false.
+    expect(await stored(unknown.userId)).toEqual([{ has_mat: null }]);
+    expect(
+      (await unknown.store.read()).mobilityProfiles![0],
+    ).not.toHaveProperty("has_mat");
+  });
+});
