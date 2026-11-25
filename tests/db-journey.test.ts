@@ -59,6 +59,7 @@ import { missingHints } from "./fixtures/tool-hints.js";
 import { appDatabase } from "./fixtures/arnold-db.js";
 import { PostgresOnboardingRepository } from "../src/server/db/onboarding.js";
 import type { OnboardingRecord } from "../src/server/onboarding/repository.js";
+import { asCard } from "./fixtures/card-view";
 
 const key = makeRsaKey("journey-issuer");
 const scopes = "arnold.read arnold.write arnold.plan arnold.account";
@@ -177,9 +178,11 @@ async function call(
   args: Record<string, unknown> = {},
   scope = scopes,
 ) {
-  return (await (
-    await clientFor(subject, scope)
-  ).callTool({ name, arguments: args })) as CallToolResult;
+  return asCard(
+    (await (
+      await clientFor(subject, scope)
+    ).callTool({ name, arguments: args })) as CallToolResult,
+  );
 }
 
 /** Runs the setup up to and including the confirmation. */

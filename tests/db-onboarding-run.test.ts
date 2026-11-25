@@ -40,6 +40,7 @@ import {
   validClaims,
 } from "./fixtures/arnold-auth.js";
 import { appDatabase } from "./fixtures/arnold-db.js";
+import { asCard } from "./fixtures/card-view";
 
 const key = makeRsaKey("onboarding-run-issuer");
 const scopes = "arnold.read arnold.write arnold.plan arnold.account";
@@ -158,9 +159,11 @@ async function call(
   args: Record<string, unknown> = {},
   scope = scopes,
 ) {
-  return (await (
-    await clientFor(subject, scope)
-  ).callTool({ name, arguments: args })) as CallToolResult;
+  return asCard(
+    (await (
+      await clientFor(subject, scope)
+    ).callTool({ name, arguments: args })) as CallToolResult,
+  );
 }
 
 const RUN = {
