@@ -4,7 +4,11 @@ import { Alert } from "@openai/apps-sdk-ui/components/Alert";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
 import { ArrowRotateCcw } from "@openai/apps-sdk-ui/components/Icon";
 import { Animate } from "@openai/apps-sdk-ui/components/Transition";
-import { DataLLM, useSendFollowUpMessage } from "skybridge/web";
+import {
+  DataLLM,
+  useOpenExternal,
+  useSendFollowUpMessage,
+} from "skybridge/web";
 import type { OnboardingView } from "../../onboarding/model.js";
 import { useToolInfo } from "../../helpers.js";
 import { useHostTheme } from "../../use-host-theme.js";
@@ -17,6 +21,7 @@ import {
   ProfileStep,
   WearableStep,
   Welcome,
+  GARMIN_STORE_URL,
 } from "./steps.js";
 import { AppShell } from "./app.js";
 import type { Screen } from "./dashboard.js";
@@ -43,6 +48,7 @@ function Flow({ initial }: { initial: OnboardingView }) {
   const s = useSetup(initial);
   const [screen, setScreen] = useState<"setup" | Screen>("setup");
   const sendFollowUp = useSendFollowUpMessage();
+  const openExternal = useOpenExternal();
   const { view } = s;
   const building = s.busy === "plan";
 
@@ -137,6 +143,7 @@ function Flow({ initial }: { initial: OnboardingView }) {
                     .then(() => (c === "later" ? s.finish() : undefined))
                 }
                 onFinish={() => void s.finish()}
+                onOpenStore={() => openExternal(GARMIN_STORE_URL)}
               />
             )}
             {key === "done" && (

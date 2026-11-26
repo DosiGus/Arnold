@@ -18,7 +18,7 @@ import {
   Animate,
   AnimateLayout,
 } from "@openai/apps-sdk-ui/components/Transition";
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   GOAL_LABEL,
   GOALS,
@@ -278,9 +278,9 @@ export function OwnPlan({ update }: Pick<Props, "update">) {
 
 export function Tile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex min-h-[5rem] min-w-0 flex-col justify-between gap-1 rounded-xl bg-secondary-soft px-3 py-2.5">
+    <div className="flex min-w-0 flex-col gap-0.5 rounded-xl bg-secondary-soft px-2.5 py-2">
       <span className="text-xs leading-tight text-secondary">{label}</span>
-      <span className="text-base leading-tight font-semibold break-words hyphens-auto">
+      <span className="text-sm leading-tight font-semibold break-words hyphens-auto">
         {value}
       </span>
     </div>
@@ -823,6 +823,34 @@ function SampleWeek({ plan }: { plan: Plan }) {
   );
 }
 
+/** Plain-language verdict for one muscle group. No red: a plan is never "bad". */
+function volumeStatus(
+  n: number,
+  min: number,
+  max: number,
+  covered: boolean,
+): { label: string; color: "success" | "warning" | "info"; bar: string } {
+  if (n > max)
+    return { label: "Mehr als nötig", color: "info", bar: "bg-info-solid" };
+  if (n >= min)
+    return {
+      label: "Im Zielbereich",
+      color: "success",
+      bar: "bg-success-solid",
+    };
+  if (covered)
+    return {
+      label: "Wird mittrainiert",
+      color: "success",
+      bar: "bg-success-solid",
+    };
+  return {
+    label: "Unter dem Zielbereich",
+    color: "warning",
+    bar: "bg-warning-solid",
+  };
+}
+
 /** Facts taken straight from the saved answers, no model involved. */
 function considered(p: Profile): string[] {
   const out: string[] = [];
@@ -870,6 +898,16 @@ function PlanExplanationRow({
   onAsk?: (sentence: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const root = useRef<HTMLElement>(null);
+  // A tap anywhere outside the report closes it again.
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: Event) => {
+      if (!root.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, [open]);
   const x = plan.explanation;
   if (!x) return null;
   const sets = new Map(volumeByMuscle(plan));
@@ -879,18 +917,21 @@ function PlanExplanationRow({
     ...x.volume.map((v) => Math.max(v.max, sets.get(v.muscle) ?? 0)),
   );
   return (
-    <section className="-mt-2 flex flex-col gap-2">
-      <button
-        type="button"
+    <section ref={root} className="flex flex-col gap-3">
+      <Button
+        color="secondary"
+        variant="outline"
+        size="sm"
+        pill
+        className="self-start"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1 self-start rounded-full text-sm text-secondary transition-colors hover:text-default focus-visible:outline-2"
       >
         Erklärung zum Plan
         <ChevronDown
           className={`size-4 transition-transform duration-300 ${open ? "rotate-180" : ""}`}
         />
-      </button>
+      </Button>
       <AnimateLayout
         hideOverflow
         initial={{ opacity: 0 }}
@@ -929,53 +970,65 @@ function PlanExplanationRow({
             </ReportSection>
 
             {x.volume.length > 0 && (
-              <ReportSection title="Dein Volumen im Vergleich">
-                <ul className="m-0 flex list-none flex-col gap-3 p-0">
+              <ReportSection title="Wie viel du pro Muskel trainierst">
+                <p className="m-0 text-sm text-secondary">
+                  Ein Satz ist ein Block Wiederholungen, zum Beispiel 8 Mal
+                  Bankdrücken. Der grüne Streifen zeigt, wie viele Sätze pro
+                  Woche für dein Ziel passen. Dein Plan zielt genau darauf.
+                  Liegt ein Muskel trotzdem darunter, steht dort der Grund.
+                </p>
+                <ul className="m-0 mt-1 flex list-none flex-col gap-3.5 p-0">
                   {x.volume.map((v) => {
                     const n = sets.get(v.muscle) ?? 0;
+                    const st = volumeStatus(n, v.min, v.max, !!v.note);
                     return (
-                      <li key={v.muscle} className="flex flex-col gap-1">
-                        <div className="flex items-baseline justify-between gap-3 text-sm">
-                          <span>{v.muscle}</span>
-                          <span className="tabular-nums">
-                            <span className="font-medium">{n} Sätze</span>
-                            <span className="text-secondary">
-                              {" "}
-                              · Ziel {v.min} bis {v.max}
-                            </span>
-                          </span>
+                      <li key={v.muscle} className="flex flex-col gap-1.5">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-sm">{v.muscle}</span>
+                          <Badge color={st.color} variant="soft" size="sm" pill>
+                            {st.label}
+                          </Badge>
                         </div>
                         <div
-                          className="relative h-1.5 w-full rounded-full bg-secondary-soft"
+                          className="relative h-2 w-full overflow-hidden rounded-full bg-secondary-soft"
                           role="img"
-                          aria-label={`${v.muscle}: ${n} Sätze, empfohlen ${v.min} bis ${v.max}`}
+                          aria-label={`${v.muscle}: ${n} Sätze, empfohlen ${v.min} bis ${v.max}: ${st.label}`}
                         >
                           <span
-                            className="absolute top-0 h-full rounded-full bg-[var(--color-border-strong)]"
+                            className="absolute top-0 h-full bg-success-soft"
                             style={{
                               left: `${(v.min / scale) * 100}%`,
                               width: `${((v.max - v.min) / scale) * 100}%`,
                             }}
                           />
                           <span
-                            className="absolute -top-0.5 h-2.5 w-[3px] rounded-full bg-primary-solid"
+                            className={`absolute top-0 left-0 h-full rounded-full ${st.bar}`}
                             style={{
-                              left: `${Math.min(100, (n / scale) * 100)}%`,
+                              width: `${Math.min(100, (n / scale) * 100)}%`,
                             }}
                           />
                         </div>
-                        {v.note && (
-                          <span className="text-xs text-secondary">
-                            {v.note}
-                          </span>
-                        )}
+                        <span className="text-xs text-secondary">
+                          {n} {n === 1 ? "Satz" : "Sätze"} pro Woche, passend
+                          wären {v.min} bis {v.max}.{v.note ? ` ${v.note}` : ""}
+                        </span>
                       </li>
                     );
                   })}
                 </ul>
-                <p className="m-0 text-xs text-secondary">
-                  Der helle Bereich ist die empfohlene Spanne für dein Ziel, der
-                  Strich dein Wert.
+                <p className="m-0 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-secondary">
+                  <span className="flex items-center gap-1">
+                    <span className="size-2 rounded-full bg-success-solid" />
+                    im Zielbereich
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="size-2 rounded-full bg-warning-solid" />
+                    darunter
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="size-2 rounded-full bg-success-soft" />
+                    grüner Streifen = passender Bereich
+                  </span>
                 </p>
               </ReportSection>
             )}
@@ -1029,6 +1082,23 @@ function PlanExplanationRow({
                 </ul>
               </ReportSection>
             )}
+
+            <Button
+              color="secondary"
+              variant="ghost"
+              size="sm"
+              pill
+              className="self-center"
+              onClick={() => {
+                setOpen(false);
+                root.current?.scrollIntoView({
+                  block: "nearest",
+                  behavior: "smooth",
+                });
+              }}
+            >
+              <ChevronDown className="size-4 rotate-180" /> Schließen
+            </Button>
           </div>
         )}
       </AnimateLayout>
@@ -1049,8 +1119,6 @@ export function PlanOverview({
   const exercises = plan.days.reduce((n, d) => n + d.exercises.length, 0);
   return (
     <div className="flex flex-col gap-5">
-      <PlanExplanationRow plan={plan} profile={profile} onAsk={onAsk} />
-
       <div className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2">
         <Tile label="Aufbau" value={plan.split.replace(" / ", " /\u200b ")} />
         <Tile
@@ -1062,6 +1130,8 @@ export function PlanOverview({
 
       <VolumeChart plan={plan} />
       <SampleWeek plan={plan} />
+
+      <PlanExplanationRow plan={plan} profile={profile} onAsk={onAsk} />
 
       <div className="flex flex-col gap-2.5">
         {plan.days.map((d, i) => {
@@ -1184,18 +1254,27 @@ export function PlanStep({
   const plan = view.plan!;
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-col gap-1">
-        <h2 className="heading-lg m-0">Dein Planvorschlag</h2>
-        <p className="m-0 text-secondary">
-          Prüfe ihn in Ruhe. Gespeichert wird erst, wenn du bestätigst.
-        </p>
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1">
+          <h2 className="heading-lg m-0">Dein Planvorschlag</h2>
+          <p className="m-0 text-secondary">
+            Prüfe ihn in Ruhe. Gespeichert wird erst, wenn du bestätigst.
+          </p>
+        </div>
+        <div className="flex items-start gap-3 rounded-xl bg-secondary-soft px-3 py-2.5">
+          <Mic className="mt-0.5 size-4 shrink-0" />
+          <p className="m-0 text-sm">
+            <span className="font-medium">Etwas ändern?</span>{" "}
+            <span className="text-secondary">
+              Sag es einfach per Sprache in ChatGPT, zum Beispiel „Tausche
+              Kniebeuge gegen Beinpresse“. Arnold übernimmt es. Tippen geht
+              auch.
+            </span>
+          </p>
+        </div>
       </div>
 
       <PlanOverview plan={plan} profile={view.profile} onAsk={onAsk} />
-
-      <Tip>
-        Etwas ändern? Sag im Chat: „Tausche Kniebeuge gegen Beinpresse.“
-      </Tip>
 
       <div className="flex flex-col gap-2">
         <Button
@@ -1226,25 +1305,58 @@ export function PlanStep({
 
 /* ------------------------------------------------------------------- Uhr */
 
+/**
+ * Where users get the Arnold watch app. Until the app is published, this
+ * points at the Connect IQ Store. After publishing, use the app's own page
+ * `https://apps.garmin.com/apps/<app-id>`: on a phone it opens straight in
+ * the Connect IQ Store app when that is installed.
+ */
+export const GARMIN_STORE_URL = "https://apps.garmin.com/";
+
+const WATCH_STEPS: { title: string; text: string }[] = [
+  {
+    title: "Connect IQ Store installieren",
+    text: "Die kostenlose Garmin-App für dein Handy. Deine Uhr muss dort bereits mit dem Handy gekoppelt sein.",
+  },
+  {
+    title: "Arnold auf die Uhr laden",
+    text: "Suche im Store nach „Arnold“ und tippe auf Installieren. Die Uhr lädt die App beim nächsten Abgleich.",
+  },
+  {
+    title: "Arnold auf der Uhr öffnen",
+    text: "Die Uhr zeigt einen sechsstelligen Kopplungscode.",
+  },
+  {
+    title: "Code hier bestätigen",
+    text: "So verbindest du deine Uhr mit deinem Arnold-Konto.",
+  },
+];
+
 export function WearableStep({
   view,
   busy,
   onChoose,
   onFinish,
+  onOpenStore,
 }: {
   view: OnboardingView;
   busy: string | null;
   onChoose: (c: "connect" | "later") => void;
   onFinish: () => void;
+  onOpenStore: () => void;
 }) {
   const connecting = view.wearable === "connect";
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-col gap-3">
-        <h2 className="heading-lg m-0">Training auf deiner Uhr?</h2>
+      <div className="flex flex-col gap-2">
+        <h2 className="heading-lg m-0">Mit der Garmin-Uhr trainieren</h2>
         <p className="m-0 text-secondary">
-          Mit deiner Garmin-Uhr trainierst du ohne Handy. Arnold schickt den
-          Plan, die Uhr bringt Sätze und Puls zurück.
+          Arnold läuft als App auf deiner Garmin-Uhr. Dein Plan liegt am
+          Handgelenk, du trainierst ohne Handy, und Sätze und Puls kommen
+          automatisch zurück.
+        </p>
+        <p className="m-0 text-xs text-secondary">
+          Für Forerunner 255, 265, 955, 965 und Fenix 7.
         </p>
       </div>
       <Animate
@@ -1271,25 +1383,67 @@ export function WearableStep({
             </Button>
           </div>
         ) : (
-          <div key="choice" className="flex flex-col gap-2">
-            <Button
-              color="primary"
-              size="lg"
-              block
-              loading={busy === "wearable"}
-              onClick={() => onChoose("connect")}
-            >
-              Garmin-Uhr verbinden
-            </Button>
-            <Button
-              color="secondary"
-              variant="soft"
-              size="lg"
-              block
-              onClick={() => onChoose("later")}
-            >
-              Später
-            </Button>
+          <div key="choice" className="flex flex-col gap-5">
+            <div className="flex flex-col gap-3">
+              <h3 className="heading-xs m-0">So richtest du es ein</h3>
+              <ol className="m-0 flex list-none flex-col p-0">
+                {WATCH_STEPS.map((st, i) => {
+                  const last = i === WATCH_STEPS.length - 1;
+                  return (
+                    <li key={st.title} className="flex gap-3">
+                      <span className="flex flex-col items-center">
+                        <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-strong text-xs text-secondary">
+                          {i + 1}
+                        </span>
+                        {!last && (
+                          <span className="my-1 w-px flex-1 bg-secondary-soft" />
+                        )}
+                      </span>
+                      <span
+                        className={`flex min-w-0 flex-1 flex-col gap-1 ${last ? "" : "pb-4"}`}
+                      >
+                        <span className="font-medium">{st.title}</span>
+                        <span className="text-sm text-secondary">
+                          {st.text}
+                        </span>
+                        {i === 1 && (
+                          <Button
+                            color="secondary"
+                            variant="outline"
+                            size="sm"
+                            pill
+                            className="mt-1 self-start"
+                            onClick={onOpenStore}
+                          >
+                            Connect IQ Store öffnen
+                          </Button>
+                        )}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Button
+                color="primary"
+                size="lg"
+                block
+                loading={busy === "wearable"}
+                onClick={() => onChoose("connect")}
+              >
+                Arnold ist installiert, Uhr koppeln
+              </Button>
+              <Button
+                color="secondary"
+                variant="soft"
+                size="lg"
+                block
+                onClick={() => onChoose("later")}
+              >
+                Später einrichten
+              </Button>
+            </div>
           </div>
         )}
       </Animate>

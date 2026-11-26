@@ -1,3 +1,5 @@
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { Skybridge } from "skybridge/server";
 import { z } from "zod";
 import {
@@ -14,16 +16,44 @@ import { buildPlan, demoExplanation } from "./onboarding/plan.js";
 // POC: synthetic data only, one in-memory setup. No database, no login.
 const setup = new Setup();
 
+// POC only: keep the demo state in a local file so a server restart (for
+// example after a code change) does not wipe the plan the user is looking at.
+const STATE_FILE = join(process.cwd(), ".poc-state.json");
+try {
+  Object.assign(setup, JSON.parse(readFileSync(STATE_FILE, "utf8")));
+} catch {
+  /* no saved state: start fresh */
+}
+const persist = () => {
+  try {
+    writeFileSync(
+      STATE_FILE,
+      JSON.stringify({
+        profile: setup.profile,
+        plan: setup.plan,
+        confirmed: setup.confirmed,
+        wearable: setup.wearable,
+        done: setup.done,
+      }),
+    );
+  } catch {
+    /* demo only, never fail a tool over this */
+  }
+};
+
 const standSchema = z.object({
   recent: z.enum(["regular", "irregular", "none", "gt10", "lt10"]).optional(),
   years: z.enum(["lt1", "1to3", "gt3"]).optional(),
   pause: z.enum(["none", "lt3m", "3to12m", "gt12m"]).optional(),
 });
 
-const ok = (text: string) => ({
-  structuredContent: { state: setup.view() },
-  content: [{ type: "text" as const, text }],
-});
+const ok = (text: string) => {
+  persist();
+  return {
+    structuredContent: { state: setup.view() },
+    content: [{ type: "text" as const, text }],
+  };
+};
 
 const missingText = () => {
   const v = setup.view();

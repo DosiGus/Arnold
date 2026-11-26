@@ -288,9 +288,13 @@ function morningDay(p: Profile): PlanDay {
 /** Deterministic demo generator. In the real app ChatGPT builds the plan from the brief. */
 export function buildPlan(p: Profile): Plan {
   const days = p.days ?? 3;
+  // With strength and running together, one run fits a normal week and two
+  // runs only from five days on, so strength keeps enough days.
   const runs = p.run
     ? p.strength
-      ? Math.min(2, Math.max(1, days - 2))
+      ? days >= 5
+        ? 2
+        : 1
       : Math.min(5, Math.max(2, days))
     : 0;
   const strength = p.strength ? Math.max(2, p.run ? days - runs : days) : 0;
@@ -298,6 +302,7 @@ export function buildPlan(p: Profile): Plan {
   let split = "";
   if (p.strength) {
     const sp = strengthPlan(p, strength);
+    topUp(sp.days);
     parts.push(...sp.days);
     split = sp.split;
   }
@@ -305,6 +310,30 @@ export function buildPlan(p: Profile): Plan {
   if (p.mobility) parts.push(...mobilityDays(p));
   if (p.morning) parts.push(morningDay(p));
   return { split: split || "Eigener Mix", days: parts };
+}
+
+/**
+ * The plan aims at the recommended range: where a muscle group would land
+ * below its minimum, add working sets to its exercises (at most 5 per
+ * exercise). Muscles that others already train (a note in RANGE) are skipped.
+ */
+function topUp(days: PlanDay[]) {
+  for (let round = 0; round < 10; round++) {
+    const vol = new Map(volumeByMuscle({ split: "", days }));
+    let changed = false;
+    for (const [muscle, [min, , note]] of Object.entries(RANGE)) {
+      if (note || (vol.get(muscle) ?? 0) >= min) continue;
+      const pick = days
+        .flatMap((d) => d.exercises)
+        .filter((e) => e.muscle === muscle && e.sets < 5)
+        .sort((a, b) => a.sets - b.sets)[0];
+      if (pick) {
+        pick.sets += 1;
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
 }
 
 /** Direct working sets per muscle group and week, strength days only. */
@@ -367,9 +396,18 @@ export function demoExplanation(p: Profile, plan: Plan): PlanExplanation {
         : plan.split === "Eigener Mix"
           ? "Du hast kein Krafttraining gewählt, deshalb bestimmen Laufen, Mobility und Morgenroutine die Woche."
           : "Bei fünf oder mehr Krafttagen lohnt sich eine Aufteilung nach Bewegungsmustern, damit jede Einheit konzentriert bleibt.";
-  const volume = volumeByMuscle(plan).map(([muscle]) => {
+  const volume = volumeByMuscle(plan).map(([muscle, n]) => {
     const [min, max, note] = RANGE[muscle] ?? [6, 10];
-    return { muscle, min, max, note };
+    return {
+      muscle,
+      min,
+      max,
+      note:
+        note ??
+        (n < min
+          ? `Dafür ist in deinen ${days} Krafteinheiten à ${p.minutes ?? 60} Minuten wenig Platz. Mit mehr Zeit oder einer weiteren Übung kommst du in den Bereich.`
+          : undefined),
+    };
   });
   const seen = new Set<string>();
   const exercises: { name: string; reason: string }[] = [];
