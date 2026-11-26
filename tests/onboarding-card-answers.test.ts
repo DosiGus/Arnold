@@ -257,6 +257,37 @@ describe("mobility from the card", () => {
   });
 });
 
+describe("the card's questions through the service", () => {
+  it("answers with open questions for every card field", async () => {
+    const { onboarding } = createFixtureOnboarding();
+    await onboarding.startOnboarding({ request_id: rid() });
+    const saved = await onboarding.updateProfile({
+      request_id: rid(),
+      profile: {
+        path: "arnold_plan",
+        training: {
+          modules: {
+            running: true,
+            mobility: true,
+            morning_routine: true,
+            mobility_sessions: true,
+          },
+        },
+      },
+    });
+    expect(saved.ok, saved.error?.message).toBe(true);
+    const ids = saved.state!.open_questions.map((q) => q.id);
+    expect(ids).toEqual(
+      expect.arrayContaining([
+        "run_details",
+        "training.mobility_focus",
+        "training.job",
+        "training.morning_minutes",
+      ]),
+    );
+  });
+});
+
 describe("plan insights (pure)", () => {
   const muscles: Record<string, string> = {
     bench: "chest",

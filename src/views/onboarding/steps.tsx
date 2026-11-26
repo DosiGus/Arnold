@@ -37,6 +37,7 @@ import {
   type Stand as StandValue,
   RUN_GOAL_LABEL,
   RUN_GOALS,
+  PLACEMENTS,
   type OnboardingView,
   type Plan,
   type PlanDay,
@@ -57,6 +58,7 @@ const rowAnswered = (v: OnboardingView, key: string) =>
 function Area({
   label,
   checked,
+  locked = false,
   open,
   done,
   onChange,
@@ -65,6 +67,8 @@ function Area({
 }: {
   label: string;
   checked: boolean;
+  /** Always on (strength is part of every Arnold plan). */
+  locked?: boolean;
   open: boolean;
   done: boolean;
   onChange: (v: boolean) => void;
@@ -77,7 +81,12 @@ function Area({
       className="rounded-2xl border border-subtle bg-surface p-4"
     >
       <div className="flex items-center justify-between gap-3">
-        <Checkbox checked={checked} onCheckedChange={onChange} label={label} />
+        <Checkbox
+          checked={checked}
+          disabled={locked}
+          onCheckedChange={onChange}
+          label={label}
+        />
         {checked && (
           <button
             type="button"
@@ -383,7 +392,8 @@ export function ProfileStep({
               <div className="flex flex-col gap-2.5">
                 <Area
                   label="Krafttraining"
-                  checked={p.strength}
+                  checked
+                  locked
                   open={openArea === "strength"}
                   done={
                     rowAnswered(view, "goal") &&
@@ -484,6 +494,14 @@ export function ProfileStep({
                         value: f,
                         label: MOB_FOCUS_LABEL[f],
                       }))}
+                    />
+                  </Ask>
+                  <Ask title="Wann soll Mobility stattfinden?">
+                    <Choice
+                      label="Mobility: wann"
+                      value={p.placement}
+                      onChange={(placement) => update({ placement })}
+                      options={PLACEMENTS}
                     />
                   </Ask>
                   <Ask title="Dein Alltag" done={rowAnswered(view, "job")}>
@@ -651,8 +669,14 @@ const KIND_LABEL = {
   morning: "Morgenroutine",
 } as const;
 
+/** Weekly sets per muscle group: Arnold's figures, the demo's count only without them. */
+const setsOf = (plan: Plan): [string, number][] =>
+  plan.weeklySets
+    ? plan.weeklySets.map((r) => [r.muscle, r.sets])
+    : volumeByMuscle(plan);
+
 function VolumeChart({ plan }: { plan: Plan }) {
-  const rows = volumeByMuscle(plan);
+  const rows = setsOf(plan);
   const [open, setOpen] = useState(false);
   if (!rows.length) return null;
   // The bar is scaled to 20 sets: the upper end of the usual weekly range.
@@ -748,6 +772,7 @@ const SPREAD: number[][] = [
 
 /** Sample week: which kind of session lands on which day (demo layout only). */
 function sampleWeek(plan: Plan): PlanDay["kind"][][] {
+  if (plan.week) return plan.week;
   const by = (k: PlanDay["kind"]) => plan.days.filter((d) => d.kind === k);
   const strength = by("strength");
   const run = by("run");
@@ -777,15 +802,19 @@ const KIND_SHORT: Record<PlanDay["kind"], string> = {
 function SampleWeek({ plan }: { plan: Plan }) {
   const days = sampleWeek(plan);
   if (!days.some((d) => d.length)) return null;
-  const morning = plan.days.some((d) => d.kind === "morning");
+  const morning = plan.morningDays
+    ? plan.morningDays.length > 0
+    : plan.days.some((d) => d.kind === "morning");
+  const morningText =
+    !plan.morningDays || plan.morningDays.length === 7
+      ? "+ Morgenroutine täglich"
+      : `+ Morgenroutine ${plan.morningDays.map((d) => WEEK[d - 1]).join(", ")}`;
   return (
     <section className="flex flex-col gap-2 rounded-2xl border border-subtle bg-surface p-3">
       <div className="flex items-baseline justify-between gap-2">
         <h3 className="heading-xs m-0">Beispielwoche</h3>
         {morning && (
-          <span className="text-xs text-secondary">
-            + Morgenroutine täglich
-          </span>
+          <span className="text-xs text-secondary">{morningText}</span>
         )}
       </div>
       <div className="grid grid-cols-[repeat(7,minmax(0,1fr))] gap-1">
@@ -910,7 +939,7 @@ function PlanExplanationRow({
   }, [open]);
   const x = plan.explanation;
   if (!x) return null;
-  const sets = new Map(volumeByMuscle(plan));
+  const sets = new Map(setsOf(plan));
   const facts = profile ? considered(profile) : [];
   const scale = Math.max(
     20,
@@ -1198,7 +1227,7 @@ export function PlanOverview({
                                 variant="outline"
                                 size="sm"
                               >
-                                {e.detail ?? `${e.sets} × ${e.reps}`}
+                                {e.detail ?? `${e.sets ?? "?"} × ${e.reps}`}
                               </Badge>
                             </span>
                           </span>

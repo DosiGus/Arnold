@@ -132,7 +132,7 @@ export function TrainingScreen({
     Object.fromEntries(
       (day?.exercises ?? []).map((e) => [
         e.id,
-        Array.from({ length: e.sets }, () => ({
+        Array.from({ length: e.sets ?? 1 }, () => ({
           kg: e.kg === null ? "" : String(e.kg).replace(".", ","),
           reps: e.reps.replace(/\D/g, ""),
           done: false,
@@ -601,10 +601,6 @@ export function SettingsScreen({
 }) {
   const p = view.profile;
   const [watch, setWatch] = useState(view.wearable === "connect");
-  const [remind, setRemind] = useState(true);
-  const [morning, setMorning] = useState(!!p.morning);
-  const [weekly, setWeekly] = useState(true);
-  const [unit, setUnit] = useState("kg");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const areas = [
     p.strength && "Krafttraining",
@@ -664,38 +660,25 @@ export function SettingsScreen({
       </Box>
 
       <Box>
-        <h3 className="heading-xs m-0">Erinnerungen</h3>
-        <Switch
-          checked={remind}
-          onCheckedChange={setRemind}
-          label="Training an Trainingstagen"
-        />
-        <Switch
-          checked={morning}
-          onCheckedChange={setMorning}
-          label="Morgenroutine"
-        />
-        <Switch
-          checked={weekly}
-          onCheckedChange={setWeekly}
-          label="Wochenrückblick am Sonntag"
-        />
-      </Box>
-
-      <Box>
-        <h3 className="heading-xs m-0">Einheiten</h3>
-        <SegmentedControl
-          aria-label="Gewichtseinheit"
-          block
-          pill
-          value={unit}
-          onChange={setUnit}
-        >
-          <SegmentedControl.Option value="kg">
-            Kilogramm
-          </SegmentedControl.Option>
-          <SegmentedControl.Option value="lb">Pfund</SegmentedControl.Option>
-        </SegmentedControl>
+        <div className="flex flex-col">
+          <h3 className="heading-xs m-0">Erinnerungen</h3>
+          <span className="text-sm text-secondary">
+            Kommt bald über deine Garmin-Uhr: Erinnerungen und Berichte direkt
+            ans Handgelenk.
+          </span>
+        </div>
+        {[
+          "Training an Trainingstagen",
+          "Morgenroutine",
+          "Wochenrückblick am Sonntag",
+        ].map((label) => (
+          <div key={label} className="flex items-center justify-between gap-3">
+            <Switch checked={false} disabled label={label} />
+            <Badge color="secondary" variant="soft" size="sm" pill>
+              Bald verfügbar
+            </Badge>
+          </div>
+        ))}
       </Box>
 
       <Box>

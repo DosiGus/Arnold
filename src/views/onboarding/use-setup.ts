@@ -1,63 +1,110 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  type OnboardingView,
-  type Profile,
-  snapshotOf,
-  viewOf,
-} from "../demo/model.js";
-import { useCallTool } from "../helpers.js";
+  OnboardingResponseSchema,
+  OnboardingStateSchema,
+  type OnboardingState,
+} from "../../shared/onboarding-contract.js";
+import { ArnoldCallError, useArnoldTool } from "../arnold-client.js";
+import type { Profile, Wearable } from "../demo/model.js";
+import {
+  cardProfileOf,
+  cardViewOf,
+  isBuilding,
+  patchOf,
+} from "../model/onboarding.js";
+
+/** How often the card reads the state while ChatGPT builds the plan. */
+export const BUILD_POLL_MS = 2500;
+/** After this long without a plan the card asks the user to nudge the chat. */
+export const BUILD_HINT_MS = 90_000;
+
+/** The sentence the "Plan erstellen" button sends to the chat. */
+export const BUILD_SENTENCE =
+  "Erstelle mir jetzt bitte meinen Trainingsplan aus meinen Angaben.";
+
+const requestId = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `card-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+const message = (e: unknown) =>
+  e instanceof ArnoldCallError
+    ? e.message
+    : "Das hat nicht geklappt. Bitte versuche es noch einmal.";
 
 /**
- * Local-first state: every tap shows at once (optimistic), the server stays the
- * source of truth and its answer replaces the local copy. A failed save rolls
- * back to the last confirmed state. Saves of the same burst are merged.
+ * The setup card's state against Arnold's onboarding service.
+ *
+ * Local first: every tap shows at once, the server stays the source of truth
+ * and its stored state replaces the local copy. Taps of one burst are sent as
+ * one `update_onboarding_profile` patch; saves run one after another, and a
+ * failed save rolls back to the last stored state. The plan is built by
+ * ChatGPT: the button asks Arnold for a proposal, sends a chat sentence and
+ * reads the state until the proposal is there.
  */
-export function useSetup(initial: OnboardingView) {
-  const [view, setView] = useState(initial);
+export function useSetup(
+  initial: OnboardingState,
+  sendFollowUp: (sentence: string) => unknown,
+) {
+  const [state, setState] = useState(initial);
   const confirmed = useRef(initial);
+  // Taps not yet stored, shown on top of the stored state.
+  const [local, setLocal] = useState<Partial<Profile>>({});
   const pending = useRef<Partial<Profile>>({});
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Saves run strictly one after another, so a later action never overtakes an
-  // earlier save on the server.
   const queue = useRef<Promise<unknown>>(Promise.resolve());
-  // Saves not answered yet. While any is open, an older answer must not
-  // overwrite what the user tapped after it.
-  const open = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [wearable, setWearable] = useState<Wearable>(
+    initial.session.status === "COMPLETED" ? "later" : "open",
+  );
+  const [slow, setSlow] = useState(false);
 
-  const updateTool = useCallTool("update_profile");
-  const planTool = useCallTool("create_plan_draft");
-  const confirmTool = useCallTool("confirm_plan");
-  const wearableTool = useCallTool("set_wearable");
-  const finishTool = useCallTool("finish_setup");
-  const resetTool = useCallTool("reset_setup");
-  const goTool = useCallTool("go_to_step");
+  const updateTool = useArnoldTool(
+    "update_onboarding_profile",
+    OnboardingResponseSchema,
+  );
+  const readTool = useArnoldTool("get_onboarding_state", OnboardingStateSchema);
+  const requestTool = useArnoldTool(
+    "request_onboarding_plan",
+    OnboardingResponseSchema,
+  );
+  const confirmTool = useArnoldTool(
+    "confirm_onboarding_plan",
+    OnboardingResponseSchema,
+  );
+  const finishTool = useArnoldTool(
+    "finish_arnold_setup",
+    OnboardingResponseSchema,
+  );
 
-  const accept = useCallback((next: OnboardingView) => {
+  const accept = useCallback((next: OnboardingState | null) => {
+    if (!next) return;
     confirmed.current = next;
-    setView(next);
-    setError(null);
+    setState(next);
   }, []);
 
   const flush = useCallback(() => {
-    const patch = pending.current;
+    const taps = pending.current;
     pending.current = {};
-    if (Object.keys(patch).length === 0) return queue.current;
-    open.current += 1;
+    if (Object.keys(taps).length === 0) return queue.current;
     const send = async () => {
+      // Built at send time, on the state the previous save stored.
+      const patch = patchOf(confirmed.current.session.profile, taps);
+      if (!patch) return;
       try {
-        const res = await updateTool.callToolAsync(patch as never);
-        if (res.isError) throw new Error("save");
-        const next = (res.structuredContent as { state: OnboardingView }).state;
-        confirmed.current = next;
-        open.current -= 1;
-        if (open.current === 0 && Object.keys(pending.current).length === 0)
-          accept(next);
-      } catch {
-        open.current -= 1;
-        setView(confirmed.current);
-        setError("Das hat nicht geklappt. Deine Eingabe ist zurückgesetzt.");
+        const res = await updateTool.call({
+          request_id: requestId(),
+          profile: patch,
+        });
+        accept(res.state);
+        setError(null);
+      } catch (e) {
+        setError(`${message(e)} Deine Eingabe ist zurückgesetzt.`);
+        pending.current = {};
+      } finally {
+        // Shown taps are what is stored now, plus taps made meanwhile.
+        setLocal({ ...pending.current });
       }
     };
     queue.current = queue.current.then(send, send);
@@ -65,16 +112,9 @@ export function useSetup(initial: OnboardingView) {
   }, [updateTool, accept]);
 
   const update = useCallback(
-    (patch: Partial<Profile>) => {
-      setView((v) => {
-        const s = snapshotOf(v);
-        return viewOf({
-          ...s,
-          profile: { ...s.profile, ...patch },
-          plan: s.confirmed ? s.plan : null,
-        });
-      });
-      pending.current = { ...pending.current, ...patch };
+    (change: Partial<Profile>) => {
+      setLocal((l) => ({ ...l, ...change }));
+      pending.current = { ...pending.current, ...change };
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => void flush(), 350);
     },
@@ -89,25 +129,17 @@ export function useSetup(initial: OnboardingView) {
   );
 
   const run = useCallback(
-    async (
-      name: string,
-      call: () => Promise<{ isError?: boolean; structuredContent?: unknown }>,
-      minMs = 0,
-    ) => {
+    async (name: string, call: () => Promise<OnboardingState | null>) => {
       setBusy(name);
-      const started = Date.now();
       try {
+        if (timer.current) clearTimeout(timer.current);
         await flush();
-        const res = await call();
-        const wait = minMs - (Date.now() - started);
-        if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-        if (res.isError) throw new Error(name);
-        accept((res.structuredContent as { state: OnboardingView }).state);
+        accept(await call());
+        setError(null);
+        return true;
       } catch (e) {
-        console.error("setup action failed", name, e);
-        setError(
-          `Das hat nicht geklappt. Bitte versuche es noch einmal. [${name}: ${e instanceof Error ? e.message : JSON.stringify(e)}]`,
-        );
+        setError(message(e));
+        return false;
       } finally {
         setBusy(null);
       }
@@ -115,18 +147,82 @@ export function useSetup(initial: OnboardingView) {
     [flush, accept],
   );
 
+  // While ChatGPT builds the plan, read the state until the proposal is there.
+  const building = isBuilding(state);
+  const { call: read } = readTool;
+  useEffect(() => {
+    if (!building) {
+      setSlow(false);
+      return;
+    }
+    const started = Date.now();
+    const id = setInterval(() => {
+      if (Date.now() - started > BUILD_HINT_MS) setSlow(true);
+      read()
+        .then((next) => {
+          if (!isBuilding(next)) accept(next);
+        })
+        .catch(() => undefined);
+    }, BUILD_POLL_MS);
+    return () => clearInterval(id);
+  }, [building, read, accept]);
+
+  const view = useMemo(() => {
+    const v = cardViewOf(state, wearable);
+    if (Object.keys(local).length === 0) return v;
+    // Taps not stored yet are shown at once; the server's answer replaces them.
+    return {
+      ...v,
+      profile: { ...cardProfileOf(state.session.profile), ...local },
+    };
+  }, [state, wearable, local]);
+
   return {
     view,
+    state,
     error,
     busy,
+    building,
+    slow,
     update,
-    createPlan: () => run("plan", () => planTool.callToolAsync(), 1600),
-    confirmPlan: () => run("confirm", () => confirmTool.callToolAsync()),
-    chooseWearable: (choice: "connect" | "later") =>
-      run("wearable", () => wearableTool.callToolAsync({ choice })),
-    finish: () => run("finish", () => finishTool.callToolAsync()),
-    goTo: (step: "welcome" | "profile" | "plan") =>
-      run("goto", () => goTool.callToolAsync({ step })),
-    reset: () => run("reset", () => resetTool.callToolAsync()),
+    createPlan: async () => {
+      const ok = await run("plan", async () => {
+        const res = await requestTool.call({ request_id: requestId() });
+        return res.state;
+      });
+      if (ok) void sendFollowUp(BUILD_SENTENCE);
+    },
+    /** Nudges the chat again when the plan takes long. */
+    askAgain: () => void sendFollowUp(BUILD_SENTENCE),
+    confirmPlan: () =>
+      run("confirm", async () => {
+        const plan = confirmed.current.plan;
+        if (!plan)
+          throw new ArnoldCallError("confirm", "NO_PLAN", "Kein Plan.");
+        const res = await confirmTool.call({
+          request_id: requestId(),
+          confirmation: {
+            plan_version_id: plan.plan_version_id,
+            row_revision: plan.row_revision,
+            confirmed: true,
+          },
+        });
+        return res.state;
+      }),
+    /** Completes a setup whose confirmation is stored but not yet finished. */
+    finish: () =>
+      run("finish", async () => {
+        if (confirmed.current.session.status === "COMPLETED")
+          return confirmed.current;
+        const res = await finishTool.call({ request_id: requestId() });
+        return res.state;
+      }),
+    chooseWearable: (choice: Wearable) => setWearable(choice),
+    /** Back to an earlier collection step; answers stay. */
+    goTo: (step: "welcome" | "profile") =>
+      run("goto", async () => {
+        const res = await updateTool.call({ request_id: requestId(), step });
+        return res.state;
+      }),
   };
 }

@@ -1335,6 +1335,10 @@ export const OPEN_QUESTION_IDS = [
   "training.mobility.sessions",
   "morning_routine",
   "training.has_mat",
+  // Added with the Skybridge setup card (26.11.2026).
+  "training.job",
+  "training.mobility_focus",
+  "training.morning_minutes",
 ] as const;
 export const OpenQuestionIdSchema = z.enum(OPEN_QUESTION_IDS);
 export type OpenQuestionId = z.infer<typeof OpenQuestionIdSchema>;

@@ -2,31 +2,33 @@ import "../index.css";
 
 import { Alert } from "@openai/apps-sdk-ui/components/Alert";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
-import { ArrowRotateCcw } from "@openai/apps-sdk-ui/components/Icon";
 import { Animate } from "@openai/apps-sdk-ui/components/Transition";
+import { useState } from "react";
 import {
   DataLLM,
   useOpenExternal,
   useSendFollowUpMessage,
 } from "skybridge/web";
-import type { OnboardingView } from "../demo/model.js";
-import { useToolInfo } from "../helpers.js";
+import {
+  OnboardingViewSchema,
+  type OnboardingState,
+} from "../../shared/onboarding-contract.js";
+import { useOpeningResult } from "../arnold-client.js";
 import { useHostTheme } from "../use-host-theme.js";
+import { AppShell } from "./app.js";
+import type { Screen } from "./dashboard.js";
 import { Stepper } from "./parts.js";
 import {
   Building,
   Done,
+  GARMIN_STORE_URL,
   OwnPlan,
   PlanStep,
   ProfileStep,
   WearableStep,
   Welcome,
-  GARMIN_STORE_URL,
 } from "./steps.js";
-import { AppShell } from "./app.js";
-import type { Screen } from "./dashboard.js";
 import { useSetup } from "./use-setup.js";
-import { useState } from "react";
 
 const STEP_INDEX = {
   welcome: 0,
@@ -36,45 +38,60 @@ const STEP_INDEX = {
   done: 4,
 } as const;
 
+/** The sentence "Uhr koppeln" sends: ChatGPT asks for the watch's code. */
+export const PAIR_SENTENCE = "Ich möchte jetzt meine Garmin-Uhr koppeln.";
+
+/** View of `show_arnold_onboarding`: the setup against Arnold's service. */
 export default function Onboarding() {
   useHostTheme();
-  const info = useToolInfo<"show_onboarding">();
-  if (info.isPending)
+  const opening = useOpeningResult(
+    "show_arnold_onboarding",
+    OnboardingViewSchema,
+  );
+  if (opening.status === "pending")
     return <p className="p-4 text-secondary">Arnold wird geladen …</p>;
-  return <Flow initial={info.output.state as OnboardingView} />;
+  if (opening.status === "error")
+    return (
+      <main className="mx-auto w-full max-w-xl p-4">
+        <Alert color="danger" variant="soft" title={opening.error.message} />
+      </main>
+    );
+  return <Flow initial={opening.data.state} />;
 }
 
-function Flow({ initial }: { initial: OnboardingView }) {
-  const s = useSetup(initial);
-  const [screen, setScreen] = useState<"setup" | Screen>("setup");
+function Flow({ initial }: { initial: OnboardingState }) {
   const sendFollowUp = useSendFollowUpMessage();
+  const s = useSetup(initial, (t) => sendFollowUp(t));
+  const [screen, setScreen] = useState<"setup" | Screen>("setup");
+  // "Angaben ändern" while a plan is under review: the answers are shown
+  // again; the stored status stays until a new plan is asked for.
+  const [editing, setEditing] = useState(false);
   const openExternal = useOpenExternal();
   const { view } = s;
-  const building = s.busy === "plan";
 
   const missing = view.required
     .filter((r) => r.value === null)
     .map((r) => r.label);
-  const context = `Einrichtung, Schritt "${view.phase}". Ziele: ${view.profile.goals?.join(", ") || "fehlt"}, Tage: ${view.profile.days ?? "fehlt"}, Minuten: ${view.profile.minutes ?? "fehlt"}. ${missing.length ? `Es fehlt noch: ${missing.join(", ")}.` : "Alle Pflichtangaben da."}`;
+  const context = `Arnold-Einrichtung, Schritt "${view.phase}". ${view.answered} von ${view.total} Pflichtangaben. ${missing.length ? `Es fehlt noch: ${missing.join(", ")}.` : "Alle Pflichtangaben da."}${s.building ? " Arnold wartet auf den Planvorschlag von ChatGPT." : ""}`;
 
-  const key = building
+  const phase = editing && view.phase === "plan" ? "profile" : view.phase;
+  const key = s.building
     ? "building"
-    : view.profile.path === "own_plan" && view.phase === "profile"
+    : view.profile.path === "own_plan" && phase === "profile"
       ? "own"
-      : view.phase;
+      : phase;
 
   if (screen !== "setup")
     return (
-      <DataLLM content="Dashboard mit Beispieldaten: nächstes Training, Woche, Scores, Ziele, Rekorde.">
+      <DataLLM content="Arnold-Überblick nach der Einrichtung.">
         <main className="mx-auto flex w-full max-w-xl min-w-0 flex-col gap-6 overflow-x-hidden p-4">
           <AppShell
             initial={screen}
             view={view}
             onAsk={(t) => void sendFollowUp(t)}
-            onEditProfile={() => {
-              setScreen("setup");
-              void s.goTo("profile");
-            }}
+            onEditProfile={() =>
+              void sendFollowUp("Ich möchte meine Angaben ändern.")
+            }
           />
         </main>
       </DataLLM>
@@ -83,27 +100,16 @@ function Flow({ initial }: { initial: OnboardingView }) {
   return (
     <DataLLM content={context}>
       <main className="mx-auto flex w-full max-w-xl min-w-0 flex-col gap-6 overflow-x-hidden p-4">
-        <div className="flex items-center gap-3">
-          <div className="flex-1">
-            <Stepper
-              index={STEP_INDEX[view.phase]}
-              complete={view.phase === "done"}
-              onStep={(i) =>
-                void s.goTo(i === 0 ? "welcome" : i === 1 ? "profile" : "plan")
-              }
-            />
-          </div>
-          <Button
-            color="secondary"
-            variant="ghost"
-            size="sm"
-            uniform
-            aria-label="Einrichtung zurücksetzen (nur Test)"
-            onClick={() => void s.reset()}
-          >
-            <ArrowRotateCcw className="size-4" />
-          </Button>
-        </div>
+        <Stepper
+          index={STEP_INDEX[phase]}
+          complete={phase === "done"}
+          onStep={(i) => {
+            if (i === 2) return setEditing(false);
+            if (i === 1 && view.phase === "plan") return setEditing(true);
+            if (view.phase === "profile" || view.phase === "welcome")
+              void s.goTo(i === 0 ? "welcome" : "profile");
+          }}
+        />
 
         {s.error && <Alert color="danger" variant="soft" title={s.error} />}
 
@@ -113,7 +119,27 @@ function Flow({ initial }: { initial: OnboardingView }) {
           exit={{ opacity: 0, duration: 100 }}
         >
           <div key={key}>
-            {key === "building" && <Building />}
+            {key === "building" && (
+              <div className="flex flex-col gap-3">
+                <Building />
+                {s.slow && (
+                  <div className="flex flex-col gap-2">
+                    <p className="m-0 text-sm text-secondary">
+                      Das dauert länger als sonst. Bitte ChatGPT im Chat, den
+                      Plan zu erstellen.
+                    </p>
+                    <Button
+                      color="secondary"
+                      variant="soft"
+                      block
+                      onClick={s.askAgain}
+                    >
+                      Noch einmal anfragen
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
             {key === "welcome" && <Welcome update={s.update} />}
             {key === "own" && <OwnPlan update={s.update} />}
             {key === "profile" && (
@@ -121,7 +147,10 @@ function Flow({ initial }: { initial: OnboardingView }) {
                 view={view}
                 busy={s.busy}
                 update={s.update}
-                onCreate={() => void s.createPlan()}
+                onCreate={() => {
+                  setEditing(false);
+                  void s.createPlan();
+                }}
               />
             )}
             {key === "plan" && (
@@ -130,7 +159,7 @@ function Flow({ initial }: { initial: OnboardingView }) {
                 busy={s.busy}
                 onConfirm={() => void s.confirmPlan()}
                 onRebuild={() => void s.createPlan()}
-                onBack={() => void s.goTo("profile")}
+                onBack={() => setEditing(true)}
                 onAsk={(t) => void sendFollowUp(t)}
               />
             )}
@@ -139,11 +168,13 @@ function Flow({ initial }: { initial: OnboardingView }) {
                 view={view}
                 busy={s.busy}
                 onChoose={(c) =>
-                  void s
-                    .chooseWearable(c)
-                    .then(() => (c === "later" ? s.finish() : undefined))
+                  void s.finish().then((ok) => {
+                    if (!ok) return;
+                    if (c === "connect") void sendFollowUp(PAIR_SENTENCE);
+                    s.chooseWearable(c);
+                  })
                 }
-                onFinish={() => void s.finish()}
+                onFinish={() => s.chooseWearable("later")}
                 onOpenStore={() => openExternal(GARMIN_STORE_URL)}
               />
             )}

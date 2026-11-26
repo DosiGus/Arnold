@@ -325,10 +325,10 @@ function topUp(days: PlanDay[]) {
       if (note || (vol.get(muscle) ?? 0) >= min) continue;
       const pick = days
         .flatMap((d) => d.exercises)
-        .filter((e) => e.muscle === muscle && e.sets < 5)
-        .sort((a, b) => a.sets - b.sets)[0];
+        .filter((e) => e.muscle === muscle && (e.sets ?? 0) < 5)
+        .sort((a, b) => (a.sets ?? 0) - (b.sets ?? 0))[0];
       if (pick) {
-        pick.sets += 1;
+        pick.sets = (pick.sets ?? 0) + 1;
         changed = true;
       }
     }
@@ -342,7 +342,8 @@ export function volumeByMuscle(plan: Plan): [string, number][] {
   for (const d of plan.days)
     if (d.kind === "strength")
       for (const e of d.exercises)
-        if (e.muscle) sets.set(e.muscle, (sets.get(e.muscle) ?? 0) + e.sets);
+        if (e.muscle)
+          sets.set(e.muscle, (sets.get(e.muscle) ?? 0) + (e.sets ?? 0));
   return [...sets.entries()].sort((a, b) => b[1] - a[1]);
 }
 

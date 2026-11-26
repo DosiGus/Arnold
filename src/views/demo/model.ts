@@ -26,6 +26,11 @@ export const JOBS = ["sitting", "moving", "physical", "mixed"] as const;
 export const SEXES = ["female", "male", "diverse"] as const;
 
 export type RunGoal = (typeof RUN_GOALS)[number];
+export const PLACEMENTS = [
+  { value: "own_days", label: "An eigenen Tagen" },
+  { value: "after_strength", label: "An Trainingstagen mit einplanen" },
+] as const;
+export type Placement = (typeof PLACEMENTS)[number]["value"];
 export type MobFocus = (typeof MOB_FOCUS)[number];
 export type Job = (typeof JOBS)[number];
 export type Stand = {
@@ -103,6 +108,8 @@ export type Profile = {
   runGoals?: RunGoal[];
   runStand?: Stand;
   mobilityFocus?: MobFocus[];
+  /** "An eigenen Tagen" or "An Trainingstagen mit einplanen". */
+  placement?: Placement;
   morningMinutes?: number;
   job?: Job;
   notes?: string;
@@ -111,7 +118,8 @@ export type Profile = {
 export type PlanExercise = {
   id: string;
   name: string;
-  sets: number;
+  /** null = unknown, shown as "?". Never 0. */
+  sets: number | null;
   reps: string;
   /** null = unknown. Never shown as 0. */
   kg: number | null;
@@ -150,6 +158,18 @@ export type Plan = {
   split: string;
   days: PlanDay[];
   explanation?: PlanExplanation;
+  /** Arnold's weekly direct sets per muscle group (the card never counts). */
+  weeklySets?: {
+    muscle: string;
+    sets: number;
+    min: number | null;
+    max: number | null;
+    note: string | null;
+  }[];
+  /** Arnold's example week: seven days, Monday first. */
+  week?: ("strength" | "run" | "mobility")[][];
+  /** Weekdays (1 = Monday) of the morning routine. */
+  morningDays?: number[];
 };
 
 export type Wearable = "open" | "connect" | "later";

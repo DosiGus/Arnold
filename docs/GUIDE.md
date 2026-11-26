@@ -302,4 +302,5 @@ Betrieb, Rollback und Alarme: `docs/BETRIEB.md`.
 
 - Höchstens eine Server-Instanz (`--max-instances 1`): Löschbestätigungen und die Fixture-Sandboxes liegen im Arbeitsspeicher. Die Daten selbst sind mehrinstanzfähig (Transaktionen, Advisory Locks).
 - Kein Export der Trainingsdaten für Nutzer (geplant als Export-Knopf).
+- Geplant: Erinnerungen und Berichte über die Uhr (Push-Benachrichtigungen fürs Training, die Morgenroutine und den Wochenrückblick direkt auf die Garmin-Uhr). Die drei Schalter in den Einstellungen sind bis dahin als „bald verfügbar“ gekennzeichnet und speichern nichts.
 - Nicht nachgewiesen: Abnahme mit echter Supabase-Instanz und echtem ChatGPT-Host nach dem Umbau, Lasttests, Wiederherstellung aus einem Supabase-Backup, Safari/Firefox/Mobilgeräte, manuelle Accessibility-Prüfung.
