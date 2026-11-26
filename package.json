@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "npm run build:ui && tsx watch src/server/main.ts",
     "dev:preview": "bash scripts/dev-preview.sh",
-    "build:ui": "vite build && vite build --config vite.host.config.ts",
+    "build:ui": "vite build && vite build --config vite.host.config.ts && npm run build:views",
     "build": "npm run typecheck && npm run build:ui && tsc -p tsconfig.server.json",
     "start": "node dist/server/main.js",
     "deploy:cloud-run": "bash scripts/deploy-cloud-run.sh",
@@ -26,7 +26,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",
-    "garmin:check": "bash apps/garmin/scripts/build.sh && bash apps/garmin/scripts/test.sh"
+    "garmin:check": "bash apps/garmin/scripts/build.sh && bash apps/garmin/scripts/test.sh",
+    "build:views": "VIEW=onboarding vite build -c vite.views.config.ts && VIEW=dashboard vite build -c vite.views.config.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "2.4.0",
@@ -35,17 +36,20 @@
     "@modelcontextprotocol/ext-apps": "2.0.4",
     "@modelcontextprotocol/node": "2.1.2",
     "@modelcontextprotocol/server": "2.4.0",
+    "@openai/apps-sdk-ui": "^0.2.2",
     "express": "^5.1.0",
     "lucide-react": "^1.76.0",
     "pg": "^8.23.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "recharts": "^3.11.0",
+    "skybridge": "^2.1.2",
     "zod": "^4.2.0"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",
     "@playwright/test": "^1.65.1",
+    "@tailwindcss/vite": "^4.3.5",
     "@types/express": "^5.0.0",
     "@types/node": "^24.0.0",
     "@types/pg": "^8.23.1",
@@ -56,6 +60,7 @@
     "eslint": "^10.15.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "prettier": "^3.10.1",
+    "tailwindcss": "^4.3.5",
     "tsx": "^4.20.0",
     "typescript": "^6.0.0",
     "typescript-eslint": "^8.73.0",
