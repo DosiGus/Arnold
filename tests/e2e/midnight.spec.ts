@@ -1,13 +1,13 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import { callTool } from "./helpers";
+import { open } from "./host";
 import type { ArnoldDashboardView } from "../../src/shared/arnold-view";
 
 /**
- * The start screen around midnight UTC (DATE-001). Berlin is one hour ahead,
- * so for an hour the UTC day is still yesterday. The server clock and the
- * browser clock are both fixed: 22 Nov 23:30 UTC (00:30 in Berlin, already the
- * 23rd) and 23 Nov 00:30 UTC. The cases must behave the same as at noon.
- * Chromium only: the weight flow writes.
+ * The overview around midnight UTC (DATE-001). Berlin is one hour ahead, so
+ * for an hour the UTC day is still yesterday. The server clock and the browser
+ * clock are both fixed: 22 Nov 23:30 UTC (00:30 in Berlin, already the 23rd)
+ * and 23 Nov 00:30 UTC. The cases must behave the same as at noon.
  */
 const CASES = [
   {
@@ -24,9 +24,6 @@ const CASES = [
   },
 ] as const;
 
-const tile = (page: Page, name: string) =>
-  page.getByRole("button", { name: new RegExp(`^${name}`) });
-
 for (const c of CASES) {
   const BASE = `http://127.0.0.1:${c.port}`;
   test.describe(`at ${c.name}`, () => {
@@ -34,27 +31,32 @@ for (const c of CASES) {
       await page.clock.install({ time: new Date(c.now) });
     });
 
-    test("the scores tile shows the server's values for the user's day", async ({
+    test("the overview shows the server's values for the user's day", async ({
       page,
-    }, info) => {
-      test.skip(info.project.name !== "chromium");
-      await page.goto(`${BASE}/preview?card=home`);
+    }) => {
+      const { app } = await open(page, BASE);
       const view = (await callTool(page, "get_arnold_dashboard", {
         timezone: "Europe/Berlin",
       })) as ArnoldDashboardView;
       expect(view.reference?.date).toBe(c.day);
-      const s = view.scores!;
-      const shown = [s.consistency, s.progress, s.recovery].map((x) =>
-        x.value === null ? "–" : String(x.value),
-      );
-      await expect(tile(page, "Scores")).toContainText(shown.join(" · "));
+      for (const [name, score] of [
+        ["Konstanz", view.scores!.consistency],
+        ["Fortschritt", view.scores!.progress],
+        ["Erholung", view.scores!.recovery],
+      ] as const)
+        await expect(
+          app.getByRole("button", {
+            name: new RegExp(`^${name} ${score.value ?? "unbekannt"}\\.`),
+          }),
+        ).toBeVisible();
+      // The 23rd is a Monday: the week on screen is the user's, not UTC's.
+      await expect(app.getByLabel(/^Mo, heute|^Mo, trainiert/)).toBeVisible();
     });
 
     test("without a zone the server anchors on the UTC day, never silently on another", async ({
       page,
-    }, info) => {
-      test.skip(info.project.name !== "chromium");
-      await page.goto(`${BASE}/preview?card=home`);
+    }) => {
+      await page.goto(`${BASE}/host`);
       const view = (await callTool(
         page,
         "get_arnold_dashboard",
@@ -64,25 +66,18 @@ for (const c of CASES) {
       expect(view.reference?.date).toBe(c.now.slice(0, 10));
     });
 
-    test("body weight entered now is the latest one", async ({
-      page,
-    }, info) => {
-      test.skip(info.project.name !== "chromium");
-      await page.goto(`${BASE}/preview?card=goals`);
-      await page.getByRole("button", { name: /^Körpergewicht:/ }).click();
-      await page.getByRole("button", { name: "Gewicht eintragen" }).click();
-      const input = page.getByRole("textbox", { name: "Dein Gewicht heute" });
-      await input.fill("81,3");
-      await input.blur();
-      await page.getByRole("button", { name: "Speichern" }).click();
-      await expect(page.locator(".ac-goal-number strong")).toContainText(
-        "81,3",
-      );
-      const view = await callTool(page, "show_arnold_dashboard", {
+    test("body weight entered now is the latest one", async ({ page }) => {
+      const { app } = await open(page, BASE, "?card=goals");
+      await app
+        .getByRole("textbox", { name: "Heutiges Körpergewicht" })
+        .fill("81,3");
+      await app.getByRole("button", { name: "Eintragen" }).click();
+      await expect(app.getByText(/^81,3 kg/).first()).toBeVisible();
+      const view = (await callTool(page, "get_arnold_dashboard", {
         timezone: "Europe/Berlin",
-      });
-      expect(view.home.latest_body_weight.date).toBe(c.day);
-      expect(view.home.latest_body_weight.weight_kg).toBe(81.3);
+      })) as ArnoldDashboardView;
+      expect(view.home.latest_body_weight?.date).toBe(c.day);
+      expect(view.home.latest_body_weight?.weight_kg).toBe(81.3);
     });
   });
 }

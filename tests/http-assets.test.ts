@@ -7,13 +7,11 @@ import { createFixtureLogging } from "../src/server/workout/fixture";
 it("serves only fixed public HTML assets from hidden worktree paths, never arbitrary hidden files", async () => {
   const directory = await mkdtemp(join(tmpdir(), "arnold-assets-")),
     root = join(directory, ".hidden-worktree");
-  await mkdir(join(root, "dist/ui"), { recursive: true });
-  await mkdir(join(root, "dist/host"), { recursive: true });
+  await mkdir(join(root, "dist/views/host"), { recursive: true });
   await writeFile(
-    join(root, "dist/ui/dashboard.html"),
-    "<h1>Synthetic dashboard</h1>",
+    join(root, "dist/views/host/host.html"),
+    "<h1>Synthetic host</h1>",
   );
-  await writeFile(join(root, "dist/host/host.html"), "<h1>Synthetic host</h1>");
   await writeFile(join(root, ".env"), "SYNTHETIC_PRIVATE_VALUE=not-public");
   const server = createHttpApp({
     root,
@@ -25,14 +23,16 @@ it("serves only fixed public HTML assets from hidden worktree paths, never arbit
       server.once("error", reject);
     });
     const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-    expect(await (await fetch(`${base}/preview`)).text()).toContain(
-      "Synthetic dashboard",
-    );
+    // "/preview" (and "/") lead to the test host and keep the query.
+    const preview = await fetch(`${base}/preview?onboarding=1`, {
+      redirect: "manual",
+    });
+    expect(preview.headers.get("location")).toBe("/host?onboarding=1");
     expect(await (await fetch(`${base}/host`)).text()).toContain(
       "Synthetic host",
     );
     expect((await fetch(`${base}/.env`)).status).toBe(404);
-    expect((await fetch(`${base}/dist/ui/dashboard.html`)).status).toBe(404);
+    expect((await fetch(`${base}/dist/views/host/host.html`)).status).toBe(404);
   } finally {
     await new Promise<void>((resolve) => {
       server.close(() => resolve());

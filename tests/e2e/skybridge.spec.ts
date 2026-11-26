@@ -2,32 +2,31 @@ import { test, expect, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { callTool } from "./helpers";
+import { open } from "./host";
 import { berlinToday } from "../fixtures/berlin-today";
 
 /**
- * The Skybridge views, the default interface, in the local test host (official
+ * The card views (Skybridge web runtime) in the local test host (official
  * AppBridge, sandboxed iframe, no network): overview, its screens, one chat
  * card each for run, mobility and plan change, and the setup. Invented data.
  */
-const DEMO = "http://127.0.0.1:8850";
-const NEW = "http://127.0.0.1:8851";
-const PLAN = "http://127.0.0.1:8852";
+/** Each browser project has its own servers: a test's writes stay its own. */
+let DEMO = "";
+let NEW = "";
+let PLAN = "";
+test.beforeEach(({}, info) => {
+  const port = info.project.name === "webkit" ? 8860 : 8850;
+  [DEMO, NEW, PLAN] = [0, 1, 2].map((n) => `http://127.0.0.1:${port + n}`) as [
+    string,
+    string,
+    string,
+  ];
+});
 const SHOTS = resolve("test-results/skybridge");
 mkdirSync(SHOTS, { recursive: true });
 
 test.use({ viewport: { width: 420, height: 900 } });
 
-/** Opens the card a tool would open; returns the card's document. */
-async function open(page: Page, base: string, query = "") {
-  const errors: string[] = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto(`${base}/host${query}`);
-  await expect(page.locator("#host-status")).toHaveAttribute(
-    "data-initialized",
-    "true",
-  );
-  return { app: page.frameLocator("iframe"), errors };
-}
 const shot = (page: Page, name: string) =>
   page
     .locator("iframe")
@@ -226,6 +225,7 @@ test("a stored set is corrected and discarded in the history", async ({
   await app.getByRole("button", { name: "Satz korrigieren" }).click();
   const editor = app.getByRole("group", { name: /korrigieren$/ });
   const reps = editor.getByRole("textbox", { name: /Wiederholungen$/ });
+  await expect(reps.first()).toBeVisible();
   const count = await reps.count();
   await reps.first().fill("3");
   await shot(page, "set-edit");
@@ -260,7 +260,8 @@ test("a body weight entry is discarded after a second tap", async ({
 test("the overview names a running adjustment and opens it", async ({
   page,
 }) => {
-  await page.goto(`${PLAN}/host`);
+  // A page of the same origin without a card, to call tools from.
+  await page.goto(`${PLAN}/health`);
   const created = (await callTool(page, "create_plan_adjustment", {
     request_id: "sky-adjust",
     timezone: "Europe/Berlin",

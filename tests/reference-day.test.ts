@@ -77,7 +77,7 @@ async function open(
   const runtime = createFixtureLogging(datasetWithWorkoutOn("2026-11-18"));
   const server = createArnoldMcpServer(
     runtime.source,
-    "dist/ui/dashboard.html",
+    "dist/views/dashboard/dashboard.html",
     () => new Date(instant),
     runtime.service,
   );

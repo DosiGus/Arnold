@@ -5,7 +5,7 @@
 #
 # - Der Server läuft mit erfundenen Daten im Arbeitsspeicher (Profil
 #   arnold_fixture, keine Datenbank, keine Anmeldung, nur localhost).
-# - Die Oberfläche wird bei jeder Änderung in src/ui neu gebaut.
+# - Die Ansichten werden bei jeder Änderung in src/views neu gebaut.
 # - Jede Änderung am Server und jedes Drücken von Enter startet den Server neu:
 #   alle Daten sind dann wieder frisch, die Einrichtung beginnt von vorn.
 #   Danach die Browser-Seite neu laden.
@@ -28,16 +28,16 @@ trap cleanup EXIT INT TERM
 
 # Erst einmal vollständig bauen, damit der Server sofort eine Oberfläche hat.
 npm run build:ui --silent
-npx vite build --watch --logLevel warn &
-pids+=($!)
-npx vite build --watch --config vite.host.config.ts --logLevel warn &
-pids+=($!)
+for view in onboarding dashboard host; do
+  VIEW=$view npx vite build --watch -c vite.views.config.ts --logLevel warn &
+  pids+=($!)
+done
 
 echo
-echo "Arnold-Vorschau (erfundene Daten):"
-echo "  Einrichtung:  http://localhost:${PORT}/preview?onboarding=1"
-echo "  Übersicht:    http://localhost:${PORT}/preview"
-echo "  Kartenkit:    http://localhost:${PORT}/preview?kit=1"
+echo "Arnold-Vorschau (erfundene Daten, Test-Host wie ein MCP-Host):"
+echo "  Einrichtung:  http://localhost:${PORT}/host?onboarding=1"
+echo "  Übersicht:    http://localhost:${PORT}/host"
+echo "  Eine Karte:   http://localhost:${PORT}/host?card=goals (auch &theme=dark)"
 echo "  Enter drücken = Daten zurücksetzen, dann Seite neu laden."
 echo
 

@@ -12,11 +12,7 @@
 !/.dockerignore
 !/tsconfig.json
 !/tsconfig.server.json
-!/vite.config.ts
-!/vite.host.config.ts
 !/vite.views.config.ts
-!/dashboard.html
-!/host.html
 !/src/
 !/public/
 

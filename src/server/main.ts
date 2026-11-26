@@ -13,7 +13,7 @@ const server = (await createConfiguredHttpApp({ host })).listen(
         process.env.STORAGE_MODE === "arnold_database"
           ? "Datenbank (angemeldete Nutzer)"
           : "synthetische Daten"
-      }\nPreview: http://localhost:${port}/preview\nMCP Apps Test-Host: http://localhost:${port}/host\nMCP: http://localhost:${port}/mcp`,
+      }\nTest-Host: http://localhost:${port}/host\nMCP: http://localhost:${port}/mcp`,
     );
   },
 );
