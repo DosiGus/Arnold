@@ -17,7 +17,7 @@ export type DashboardData = {
   /** True for invented POC figures (badge "Beispieldaten"). */
   sample: boolean;
   hasPlan: boolean;
-  next: { name: string; sub: string } | null;
+  next: { name: string; sub: string; sessionId?: string } | null;
   today: DashboardToday[];
   week: {
     goal: number;

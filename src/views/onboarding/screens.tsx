@@ -1,3 +1,4 @@
+import { Alert } from "@openai/apps-sdk-ui/components/Alert";
 import { Badge } from "@openai/apps-sdk-ui/components/Badge";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
 import { Checkbox } from "@openai/apps-sdk-ui/components/Checkbox";
@@ -115,30 +116,45 @@ export function PlanScreen({
 
 /* ----------------------------------------------------------- training */
 
-type SetRow = { kg: string; reps: string; done: boolean };
+export type SetRow = { kg: string; reps: string; done: boolean };
 
 export function TrainingScreen({
   view,
   kind,
   onBack,
+  liveDay,
+  initialRows,
+  onFinish,
 }: {
   view: OnboardingView;
   kind: PlanKind;
   onBack: () => void;
+  /** Arnold's session for today (live); without it the template's demo plan. */
+  liveDay?: PlanDay;
+  /** Arnold's proposal per set (live). */
+  initialRows?: Record<string, SetRow[]>;
+  /** Saves the training; resolves with an error text, or null when stored. */
+  onFinish?: (rows: Record<string, SetRow[]>) => Promise<string | null>;
 }) {
   const day: PlanDay | undefined =
-    view.plan?.days.find((d) => d.kind === kind) ?? view.plan?.days[0];
-  const [sets, setSets] = useState<Record<string, SetRow[]>>(() =>
-    Object.fromEntries(
-      (day?.exercises ?? []).map((e) => [
-        e.id,
-        Array.from({ length: e.sets ?? 1 }, () => ({
-          kg: e.kg === null ? "" : String(e.kg).replace(".", ","),
-          reps: e.reps.replace(/\D/g, ""),
-          done: false,
-        })),
-      ]),
-    ),
+    liveDay ??
+    view.plan?.days.find((d) => d.kind === kind) ??
+    view.plan?.days[0];
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [sets, setSets] = useState<Record<string, SetRow[]>>(
+    () =>
+      initialRows ??
+      Object.fromEntries(
+        (day?.exercises ?? []).map((e) => [
+          e.id,
+          Array.from({ length: e.sets ?? 1 }, () => ({
+            kg: e.kg === null ? "" : String(e.kg).replace(".", ","),
+            reps: e.reps.replace(/\D/g, ""),
+            done: false,
+          })),
+        ]),
+      ),
   );
   const [saved, setSaved] = useState(false);
   const total = Object.values(sets).reduce((n, r) => n + r.length, 0);
@@ -189,7 +205,7 @@ export function TrainingScreen({
           <div className="flex items-baseline justify-between gap-3">
             <h3 className="heading-xs m-0">{e.name}</h3>
             <span className="text-sm text-secondary">
-              Ziel {e.sets} × {e.reps}
+              Ziel {e.sets ?? "?"} × {e.reps}
             </span>
           </div>
           <ul className="m-0 flex list-none flex-col gap-2 p-0">
@@ -223,12 +239,19 @@ export function TrainingScreen({
           </ul>
         </Box>
       ))}
+      {failure && <Alert color="danger" variant="soft" title={failure} />}
       {saved ? (
         <Box>
-          <p className="m-0 font-medium">Training gespeichert (Test).</p>
-          <p className="m-0 text-sm text-secondary">
-            In dieser Vorschau wird nichts dauerhaft abgelegt.
-          </p>
+          {onFinish ? (
+            <p className="m-0 font-medium">Training gespeichert.</p>
+          ) : (
+            <>
+              <p className="m-0 font-medium">Training gespeichert (Test).</p>
+              <p className="m-0 text-sm text-secondary">
+                In dieser Vorschau wird nichts dauerhaft abgelegt.
+              </p>
+            </>
+          )}
         </Box>
       ) : (
         <Button
@@ -236,7 +259,16 @@ export function TrainingScreen({
           size="lg"
           block
           disabled={done === 0}
-          onClick={() => setSaved(true)}
+          loading={saving}
+          onClick={() => {
+            if (!onFinish) return setSaved(true);
+            setSaving(true);
+            void onFinish(sets).then((error) => {
+              setSaving(false);
+              setFailure(error);
+              if (!error) setSaved(true);
+            });
+          }}
         >
           Training beenden
         </Button>

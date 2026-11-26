@@ -227,7 +227,11 @@ export function dashboardModel(view: ArnoldDashboardView): DashboardData {
     sample: false,
     hasPlan: view.active_plan !== null,
     next: next
-      ? { name: next.session_name, sub: `${next.exercise_count} Übungen` }
+      ? {
+          name: next.session_name,
+          sub: `${next.exercise_count} Übungen`,
+          sessionId: next.session_id,
+        }
       : null,
     today: t,
     week: week(view),

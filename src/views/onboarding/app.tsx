@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { OnboardingView, PlanKind } from "../demo/model.js";
 import { Dashboard, type Screen } from "./dashboard.js";
 import { LivePlanScreen } from "../live/plan.js";
+import { LiveTrainingScreen } from "../live/training.js";
 import { dashboardOf, type DashboardData } from "../demo/dashboard.js";
 import {
   GoalsScreen,
@@ -50,9 +51,17 @@ export function AppShell({
         ) : (
           <PlanScreen view={view} onBack={back} onAsk={onAsk} />
         ))}
-      {screen === "training" && (
-        <TrainingScreen view={view} kind={kind} onBack={back} />
-      )}
+      {screen === "training" &&
+        (live ? (
+          <LiveTrainingScreen
+            view={view}
+            kind={kind}
+            sessionId={dashboard?.next?.sessionId ?? null}
+            onBack={back}
+          />
+        ) : (
+          <TrainingScreen view={view} kind={kind} onBack={back} />
+        ))}
       {screen === "records" && <RecordsScreen view={view} onBack={back} />}
       {screen === "goals" && <GoalsScreen view={view} onBack={back} />}
       {screen === "stats" && <StatsScreen view={view} onBack={back} />}
