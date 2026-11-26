@@ -85,14 +85,13 @@ export function useSetup(
   }, []);
 
   const flush = useCallback(() => {
-    const taps = pending.current;
-    pending.current = {};
-    if (Object.keys(taps).length === 0) return queue.current;
     const send = async () => {
-      // Built at send time, on the state the previous save stored.
-      const patch = patchOf(confirmed.current.session.profile, taps);
-      if (!patch) return;
+      // Keep queued taps visible until this save is actually sent.
+      const taps = pending.current;
+      pending.current = {};
       try {
+        const patch = patchOf(confirmed.current.session.profile, taps);
+        if (!patch) return;
         const res = await updateTool.call({
           request_id: requestId(),
           profile: patch,
@@ -101,7 +100,6 @@ export function useSetup(
         setError(null);
       } catch (e) {
         setError(`${message(e)} Deine Eingabe ist zurückgesetzt.`);
-        pending.current = {};
       } finally {
         // Shown taps are what is stored now, plus taps made meanwhile.
         setLocal({ ...pending.current });

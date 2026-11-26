@@ -75,10 +75,7 @@ function Area({
   children: React.ReactNode;
 }) {
   return (
-    <div
-      data-area=""
-      className="rounded-2xl border border-subtle bg-surface p-4"
-    >
+    <div className="rounded-2xl border border-subtle bg-surface p-4">
       <div className="flex items-center justify-between gap-3">
         <Checkbox
           checked={checked}
@@ -106,21 +103,11 @@ function Area({
           </button>
         )}
       </div>
-      <AnimateLayout
-        hideOverflow
-        initial={{ opacity: 0 }}
-        enter={{ opacity: 1, duration: 200 }}
-        exit={{ opacity: 0, duration: 100 }}
-      >
-        {checked && open && (
-          <div
-            key="body"
-            className="mt-4 flex flex-col gap-4 border-t border-subtle pt-4"
-          >
-            {children}
-          </div>
-        )}
-      </AnimateLayout>
+      {checked && open && (
+        <div className="mt-4 flex flex-col gap-4 border-t border-subtle pt-4">
+          {children}
+        </div>
+      )}
     </div>
   );
 }
@@ -302,10 +289,6 @@ export function ProfileStep({
 }: Props & { onCreate: () => void }) {
   const p = view.profile;
   const [openArea, setOpenArea] = useState<string | null>(null);
-  // Anything outside the four area cards closes the open one.
-  const closeAreaOnOutside = (e: React.SyntheticEvent) => {
-    if (!(e.target as HTMLElement).closest("[data-area]")) setOpenArea(null);
-  };
   const missing = view.required
     .filter((r) => r.value === null)
     .map((r) => r.label);
@@ -338,12 +321,7 @@ export function ProfileStep({
         exit={{ opacity: 0, duration: 150 }}
       >
         {
-          <div
-            key="form"
-            className="flex flex-col gap-6"
-            onPointerDownCapture={closeAreaOnOutside}
-            onFocusCapture={closeAreaOnOutside}
-          >
+          <div key="form" className="flex flex-col gap-6">
             <Section
               title="Über dich"
               hint="Freiwillig. Damit schätze ich deine Startgewichte, mehr nicht."

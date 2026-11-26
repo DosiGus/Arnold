@@ -212,3 +212,71 @@ test("the setup starts on a new account", async ({ page }) => {
   await shot(page, "setup-profile");
   expect(errors).toEqual([]);
 });
+
+test("running goals stay selected and open while profile saves are queued", async ({
+  page,
+}) => {
+  const { app, errors } = await open(page, NEW, "?tool=show_arnold_onboarding");
+  const start = app.getByRole("button", { name: /Plan mit Arnold/ });
+  if (await start.isVisible()) await start.click();
+  const running = app.getByRole("checkbox", { name: "Laufen", exact: true });
+  await expect(running).not.toBeChecked();
+
+  let releaseModuleSave!: () => void;
+  let releaseGoalsSave!: () => void;
+  const moduleSave = new Promise<void>((resolve) => {
+    releaseModuleSave = resolve;
+  });
+  const goalsSave = new Promise<void>((resolve) => {
+    releaseGoalsSave = resolve;
+  });
+  let moduleSent = false;
+  let goalsSent = false;
+  await page.route(`${NEW}/mcp`, async (route) => {
+    if (route.request().method() === "POST") {
+      const { params } = route.request().postDataJSON() ?? {};
+      if (params?.name === "update_onboarding_profile") {
+        const training = params.arguments?.profile?.training;
+        if (training?.modules?.running) {
+          moduleSent = true;
+          await moduleSave;
+        }
+        if (training?.run?.aims) {
+          goalsSent = true;
+          await goalsSave;
+        }
+      }
+    }
+    await route.continue();
+  });
+
+  try {
+    await running.check();
+    await expect.poll(() => moduleSent).toBe(true);
+    const fit = app
+      .getByRole("group", { name: "Hauptziel Laufen" })
+      .getByRole("button", { name: "Fit bleiben" });
+    await fit.click();
+    await expect(fit).toHaveAttribute("aria-pressed", "true");
+    // Let the goal's debounced save queue behind the still-blocked module save.
+    await page.waitForTimeout(400);
+    releaseModuleSave();
+    await expect.poll(() => goalsSent).toBe(true);
+    expect(await fit.getAttribute("aria-pressed")).toBe("true");
+
+    await app.getByRole("heading", { name: "Trainingstage pro Woche" }).click();
+    await expect(fit).toBeVisible();
+    releaseGoalsSave();
+    await expect
+      .poll(async () => {
+        const state = await callTool(page, "get_onboarding_state");
+        return state?.session.profile.training.run?.aims;
+      })
+      .toEqual(["fitness"]);
+    await expect(fit).toHaveAttribute("aria-pressed", "true");
+    expect(errors).toEqual([]);
+  } finally {
+    releaseModuleSave();
+    releaseGoalsSave();
+  }
+});
