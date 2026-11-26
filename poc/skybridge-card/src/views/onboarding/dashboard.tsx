@@ -11,7 +11,7 @@ import {
   Animate,
   AnimateLayout,
 } from "@openai/apps-sdk-ui/components/Transition";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { OnboardingView, PlanKind } from "../../onboarding/model.js";
 import {
   dashboardOf,
@@ -87,6 +87,94 @@ function Fold({
           </div>
         )}
       </AnimateLayout>
+    </section>
+  );
+}
+
+/**
+ * Card whose list shows the first row in full, fades the second out and
+ * opens with a chevron. Heights are measured, so rows of any size work.
+ */
+function Peek({
+  title,
+  summary,
+  rows,
+  footer,
+}: {
+  title: string;
+  summary: string;
+  rows: React.ReactNode[];
+  footer?: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const list = useRef<HTMLUListElement>(null);
+  const [closedH, setClosedH] = useState<number | null>(null);
+  const [fullH, setFullH] = useState(0);
+  const [fadeFrom, setFadeFrom] = useState(0);
+  useLayoutEffect(() => {
+    const ul = list.current;
+    if (!ul) return;
+    const measure = () => {
+      // Row one stays clear; row two is already fading out.
+      const second = ul.children[1] as HTMLElement | undefined;
+      setFullH(ul.scrollHeight);
+      if (second && ul.children.length > 2) {
+        const top =
+          second.getBoundingClientRect().top - ul.getBoundingClientRect().top;
+        const h = second.getBoundingClientRect().height;
+        setClosedH(Math.round(top + h + 2));
+        setFadeFrom(Math.max(0, top - 8));
+      } else setClosedH(null);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(ul);
+    return () => ro.disconnect();
+  }, [rows.length]);
+  const peeking = closedH !== null && !open;
+  const mask = peeking
+    ? `linear-gradient(to bottom, black ${(fadeFrom / (closedH ?? 1)) * 100}%, rgba(0, 0, 0, 0.22) 100%)`
+    : undefined;
+  return (
+    <section className="flex flex-col gap-3 rounded-2xl border border-subtle bg-surface p-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="heading-xs m-0">{title}</h3>
+        <span className="text-sm text-secondary">{summary}</span>
+      </div>
+      <div
+        className="overflow-hidden transition-[max-height] duration-500 ease-out"
+        style={{
+          maxHeight: closedH === null ? undefined : open ? fullH : closedH,
+          maskImage: mask,
+          WebkitMaskImage: mask,
+        }}
+      >
+        <ul
+          ref={list}
+          className="relative m-0 flex list-none flex-col gap-4 p-0"
+        >
+          {rows.map((r, i) => (
+            <li key={i}>{r}</li>
+          ))}
+        </ul>
+      </div>
+      {closedH !== null && (
+        <Button
+          color="secondary"
+          variant="ghost"
+          size="sm"
+          pill
+          className="self-center"
+          aria-expanded={open}
+          aria-label={open ? `${title} einklappen` : `Alle ${title} zeigen`}
+          onClick={() => setOpen((o) => !o)}
+        >
+          <ChevronDown
+            className={`size-4 transition-transform duration-300 ${open ? "rotate-180" : ""}`}
+          />
+        </Button>
+      )}
+      {open && footer}
     </section>
   );
 }
@@ -366,24 +454,22 @@ export function Dashboard({
           </Fold>
         )}
 
-        <Fold
+        <Peek
           title="Ziele"
           summary={`${d.goals.length} ${d.goals.length === 1 ? "Ziel" : "Ziele"}`}
-        >
-          <ul className="m-0 flex list-none flex-col gap-4 p-0">
-            {d.goals.map((g) => (
-              <li key={g.name} className="flex flex-col gap-2">
-                <div className="flex items-baseline justify-between gap-3">
-                  <span>{g.name}</span>
-                  <span className="text-sm tabular-nums text-secondary">
-                    {g.current} / {g.target}
-                  </span>
-                </div>
-                <Bar value={g.progress} />
-              </li>
-            ))}
-          </ul>
-          <div className="mt-4">
+          rows={d.goals.map((g) => (
+            <div key={g.name} className="flex flex-col gap-2">
+              <div className="flex items-baseline justify-between gap-3">
+                <span>{g.name}</span>
+                <span className="text-sm tabular-nums text-secondary">
+                  <span className="font-medium text-default">{g.current}</span>{" "}
+                  / {g.target}
+                </span>
+              </div>
+              <Bar value={g.progress} />
+            </div>
+          ))}
+          footer={
             <Button
               color="secondary"
               variant="soft"
@@ -392,27 +478,27 @@ export function Dashboard({
             >
               Ziel hinzufügen
             </Button>
-          </div>
-        </Fold>
+          }
+        />
 
-        <Fold title="Rekorde" summary={`Letzte ${d.records.length}`}>
-          <ul className="m-0 flex list-none flex-col p-0">
-            {d.records.map((r) => (
-              <li
-                key={r.exercise}
-                className="flex items-center justify-between gap-3 border-b border-subtle py-3 first:pt-0 last:border-b-0 last:pb-0"
-              >
-                <span className="flex flex-col">
-                  <span>{r.exercise}</span>
-                  {r.when && (
-                    <span className="text-sm text-secondary">{r.when}</span>
-                  )}
-                </span>
-                <span className="font-medium tabular-nums">{r.value}</span>
-              </li>
-            ))}
-          </ul>
-          <div className="mt-4">
+        <Peek
+          title="Rekorde"
+          summary={`Letzte ${d.records.length}`}
+          rows={d.records.map((r) => (
+            <div
+              key={r.exercise}
+              className="flex items-center justify-between gap-3"
+            >
+              <span className="flex flex-col">
+                <span>{r.exercise}</span>
+                {r.when && (
+                  <span className="text-sm text-secondary">{r.when}</span>
+                )}
+              </span>
+              <span className="font-medium tabular-nums">{r.value}</span>
+            </div>
+          ))}
+          footer={
             <Button
               color="secondary"
               variant="soft"
@@ -421,8 +507,8 @@ export function Dashboard({
             >
               Alle Rekorde ansehen
             </Button>
-          </div>
-        </Fold>
+          }
+        />
 
         <div className="flex flex-col gap-2">
           <Button

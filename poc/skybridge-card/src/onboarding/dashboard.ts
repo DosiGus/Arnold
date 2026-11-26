@@ -97,14 +97,29 @@ export function dashboardOf(view: OnboardingView): DashboardData {
   const trainedIdx = [0, 2];
   const todayIdx = 3;
 
-  const goals: DashboardData["goals"] = [
-    {
-      name: "Wochenziel",
-      current: "2",
-      target: String(goal),
-      progress: Math.min(1, 2 / goal),
-    },
-  ];
+  const goals: DashboardData["goals"] = [];
+  if (p.strength)
+    goals.push({
+      name: "Klimmzüge",
+      current: "6 Wdh.",
+      target: "10 Wdh.",
+      progress: 0.6,
+    });
+  if (p.weight) {
+    const lose = (p.goals ?? []).includes("fat_loss");
+    const gain = (p.goals ?? []).includes("muscle_gain");
+    const target = lose ? p.weight - 6 : gain ? p.weight + 3 : p.weight;
+    goals.push({
+      name: lose
+        ? "Körpergewicht senken"
+        : gain
+          ? "Körpergewicht aufbauen"
+          : "Körpergewicht halten",
+      current: `${String(p.weight).replace(".", ",")} kg`,
+      target: `${String(target).replace(".", ",")} kg`,
+      progress: lose ? 0.33 : gain ? 0.4 : 1,
+    });
+  }
   if (p.strength) {
     goals.push({
       name: "Bankdrücken",
@@ -140,6 +155,12 @@ export function dashboardOf(view: OnboardingView): DashboardData {
       target: "5",
       progress: 0.6,
     });
+  goals.push({
+    name: "Wochenziel",
+    current: "2",
+    target: String(goal),
+    progress: Math.min(1, 2 / goal),
+  });
 
   const records: DashboardData["records"] = [];
   if (p.strength) {
@@ -157,6 +178,11 @@ export function dashboardOf(view: OnboardingView): DashboardData {
       exercise: "Rudern am Kabel",
       value: "50 kg × 10",
       when: "7. Nov.",
+    });
+    records.push({
+      exercise: "Klimmzüge",
+      value: "6 Wdh.",
+      when: "2. Nov.",
     });
   }
   if (p.run)
@@ -234,8 +260,8 @@ export function dashboardOf(view: OnboardingView): DashboardData {
         ],
       },
     ],
-    goals: goals.slice(0, 4),
-    records: records.slice(0, 3),
+    goals: goals.slice(0, 6),
+    records: records.slice(0, 4),
   };
 }
 
