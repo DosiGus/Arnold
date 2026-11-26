@@ -4,19 +4,13 @@
     {
       "name": "arnold-fixture",
       "runtimeExecutable": "npm",
-      "runtimeArgs": [
-        "run",
-        "dev"
-      ],
+      "runtimeArgs": ["run", "dev"],
       "port": 8787
     },
     {
       "name": "arnold-test-fixtures",
       "runtimeExecutable": "npx",
-      "runtimeArgs": [
-        "tsx",
-        "tests/fixtures/arnold-server.ts"
-      ],
+      "runtimeArgs": ["tsx", "tests/fixtures/arnold-server.ts"],
       "port": 8796,
       "autoPort": false
     },
