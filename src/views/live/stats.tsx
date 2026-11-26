@@ -6,11 +6,10 @@ import {
   type ArnoldExerciseProgressView,
 } from "../../shared/arnold-view.js";
 import { useArnoldTool } from "../arnold-client.js";
-import type { OnboardingView } from "../demo/model.js";
 import {
   exerciseSeries,
   rangeStart,
-  statsExercise,
+  statsExercises,
   weeklySeries,
   type StatsRange,
 } from "../model/stats.js";
@@ -18,15 +17,13 @@ import { StatsScreen } from "../onboarding/screens.js";
 
 /**
  * The progress screen on Arnold's history: weekly figures from the dashboard
- * answer, the strength curve of the most trained exercise from
- * `get_arnold_exercise_progress` for the chosen range (estimated 1RM).
+ * answer, the strength curve of one exercise (at first the most trained one)
+ * from `get_arnold_exercise_progress` for the chosen range (estimated 1RM).
  */
 export function LiveStatsScreen({
-  view,
   source,
   onBack,
 }: {
-  view: OnboardingView;
   source: ArnoldDashboardView;
   onBack: () => void;
 }) {
@@ -38,37 +35,58 @@ export function LiveStatsScreen({
   const [progress, setProgress] = useState<ArnoldExerciseProgressView | null>(
     null,
   );
-  const exercise = statsExercise(source);
-  const exerciseId = exercise?.id ?? null;
+  const [failed, setFailed] = useState(false);
+  const [chosen, setChosen] = useState<string | null>(null);
+  const exercises = statsExercises(source);
+  const exerciseId = chosen ?? exercises[0]?.id ?? null;
   const from = rangeStart(source, range);
   useEffect(() => {
     if (!exerciseId) return;
     let live = true;
+    setFailed(false);
     call({
       exercise_id: exerciseId,
       metric: "estimated_1rm",
       ...(from ? { from } : {}),
     })
       .then((p) => live && setProgress(p))
-      .catch(() => live && setProgress(null));
+      .catch(() => {
+        if (!live) return;
+        setProgress(null);
+        setFailed(true);
+      });
     return () => {
       live = false;
     };
   }, [call, exerciseId, from]);
 
   const weekly = weeklySeries(source, range);
-  const series = [
-    ...(progress && !progress.empty ? [exerciseSeries(progress)] : []),
-    ...weekly,
-  ];
+  // An exercise without values in the range keeps its place, so another one
+  // can still be chosen.
+  const series = [...(progress ? [exerciseSeries(progress)] : []), ...weekly];
   return (
     <DataLLM
       content={`Entwicklungs-Karte: ${series.map((s) => s.label).join(", ") || "noch keine Daten"}, letzte ${range} Wochen.`}
     >
       <StatsScreen
-        view={view}
         onBack={onBack}
-        live={{ series, range, onRange: setRange }}
+        live={{
+          series,
+          range,
+          onRange: setRange,
+          curveFailed: failed,
+          exercise:
+            exerciseId && exercises.length > 1
+              ? {
+                  options: exercises.map((e) => ({
+                    value: e.id,
+                    label: e.name,
+                  })),
+                  value: exerciseId,
+                  onChange: setChosen,
+                }
+              : null,
+        }}
       />
     </DataLLM>
   );

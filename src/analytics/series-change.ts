@@ -18,3 +18,15 @@ export function firstLastChange(
   const to = known[known.length - 1]!;
   return { from, to, delta: round(to - from) };
 }
+
+/** Lowest and highest known value of the points; null without any. */
+export function valueRange(
+  values: readonly (number | null)[],
+): { low: number; high: number } | null {
+  const known = values.filter(
+    (v): v is number => v !== null && Number.isFinite(v),
+  );
+  return known.length
+    ? { low: Math.min(...known), high: Math.max(...known) }
+    : null;
+}

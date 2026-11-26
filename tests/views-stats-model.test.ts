@@ -13,7 +13,7 @@ import type {
 import {
   exerciseSeries,
   rangeStart,
-  statsExercise,
+  statsExercises,
   weeklySeries,
 } from "../src/views/model/stats";
 
@@ -74,6 +74,15 @@ describe("weeklySeries", () => {
     expect(rangeStart(view(weeks), "4")).toBe("2026-11-02");
   });
 
+  it("labels the ends with real weeks and gives the scale", () => {
+    const [volume] = weeklySeries(view(weeks), "4");
+    expect(volume!.axis).toEqual({
+      from: "Woche ab 2. Nov.",
+      to: "diese Woche",
+    });
+    expect(volume!.range).toEqual({ low: 900, high: 5200 });
+  });
+
   it("keeps all weeks when there are fewer than the range", () => {
     const [volume] = weeklySeries(view(weeks), "12");
     expect(volume!.points).toEqual([4000, null, null, 5200, 900]);
@@ -87,9 +96,9 @@ describe("weeklySeries", () => {
 });
 
 describe("exercise curve", () => {
-  it("picks the exercise with most logged sets", () => {
+  it("offers the trained exercises, most logged sets first", () => {
     expect(
-      statsExercise(
+      statsExercises(
         view(
           [],
           [
@@ -98,9 +107,9 @@ describe("exercise curve", () => {
             { exercise_id: "c", name: "Neu", logged_sets: 0 },
           ],
         ),
-      ),
-    ).toEqual({ id: "b", name: "Bankdrücken" });
-    expect(statsExercise(view([], []))).toBeNull();
+      ).map((e) => e.id),
+    ).toEqual(["b", "a"]);
+    expect(statsExercises(view([], []))).toEqual([]);
   });
 
   it("takes points and change from the analytics answer", () => {
@@ -121,6 +130,8 @@ describe("exercise curve", () => {
       unit: "kg",
       points: [70, 72.5],
       delta: 2.5,
+      axis: { from: "1. Nov.", to: "8. Nov." },
+      range: { low: 70, high: 72.5 },
     });
     const unavailable = {
       ...progress,

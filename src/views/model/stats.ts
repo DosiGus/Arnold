@@ -8,11 +8,12 @@
  * weekly charts is `firstLastChange` from src/analytics. Unknown weeks stay
  * gaps, never 0.
  */
-import { firstLastChange } from "../../analytics/series-change.js";
+import { firstLastChange, valueRange } from "../../analytics/series-change.js";
 import type {
   ArnoldDashboardView,
   ArnoldExerciseProgressView,
 } from "../../shared/arnold-view.js";
+import { shortDate } from "./dashboard.js";
 
 export const STATS_RANGES = ["4", "8", "12"] as const;
 export type StatsRange = (typeof STATS_RANGES)[number];
@@ -28,6 +29,10 @@ export type LiveSeries = {
   points: (number | null)[];
   /** First against last value on screen; null when it cannot be given. */
   delta: number | null;
+  /** What the left and right end of the curve stand for; null when empty. */
+  axis: { from: string; to: string } | null;
+  /** The scale: lowest and highest value on screen; null when unknown. */
+  range: { low: number; high: number } | null;
 };
 
 /** The weeks on screen: the last `range` weeks up to the current one. */
@@ -45,17 +50,17 @@ export function rangeStart(
   return weeksIn(view, range)[0]?.week_start ?? null;
 }
 
-/** The exercise the strength curve shows: most logged sets, then name. */
-export function statsExercise(
+/** Exercises with a strength curve: most logged sets first, then name. */
+export function statsExercises(
   view: ArnoldDashboardView,
-): { id: string; name: string } | null {
-  const best = view.exercises
+): { id: string; name: string }[] {
+  return view.exercises
     .filter((e) => e.logged_sets > 0)
     .sort(
       (a, b) =>
         b.logged_sets - a.logged_sets || a.name.localeCompare(b.name, "de"),
-    )[0];
-  return best ? { id: best.exercise_id, name: best.name } : null;
+    )
+    .map((e) => ({ id: e.exercise_id, name: e.name }));
 }
 
 export function weeklySeries(
@@ -64,36 +69,62 @@ export function weeklySeries(
 ): LiveSeries[] {
   const weeks = weeksIn(view, range);
   if (!weeks.length) return [];
-  const volume = weeks.map((w) => w.nominal_volume);
-  const days = weeks.map((w) => w.training_days);
+  const weekLabel = (w: (typeof weeks)[number]) =>
+    w.is_current_week ? "diese Woche" : `Woche ab ${shortDate(w.week_start)}`;
+  const axis = {
+    from: weekLabel(weeks[0]!),
+    to: weekLabel(weeks[weeks.length - 1]!),
+  };
+  const series = (
+    key: string,
+    label: string,
+    unit: string,
+    points: (number | null)[],
+  ): LiveSeries => ({
+    key,
+    label,
+    unit,
+    points,
+    delta: firstLastChange(points)?.delta ?? null,
+    axis,
+    range: valueRange(points),
+  });
   return [
-    {
-      key: "volume",
-      label: "Wochenvolumen",
-      unit: "kg",
-      points: volume,
-      delta: firstLastChange(volume)?.delta ?? null,
-    },
-    {
-      key: "days",
-      label: "Trainingstage",
-      unit: "",
-      points: days,
-      delta: firstLastChange(days)?.delta ?? null,
-    },
+    series(
+      "volume",
+      "Wochenvolumen",
+      "kg",
+      weeks.map((w) => w.nominal_volume),
+    ),
+    series(
+      "days",
+      "Trainingstage",
+      "",
+      weeks.map((w) => w.training_days),
+    ),
   ];
 }
 
+/** One point per measured training day, so the ends carry its dates. */
 export function exerciseSeries(
   progress: ArnoldExerciseProgressView,
 ): LiveSeries {
   const c = progress.selected_comparison;
+  const measured = progress.selected_series?.points ?? [];
+  const points = measured.map((p) => p.value);
+  const first = measured[0];
+  const last = measured[measured.length - 1];
   return {
     key: "e1rm",
     label: "Kraft",
     title: `${progress.exercise_name} · geschätztes 1RM`,
     unit: "kg",
-    points: (progress.selected_series?.points ?? []).map((p) => p.value),
+    points,
     delta: c && c.status === "valid" ? c.delta : null,
+    axis:
+      first && last
+        ? { from: shortDate(first.date), to: shortDate(last.date) }
+        : null,
+    range: valueRange(points),
   };
 }

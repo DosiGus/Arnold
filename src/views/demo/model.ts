@@ -1,6 +1,5 @@
 /**
- * Onboarding model for the POC: synthetic, in memory, one user.
- * Content follows Arnold's real onboarding (goal, experience, days, minutes,
+ * The setup card's model and its labels. Content follows Arnold's real onboarding (goal, experience, days, minutes,
  * place are required; person data, modules and wishes are optional).
  * Rule kept from Arnold: an unknown load is unknown, never 0 or a guess.
  */
@@ -78,13 +77,6 @@ export const standText = (st?: Stand) =>
         .filter(Boolean)
         .join(", ")
     : null;
-/** Rough level for weight estimates, derived from the training status. */
-export function levelOf(st?: Stand): Level {
-  if (!st?.years || st.years === "lt1") return "beginner";
-  if (st.recent !== "regular" && st.pause !== "lt3m") return "beginner";
-  return st.years === "gt3" ? "advanced" : "intermediate";
-}
-
 export type Goal = (typeof GOALS)[number];
 export type Level = (typeof LEVELS)[number];
 export type Place = (typeof PLACES)[number];
@@ -172,7 +164,8 @@ export type Plan = {
   morningDays?: number[];
 };
 
-export type Wearable = "open" | "connect" | "later";
+/** The watch step: not decided, entering the code, skipped or paired. */
+export type Wearable = "open" | "connect" | "later" | "paired";
 export type Phase = "welcome" | "profile" | "plan" | "wearable" | "done";
 
 export type RequiredRow = { key: string; label: string; value: string | null };
@@ -350,68 +343,4 @@ export function viewOf(s: Snapshot): OnboardingView {
     confirmed: s.confirmed,
     wearable: s.wearable,
   };
-}
-
-export function snapshotOf(v: OnboardingView): Snapshot {
-  return {
-    profile: v.profile,
-    plan: v.plan,
-    confirmed: v.confirmed,
-    wearable: v.wearable,
-    done: v.phase === "done",
-  };
-}
-
-export class Setup {
-  profile: Profile = { ...EMPTY };
-  plan: Plan | null = null;
-  confirmed = false;
-  wearable: Wearable = "open";
-  done = false;
-
-  reset() {
-    this.profile = { ...EMPTY };
-    this.plan = null;
-    this.confirmed = false;
-    this.wearable = "open";
-    this.done = false;
-  }
-
-  update(patch: Partial<Profile>) {
-    const old = this.profile;
-    this.profile = { ...old, ...patch };
-    // Training status arrives in parts: merge it instead of replacing it.
-    if (patch.strengthStand)
-      this.profile.strengthStand = {
-        ...old.strengthStand,
-        ...patch.strengthStand,
-      };
-    if (patch.runStand)
-      this.profile.runStand = { ...old.runStand, ...patch.runStand };
-    // A changed answer makes an existing plan stale: it must be rebuilt.
-    if (this.plan && !this.confirmed) this.plan = null;
-  }
-
-  /** Back to an earlier step. Later results are dropped so nothing stale stays. */
-  goTo(step: "welcome" | "profile" | "plan") {
-    this.done = false;
-    this.wearable = "open";
-    if (step === "plan") {
-      this.confirmed = false;
-      return;
-    }
-    this.plan = null;
-    this.confirmed = false;
-    if (step === "welcome") this.profile = { ...this.profile, path: null };
-  }
-
-  view(): OnboardingView {
-    return viewOf({
-      profile: this.profile,
-      plan: this.plan,
-      confirmed: this.confirmed,
-      wearable: this.wearable,
-      done: this.done,
-    });
-  }
 }

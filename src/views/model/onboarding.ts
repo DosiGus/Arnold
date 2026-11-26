@@ -341,7 +341,10 @@ export function phaseOf(state: OnboardingState, wearable: Wearable): Phase {
   const s = state.session;
   switch (s.status) {
     case "COMPLETED":
-      return wearable === "open" ? "wearable" : "done";
+      // The watch step stays until the watch is paired or skipped.
+      return wearable === "later" || wearable === "paired"
+        ? "done"
+        : "wearable";
     case "PLAN_CONFIRMED":
     case "READY_TO_FINISH":
       return "wearable";

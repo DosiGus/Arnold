@@ -5,12 +5,20 @@
  */
 import { describe, expect, it } from "vitest";
 import { DeleteAccountInputSchema } from "../src/shared/account-contract";
-import { PairGarminWatchInputSchema } from "../src/shared/watch-contract";
+import { HEALTH_CONSENT_TEXT_VERSION } from "../src/shared/health-consent";
+import {
+  PairGarminWatchInputSchema,
+  SetGarminHealthConsentInputSchema,
+} from "../src/shared/watch-contract";
 import {
   accountErrorText,
+  consentDoneText,
+  consentInput,
+  consentStatus,
   deleteConfirmation,
   pairConfirmInput,
   pairConfirmation,
+  planOnWatchText,
   watchCode,
   watchStatus,
 } from "../src/views/model/settings";
@@ -118,5 +126,47 @@ describe("account deletion", () => {
     );
     expect(accountErrorText("CONFIRMATION_INVALID", "x")).toMatch(/abgelaufen/);
     expect(accountErrorText("OTHER", "Fallback")).toBe("Fallback");
+  });
+});
+
+describe("consent for the watch's health values", () => {
+  const list = (granted: boolean, current: string) => ({
+    account_label: "Arnold · ab12",
+    watches: [],
+    health_consent: {
+      granted,
+      text_version: granted ? current : null,
+      current_text_version: current,
+    },
+  });
+
+  it("offers a yes only for the text the card shows", () => {
+    expect(consentStatus(list(false, HEALTH_CONSENT_TEXT_VERSION))).toEqual({
+      granted: false,
+      textIsCurrent: true,
+    });
+    expect(consentStatus(list(false, "2099-01-01")).textIsCurrent).toBe(false);
+  });
+
+  it("names the shown text version on a yes, none on a revocation", () => {
+    const yes = consentInput(true);
+    expect(SetGarminHealthConsentInputSchema.parse(yes)).toEqual({
+      granted: true,
+      text_version: HEALTH_CONSENT_TEXT_VERSION,
+    });
+    expect(consentInput(false)).toEqual({ granted: false });
+  });
+
+  it("says what a revocation deleted", () => {
+    expect(consentDoneText(false, 3)).toContain("3");
+    expect(consentDoneText(false, 0)).not.toContain("0");
+    expect(consentDoneText(true, 0)).toContain("Einwilligung erteilt");
+  });
+
+  it("claims a plan on the watch only when Arnold knows", () => {
+    expect(planOnWatchText("delivered")).toBe("Dein Plan ist auf der Uhr.");
+    expect(planOnWatchText("pending")).toContain("noch nicht");
+    expect(planOnWatchText("unknown")).toBeNull();
+    expect(planOnWatchText(undefined)).toBeNull();
   });
 });

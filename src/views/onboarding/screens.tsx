@@ -6,15 +6,8 @@ import { ChevronLeft } from "@openai/apps-sdk-ui/components/Icon";
 import { Input } from "@openai/apps-sdk-ui/components/Input";
 import { SegmentedControl } from "@openai/apps-sdk-ui/components/SegmentedControl";
 import { Select } from "@openai/apps-sdk-ui/components/Select";
-import { Switch } from "@openai/apps-sdk-ui/components/Switch";
 import { useState } from "react";
-import {
-  allRecords,
-  dashboardOf,
-  healthData,
-  statsSeries,
-  type HealthData,
-} from "../demo/dashboard.js";
+import type { HealthData } from "../demo/dashboard.js";
 import type { OnboardingView, PlanDay, PlanKind } from "../demo/model.js";
 import { PlanOverview } from "./steps.js";
 import type { GoalChoice, GoalFormUnit, LiveGoal } from "../model/goals.js";
@@ -373,41 +366,31 @@ function RecordList({ rows }: { rows: RecordRow[] }) {
 }
 
 export function RecordsScreen({
-  view,
   onBack,
   records,
   runRecords,
 }: {
-  view: OnboardingView;
   onBack: () => void;
-  /** Arnold's real records; without them the sample list is shown. */
-  records?: RecordRow[];
-  /** Arnold's running records (live); empty or absent: no running box. */
-  runRecords?: RecordRow[];
+  /** Arnold's strength records. */
+  records: RecordRow[];
+  /** Arnold's running records; empty: no running box. */
+  runRecords: RecordRow[];
 }) {
-  const sample = records === undefined;
-  const running = runRecords?.length ? runRecords : null;
-  const recs = records
-    ? records.length
-      ? records
-      : [{ exercise: "Noch keine Rekorde", value: "–", when: "" }]
-    : allRecords(view);
+  const running = runRecords.length ? runRecords : null;
   return (
     <div className="flex flex-col gap-5">
-      <ScreenHeader
-        title="Rekorde"
-        onBack={onBack}
-        aside={
-          sample && (
-            <Badge color="secondary" variant="outline" pill>
-              Beispieldaten
-            </Badge>
-          )
-        }
-      />
+      <ScreenHeader title="Rekorde" onBack={onBack} />
       <Box>
         {running && <h3 className="heading-xs m-0">Kraft</h3>}
-        <RecordList rows={recs} />
+        {records.length ? (
+          <RecordList rows={records} />
+        ) : (
+          <span className="text-sm text-secondary">
+            {running
+              ? "Noch keine Rekorde beim Krafttraining."
+              : "Noch keine Rekorde. Nach deinem ersten Training stehen sie hier."}
+          </span>
+        )}
       </Box>
       {running && (
         <Box>
@@ -421,9 +404,7 @@ export function RecordsScreen({
 
 /* -------------------------------------------------------------- goals */
 
-type Goal = ReturnType<typeof dashboardOf>["goals"][number];
-
-/** Arnold's real goals and the writes behind the form (live mode). */
+/** Arnold's goals and the writes behind the form. */
 export type GoalsLive = {
   goals: LiveGoal[];
   choices: GoalChoice[];
@@ -438,23 +419,62 @@ export type GoalsLive = {
   }) => Promise<string | null>;
   onUpdate: (goal: LiveGoal, target: string) => Promise<string | null>;
   onArchive: (goal: LiveGoal) => Promise<string | null>;
+  /** The newest body weight, ready to read; null while none is stored. */
+  latestWeight: string | null;
+  onLogWeight: (text: string) => Promise<string | null>;
 };
 
+/** Body weight by hand: without it a weight goal has no current value. */
+function WeightBox({ live }: { live: GoalsLive }) {
+  const [weight, setWeight] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <Box>
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="heading-xs m-0">Körpergewicht</h3>
+        <span className="text-sm text-secondary">
+          {live.latestWeight ?? "Noch nicht eingetragen"}
+        </span>
+      </div>
+      <div className="flex gap-2">
+        <Input
+          aria-label="Heutiges Körpergewicht"
+          inputMode="decimal"
+          placeholder="Gewicht von heute"
+          endAdornment="kg"
+          value={weight}
+          onChange={(e) => setWeight(e.target.value)}
+        />
+        <Button
+          color="secondary"
+          variant="soft"
+          className="shrink-0"
+          disabled={busy || weight.trim() === ""}
+          onClick={async () => {
+            setBusy(true);
+            const failed = await live.onLogWeight(weight);
+            setBusy(false);
+            setError(failed);
+            if (!failed) setWeight("");
+          }}
+        >
+          Eintragen
+        </Button>
+      </div>
+      {error && <Alert color="danger" variant="soft" title={error} />}
+    </Box>
+  );
+}
+
 export function GoalsScreen({
-  view,
   onBack,
   live,
 }: {
-  view: OnboardingView;
   onBack: () => void;
-  live?: GoalsLive;
+  live: GoalsLive;
 }) {
-  const [sampleGoals, setSampleGoals] = useState<Goal[]>(
-    () => dashboardOf(view).goals,
-  );
-  const goals: (Goal & { live?: LiveGoal })[] = live
-    ? live.goals.map((g) => ({ ...g, live: g }))
-    : sampleGoals;
+  const goals = live.goals;
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [target, setTarget] = useState("");
@@ -464,7 +484,7 @@ export function GoalsScreen({
   const [editing, setEditing] = useState<LiveGoal | null>(null);
   const [editTarget, setEditTarget] = useState("");
   const [confirmEnd, setConfirmEnd] = useState(false);
-  const units: string[] = live ? live.unitsFor(name) : ["kg", "km", "Min."];
+  const units: string[] = live.unitsFor(name);
   const valid = name.trim() !== "" && target.trim() !== "";
   const run = async (write: () => Promise<string | null>) => {
     setBusy(true);
@@ -486,16 +506,14 @@ export function GoalsScreen({
         {goals.length ? (
           <ul className="m-0 flex list-none flex-col gap-4 p-0">
             {goals.map((g) => (
-              <li key={g.live?.id ?? g.name}>
+              <li key={g.id}>
                 <button
                   type="button"
-                  disabled={!g.live}
-                  className="flex w-full flex-col gap-2 border-0 bg-transparent p-0 text-left text-inherit enabled:cursor-pointer"
+                  className="flex w-full cursor-pointer flex-col gap-2 border-0 bg-transparent p-0 text-left text-inherit"
                   onClick={() => {
-                    if (!g.live) return;
                     setAdding(false);
-                    setEditing(g.live);
-                    setEditTarget(g.live.targetText);
+                    setEditing(g);
+                    setEditTarget(g.targetText);
                     setConfirmEnd(false);
                     setError(null);
                   }}
@@ -517,7 +535,7 @@ export function GoalsScreen({
           </span>
         )}
       </Box>
-      {editing && live ? (
+      {editing ? (
         <Box>
           <h3 className="heading-xs m-0">{editing.name}</h3>
           <div className="flex gap-2">
@@ -588,34 +606,25 @@ export function GoalsScreen({
       ) : adding ? (
         <Box>
           <h3 className="heading-xs m-0">Neues Ziel</h3>
-          {live ? (
-            <Select
-              block
-              placeholder="Übung, Körpergewicht oder Laufen wählen"
-              options={live.choices}
-              value={name}
-              onChange={(o) => {
-                setName(o.value);
-                const offered = live.unitsFor(o.value);
-                if (!offered.includes(unit as GoalFormUnit))
-                  setUnit(offered[0] ?? "kg");
-              }}
-            />
-          ) : (
-            <Input
-              aria-label="Ziel"
-              placeholder="Zum Beispiel „Kreuzheben“ oder „5 km laufen“"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          )}
+          <Select
+            block
+            placeholder="Übung, Körpergewicht oder Laufen wählen"
+            options={live.choices}
+            value={name}
+            onChange={(o) => {
+              setName(o.value);
+              const offered = live.unitsFor(o.value);
+              if (!offered.includes(unit as GoalFormUnit))
+                setUnit(offered[0] ?? "kg");
+            }}
+          />
           <div className="flex gap-2">
             <Input
               aria-label="Zielwert"
               inputMode={
-                live?.placeholderFor(unit) === "mm:ss" ? "text" : "decimal"
+                live.placeholderFor(unit) === "mm:ss" ? "text" : "decimal"
               }
-              placeholder={live ? live.placeholderFor(unit) : "Zielwert"}
+              placeholder={live.placeholderFor(unit)}
               value={target}
               onChange={(e) => setTarget(e.target.value)}
             />
@@ -640,25 +649,14 @@ export function GoalsScreen({
               block
               disabled={!valid || busy}
               onClick={async () => {
-                if (live) {
-                  const ok = await run(() =>
-                    live.onCreate({
-                      choice: name,
-                      unit: unit as GoalFormUnit,
-                      target,
-                    }),
-                  );
-                  if (!ok) return;
-                } else
-                  setSampleGoals((g) => [
-                    ...g,
-                    {
-                      name: name.trim(),
-                      current: "–",
-                      target: `${target.trim()} ${unit}`,
-                      progress: null,
-                    },
-                  ]);
+                const ok = await run(() =>
+                  live.onCreate({
+                    choice: name,
+                    unit: unit as GoalFormUnit,
+                    target,
+                  }),
+                );
+                if (!ok) return;
                 setName("");
                 setTarget("");
                 setAdding(false);
@@ -690,6 +688,7 @@ export function GoalsScreen({
           Ziel hinzufügen
         </Button>
       )}
+      <WeightBox live={live} />
     </div>
   );
 }
@@ -720,7 +719,8 @@ function Chart({ points, unit }: { points: (number | null)[]; unit: string }) {
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
-      className="h-32 w-full text-primary"
+      // As wide as the card, so its ends sit above the two dates.
+      className="h-auto w-full text-primary"
       role="img"
       aria-label={`Verlauf von ${first.v} auf ${last.v} ${unit}`}
     >
@@ -740,36 +740,31 @@ function Chart({ points, unit }: { points: (number | null)[]; unit: string }) {
 
 const RANGES = { "4": "4 Wochen", "8": "8 Wochen", "12": "12 Wochen" } as const;
 
-/** Arnold's real series (live mode); the range is chosen by the caller. */
+/** Arnold's series; range and exercise are chosen by the caller. */
 export type StatsLive = {
   series: LiveSeries[];
   range: keyof typeof RANGES;
   onRange: (range: keyof typeof RANGES) => void;
+  /** Whose strength curve is shown; offered when there is a choice. */
+  exercise: {
+    options: { value: string; label: string }[];
+    value: string;
+    onChange: (id: string) => void;
+  } | null;
+  /** The strength curve could not be read. */
+  curveFailed?: boolean;
 };
 
 export function StatsScreen({
-  view,
   onBack,
   live,
 }: {
-  view: OnboardingView;
   onBack: () => void;
-  live?: StatsLive;
+  live: StatsLive;
 }) {
-  const sampleSeries = statsSeries(view);
-  // Live series arrive one by one; until the user picks, show the first.
-  const [key, setKey] = useState<string | null>(
-    live ? null : sampleSeries[0].key,
-  );
-  const [sampleRange, setSampleRange] = useState<keyof typeof RANGES>("12");
-  const range = live ? live.range : sampleRange;
-  const setRange = live ? live.onRange : setSampleRange;
-  const series: LiveSeries[] = live
-    ? live.series
-    : sampleSeries.map((x) => {
-        const pts = x.points.slice(-Number(range));
-        return { ...x, points: pts, delta: pts[pts.length - 1] - pts[0] };
-      });
+  // Series arrive one by one; until the user picks, show the first.
+  const [key, setKey] = useState<string | null>(null);
+  const { series, range, exercise } = live;
   const s = series.find((x) => x.key === key) ?? series[0];
   const known = s ? s.points.filter((v): v is number => v !== null) : [];
   const last = known.length ? known[known.length - 1] : null;
@@ -778,17 +773,14 @@ export function StatsScreen({
     `${String(Math.round(v * 10) / 10).replace(".", ",")}${s?.unit ? ` ${s.unit}` : ""}`;
   return (
     <div className="flex flex-col gap-5">
-      <ScreenHeader
-        title="Trainingsentwicklung"
-        onBack={onBack}
-        aside={
-          !live && (
-            <Badge color="secondary" variant="outline" pill>
-              Beispieldaten
-            </Badge>
-          )
-        }
-      />
+      <ScreenHeader title="Trainingsentwicklung" onBack={onBack} />
+      {live.curveFailed && (
+        <Alert
+          color="danger"
+          variant="soft"
+          title="Die Kraftkurve lässt sich gerade nicht laden."
+        />
+      )}
       {series.length > 1 && (
         <SegmentedControl
           aria-label="Auswertung"
@@ -803,6 +795,14 @@ export function StatsScreen({
             </SegmentedControl.Option>
           ))}
         </SegmentedControl>
+      )}
+      {exercise && s?.key === "e1rm" && (
+        <Select
+          block
+          options={exercise.options}
+          value={exercise.value}
+          onChange={(o) => exercise.onChange(o.value)}
+        />
       )}
       <Box>
         {s ? (
@@ -828,18 +828,26 @@ export function StatsScreen({
               )}
             </div>
             {known.length >= 2 ? (
-              <Chart points={s.points} unit={s.unit} />
+              <>
+                <Chart points={s.points} unit={s.unit} />
+                {s.axis && (
+                  <div className="flex justify-between gap-3 text-xs text-secondary">
+                    <span>{s.axis.from}</span>
+                    <span>{s.axis.to}</span>
+                  </div>
+                )}
+                {s.range && (
+                  <p className="m-0 text-center text-xs text-secondary">
+                    Tiefster Wert {fmt(s.range.low)} · Höchster Wert{" "}
+                    {fmt(s.range.high)}
+                  </p>
+                )}
+              </>
             ) : (
               <p className="m-0 text-sm text-secondary">
                 Noch zu wenige Messwerte für eine Kurve.
               </p>
             )}
-            <div className="flex justify-between text-xs text-secondary">
-              <span>
-                vor {live ? Number(range) : s.points.length - 1} Wochen
-              </span>
-              <span>jetzt</span>
-            </div>
           </>
         ) : (
           <p className="m-0 text-sm text-secondary">
@@ -853,7 +861,7 @@ export function StatsScreen({
         block
         pill
         value={range}
-        onChange={(v) => setRange(v as keyof typeof RANGES)}
+        onChange={(v) => live.onRange(v as keyof typeof RANGES)}
       >
         {Object.entries(RANGES).map(([k, l]) => (
           <SegmentedControl.Option key={k} value={k}>
@@ -872,19 +880,20 @@ export function SettingsScreen({
   onBack,
   onEditProfile,
   watchBox,
+  consentBox,
   dataBox,
 }: {
   view: OnboardingView;
   onBack: () => void;
   onEditProfile: () => void;
-  /** Live contents of the Garmin box (pairing on Arnold's account). */
-  watchBox?: React.ReactNode;
-  /** Live contents of the data box (account deletion). */
-  dataBox?: React.ReactNode;
+  /** Contents of the Garmin box (pairing on Arnold's account). */
+  watchBox: React.ReactNode;
+  /** Consent for the watch's health values. */
+  consentBox: React.ReactNode;
+  /** Contents of the data box (account deletion). */
+  dataBox: React.ReactNode;
 }) {
   const p = view.profile;
-  const [watch, setWatch] = useState(view.wearable === "connect");
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const areas = [
     p.strength && "Krafttraining",
     p.run && "Laufen",
@@ -924,52 +933,12 @@ export function SettingsScreen({
 
       <Box>
         <h3 className="heading-xs m-0">Garmin-Uhr</h3>
-        {watchBox ?? (
-          <>
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-secondary">
-                {watch ? "Verbunden" : "Nicht verbunden"}
-              </span>
-              <Badge
-                color={watch ? "success" : "secondary"}
-                variant="soft"
-                pill
-              >
-                {watch ? "Aktiv" : "Aus"}
-              </Badge>
-            </div>
-            <Button
-              color="secondary"
-              variant="soft"
-              block
-              onClick={() => setWatch((w) => !w)}
-            >
-              {watch ? "Verbindung trennen" : "Garmin-Uhr verbinden"}
-            </Button>
-          </>
-        )}
+        {watchBox}
       </Box>
 
       <Box>
-        <div className="flex flex-col">
-          <h3 className="heading-xs m-0">Erinnerungen</h3>
-          <span className="text-sm text-secondary">
-            Kommt bald über deine Garmin-Uhr: Erinnerungen und Berichte direkt
-            ans Handgelenk.
-          </span>
-        </div>
-        {[
-          "Training an Trainingstagen",
-          "Morgenroutine",
-          "Wochenrückblick am Sonntag",
-        ].map((label) => (
-          <div key={label} className="flex items-center justify-between gap-3">
-            <Switch checked={false} disabled label={label} />
-            <Badge color="secondary" variant="soft" size="sm" pill>
-              Bald verfügbar
-            </Badge>
-          </div>
-        ))}
+        <h3 className="heading-xs m-0">Messwerte der Uhr</h3>
+        {consentBox}
       </Box>
 
       <Box>
@@ -977,34 +946,7 @@ export function SettingsScreen({
         <p className="m-0 text-sm text-secondary">
           Deine Daten gehören dir. Du kannst sie jederzeit löschen.
         </p>
-        {dataBox ?? (
-          <>
-            {confirmDelete ? (
-              <div className="grid auto-cols-fr grid-flow-col gap-2">
-                <Button color="danger" variant="soft" block>
-                  Endgültig löschen
-                </Button>
-                <Button
-                  color="secondary"
-                  variant="ghost"
-                  block
-                  onClick={() => setConfirmDelete(false)}
-                >
-                  Abbrechen
-                </Button>
-              </div>
-            ) : (
-              <Button
-                color="danger"
-                variant="ghost"
-                block
-                onClick={() => setConfirmDelete(true)}
-              >
-                Alle Daten löschen
-              </Button>
-            )}
-          </>
-        )}
+        {dataBox}
       </Box>
     </div>
   );
@@ -1045,20 +987,19 @@ function Metric({
 }
 
 export function HealthScreen({
-  view,
   onBack,
-  data,
+  data: h,
   dayLabel = "heute",
+  onConsent,
 }: {
-  view: OnboardingView;
   onBack: () => void;
-  /** Arnold's real values; without them the sample values are shown. */
-  data?: HealthData;
+  /** Arnold's values. */
+  data: HealthData;
   /** Which day "today" is: "heute" or "Stand 25. Nov.". */
   dayLabel?: string;
+  /** Opens the consent in the settings. */
+  onConsent?: () => void;
 }) {
-  const sample = data === undefined;
-  const h = data ?? healthData(view);
   const total = h.sleep.phases.reduce((n, p) => n + p.minutes, 0);
   const shades = [
     "bg-primary-solid",
@@ -1068,17 +1009,7 @@ export function HealthScreen({
   ];
   return (
     <div className="flex flex-col gap-5">
-      <ScreenHeader
-        title="Health Data"
-        onBack={onBack}
-        aside={
-          sample && (
-            <Badge color="secondary" variant="outline" pill>
-              Beispieldaten
-            </Badge>
-          )
-        }
-      />
+      <ScreenHeader title="Health Data" onBack={onBack} />
       <p className="m-0 text-sm text-secondary">
         Das sammelt deine Garmin-Uhr. Arnold liest diese Werte nur mit deiner
         Einwilligung und nutzt sie für die Erholung.
@@ -1217,6 +1148,11 @@ export function HealthScreen({
       <p className="m-0 text-center text-xs text-secondary">
         Unbekannte Werte zeigt Arnold als „–“ und rechnet nie mit einer Null.
       </p>
+      {onConsent && (
+        <Button color="secondary" variant="ghost" block onClick={onConsent}>
+          Einwilligung verwalten
+        </Button>
+      )}
     </div>
   );
 }

@@ -43,7 +43,6 @@ import {
   type PlanDay,
   type Profile,
 } from "../demo/model.js";
-import { volumeByMuscle } from "../demo/plan.js";
 import { Choice, MultiChoice, MultiSegmented, Section } from "./parts.js";
 
 type Props = {
@@ -669,11 +668,9 @@ const KIND_LABEL = {
   morning: "Morgenroutine",
 } as const;
 
-/** Weekly sets per muscle group: Arnold's figures, the demo's count only without them. */
+/** Arnold's weekly sets per muscle group; none without its figures. */
 const setsOf = (plan: Plan): [string, number][] =>
-  plan.weeklySets
-    ? plan.weeklySets.map((r) => [r.muscle, r.sets])
-    : volumeByMuscle(plan);
+  (plan.weeklySets ?? []).map((r) => [r.muscle, r.sets]);
 
 function VolumeChart({ plan }: { plan: Plan }) {
   const rows = setsOf(plan);
@@ -758,40 +755,6 @@ function VolumeChart({ plan }: { plan: Plan }) {
 }
 
 const WEEK = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
-/** Training days for n sessions, spread so that rest days fall between. */
-const SPREAD: number[][] = [
-  [],
-  [0],
-  [0, 3],
-  [0, 2, 4],
-  [0, 1, 3, 4],
-  [0, 1, 3, 4, 5],
-  [0, 1, 2, 3, 4, 5],
-  [0, 1, 2, 3, 4, 5, 6],
-];
-
-/** Sample week: which kind of session lands on which day (demo layout only). */
-function sampleWeek(plan: Plan): PlanDay["kind"][][] {
-  if (plan.week) return plan.week;
-  const by = (k: PlanDay["kind"]) => plan.days.filter((d) => d.kind === k);
-  const strength = by("strength");
-  const run = by("run");
-  const mob = by("mobility");
-  // Interleave so that the same kind rarely lands on neighbouring days.
-  const order: PlanDay["kind"][] = [];
-  for (let i = 0; i < Math.max(strength.length, run.length, mob.length); i++) {
-    if (strength[i]) order.push("strength");
-    if (run[i]) order.push("run");
-    if (mob[i]) order.push("mobility");
-  }
-  const days: PlanDay["kind"][][] = WEEK.map(() => []);
-  const spots = SPREAD[Math.min(order.length, 7)];
-  order.forEach((k, i) => {
-    days[i < spots.length ? spots[i] : i % 7].push(k);
-  });
-  return days;
-}
-
 const KIND_SHORT: Record<PlanDay["kind"], string> = {
   strength: "Kraft",
   run: "Lauf",
@@ -800,8 +763,9 @@ const KIND_SHORT: Record<PlanDay["kind"], string> = {
 };
 
 function SampleWeek({ plan }: { plan: Plan }) {
-  const days = sampleWeek(plan);
-  if (!days.some((d) => d.length)) return null;
+  // Arnold's example week; without it nothing is arranged by the card.
+  const days = plan.week;
+  if (!days?.some((d) => d.length)) return null;
   const morning = plan.morningDays
     ? plan.morningDays.length > 0
     : plan.days.some((d) => d.kind === "morning");
@@ -1335,12 +1299,16 @@ export function PlanStep({
 /* ------------------------------------------------------------------- Uhr */
 
 /**
- * Where users get the Arnold watch app. Until the app is published, this
- * points at the Connect IQ Store. After publishing, use the app's own page
- * `https://apps.garmin.com/apps/<app-id>`: on a phone it opens straight in
- * the Connect IQ Store app when that is installed.
+ * Where users get the Arnold watch app: null while it is not published, then
+ * the card says so instead of linking into the void. After publishing, set the
+ * app's own page `https://apps.garmin.com/apps/<app-id>`: on a phone it opens
+ * straight in the Connect IQ Store app when that is installed.
  */
-export const GARMIN_STORE_URL = "https://apps.garmin.com/";
+export const GARMIN_STORE_URL: string | null = null;
+
+/** The one sentence while the watch app cannot be installed from the store. */
+export const WATCH_APP_UNAVAILABLE =
+  "Die Arnold-App für die Uhr ist noch nicht im Connect IQ Store verfügbar.";
 
 const WATCH_STEPS: { title: string; text: string }[] = [
   {
@@ -1368,14 +1336,17 @@ export function WearableStep({
   onFinish,
   onOpenStore,
   pairing,
+  storeUrl = GARMIN_STORE_URL,
 }: {
   view: OnboardingView;
   busy: string | null;
   onChoose: (c: "connect" | "later") => void;
   onFinish: () => void;
   onOpenStore: () => void;
-  /** The real pairing (code from the watch, then confirm); else the sample. */
-  pairing?: React.ReactNode;
+  /** The pairing (code from the watch, then confirm). */
+  pairing: React.ReactNode;
+  /** The store page of the watch app; null while it is not published. */
+  storeUrl?: string | null;
 }) {
   const connecting = view.wearable === "connect";
   return (
@@ -1398,14 +1369,7 @@ export function WearableStep({
       >
         {connecting ? (
           <div key="code" className="flex flex-col gap-3">
-            {pairing ?? (
-              <Alert
-                color="success"
-                variant="soft"
-                title="Kopplungscode: 482 913"
-                description="Öffne Arnold auf deiner Uhr und gib den Code ein. Er gilt zehn Minuten."
-              />
-            )}
+            {pairing}
             <Button
               color="primary"
               size="lg"
@@ -1414,6 +1378,32 @@ export function WearableStep({
               onClick={onFinish}
             >
               Fertig
+            </Button>
+          </div>
+        ) : storeUrl === null ? (
+          <div key="unavailable" className="flex flex-col gap-3">
+            <Alert
+              color="info"
+              variant="soft"
+              title={WATCH_APP_UNAVAILABLE}
+              description="Du kannst ohne Uhr trainieren und sie später in den Einstellungen verbinden."
+            />
+            <Button
+              color="primary"
+              size="lg"
+              block
+              loading={busy === "finish"}
+              onClick={() => onChoose("later")}
+            >
+              Ohne Uhr weiter
+            </Button>
+            <Button
+              color="secondary"
+              variant="ghost"
+              block
+              onClick={() => onChoose("connect")}
+            >
+              Ich habe die App schon, Uhr koppeln
             </Button>
           </div>
         ) : (
@@ -1463,7 +1453,7 @@ export function WearableStep({
                 color="primary"
                 size="lg"
                 block
-                loading={busy === "wearable"}
+                loading={busy === "finish"}
                 onClick={() => onChoose("connect")}
               >
                 Arnold ist installiert, Uhr koppeln
@@ -1504,7 +1494,7 @@ export function Done({
         <h2 className="heading-xl m-0">Du bist startklar</h2>
         <p className="m-0 text-secondary">
           Dein Plan ist aktiv
-          {view.wearable === "connect" ? " und deine Uhr wird gekoppelt." : "."}
+          {view.wearable === "paired" ? " und deine Uhr ist verbunden." : "."}
         </p>
       </div>
       <div className="flex flex-col gap-2">

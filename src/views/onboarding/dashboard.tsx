@@ -96,12 +96,16 @@ function Peek({
   title,
   summary,
   rows,
+  empty,
   footer,
 }: {
   title: string;
   summary: string;
   rows: React.ReactNode[];
-  footer?: React.ReactNode;
+  /** Shown instead of the list while there is nothing in it. */
+  empty: string;
+  /** The way to the full screen: always shown. */
+  footer: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const list = useRef<HTMLUListElement>(null);
@@ -155,6 +159,9 @@ function Peek({
           ))}
         </ul>
       </div>
+      {rows.length === 0 && (
+        <p className="m-0 text-sm text-secondary">{empty}</p>
+      )}
       {closedH !== null && (
         <Button
           color="secondary"
@@ -171,7 +178,7 @@ function Peek({
           />
         </Button>
       )}
-      {open && footer}
+      {footer}
     </section>
   );
 }
@@ -207,7 +214,10 @@ export function Dashboard({
   d,
   onAsk,
   go,
+  health = false,
 }: {
+  /** True when Health Data can show values for this account. */
+  health?: boolean;
   d: DashboardData;
   /** Sends a sentence to the chat (the model answers with the right tool). */
   onAsk: (sentence: string) => void;
@@ -352,17 +362,19 @@ export function Dashboard({
           </section>
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          <Button
-            color="secondary"
-            variant="soft"
-            size="lg"
-            block
-            onClick={() => go("health")}
-          >
-            Health Data
-            <ArrowUpRight className="size-4" />
-          </Button>
+        <div className={`grid gap-2 ${health ? "grid-cols-2" : ""}`}>
+          {health && (
+            <Button
+              color="secondary"
+              variant="soft"
+              size="lg"
+              block
+              onClick={() => go("health")}
+            >
+              Health Data
+              <ArrowUpRight className="size-4" />
+            </Button>
+          )}
           <Button
             color="secondary"
             variant="soft"
@@ -455,6 +467,7 @@ export function Dashboard({
         <Peek
           title="Ziele"
           summary={`${d.goals.length} ${d.goals.length === 1 ? "Ziel" : "Ziele"}`}
+          empty="Noch keine Ziele. Leg dein erstes Ziel an."
           rows={d.goals.map((g) => (
             <div key={g.name} className="flex flex-col gap-2">
               <div className="flex items-baseline justify-between gap-3">
@@ -481,7 +494,8 @@ export function Dashboard({
 
         <Peek
           title="Rekorde"
-          summary={`Letzte ${d.records.length}`}
+          summary={d.records.length ? `Letzte ${d.records.length}` : ""}
+          empty="Noch keine Rekorde. Nach deinem ersten Training stehen sie hier."
           rows={d.records.map((r) => (
             <div
               key={r.exercise}
