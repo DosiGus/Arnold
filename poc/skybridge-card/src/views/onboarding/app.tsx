@@ -3,6 +3,7 @@ import type { OnboardingView, PlanKind } from "../../onboarding/model.js";
 import { Dashboard, type Screen } from "./dashboard.js";
 import {
   GoalsScreen,
+  HealthScreen,
   PlanScreen,
   RecordsScreen,
   SettingsScreen,
@@ -44,6 +45,7 @@ export function AppShell({
       {screen === "records" && <RecordsScreen view={view} onBack={back} />}
       {screen === "goals" && <GoalsScreen view={view} onBack={back} />}
       {screen === "stats" && <StatsScreen view={view} onBack={back} />}
+      {screen === "health" && <HealthScreen view={view} onBack={back} />}
       {screen === "settings" && (
         <SettingsScreen
           view={view}

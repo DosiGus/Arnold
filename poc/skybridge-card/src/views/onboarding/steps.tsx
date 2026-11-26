@@ -1464,49 +1464,14 @@ export function Done({
   onDashboard: () => void;
   onSettings: () => void;
 }) {
-  const plan = view.plan;
-  const exercises = plan?.days.reduce((n, d) => n + d.exercises.length, 0) ?? 0;
-  const stats = [
-    ["Tage pro Woche", String(view.profile.days ?? "–")],
-    ["Minuten", String(view.profile.minutes ?? "–")],
-    ["Übungen", String(exercises)],
-  ];
   return (
     <div className="flex flex-col gap-5">
-      <Animate
-        initial={{ opacity: 0, scale: 0.85 }}
-        enter={{ opacity: 1, scale: 1, duration: 450 }}
-      >
-        <span
-          key="ok"
-          className="flex size-14 items-center justify-center rounded-full bg-success-soft"
-        >
-          <CheckCircleFilled className="size-8 text-success" />
-        </span>
-      </Animate>
       <div className="flex flex-col gap-1">
         <h2 className="heading-xl m-0">Du bist startklar</h2>
         <p className="m-0 text-secondary">
           Dein Plan ist aktiv
           {view.wearable === "connect" ? " und deine Uhr wird gekoppelt." : "."}
         </p>
-      </div>
-      <div className="grid grid-cols-3 gap-2.5">
-        {stats.map(([label, value], i) => (
-          <Animate
-            key={label}
-            initial={{ opacity: 0, y: 10 }}
-            enter={{ opacity: 1, y: 0, duration: 300, delay: 150 + i * 100 }}
-          >
-            <div
-              key={label}
-              className="flex flex-col rounded-2xl border border-subtle bg-surface p-3"
-            >
-              <span className="heading-lg tabular-nums">{value}</span>
-              <span className="text-sm text-secondary">{label}</span>
-            </div>
-          </Animate>
-        ))}
       </div>
       <div className="flex flex-col gap-2">
         <Button color="primary" size="lg" block onClick={onNext}>

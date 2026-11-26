@@ -87,6 +87,7 @@ function Flow({ initial }: { initial: OnboardingView }) {
           <div className="flex-1">
             <Stepper
               index={STEP_INDEX[view.phase]}
+              complete={view.phase === "done"}
               onStep={(i) =>
                 void s.goTo(i === 0 ? "welcome" : i === 1 ? "profile" : "plan")
               }

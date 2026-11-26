@@ -12,9 +12,12 @@ const STEPS = ["Start", "Person", "Plan", "Device"];
 export function Stepper({
   index,
   onStep,
+  complete = false,
 }: {
   index: number;
   onStep?: (i: number) => void;
+  /** All done: the steps slide away and one check with "Fertig" stays. */
+  complete?: boolean;
 }) {
   return (
     <ol
@@ -27,11 +30,19 @@ export function Stepper({
         return (
           <li
             key={label}
-            className="flex flex-1 items-center gap-2 last:flex-none"
+            className={`flex items-center gap-2 overflow-hidden transition-all duration-700 ease-out ${i === STEPS.length - 1 ? "" : "flex-1"} ${complete && i > 0 ? "flex-none" : ""}`}
+            style={
+              i > 0
+                ? {
+                    maxWidth: complete ? "0%" : "100%",
+                    opacity: complete ? 0 : 1,
+                  }
+                : undefined
+            }
           >
             <button
               type="button"
-              disabled={!done || !onStep}
+              disabled={!done || !onStep || complete}
               onClick={() => onStep?.(i)}
               aria-label={done ? `Zurück zu ${label}` : undefined}
               className="flex cursor-default items-center gap-2 enabled:cursor-pointer enabled:hover:opacity-80 focus-visible:outline-2 rounded-full"
@@ -50,13 +61,15 @@ export function Stepper({
                 {done ? <CheckMd className="size-3.5" /> : i + 1}
               </span>
               <span
-                className={`text-sm ${current ? "font-medium" : "text-secondary max-[480px]:hidden"}`}
+                className={`text-sm ${current || (complete && i === 0) ? "font-medium" : "text-secondary max-[480px]:hidden"}`}
               >
-                {label}
+                {complete && i === 0 ? "Fertig" : label}
               </span>
             </button>
             {i < STEPS.length - 1 && (
-              <span className="h-px flex-1 bg-secondary-soft">
+              <span
+                className={`h-px flex-1 bg-secondary-soft transition-opacity duration-500 ${complete ? "opacity-0" : ""}`}
+              >
                 <span
                   className="block h-px bg-success-solid transition-all duration-500"
                   style={{ width: done ? "100%" : "0%" }}

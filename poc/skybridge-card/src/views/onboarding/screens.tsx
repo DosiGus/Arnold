@@ -9,6 +9,7 @@ import { useState } from "react";
 import {
   allRecords,
   dashboardOf,
+  healthData,
   statsSeries,
 } from "../../onboarding/dashboard.js";
 import type {
@@ -731,6 +732,200 @@ export function SettingsScreen({
           </Button>
         )}
       </Box>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------- health */
+
+const nf = (n: number) => n.toLocaleString("de-DE");
+
+function Metric({
+  label,
+  value,
+  unit,
+  avg7,
+  note,
+}: {
+  label: string;
+  value: number | null;
+  unit: string;
+  avg7: number | null;
+  note?: string;
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5 rounded-xl bg-secondary-soft px-3 py-2.5">
+      <span className="text-xs text-secondary">{label}</span>
+      <span className="text-lg leading-tight font-semibold tabular-nums">
+        {value === null ? "–" : nf(value)}
+        {unit && value !== null && (
+          <span className="text-sm font-normal text-secondary"> {unit}</span>
+        )}
+      </span>
+      {avg7 !== null && (
+        <span className="text-xs text-secondary">Ø 7 Tage: {nf(avg7)}</span>
+      )}
+      {note && <span className="text-xs text-secondary">{note}</span>}
+    </div>
+  );
+}
+
+export function HealthScreen({
+  view,
+  onBack,
+}: {
+  view: OnboardingView;
+  onBack: () => void;
+}) {
+  const h = healthData(view);
+  const total = h.sleep.phases.reduce((n, p) => n + p.minutes, 0);
+  const shades = [
+    "bg-primary-solid",
+    "bg-[var(--color-border-stronger)]",
+    "bg-[var(--color-border-strong)]",
+    "bg-secondary-soft",
+  ];
+  return (
+    <div className="flex flex-col gap-5">
+      <ScreenHeader
+        title="Health Data"
+        onBack={onBack}
+        aside={
+          <Badge color="secondary" variant="outline" pill>
+            Beispieldaten
+          </Badge>
+        }
+      />
+      <p className="m-0 text-sm text-secondary">
+        Das sammelt deine Garmin-Uhr. Arnold liest diese Werte nur mit deiner
+        Einwilligung und nutzt sie für die Erholung.
+      </p>
+
+      <Box>
+        <h3 className="heading-xs m-0">Heute</h3>
+        <div className="grid grid-cols-2 gap-2">
+          {h.today.map((m) => (
+            <Metric
+              key={m.key}
+              label={m.label}
+              value={m.value}
+              unit={m.unit}
+              avg7={m.avg7}
+              note={m.note}
+            />
+          ))}
+        </div>
+      </Box>
+
+      <Box>
+        <div className="flex items-baseline justify-between gap-3">
+          <h3 className="heading-xs m-0">Schlaf</h3>
+          <span className="text-sm text-secondary tabular-nums">
+            letzte Nacht {String(h.sleep.hours).replace(".", ",")} Std.
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Metric
+            label="Sleep Score"
+            value={h.sleep.score}
+            unit=""
+            avg7={h.sleep.avg7}
+            note="gut"
+          />
+          <div className="flex min-w-0 flex-col gap-1.5 rounded-xl bg-secondary-soft px-3 py-2.5">
+            <span className="text-xs text-secondary">
+              Score der letzten 7 Nächte
+            </span>
+            <div className="flex h-12 items-end gap-1">
+              {h.sleep.week.map((w) => (
+                <span
+                  key={w.day}
+                  className="flex flex-1 flex-col items-center gap-0.5"
+                  aria-label={`${w.day}: ${w.score ?? "keine Messung"}`}
+                >
+                  <span
+                    className={`w-full rounded-sm ${w.score === null ? "bg-transparent" : "bg-primary-solid"}`}
+                    style={{
+                      height: `${w.score === null ? 0 : (w.score / 100) * 36}px`,
+                    }}
+                  />
+                  <span className="text-[10px] leading-none text-secondary">
+                    {w.day}
+                  </span>
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-col gap-2">
+          <span className="text-xs text-secondary">
+            Schlafphasen letzte Nacht
+          </span>
+          <div className="flex h-2.5 w-full gap-0.5 overflow-hidden rounded-full">
+            {h.sleep.phases.map((p, i) => (
+              <span
+                key={p.label}
+                className={shades[i]}
+                style={{ width: `${(p.minutes / total) * 100}%` }}
+              />
+            ))}
+          </div>
+          <ul className="m-0 grid list-none grid-cols-4 gap-1 p-0 text-xs">
+            {h.sleep.phases.map((p, i) => (
+              <li key={p.label} className="flex min-w-0 flex-col">
+                <span className="flex items-center gap-1 text-secondary">
+                  <span className={`size-2 rounded-full ${shades[i]}`} />
+                  {p.label}
+                </span>
+                <span className="tabular-nums">
+                  {Math.floor(p.minutes / 60)} Std. {p.minutes % 60} Min.
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </Box>
+
+      <Box>
+        <h3 className="heading-xs m-0">Fitness</h3>
+        <ul className="m-0 flex list-none flex-col p-0">
+          {h.fitness.map((f) => (
+            <li
+              key={f.label}
+              className="flex items-start justify-between gap-3 border-b border-subtle py-3 first:pt-0 last:border-b-0 last:pb-0"
+            >
+              <span className="flex min-w-0 flex-col">
+                <span>{f.label}</span>
+                {f.note && (
+                  <span className="text-sm text-secondary">{f.note}</span>
+                )}
+              </span>
+              <span className="shrink-0 text-right font-medium tabular-nums">
+                {f.value}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </Box>
+
+      <Box>
+        <h3 className="heading-xs m-0">Aktivität heute</h3>
+        <div className="grid grid-cols-3 gap-2">
+          {h.activity.map((m) => (
+            <Metric
+              key={m.key}
+              label={m.label}
+              value={m.value}
+              unit={m.unit}
+              avg7={m.avg7}
+            />
+          ))}
+        </div>
+      </Box>
+
+      <p className="m-0 text-center text-xs text-secondary">
+        Unbekannte Werte zeigt Arnold als „–“ und rechnet nie mit einer Null.
+      </p>
     </div>
   );
 }

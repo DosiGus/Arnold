@@ -312,3 +312,125 @@ export function statsSeries(view: OnboardingView): StatsSeries[] {
     });
   return out;
 }
+
+/**
+ * Sample health values as Garmin would deliver them (see the real app's
+ * `DAILY_HEALTH_COLUMNS`). Unknown values are `null` and shown as "–".
+ */
+export type HealthMetric = {
+  key: string;
+  label: string;
+  value: number | null;
+  unit: string;
+  /** Average of the last 7 days, when known. */
+  avg7: number | null;
+  /** Short plain-language reading, e.g. "gut". */
+  note?: string;
+};
+
+export type HealthData = {
+  today: HealthMetric[];
+  sleep: {
+    hours: number;
+    score: number;
+    avg7: number;
+    phases: { label: string; minutes: number }[];
+    week: { day: string; score: number | null }[];
+  };
+  fitness: { label: string; value: string; note?: string }[];
+  activity: HealthMetric[];
+};
+
+export function healthData(view: OnboardingView): HealthData {
+  const age = view.profile.age;
+  return {
+    today: [
+      {
+        key: "rhr",
+        label: "Ruhepuls",
+        value: 52,
+        unit: "bpm",
+        avg7: 53,
+        note: "stabil",
+      },
+      {
+        key: "hrv",
+        label: "HRV",
+        value: 48,
+        unit: "ms",
+        avg7: 46,
+        note: "leicht über deinem Schnitt",
+      },
+      {
+        key: "bb",
+        label: "Body Battery",
+        value: 74,
+        unit: "",
+        avg7: 68,
+        note: "gut geladen",
+      },
+      {
+        key: "spo2",
+        label: "Blutsauerstoff",
+        value: 96,
+        unit: "%",
+        avg7: 96,
+        note: "normal",
+      },
+    ],
+    sleep: {
+      hours: 7.5,
+      score: 82,
+      avg7: 78,
+      phases: [
+        { label: "Tief", minutes: 86 },
+        { label: "Leicht", minutes: 232 },
+        { label: "REM", minutes: 98 },
+        { label: "Wach", minutes: 34 },
+      ],
+      week: [
+        { day: "Fr", score: 74 },
+        { day: "Sa", score: 81 },
+        { day: "So", score: 85 },
+        { day: "Mo", score: 70 },
+        { day: "Di", score: 77 },
+        { day: "Mi", score: null },
+        { day: "Do", score: 82 },
+      ],
+    },
+    fitness: [
+      { label: "VO2max", value: "51 ml/kg/min", note: "gut für dein Alter" },
+      {
+        label: "Fitnessalter",
+        value: age ? `29 Jahre (du bist ${age})` : "29 Jahre",
+      },
+      {
+        label: "Trainingsbereitschaft",
+        value: "78 von 100",
+        note: "bereit für ein hartes Training",
+      },
+      {
+        label: "Trainingszustand",
+        value: "Produktiv",
+        note: "deine Fitness steigt",
+      },
+    ],
+    activity: [
+      { key: "steps", label: "Schritte", value: 8412, unit: "", avg7: 9120 },
+      {
+        key: "int",
+        label: "Intensitätsminuten",
+        value: 96,
+        unit: "Min.",
+        avg7: 110,
+      },
+      {
+        key: "kcal",
+        label: "Kilokalorien",
+        value: 2420,
+        unit: "kcal",
+        avg7: 2380,
+      },
+    ],
+  };
+}
