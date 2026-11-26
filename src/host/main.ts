@@ -25,10 +25,13 @@ async function start() {
   );
   const { tools } = await client.listTools();
   // `?tool=show_arnold_onboarding` opens the setup wizard instead; only the
-  // UI entry tools are accepted (pair_garmin_watch takes `code` and `tz`).
+  // UI entry tools are accepted (pair_garmin_watch takes `code` and `tz`;
+  // the run and mobility cards take `card` and `workout_id`).
   const requested = new URLSearchParams(location.search).get("tool");
   const name =
     requested === "show_arnold_onboarding" ||
+    requested === "show_arnold_run" ||
+    requested === "show_arnold_mobility" ||
     requested === "delete_arnold_account" ||
     requested === "list_garmin_watches" ||
     requested === "pair_garmin_watch"
@@ -48,24 +51,32 @@ async function start() {
   // `?card=week` opens that card, the way the model passes `card`.
   const card = new URLSearchParams(location.search).get("card");
   const garmin = new URLSearchParams(location.search);
+  const workout = garmin.get("workout_id");
   const args =
     name === "pair_garmin_watch"
       ? {
           user_code: garmin.get("code") ?? "",
           timezone: garmin.get("tz") ?? "Europe/Berlin",
         }
-      : card && name === "show_arnold_dashboard"
+      : name === "show_arnold_run" || name === "show_arnold_mobility"
         ? {
-            card,
-            ...Object.fromEntries(
-              ["exercise_id", "metric", "workout_id"].flatMap((key) =>
-                new URLSearchParams(location.search).get(key)
-                  ? [[key, new URLSearchParams(location.search).get(key)]]
-                  : [],
-              ),
-            ),
+            card:
+              card ??
+              (name === "show_arnold_run" ? "run_today" : "mobility_today"),
+            ...(workout ? { workout_id: workout } : {}),
           }
-        : {};
+        : card && name === "show_arnold_dashboard"
+          ? {
+              card,
+              ...Object.fromEntries(
+                ["exercise_id", "metric", "workout_id"].flatMap((key) =>
+                  new URLSearchParams(location.search).get(key)
+                    ? [[key, new URLSearchParams(location.search).get(key)]]
+                    : [],
+                ),
+              ),
+            }
+          : {};
   const initial = (await client.callTool({
     name: tool!.name,
     arguments: args,

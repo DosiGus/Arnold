@@ -168,10 +168,15 @@ describe("today per kind over real Streamable HTTP", () => {
       (await call("get_mobility_overview", { timezone: tz })).structuredContent,
     );
     const routine = firstOpen(routinesOf(overview, "morning"))!;
-    const input = logMobilityInput(overview, routine, {
-      requestId: "ht-routine",
-      timezone: tz,
-    });
+    const input = logMobilityInput(
+      {
+        id: routine.session_id,
+        kind: routine.kind,
+        date: overview.today.date_local,
+      },
+      tz,
+      "ht-routine",
+    );
     expect((await call("log_mobility", input)).isError).toBeFalsy();
     // The same request again is the same write.
     expect((await call("log_mobility", input)).structuredContent).toMatchObject(

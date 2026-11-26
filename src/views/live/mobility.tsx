@@ -105,10 +105,15 @@ export function LiveMobilityScreen({
             onFinish: async () => {
               try {
                 await log.call(
-                  logMobilityInput(overview, routine, {
-                    requestId: draft.requestId,
+                  logMobilityInput(
+                    {
+                      id: routine.session_id,
+                      kind: routine.kind,
+                      date: overview.today.date_local,
+                    },
                     timezone,
-                  }),
+                    draft.requestId,
+                  ),
                 );
               } catch (e) {
                 return e instanceof ArnoldCallError
