@@ -43,10 +43,8 @@ const STRENGTH = [
   "training.environment",
 ];
 const RUN = [
-  "training.run.runs_per_week",
-  "training.run.base_minutes_per_week",
-  "training.run.longest_run_4w_min",
-  "training.run.preferred_environment",
+  "training.run.aims",
+  "training.run.background",
 ];
 
 const modules = (partial: Partial<OnboardingModules>): OnboardingModules => ({

@@ -153,10 +153,11 @@ describe("rollback script 006 → 5 → 6", () => {
       ).rows.map((r) => r.table_name as string);
     try {
       expect(await migrate(url.toString())).toEqual([
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
       ]);
       expect(await tables()).toEqual(["watch_plan_receipts"]);
       // 007 and 008 sit on top and have to go first.
+      await exec(await readFile("db/rollback/011_down.sql", "utf8"));
       await exec(await readFile("db/rollback/010_down.sql", "utf8"));
       await exec(await readFile("db/rollback/009_down.sql", "utf8"));
       await exec(await readFile("db/rollback/008_down.sql", "utf8"));
@@ -172,7 +173,7 @@ describe("rollback script 006 → 5 → 6", () => {
       ).toBe(5);
       expect(await tables()).toEqual([]);
       await expect(exec(script)).rejects.toThrow(/not applied/);
-      expect(await migrate(url.toString())).toEqual([6, 7, 8, 9, 10]);
+      expect(await migrate(url.toString())).toEqual([6, 7, 8, 9, 10, 11]);
       expect(await tables()).toEqual(["watch_plan_receipts"]);
     } finally {
       await asOwner((c) => c.query(`drop database ${name} with (force)`));

@@ -7,6 +7,10 @@
  */
 import type { OnboardingRun } from "../../shared/onboarding-contract.js";
 import type { RunService } from "../run/service.js";
+import {
+  RUN_ENVIRONMENT_WITHOUT_ANSWER,
+  runsPerWeekOf,
+} from "../../shared/run-start.js";
 
 /**
  * The run goal the run profile stores when the setup named none. Since
@@ -20,10 +24,17 @@ export const RUN_GOAL_WITHOUT_ANSWER = "fitness" as const;
 function wanted(run: OnboardingRun) {
   return {
     goal: run.goal ?? RUN_GOAL_WITHOUT_ANSWER,
-    runs_per_week: run.runs_per_week,
-    base_minutes_per_week: run.base_minutes_per_week,
-    longest_run_4w_min: run.longest_run_4w_min,
-    preferred_environment: run.preferred_environment,
+    // Planning settings only: a cautious start from the running status when
+    // the user named no number. Minutes and the longest run stay unknown.
+    runs_per_week: runsPerWeekOf(run) ?? 2,
+    preferred_environment:
+      run.preferred_environment ?? RUN_ENVIRONMENT_WITHOUT_ANSWER,
+    ...(run.base_minutes_per_week !== undefined
+      ? { base_minutes_per_week: run.base_minutes_per_week }
+      : {}),
+    ...(run.longest_run_4w_min !== undefined
+      ? { longest_run_4w_min: run.longest_run_4w_min }
+      : {}),
     ...(run.race_date !== undefined ? { race_date: run.race_date } : {}),
     ...(run.target_time_s !== undefined
       ? { target_time_s: run.target_time_s }

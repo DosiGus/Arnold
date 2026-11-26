@@ -24,6 +24,7 @@ describe("analytics engine boundaries", () => {
       "index.ts",
       "load.ts",
       "period.ts",
+      "plan-insights.ts",
       "plan-quality.ts",
       "plans.ts",
       "progress.ts",

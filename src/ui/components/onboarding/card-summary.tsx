@@ -100,22 +100,15 @@ export function fieldValue(
       return training.environment
         ? ENVIRONMENT_LABEL[training.environment]
         : undefined;
-    case "training.run.runs_per_week":
-      return training.run
+    case "training.run.aims":
+    case "training.run.background":
+      return training.run?.runs_per_week !== undefined
         ? `${training.run.runs_per_week} pro Woche`
-        : undefined;
-    case "training.run.base_minutes_per_week":
-      return training.run
-        ? `${training.run.base_minutes_per_week} Minuten`
-        : undefined;
-    case "training.run.longest_run_4w_min":
-      return training.run
-        ? `${training.run.longest_run_4w_min} Minuten`
-        : undefined;
-    case "training.run.preferred_environment":
-      return training.run
-        ? (RUN_PLACE[training.run.preferred_environment] ?? "Angegeben")
-        : undefined;
+        : training.run
+          ? "Angegeben"
+          : undefined;
+    case "training.job":
+      return training.job ? "Angegeben" : undefined;
     case "training.mobility.stiff_areas":
       return training.mobility?.wants
         ? training.mobility.stiff_areas.length

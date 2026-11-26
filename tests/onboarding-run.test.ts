@@ -146,11 +146,17 @@ describe("the contract", () => {
     expect(OnboardingProfileSchema.parse(old)).toEqual(old);
   });
 
-  it("refuses run details with a missing required answer or a wrong value", () => {
+  it("keeps the run numbers optional and refuses wrong values", () => {
+    // Since 26.11.2026 the card asks the running status instead of minutes:
+    // the numbers are optional, a wrong value is still refused.
     const { base_minutes_per_week: _minutes, ...noMinutes } = RUN;
-    const { longest_run_4w_min: _longest, ...noLongest } = RUN;
-    expect(OnboardingRunSchema.safeParse(noMinutes).success).toBe(false);
-    expect(OnboardingRunSchema.safeParse(noLongest).success).toBe(false);
+    expect(OnboardingRunSchema.safeParse(noMinutes).success).toBe(true);
+    expect(
+      OnboardingRunSchema.safeParse({
+        aims: ["faster"],
+        background: { recent: "lt10", years: "1to3", pause: "lt3m" },
+      }).success,
+    ).toBe(true);
     expect(
       OnboardingRunSchema.safeParse({ ...RUN, goal: "marathon" }).success,
     ).toBe(false);
@@ -160,11 +166,9 @@ describe("the contract", () => {
     expect(
       OnboardingRunSchema.safeParse({ ...RUN, tempo_s_per_km: 300 }).success,
     ).toBe(false);
-    expect(
-      OnboardingProfilePatchSchema.safeParse({
-        training: { run: { goal: "5k" } },
-      }).success,
-    ).toBe(false);
+    expect(OnboardingRunSchema.safeParse({ aims: ["marathon"] }).success).toBe(
+      false,
+    );
   });
 
   it("merges run details and removes them with null", () => {
@@ -279,21 +283,35 @@ describe("the run gate (fail closed)", () => {
     expect(saved.state!.run_setup).toEqual({ required: true, ready: false });
   });
 
-  it("refuses a patch with incomplete run details and stores nothing", async () => {
+  it("keeps the gate closed while the running status is incomplete", async () => {
     const service = createFixtureOnboarding().onboarding;
     const claim = await startSetup(service);
-    const refused = await service.updateProfile({
+    const saved = await service.updateProfile({
       request_id: rid(),
       ...claim,
-      profile: {
-        training: { primary_goal: "endurance_running", run: { goal: "5k" } },
-      },
+      profile: profileWith(
+        { primary_goal: "endurance_running" },
+        { aims: ["longer"], background: { recent: "none" } },
+      ),
     });
-    expect(refused.ok).toBe(false);
-    expect(refused.error?.code).toBe("VALIDATION_ERROR");
-    const state = await service.getOnboardingState(claim);
-    expect(state.session.profile.training.primary_goal).toBeNull();
-    expect(state.session.profile.training.run).toBeUndefined();
+    expect(saved.ok).toBe(true);
+    expect(saved.state!.run_setup).toEqual({ required: true, ready: false });
+    expect(saved.state!.progress.missing_fields).toEqual([
+      "training.run.background",
+    ]);
+    const done = await service.updateProfile({
+      request_id: rid(),
+      ...claim,
+      profile: profileWith(
+        { primary_goal: "endurance_running" },
+        {
+          aims: ["longer"],
+          background: { recent: "none", years: "lt1", pause: "gt12m" },
+        },
+      ),
+    });
+    expect(done.state!.run_setup).toEqual({ required: true, ready: true });
+    expect(done.state!.progress.can_request_plan).toBe(true);
   });
 
   it("opens the gate with the run details and hands them to ChatGPT", async () => {

@@ -329,7 +329,7 @@ describe("rollback script 007 → 6 → 7", () => {
       ).rows.map((r) => r.table_name as string);
     try {
       expect(await migrate(url.toString())).toEqual([
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
       ]);
       expect(await tables()).toEqual(["plan_adjustments"]);
       const userId = `usr_${randomUUID()}`;
@@ -350,6 +350,7 @@ describe("rollback script 007 → 6 → 7", () => {
          values ($1, 'w1', 'temp', '2026-11-17', 'Europe/Berlin', 'completed', 'chat', $2, $2, 1)`,
         [userId, STAMP],
       );
+      await exec(await readFile("db/rollback/011_down.sql", "utf8"));
       await exec(await readFile("db/rollback/010_down.sql", "utf8"));
       await exec(await readFile("db/rollback/009_down.sql", "utf8"));
       await exec(await readFile("db/rollback/008_down.sql", "utf8"));
@@ -371,7 +372,7 @@ describe("rollback script 007 → 6 → 7", () => {
           .rows,
       ).toEqual([{ workout_id: "w1", plan_version_id: null }]);
       await expect(exec(script)).rejects.toThrow(/not applied/);
-      expect(await migrate(url.toString())).toEqual([7, 8, 9, 10]);
+      expect(await migrate(url.toString())).toEqual([7, 8, 9, 10, 11]);
       expect(await tables()).toEqual(["plan_adjustments"]);
     } finally {
       await asOwner((c) => c.query(`drop database ${name} with (force)`));

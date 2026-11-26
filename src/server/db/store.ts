@@ -113,6 +113,7 @@ const ID_COLUMN = {
  */
 const JSON_COLUMNS: ReadonlySet<string> = new Set([
   "alarm_settings",
+  "explanation",
   "template",
   "prescription",
   "splits_100m",
@@ -165,7 +166,12 @@ async function readDataset(
       description: null,
     })),
     exercises: rows.exercises,
-    plans: rows.plans,
+    // A plan without an explanation (null, migration 011) reads back without
+    // the field, so rows and receipts written before the column still match.
+    plans: (rows.plans as Record<string, unknown>[]).map(
+      ({ explanation, ...row }) =>
+        explanation == null ? row : { ...row, explanation },
+    ),
     planItems: rows.planItems,
     // Absent rather than null without a watch, so rows and receipts written
     // before the column existed still compare equal.

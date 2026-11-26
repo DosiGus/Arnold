@@ -47,6 +47,19 @@ Festlegungen des Produkts, keine Forschungsergebnisse:
 - **Startgewichte** schätzt der Server in der Einrichtung bewusst vorsichtig.
 - **Volumen-, Zeit- und Namensregeln** in `planungsregeln.md`.
 
+## 4a. Wochensätze pro Muskelgruppe
+
+Die Planerklärung zeigt die direkten Arbeitssätze pro Muskelgruppe und Woche neben einem Rahmen, der zur Erfahrung passt. Arnold zählt die Sätze selbst aus dem Plan; ChatGPT schreibt keine Satzzahlen in die Erklärung.
+
+| Erfahrung       | Sätze pro Woche |
+| --------------- | --------------- |
+| Anfänger        | 6–10            |
+| Fortgeschritten | 10–16           |
+| Erfahren        | 12–20           |
+
+- Warum dieser Rahmen: Muskelaufbau profitierte ab etwa 10 Wochensätzen deutlich (ACSM 2026), mehr Sätze bringen mit abnehmendem Zusatznutzen mehr (Pelland 2025). Anfänger kommen mit weniger aus, weil schon wenig Training ein neuer Reiz ist (Faustregel). Über 20 Sätze nur auf Wunsch.
+- Liegt eine Muskelgruppe darunter, nennt die Erklärung den Grund in einem Satz (`volume_notes`), zum Beispiel „wird bei Grundübungen mittrainiert“ oder „kleiner Muskel, darf am unteren Ende bleiben“.
+
 ## 5. Grenzen
 
 - Die Studien betreffen gesunde Erwachsene, überwiegend junge Männer, über Wochen bis Monate. Einzelne Menschen reagieren unterschiedlich.

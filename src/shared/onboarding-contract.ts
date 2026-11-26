@@ -37,6 +37,7 @@
  * activates that plan, can complete a setup.
  */
 import { z } from "zod";
+import { PlanExplanationSchema } from "./plan-explanation.js";
 import { toolErrorSchema } from "./write-recovery.js";
 import {
   ArnoldExecutionModeSchema,
@@ -72,9 +73,12 @@ import {
   MobilityPositionSchema,
 } from "./mobility-catalog.js";
 import {
+  MobilityMorningMinutesSchema,
   MobilityPreferenceSchema,
   MobilityWantedPreferenceSchema,
+  type MobilityWantedPreference,
 } from "./mobility-contract.js";
+import type { MobilityArea } from "./mobility-catalog.js";
 import { WEEKDAYS, WeekdaySchema, type Weekday } from "./weekdays.js";
 
 export {
@@ -448,10 +452,21 @@ export const OnboardingModulesSchema = z
     running: z.boolean(),
     mobility: z.boolean(),
     morning_routine: z.boolean(),
+    /**
+     * Whether the user wants mobility sessions besides (or instead of) the
+     * morning routine. Set by the setup card, which asks the two as separate
+     * areas; absent in older setups, where mobility without a morning
+     * routine means sessions.
+     */
+    mobility_sessions: z.boolean().optional(),
   })
   .refine(
     (modules) => modules.mobility || !modules.morning_routine,
     "Die Morgenroutine gehört zu Mobility.",
+  )
+  .refine(
+    (modules) => modules.mobility || modules.mobility_sessions !== true,
+    "Mobility-Einheiten gehören zu Mobility.",
   );
 export type OnboardingModules = z.infer<typeof OnboardingModulesSchema>;
 
@@ -478,16 +493,185 @@ export const PERSON_BASICS = [
 ] as const;
 
 /**
+ * Training status as the setup card asks it (Kevin, 26.11.2026): how much
+ * the user trained in the last three months, for how long overall, and the
+ * last longer break. Filled step by step, so every part is optional; the
+ * break only matters when the last months were not regular.
+ *
+ * Strength and running share the years and the break; "recent" differs:
+ * strength asks regular / irregular / none, running asks for more or fewer
+ * than ten runs.
+ */
+export const STRENGTH_RECENT = ["regular", "irregular", "none"] as const;
+export const RUN_RECENT = ["gt10", "lt10", "none"] as const;
+export const BACKGROUND_YEARS = ["lt1", "1to3", "gt3"] as const;
+export const BACKGROUND_PAUSES = ["none", "lt3m", "3to12m", "gt12m"] as const;
+const backgroundShape = {
+  years: z.enum(BACKGROUND_YEARS).optional(),
+  pause: z.enum(BACKGROUND_PAUSES).optional(),
+};
+export const StrengthBackgroundSchema = z.strictObject({
+  recent: z.enum(STRENGTH_RECENT).optional(),
+  ...backgroundShape,
+});
+export type StrengthBackground = z.infer<typeof StrengthBackgroundSchema>;
+export const RunBackgroundSchema = z.strictObject({
+  recent: z.enum(RUN_RECENT).optional(),
+  ...backgroundShape,
+});
+export type RunBackground = z.infer<typeof RunBackgroundSchema>;
+export type TrainingBackground = StrengthBackground | RunBackground;
+
+/** Whether the last months count as regular training (no break question). */
+const trainedRegularly = (b: TrainingBackground) =>
+  b.recent === "regular" || b.recent === "gt10";
+
+/** The break question only matters when the last months were not regular. */
+export const backgroundNeedsPause = (b: TrainingBackground | undefined) =>
+  b?.recent !== undefined && !trainedRegularly(b);
+
+/** All parts the card asks are answered. */
+export const isBackgroundComplete = (b: TrainingBackground | undefined) =>
+  b?.recent !== undefined &&
+  b.years !== undefined &&
+  (!backgroundNeedsPause(b) || b.pause !== undefined);
+
+/**
+ * The strength level a complete training status stands for. Cautious on
+ * purpose: under a year, or irregular training after a break of three months
+ * or more, counts as beginner; over three years of regular training as
+ * advanced. Unknown is no level (null), never a guess.
+ */
+export function experienceOf(
+  b: TrainingBackground | undefined,
+): ExperienceLevel | null {
+  if (!b || !isBackgroundComplete(b)) return null;
+  if (b.years === "lt1") return "beginner";
+  if (!trainedRegularly(b) && b.pause !== "none" && b.pause !== "lt3m")
+    return "beginner";
+  return b.years === "gt3" ? "advanced" : "intermediate";
+}
+
+/** The running goals of the card; several may be chosen. */
+export const RUN_AIMS = ["fitness", "faster", "longer"] as const;
+export const RunAimSchema = z.enum(RUN_AIMS);
+export type RunAim = z.infer<typeof RunAimSchema>;
+
+/** Everyday activity ("Dein Alltag"), asked with mobility. */
+export const DAILY_ACTIVITIES = [
+  "sitting",
+  "moving",
+  "physical",
+  "mixed",
+] as const;
+export const DailyActivitySchema = z.enum(DAILY_ACTIVITIES);
+export type DailyActivity = z.infer<typeof DailyActivitySchema>;
+
+/**
+ * Mobility goals of the card ("Hauptziel Mobility"), several allowed. They
+ * map to the stiff areas of the mobility catalog (`stiffAreasOf`); "general"
+ * is the general routine without named areas (D-08).
+ */
+export const MOBILITY_FOCUS = [
+  "neck",
+  "lower_back",
+  "hips",
+  "knees",
+  "ankles",
+  "general",
+] as const;
+export const MobilityFocusSchema = z.enum(MOBILITY_FOCUS);
+export type MobilityFocus = z.infer<typeof MobilityFocusSchema>;
+const FOCUS_AREAS: Record<MobilityFocus, readonly MobilityArea[]> = {
+  neck: ["neck", "shoulders"],
+  lower_back: ["lower_back"],
+  hips: ["hips"],
+  knees: ["hamstrings"],
+  ankles: ["calves_ankles"],
+  general: [],
+};
+export const stiffAreasOf = (
+  focus: readonly MobilityFocus[],
+): MobilityArea[] => [...new Set(focus.flatMap((f) => FOCUS_AREAS[f]))];
+
+/** "An eigenen Tagen" or "An Trainingstagen mit einplanen" (Kevin, 26.11.2026). */
+export const CARD_MOBILITY_PLACEMENTS = ["own_days", "after_strength"] as const;
+export const CardMobilityPlacementSchema = z.enum(CARD_MOBILITY_PLACEMENTS);
+export type CardMobilityPlacement = z.infer<typeof CardMobilityPlacementSchema>;
+
+/**
+ * Standard values for what the card does not ask (Kevin, 26.11.2026): two
+ * sessions a week, 20 minutes on own days and 15 after strength, Arnold
+ * places them while the user has not chosen; the morning routine every day.
+ * Changeable later in chat or in the plan.
+ */
+export const CARD_MOBILITY_DEFAULTS = {
+  per_week: 2,
+  own_days_minutes: 20,
+  after_strength_minutes: 15,
+  morning_weekdays: WEEKDAYS,
+} as const;
+
+/** The mobility answer the card's choices stand for; null while nothing is chosen. */
+export function cardMobility(
+  training: Pick<
+    Training,
+    "modules" | "mobility_focus" | "mobility_placement" | "morning_minutes"
+  >,
+): MobilityWantedPreference | null {
+  const modules = training.modules;
+  if (!modules) return null;
+  const focus = training.mobility_focus ?? [];
+  const sessions =
+    modules.mobility_sessions && focus.length
+      ? {
+          placement: training.mobility_placement ?? "arnold_decides",
+          per_week: CARD_MOBILITY_DEFAULTS.per_week,
+          minutes:
+            training.mobility_placement === "own_days"
+              ? CARD_MOBILITY_DEFAULTS.own_days_minutes
+              : CARD_MOBILITY_DEFAULTS.after_strength_minutes,
+        }
+      : null;
+  const morning =
+    modules.morning_routine && training.morning_minutes
+      ? {
+          weekdays: [...CARD_MOBILITY_DEFAULTS.morning_weekdays],
+          minutes: training.morning_minutes,
+        }
+      : null;
+  if (!sessions && !morning) return null;
+  return {
+    wants: true,
+    morning,
+    sessions,
+    stiff_areas: sessions ? stiffAreasOf(focus) : [],
+  } as MobilityWantedPreference;
+}
+
+/** Places the card offers; several may be chosen. */
+export const TRAINING_PLACES = ["gym", "home", "outdoor"] as const;
+export const TrainingPlaceSchema = z.enum(TRAINING_PLACES);
+export type TrainingPlace = z.infer<typeof TrainingPlaceSchema>;
+
+/** One place is that place, several are "gemischt". */
+export const environmentOfPlaces = (
+  places: readonly TrainingPlace[],
+): TrainingEnvironment | null =>
+  places.length === 0 ? null : places.length === 1 ? places[0]! : "mixed";
+
+/**
  * The run details of the running module.
  *
  * Field names are those of the run profile (`update_run_profile`). The
  * setup keeps them with the other answers and hands them to the run service
  * when it finishes; the run profile itself cannot be written before an
- * account is set up. Runs per week, weekly minutes, the longest run and the
- * environment are required: a plan with runs cannot be built without them,
- * and unknown is not 0. Since Onboarding 2.0 (D-01) the run goal is optional
- * and no longer tied to the main goal "Ausdauer und Laufen"; race date,
- * target time and reference stay optional.
+ * account is set up. Since 26.11.2026 the setup asks the running status
+ * and the running goals (`background`, `aims`); runs per week, weekly
+ * minutes, the longest run and the environment are kept when the user names
+ * them, and the hand-over derives a cautious start from the status
+ * otherwise (`run-profile.ts`). Race date, target time and reference stay
+ * optional.
  */
 export const OnboardingRunSchema = z.strictObject({
   goal: RunGoalSchema.optional(),
@@ -501,10 +685,18 @@ export const OnboardingRunSchema = z.strictObject({
       source: RunReferenceSourceSchema,
     })
     .optional(),
-  runs_per_week: z.number().int().min(1).max(7),
-  base_minutes_per_week: z.number().int().min(0).max(3000),
-  longest_run_4w_min: z.number().int().min(0).max(600),
-  preferred_environment: RunEnvironmentSchema,
+  /**
+   * Since 26.11.2026 optional: the card asks the training status instead
+   * (`background`). Given only when the user named them; unknown is unknown.
+   */
+  runs_per_week: z.number().int().min(1).max(7).optional(),
+  base_minutes_per_week: z.number().int().min(0).max(3000).optional(),
+  longest_run_4w_min: z.number().int().min(0).max(600).optional(),
+  preferred_environment: RunEnvironmentSchema.optional(),
+  /** Running status: runs in the last three months, years, last break. */
+  background: RunBackgroundSchema.optional(),
+  /** What the user wants from running (card, several allowed). */
+  aims: z.array(RunAimSchema).max(RUN_AIMS.length).optional(),
 });
 export type OnboardingRun = z.infer<typeof OnboardingRunSchema>;
 
@@ -535,6 +727,22 @@ export const TrainingSchema = z.strictObject({
   avoided_exercise_ids: z.array(StarterExerciseIdSchema).max(40).optional(),
   /** Weights the user knows; the start weights of the plan follow them. */
   known_loads: KnownLoadsSchema.optional(),
+  /**
+   * Strength status as the card asks it. When complete it decides
+   * `experience` (`experienceOf`); a chat answer may set `experience` alone.
+   */
+  strength_background: StrengthBackgroundSchema.optional(),
+  /** Places as chosen on the card; `environment` follows them. */
+  places: z.array(TrainingPlaceSchema).max(TRAINING_PLACES.length).optional(),
+  /** Everyday activity, asked with mobility ("Dein Alltag"). */
+  job: DailyActivitySchema.optional(),
+  /** Card answers the server builds `mobility` from (card mode only). */
+  mobility_focus: z
+    .array(MobilityFocusSchema)
+    .max(MOBILITY_FOCUS.length)
+    .optional(),
+  mobility_placement: CardMobilityPlacementSchema.optional(),
+  morning_minutes: MobilityMorningMinutesSchema.optional(),
   /**
    * Running, mobility and morning routine besides strength (D-01). Absent
    * in older setups: `modulesOf` derives them from the answers.
@@ -592,10 +800,8 @@ export type TrainingRequiredField = (typeof TRAINING_REQUIRED_FIELDS)[number];
 
 /** Run answers the running module cannot plan without (D-01). */
 export const RUN_REQUIRED_FIELDS = [
-  "training.run.runs_per_week",
-  "training.run.base_minutes_per_week",
-  "training.run.longest_run_4w_min",
-  "training.run.preferred_environment",
+  "training.run.aims",
+  "training.run.background",
 ] as const;
 
 /**
@@ -611,6 +817,20 @@ export const MOBILITY_REQUIRED_FIELDS = [
 export const MOBILITY_SESSIONS_REQUIRED_FIELDS = [
   "training.mobility.sessions",
 ] as const;
+/**
+ * The setup card asks mobility sessions and the morning routine as two areas
+ * (`modules.mobility_sessions` set). Its answers: the mobility goals and the
+ * everyday activity for sessions, the minutes for the morning. The server
+ * builds `training.mobility` from them and fills what the card does not ask
+ * with standard values (`cardMobility`, Kevin 26.11.2026).
+ */
+export const MOBILITY_CARD_REQUIRED_FIELDS = [
+  "training.mobility_focus",
+  "training.job",
+] as const;
+export const MORNING_CARD_REQUIRED_FIELDS = [
+  "training.morning_minutes",
+] as const;
 export const MORNING_REQUIRED_FIELDS = [
   "training.mobility.morning.minutes",
   "training.mobility.morning.weekdays",
@@ -624,6 +844,8 @@ export type RequiredProfileField =
   | (typeof RUN_REQUIRED_FIELDS)[number]
   | (typeof MOBILITY_REQUIRED_FIELDS)[number]
   | (typeof MOBILITY_SESSIONS_REQUIRED_FIELDS)[number]
+  | (typeof MOBILITY_CARD_REQUIRED_FIELDS)[number]
+  | (typeof MORNING_CARD_REQUIRED_FIELDS)[number]
   | (typeof MORNING_REQUIRED_FIELDS)[number];
 
 /** Strength only: what a profile without modules and answers trains. */
@@ -668,7 +890,14 @@ export function requiredFieldsFor(
     (field) => `training.${field}` as const,
   );
   if (modules.running) fields.push(...RUN_REQUIRED_FIELDS);
-  if (modules.mobility) {
+  if (modules.mobility_sessions !== undefined) {
+    // The setup card asks sessions and morning routine as two areas: each
+    // brings its own answers. A morning routine alone needs no stiff areas
+    // (an empty list is the general routine, D-08).
+    if (modules.mobility_sessions)
+      fields.push(...MOBILITY_CARD_REQUIRED_FIELDS);
+    if (modules.morning_routine) fields.push(...MORNING_CARD_REQUIRED_FIELDS);
+  } else if (modules.mobility) {
     fields.push(...MOBILITY_REQUIRED_FIELDS);
     if (modules.morning_routine) fields.push(...MORNING_REQUIRED_FIELDS);
     else fields.push(...MOBILITY_SESSIONS_REQUIRED_FIELDS);
@@ -694,7 +923,8 @@ export type PersonPatch = z.infer<typeof PersonPatchSchema>;
 
 export const TrainingPatchSchema = z
   .strictObject({
-    primary_goal: TrainingGoalSchema.optional(),
+    /** null clears the goal again: the card's goals are a multiple choice. */
+    primary_goal: TrainingGoalSchema.nullable().optional(),
     secondary_goals: z.array(TrainingGoalSchema).max(3).optional(),
     experience: ExperienceLevelSchema.optional(),
     days_per_week: DaysPerWeekSchema.optional(),
@@ -707,6 +937,17 @@ export const TrainingPatchSchema = z
     preferred_exercise_ids: z.array(StarterExerciseIdSchema).max(40).optional(),
     avoided_exercise_ids: z.array(StarterExerciseIdSchema).max(40).optional(),
     known_loads: KnownLoadsSchema.nullable().optional(),
+    /** Replaces the stored status; experience follows it once complete. */
+    strength_background: StrengthBackgroundSchema.nullable().optional(),
+    /** Replaces the stored places; environment follows them. */
+    places: z.array(TrainingPlaceSchema).max(TRAINING_PLACES.length).optional(),
+    job: DailyActivitySchema.nullable().optional(),
+    mobility_focus: z
+      .array(MobilityFocusSchema)
+      .max(MOBILITY_FOCUS.length)
+      .optional(),
+    mobility_placement: CardMobilityPlacementSchema.nullable().optional(),
+    morning_minutes: MobilityMorningMinutesSchema.nullable().optional(),
     modules: OnboardingModulesSchema.optional(),
     run: OnboardingRunSchema.nullable().optional(),
     /** null removes the answer again ("not asked"). */
@@ -1119,6 +1360,35 @@ export const ExerciseChoiceSchema = z.strictObject({
 });
 export type ExerciseChoice = z.infer<typeof ExerciseChoiceSchema>;
 
+/* ------------------------------------------------------------- plan insights */
+
+const IsoWeekdaySchema = z.number().int().min(1).max(7);
+export const PlanInsightsSchema = z.strictObject({
+  version: z.string(),
+  weekly_sets: z.array(
+    z.strictObject({
+      muscle_group: z.string(),
+      label: z.string(),
+      sets: nonnegativeInt,
+      min: nonnegativeInt.nullable(),
+      max: nonnegativeInt.nullable(),
+      /** The plan explanation's reason when the group is below its range. */
+      note: z.string().nullable(),
+    }),
+  ),
+  uncounted_exercise_ids: z.array(id),
+  week: z
+    .array(
+      z.strictObject({
+        weekday: IsoWeekdaySchema,
+        kinds: z.array(z.enum(["strength", "run", "mobility"])),
+      }),
+    )
+    .length(7),
+  morning_weekdays: z.array(IsoWeekdaySchema),
+});
+export type PlanInsights = z.infer<typeof PlanInsightsSchema>;
+
 /**
  * One onboarding state as every caller sees it: the session, what is possible
  * next, and the referenced plan when there is one.
@@ -1170,6 +1440,13 @@ export const OnboardingStateSchema = z.strictObject({
     .default({ required: false, ready: true }),
   /** What the setup may still ask, in order. Absent in older states. */
   open_questions: z.array(OpenQuestionSchema).default([]),
+  /**
+   * Arnold's figures for the plan card: weekly direct sets per muscle group
+   * against the range that fits the experience, and an example week.
+   * Computed from the referenced plan (`src/analytics/plan-insights.ts`);
+   * null without a plan.
+   */
+  plan_insights: PlanInsightsSchema.nullable().default(null),
   /** `production` when the setup belongs to a verified account. */
   mode: z.enum(["fixture", "production"]),
   setup_finish_available: z.boolean().default(false),
@@ -1305,6 +1582,11 @@ export const OnboardingToolInputs = {
     open_questions: z.array(freeText).max(10).optional(),
     /** Exercises outside the catalog, referenced by key in `sessions` (B11). */
     custom_exercises: z.array(CustomExerciseInputSchema).max(20).optional(),
+    /**
+     * Why the plan looks the way it does, in plain words (card "Erklärung
+     * zum Plan"). No set counts: Arnold counts them from the plan itself.
+     */
+    explanation: PlanExplanationSchema.optional(),
   }),
   get_onboarding_plan: z.object({}),
   confirm_onboarding_plan: z.object({
@@ -1410,6 +1692,19 @@ export const ENVIRONMENT_HINT: Record<TrainingEnvironment, string> = {
   mixed: "Mal Studio, mal zuhause.",
 };
 
+export const DAILY_ACTIVITY_LABEL: Record<DailyActivity, string> = {
+  sitting: "Viel sitzen",
+  moving: "Viel stehen oder gehen",
+  physical: "Körperlich anstrengend",
+  mixed: "Gemischt",
+};
+
+export const RUN_AIM_LABEL: Record<RunAim, string> = {
+  fitness: "Fit bleiben",
+  faster: "Schneller werden",
+  longer: "Länger laufen",
+};
+
 export const SEX_LABEL: Record<Sex, string> = {
   female: "Weiblich",
   male: "Männlich",
@@ -1484,10 +1779,11 @@ export const REQUIRED_FIELD_LABEL: Record<RequiredProfileField, string> = {
   "training.days_per_week": "Trainingstage",
   "training.session_minutes": "Zeit pro Training",
   "training.environment": "Trainingsort",
-  "training.run.runs_per_week": "Läufe pro Woche",
-  "training.run.base_minutes_per_week": "Laufminuten pro Woche",
-  "training.run.longest_run_4w_min": "Längster Lauf der letzten vier Wochen",
-  "training.run.preferred_environment": "Wo du läufst",
+  "training.run.aims": "Hauptziel Laufen",
+  "training.run.background": "Trainingsstand Laufen",
+  "training.job": "Alltag",
+  "training.mobility_focus": "Hauptziel Mobility",
+  "training.morning_minutes": "Dauer der Morgenroutine",
   "training.mobility.stiff_areas": "Steife Bereiche",
   "training.mobility.sessions": "Mobility-Einheiten",
   "training.mobility.morning.minutes": "Minuten der Morgenroutine",
@@ -1506,10 +1802,11 @@ export const MISSING_FIELD_CODE: Record<
   "training.days_per_week": "MISSING_DAYS_PER_WEEK",
   "training.session_minutes": "MISSING_SESSION_MINUTES",
   "training.environment": "MISSING_ENVIRONMENT",
-  "training.run.runs_per_week": "MISSING_RUN_DETAILS",
-  "training.run.base_minutes_per_week": "MISSING_RUN_DETAILS",
-  "training.run.longest_run_4w_min": "MISSING_RUN_DETAILS",
-  "training.run.preferred_environment": "MISSING_RUN_DETAILS",
+  "training.run.aims": "MISSING_RUN_DETAILS",
+  "training.run.background": "MISSING_RUN_DETAILS",
+  "training.job": "MISSING_MOBILITY_DETAILS",
+  "training.mobility_focus": "MISSING_MOBILITY_DETAILS",
+  "training.morning_minutes": "MISSING_MORNING_ROUTINE",
   "training.mobility.stiff_areas": "MISSING_MOBILITY_DETAILS",
   "training.mobility.sessions": "MISSING_MOBILITY_DETAILS",
   "training.mobility.morning.minutes": "MISSING_MORNING_ROUTINE",
@@ -1525,10 +1822,11 @@ export const FIELD_STEP: Record<RequiredProfileField, OnboardingStep> = {
   "training.days_per_week": "profile",
   "training.session_minutes": "profile",
   "training.environment": "profile",
-  "training.run.runs_per_week": "profile",
-  "training.run.base_minutes_per_week": "profile",
-  "training.run.longest_run_4w_min": "profile",
-  "training.run.preferred_environment": "profile",
+  "training.run.aims": "profile",
+  "training.run.background": "profile",
+  "training.job": "profile",
+  "training.mobility_focus": "profile",
+  "training.morning_minutes": "profile",
   "training.mobility.stiff_areas": "profile",
   "training.mobility.sessions": "profile",
   "training.mobility.morning.minutes": "profile",

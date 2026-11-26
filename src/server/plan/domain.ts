@@ -229,6 +229,7 @@ export function projectVersion(
     ...(runSessions.length ? { run_sessions: runSessions } : {}),
     // Likewise for mobility: a plan without it has no such field.
     ...(mobilitySessions.length ? { mobility_sessions: mobilitySessions } : {}),
+    ...(plan.explanation ? { explanation: plan.explanation } : {}),
     session_count: sessions.filter((s) =>
       s.exercises.some((e) => e.status === "active"),
     ).length,

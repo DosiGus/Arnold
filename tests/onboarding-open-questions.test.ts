@@ -80,10 +80,8 @@ describe("openQuestions", () => {
     // The run details are required answers of the running module (D-01).
     expect(missingRequiredFields(profile).map(String)).toEqual([
       ...ids(profile).slice(0, 4),
-      "training.run.runs_per_week",
-      "training.run.base_minutes_per_week",
-      "training.run.longest_run_4w_min",
-      "training.run.preferred_environment",
+      "training.run.aims",
+      "training.run.background",
     ]);
 
     profile = merged(profile, {

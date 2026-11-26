@@ -68,10 +68,10 @@ export function draftFromRun(run: OnboardingRun | undefined): RunDraft {
   if (!run) return RUN_DRAFT_DEFAULT;
   return {
     goal: run.goal,
-    runsPerWeek: run.runs_per_week,
-    baseMinutes: run.base_minutes_per_week,
-    longestMinutes: run.longest_run_4w_min,
-    environment: run.preferred_environment,
+    runsPerWeek: run.runs_per_week ?? RUN_DRAFT_DEFAULT.runsPerWeek,
+    baseMinutes: run.base_minutes_per_week ?? RUN_DRAFT_DEFAULT.baseMinutes,
+    longestMinutes: run.longest_run_4w_min ?? RUN_DRAFT_DEFAULT.longestMinutes,
+    environment: run.preferred_environment ?? RUN_DRAFT_DEFAULT.environment,
     raceDate: run.race_date ?? "",
     targetText: run.target_time_s ? durationText(run.target_time_s) : "",
     referenceMeters: run.reference ? String(run.reference.distance_m) : "",

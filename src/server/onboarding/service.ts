@@ -46,7 +46,9 @@ import {
   OnboardingToolInputs,
   splitsForDays,
   stepForStatus,
+  WEEKDAYS,
   type HandoffStatus,
+  type PlanInsights,
   type OnboardingErrorCode,
   type OnboardingHandoff,
   type OnboardingProfile,
@@ -111,6 +113,7 @@ import {
   checkPlanQuality,
   type PlanQualityResult,
 } from "../../analytics/plan-quality.js";
+import { buildPlanInsights } from "../../analytics/plan-insights.js";
 
 export class OnboardingError extends Error {
   constructor(
@@ -740,6 +743,9 @@ export class OnboardingService {
       split_options: splitsForDays(session.profile.training.days_per_week),
       run_setup: runSetup,
       open_questions: ended ? [] : openQuestions(session.profile, runSetup),
+      plan_insights: plan
+        ? planInsights(plan, session.profile, await this.catalog())
+        : null,
       mode: this.mode,
       setup_finish_available: this.options.setupFinishAvailable ?? false,
       can_write_plan: Boolean(this.options.plans),
@@ -1257,6 +1263,7 @@ export class OnboardingService {
             ...(input.custom_exercises?.length
               ? { custom_exercises: input.custom_exercises }
               : {}),
+            ...(input.explanation ? { explanation: input.explanation } : {}),
           },
           context,
         );
@@ -2018,6 +2025,74 @@ function planQuality(
       goal: training.primary_goal,
     },
   });
+}
+
+/** Arnold's figures for the plan card, from the referenced plan. */
+function planInsights(
+  plan: TrainingPlanVersion,
+  profile: OnboardingProfile,
+  catalog: readonly ArnoldExercise[],
+): PlanInsights {
+  const muscles = new Map(
+    catalog.map((e) => [e.exercise_id, muscleGroupOf(e.primary_muscle)]),
+  );
+  const training = profile.training;
+  const insights = buildPlanInsights({
+    sessions: plan.sessions
+      .map((session) => ({
+        session_id: session.session_id,
+        exercises: session.exercises
+          .filter((item) => item.status === "active")
+          .map((item) => ({
+            exercise_id: item.exercise_id,
+            target_sets: item.target_sets ?? null,
+          })),
+      }))
+      .filter((session) => session.exercises.length > 0),
+    runs: (plan.run_sessions ?? [])
+      .filter((run) => run.status === "active")
+      .map((run) => ({ preferred_weekday: run.preferred_weekday })),
+    mobility: (plan.mobility_sessions ?? [])
+      .filter((routine) => routine.status === "active")
+      .map((routine) => ({
+        kind: routine.kind,
+        placement: routine.placement,
+        weekdays: routine.weekdays,
+        after_session_id: routine.after_session_id,
+      })),
+    muscleOf: (id) =>
+      muscles.get(id) ??
+      muscleGroupOf(
+        plan.sessions
+          .flatMap((s) => s.exercises)
+          .find((e) => e.exercise_id === id)?.exercise_primary_muscle,
+      ),
+    groups: MUSCLE_GROUPS,
+    experience: training.experience,
+    trainingDays: (training.training_days ?? []).map(
+      (day) => WEEKDAYS.indexOf(day) + 1,
+    ),
+  });
+  const notes = new Map(
+    (plan.explanation?.volume_notes ?? []).map((n) => [n.muscle_group, n.note]),
+  );
+  return {
+    ...insights,
+    weekly_sets: insights.weekly_sets.map((row) => ({
+      ...row,
+      label:
+        MUSCLE_GROUP_LABEL[
+          row.muscle_group as keyof typeof MUSCLE_GROUP_LABEL
+        ] ?? row.muscle_group,
+      note:
+        row.min !== null && row.sets < row.min
+          ? (notes.get(row.muscle_group as never) ?? null)
+          : null,
+    })),
+    uncounted_exercise_ids: [...insights.uncounted_exercise_ids],
+    week: insights.week.map((day) => ({ ...day, kinds: [...day.kinds] })),
+    morning_weekdays: [...insights.morning_weekdays],
+  };
 }
 
 /**

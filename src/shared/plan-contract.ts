@@ -20,6 +20,7 @@
  * the client states which revision it edited, and the server refuses anything
  * else.
  */
+import { PlanExplanationSchema } from "./plan-explanation.js";
 import { z } from "zod";
 import { toolErrorSchema } from "./write-recovery.js";
 import {
@@ -208,6 +209,8 @@ export const TrainingPlanVersionSchema = z.strictObject({
   run_sessions: z.array(PlanRunSessionSchema).optional(),
   /** Mobility routines; absent while the version has none. */
   mobility_sessions: z.array(PlanMobilitySessionSchema).optional(),
+  /** Why the plan looks the way it does; absent when none was written. */
+  explanation: PlanExplanationSchema.optional(),
   session_count: nonnegativeInt,
   exercise_count: nonnegativeInt,
   /** True while content may still be edited, i.e. exactly for a draft. */
@@ -603,6 +606,8 @@ export const PlanWriteInputs = {
     plan_family_id: id.optional(),
     /** Exercises outside the catalog, referenced by key in `sessions`. */
     custom_exercises: z.array(CustomExerciseInputSchema).max(20).optional(),
+    /** Why the plan looks the way it does (proposal card). */
+    explanation: PlanExplanationSchema.optional(),
   }),
   create_plan_version: z.strictObject({
     ...request,

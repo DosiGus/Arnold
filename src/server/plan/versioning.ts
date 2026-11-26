@@ -21,6 +21,7 @@
  *   - a new plan family re-issues its session ids too;
  *   - nothing is ever physically deleted: removal is `status: "removed"`.
  */
+import type { PlanExplanation } from "../../shared/plan-explanation.js";
 import { buildMobilityRoutine } from "../../analytics/mobility/timing.js";
 import {
   ArnoldPlanItemSchema,
@@ -228,6 +229,7 @@ export function draftRow(
     split_key?: string | null;
     goal_key?: string | null;
     days_per_week?: number | null;
+    explanation?: PlanExplanation;
   },
 ): ArnoldPlanVersion {
   return ArnoldPlanVersionSchema.parse({
@@ -241,6 +243,7 @@ export function draftRow(
     days_per_week: input.days_per_week ?? null,
     activated_at_utc: null,
     retired_at_utc: null,
+    ...(input.explanation ? { explanation: input.explanation } : {}),
     created_at_utc: ctx.now,
     updated_at_utc: ctx.now,
     row_revision: 1,
@@ -1427,6 +1430,7 @@ export function buildNewPlan(
     days_per_week?: number;
     sessions: readonly TrainingSessionInput[];
     plan_family_id?: string;
+    explanation?: PlanExplanation;
   },
 ): DraftModel {
   const family = input.plan_family_id ?? ctx.id();
@@ -1444,6 +1448,7 @@ export function buildNewPlan(
       split_key: input.split_key ?? null,
       goal_key: input.goal_key ?? null,
       days_per_week: input.days_per_week ?? null,
+      explanation: input.explanation,
     }),
   );
   for (const session of input.sessions) addSession(model, ctx, session);

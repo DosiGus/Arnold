@@ -19,6 +19,7 @@
 import type { ArnoldExercise } from "./arnold-schema-v1.js";
 import {
   BODY_AREA_LABEL,
+  DAILY_ACTIVITY_LABEL,
   ENVIRONMENT_LABEL,
   EQUIPMENT_LABEL,
   EXPERIENCE_LABEL,
@@ -36,6 +37,10 @@ import {
   KNOWN_LOAD_ANCHORS,
   KNOWN_LOAD_GROUPS,
   modulesOf,
+  cardMobility,
+  environmentOfPlaces,
+  experienceOf,
+  isBackgroundComplete,
   RUN_REQUIRED_FIELDS,
   requiredFieldsFor,
   splitsForDays,
@@ -56,6 +61,7 @@ import {
 } from "./onboarding-contract.js";
 import { exercisesFor, starterExercise } from "./exercise-starter-catalog.js";
 import { MOBILITY_CATALOG } from "./mobility-catalog.js";
+import { runsPerWeekOf } from "./run-start.js";
 import { type MobilityPreference } from "./mobility-contract.js";
 
 /**
@@ -76,8 +82,21 @@ export function runSetupState(training: OnboardingProfile["training"]): {
   ready: boolean;
 } {
   const required = wantsRunning(training);
-  return { required, ready: !required || training.run !== undefined };
+  const run = training.run;
+  const ready =
+    run !== undefined &&
+    (hasRunNumbers(run) ||
+      (((run.aims?.length ?? 0) > 0 || run.goal !== undefined) &&
+        isBackgroundComplete(run.background)));
+  return { required, ready: !required || ready };
 }
+
+/** Runs, minutes, longest run and place, as a chat answer names them. */
+const hasRunNumbers = (run: OnboardingProfile["training"]["run"]) =>
+  run?.runs_per_week !== undefined &&
+  run.base_minutes_per_week !== undefined &&
+  run.longest_run_4w_min !== undefined &&
+  run.preferred_environment !== undefined;
 
 /** Whether a required field holds an answer. Unknown is unanswered, never 0. */
 function isAnswered(
@@ -96,12 +115,26 @@ function isAnswered(
     case "training.session_minutes":
     case "training.environment":
       return training[field.slice("training.".length) as "experience"] != null;
-    // The run details are one answer: stored together or not at all.
-    case "training.run.runs_per_week":
-    case "training.run.base_minutes_per_week":
-    case "training.run.longest_run_4w_min":
-    case "training.run.preferred_environment":
-      return training.run !== undefined;
+    // Running: the card's goals and status. A run profile named in full
+    // (runs, minutes, longest run, place) answers both, as it did before the
+    // card asked the status.
+    case "training.run.aims":
+      return (
+        (training.run?.aims?.length ?? 0) > 0 ||
+        training.run?.goal !== undefined ||
+        hasRunNumbers(training.run)
+      );
+    case "training.run.background":
+      return (
+        isBackgroundComplete(training.run?.background) ||
+        hasRunNumbers(training.run)
+      );
+    case "training.job":
+      return training.job !== undefined;
+    case "training.mobility_focus":
+      return (training.mobility_focus?.length ?? 0) > 0;
+    case "training.morning_minutes":
+      return training.morning_minutes !== undefined;
     case "training.mobility.stiff_areas":
       return mobility !== undefined;
     case "training.mobility.sessions":
@@ -151,7 +184,7 @@ export const isProfileComplete = (profile: OnboardingProfile) =>
   profile.path !== null && missingRequiredFields(profile).length === 0;
 
 const RUN_QUESTION =
-  "Fürs Laufen: Wie oft und wie viele Minuten pro Woche läufst du, wie lang war dein längster Lauf zuletzt und wo läufst du?";
+  "Laufen: fit bleiben, schneller oder länger? Wie oft bist du in den letzten 3 Monaten gelaufen, seit wann läufst du, und gab es eine längere Pause?";
 const MORNING_QUESTION =
   "An welchen Tagen soll die Morgenroutine sein, und wie lange – 5, 10 oder 15 Minuten?";
 
@@ -174,10 +207,14 @@ const REQUIRED_QUESTION: Record<RequiredProfileField, string> = {
   "training.session_minutes": "Wie lange darf ein Training dauern?",
   "training.environment":
     "Wo trainierst du – im Studio, zuhause, draußen oder gemischt?",
-  "training.run.runs_per_week": RUN_QUESTION,
-  "training.run.base_minutes_per_week": RUN_QUESTION,
-  "training.run.longest_run_4w_min": RUN_QUESTION,
-  "training.run.preferred_environment": RUN_QUESTION,
+  "training.run.aims": RUN_QUESTION,
+  "training.run.background": RUN_QUESTION,
+  "training.mobility_focus":
+    "Was soll Mobility bringen – Nacken und Schultern, unterer Rücken, Hüfte, Knie, Füße oder allgemein beweglicher?",
+  "training.morning_minutes":
+    "Wie lang darf die Morgenroutine sein – 5, 10 oder 15 Minuten?",
+  "training.job":
+    "Wie sieht dein Alltag aus – viel sitzen, viel stehen oder gehen, körperlich anstrengend oder gemischt?",
   "training.mobility.stiff_areas":
     "Wo fühlst du dich steif? Wenn nirgends besonders, mache ich eine allgemeine Routine.",
   "training.mobility.sessions":
@@ -704,12 +741,16 @@ export function buildBrief(
     );
   if (runs)
     constraints.push(
-      "Der Nutzer möchte laufen und hat seine Laufangaben in der Einrichtung gemacht. Sie stehen im Feld running (optional Ziel, Läufe pro Woche, Minuten pro Woche, längster Lauf, Umfeld, optional Wettkampf, Zielzeit, Referenz) und werden beim Abschluss der Einrichtung ins Laufprofil übernommen. Nicht noch einmal abfragen.",
-      "Nach dem Kraftvorschlag Laufeinheiten in denselben Entwurf legen: update_plan_draft mit add_run_session (session_name, run_type, optional preferred_weekday). Anzahl der Läufe = Läufe pro Woche aus dem Laufprofil, im Zweifel eher weniger; höchstens zwei harte Läufe pro Woche. Kraft- und Lauftage so verteilen, dass sie zu den gewählten Trainingstagen passen.",
+      "Der Nutzer möchte laufen und hat seine Laufangaben in der Einrichtung gemacht. Sie stehen im Feld running: aims (fitness = fit bleiben, faster = schneller werden, longer = länger laufen), background (recent: Läufe in den letzten 3 Monaten gt10 = mehr als 10, lt10 = weniger als 10, none = gar nicht; years: Erfahrung lt1, 1to3, gt3; pause: letzte längere Pause), optional Läufe und Minuten pro Woche, längster Lauf, Umfeld, Wettkampf, Zielzeit, Referenz. Sie werden beim Abschluss ins Laufprofil übernommen. Nicht noch einmal abfragen; fehlende Minuten sind unbekannt, nicht schätzen.",
+      `Nach dem Kraftvorschlag Laufeinheiten in denselben Entwurf legen: update_plan_draft mit add_run_session (session_name, run_type, optional preferred_weekday). Anzahl der Läufe: ${runsPerWeekOf(training.run) ?? "nach Laufstand"} pro Woche, im Zweifel eher weniger; wer zuletzt kaum oder gar nicht gelaufen ist, beginnt mit lockeren Läufen oder Lauf-Geh. Höchstens zwei harte Läufe pro Woche. Kraft- und Lauftage so verteilen, dass sie zu den gewählten Trainingstagen passen.`,
       "Tempi, Pulszonen, Streckenlängen und Steigerungen nie selbst festlegen oder nennen: Das berechnet Arnold aus dem Laufprofil. Keine Wettkampfzeit versprechen.",
     );
   if (mobility)
     constraints.push(...mobilityConstraints(mobility, false, training.has_mat));
+  if (training.job)
+    constraints.push(
+      `Alltag des Nutzers: ${DAILY_ACTIVITY_LABEL[training.job]}. Bei viel Sitzen Hüfte, oberen Rücken und hintere Kette etwas mehr beachten; das ist eine Trainingsvorliebe, keine Diagnose.`,
+    );
   if (training.focus_muscle_groups?.length)
     constraints.push(
       `Schwerpunkt auf ${training.focus_muscle_groups.map((group) => MUSCLE_GROUP_LABEL[group]).join(", ")}: diese Muskelgruppen etwas häufiger oder mit mehr Sätzen trainieren, ohne die übrigen zu vernachlässigen.`,
@@ -969,15 +1010,54 @@ export function mergeProfile(
   const training: Record<string, unknown> = { ...before.training };
   for (const [key, value] of Object.entries(patch.training ?? {})) {
     if (value === undefined) continue;
-    if (value === null || (Array.isArray(value) && value.length === 0))
+    // A required answer is cleared to null (unanswered), never removed.
+    if (value === null && key === "primary_goal") training[key] = null;
+    else if (value === null || (Array.isArray(value) && value.length === 0))
       delete training[key];
     else training[key] = Array.isArray(value) ? unique(value) : value;
   }
 
-  // Mobility is stored exactly as named (D-09): no defaults. An answer
-  // missing a part is refused by the patch schema, and the module's missing
-  // fields stay in `open_questions`. `null` was removed above ("not asked").
+  // Mobility is stored as sent: the patch schema refuses an answer missing a
+  // part. The setup card fills the parts it does not ask with its standard
+  // values (Kevin, 26.11.2026); `null` was removed above ("not asked").
   if (patch.training?.mobility) training.mobility = patch.training.mobility;
+
+  // Card mode: the server builds the mobility answer from the card's choices
+  // and fills what the card does not ask with standard values.
+  const card = patch.training;
+  if (
+    card &&
+    (training.modules as OnboardingProfile["training"]["modules"])
+      ?.mobility_sessions !== undefined &&
+    (card.modules !== undefined ||
+      card.mobility_focus !== undefined ||
+      card.mobility_placement !== undefined ||
+      card.morning_minutes !== undefined)
+  ) {
+    const mobility = cardMobility(
+      training as Parameters<typeof cardMobility>[0],
+    );
+    if (mobility) training.mobility = mobility;
+    else delete training.mobility;
+  }
+
+  // The card's training status decides the experience once it is complete;
+  // an incomplete status (a changed answer that now needs the break) leaves
+  // the experience open again instead of keeping a stale level.
+  if (patch.training && "strength_background" in patch.training) {
+    const level = experienceOf(
+      training.strength_background as OnboardingProfile["training"]["strength_background"],
+    );
+    if (patch.training.experience === undefined) {
+      if (level) training.experience = level;
+      else if (patch.training.strength_background) training.experience = null;
+    }
+  }
+  // Places decide the environment; an environment named alone (chat)
+  // replaces places that no longer match it.
+  if (patch.training?.places !== undefined) {
+    training.environment = environmentOfPlaces(patch.training.places);
+  } else if (patch.training?.environment !== undefined) delete training.places;
 
   const days = patch.training?.training_days;
   if (days?.length) {

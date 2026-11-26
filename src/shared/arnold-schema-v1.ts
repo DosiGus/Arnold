@@ -1,3 +1,4 @@
+import { PlanExplanationSchema } from "./plan-explanation.js";
 import { z } from "zod";
 import {
   RUN_LIMITS,
@@ -102,6 +103,8 @@ export const ARNOLD_TABLE_HEADERS = {
     "created_at_utc",
     "updated_at_utc",
     "row_revision",
+    // Migration 011: the plan explanation of a proposal (jsonb, nullable).
+    "explanation",
   ],
   PLAN_ITEMS: [
     "plan_item_id",
@@ -465,6 +468,11 @@ export const ArnoldPlanVersionSchema = z
     days_per_week: positiveInt.max(7).nullable(),
     activated_at_utc: ArnoldUtcTimestampSchema.nullable(),
     retired_at_utc: ArnoldUtcTimestampSchema.nullable(),
+    /**
+     * Why the plan looks the way it does (migration 011).
+     * Absent when none was written: older plans and plans built by hand.
+     */
+    explanation: PlanExplanationSchema.optional(),
     ...technical,
   })
   .refine(chronological, {
