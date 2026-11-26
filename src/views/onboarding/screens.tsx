@@ -1220,3 +1220,6 @@ export function HealthScreen({
     </div>
   );
 }
+
+/* Reused by the chat cards (src/views/live/card-*.tsx). */
+export { Box, Chart };
