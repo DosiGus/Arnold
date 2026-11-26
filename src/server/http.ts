@@ -435,16 +435,16 @@ export function createHttpApp(options: ServerOptions = {}) {
 }
 
 /**
- * The card bundles the MCP tools hand out. `legacy` (default while the new
- * interface is built) is the single React bundle in dist/ui; `skybridge` is
- * one self-contained file per view in dist/views. Any other value stops the
- * start instead of silently serving the wrong interface.
+ * The card bundles the MCP tools hand out. `skybridge` (default) is one
+ * self-contained file per view in dist/views; `legacy` is the former single
+ * React bundle in dist/ui, only when named. Any other value stops the start
+ * instead of silently serving the wrong interface.
  */
 export function cardUiFiles(
   root: string,
   setting: string | undefined,
 ): { dashboard: string; onboarding: string } {
-  const mode = setting?.trim() || "legacy";
+  const mode = setting?.trim() || "skybridge";
   if (mode === "legacy") {
     const file = resolve(root, "dist/ui/dashboard.html");
     return { dashboard: file, onboarding: file };
@@ -455,7 +455,7 @@ export function cardUiFiles(
       onboarding: resolve(root, "dist/views/onboarding/onboarding.html"),
     };
   throw new Error(
-    `ARNOLD_UI="${mode}" ist unbekannt. Erlaubt: legacy, skybridge.`,
+    `ARNOLD_UI="${mode}" ist unbekannt. Erlaubt: skybridge, legacy.`,
   );
 }
 

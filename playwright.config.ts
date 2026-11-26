@@ -45,6 +45,8 @@ export default defineConfig({
       command: "npx tsx tests/fixtures/arnold-server.ts",
       url: "http://127.0.0.1:8792/health",
       reuseExistingServer: false,
+      // These specs drive the former interface (src/ui) and name it.
+      env: { ARNOLD_UI: "legacy" },
     },
     // DATE-001: the start screen on a clock shortly before and after midnight
     // UTC (22 Nov 23:30 and 23 Nov 00:30 UTC; Berlin is already or just past
@@ -56,7 +58,15 @@ export default defineConfig({
       command: "npx tsx tests/fixtures/midnight-server.ts",
       url: `http://127.0.0.1:${port}/health`,
       reuseExistingServer: false,
-      env: { E2E_NOW: now, MIDNIGHT_PORT: port },
+      env: { ARNOLD_UI: "legacy", E2E_NOW: now, MIDNIGHT_PORT: port },
     })),
+    // The Skybridge views as the default serves them: 8850 with invented
+    // history (overview, screens, chat cards), 8851 a new account (setup).
+    {
+      command: "npx tsx tests/fixtures/skybridge-server.ts",
+      url: "http://127.0.0.1:8850/health",
+      reuseExistingServer: false,
+      env: { ARNOLD_UI: "" },
+    },
   ],
 });

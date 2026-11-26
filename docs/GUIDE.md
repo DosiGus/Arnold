@@ -1,6 +1,6 @@
 # Arnold – Aufbau und Betrieb
 
-Teil 1 erklärt, wie Arnold gebaut ist und welche Regeln gelten. Teil 2 beschreibt Profile, Datenbank, ChatGPT-Test und Hosting. Tests: `npm run check` (Vitest gegen eine echte, lokal gestartete Postgres-Datenbank; Playwright auf den Ports 8790–8802).
+Teil 1 erklärt, wie Arnold gebaut ist und welche Regeln gelten. Teil 2 beschreibt Profile, Datenbank, ChatGPT-Test und Hosting. Tests: `npm run check` (Vitest gegen eine echte, lokal gestartete Postgres-Datenbank; Playwright auf lokalen Ports ab 8790).
 
 # Teil 1 – Aufbau
 
@@ -29,7 +29,8 @@ src/
     account/      Konto-Tools, Löschbestätigung, Startkatalog, Aufbewahrung
     auth/         Bearer-Prüfung (JWKS), Scopes, Zugriffsklassen pro Tool, Discovery-Dokumente
     identity/     Schnittstelle Login → Arnold-Nutzer (In-Memory-Variante für Tests)
-  ui/           React-App (ein Bundle, ein HTML-Dokument ohne externe Assets)
+  views/        Kartenoberfläche (Skybridge als Web-Framework), Standard: je Ansicht eine HTML-Datei
+  ui/           Frühere React-App (ein Bundle), nur noch mit ARNOLD_UI=legacy
   host/         Lokaler Test-Host mit offiziellem `AppBridge`
 db/migrations/  SQL-Migrationen (Tabellen, Zeilenrechte, Funktionen)
 tests/          Vitest (Unit/Integration, tests/db-* gegen echtes Postgres), tests/e2e = Playwright
@@ -46,6 +47,8 @@ Vite bündelt `dashboard.html` (App) und `host.html` (Test-Host) zu je einer Dat
 5. Schreibende UI-Aktionen laufen über `callServerTool`; das Ergebnis ersetzt den angezeigten Stand.
 
 ## Karten im Chat
+
+Welche Oberfläche die Tools ausliefern, bestimmt `ARNOLD_UI`: ohne Angabe `skybridge` (`src/views`, Abbildung in `src/views/model`, Laden in `src/views/live`; Browser-Tests `tests/e2e/skybridge.spec.ts`), `legacy` nur ausdrücklich (`src/ui`). Ein anderer Wert stoppt den Start. Die folgenden Abschnitte beschreiben die frühere Oberfläche und `/preview`.
 
 Arnold zeigt im Chat Karten, keine App: kein Logo, kein Menü, kein Hell-Dunkel-Schalter (das liefert der Host). Ohne `card` öffnet `show_arnold_dashboard` die monochrome Startansicht `home` mit fünf Widgets: Training, Woche, Scores, Ziele und Rekorde. Aktionen öffnen eine einzelne Ansicht mit Zurück-Knopf; beim Bearbeiten bleiben die anderen Widgets ausgeblendet. Die Woche führt zu allen Einheiten, der Rekordwechsel zeigt die drei neuesten Rekorde und öffnet das zugehörige Training, Ziele führen direkt zu ihrem Detail oder zur Erstellung. `week` bleibt ein älterer Name der Startansicht; die Trainingsentwicklung ist über `stats` erreichbar. Das Modell kann jede Karte direkt wählen (`home`, `today`, `week`, `stats`, `goals`, `records`, `progress`, `history`, `plan`; Liste in `src/shared/dashboard-cards.ts`), die UI liest es über `ontoolinput`. Gestaltungsregeln: `docs/DESIGN.md`.
 

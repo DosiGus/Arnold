@@ -1,6 +1,6 @@
 import { Alert } from "@openai/apps-sdk-ui/components/Alert";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DataLLM, useSendFollowUpMessage } from "skybridge/web";
 import {
   WorkoutContextSchema,
@@ -88,6 +88,8 @@ function LiveStrength({ view, kind, sessionId, onBack }: Props) {
   const [failed, setFailed] = useState(false);
   /** Answer to "continue the open training?"; null while not asked. */
   const [resume, setResume] = useState<boolean | null>(null);
+  /** The session on screen: saving moves `sessionId` on to the next one. */
+  const shown = useRef<string | null>(null);
   const { call } = read;
   useEffect(() => {
     call()
@@ -151,7 +153,8 @@ function LiveStrength({ view, kind, sessionId, onBack }: Props) {
       );
   }
 
-  const proposal = proposalFor(context, sessionId);
+  const proposal = proposalFor(context, shown.current ?? sessionId);
+  shown.current ??= proposal?.session_id ?? null;
   if (!proposal)
     return message(
       <>

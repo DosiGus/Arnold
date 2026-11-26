@@ -7,7 +7,7 @@ import {
   Client,
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
-import { createHttpApp } from "../src/server/http";
+import { cardUiFiles, createHttpApp } from "../src/server/http";
 import { buildAuthSurface } from "../src/server/auth/router";
 import { loadAuthConfig } from "../src/server/auth/config";
 import { uiDomain } from "../src/server/ui-resource";
@@ -16,6 +16,19 @@ import {
   dashboardResourceUri,
   onboardingResourceUri,
 } from "../src/server/ui-resource";
+
+describe("card interface (ARNOLD_UI)", () => {
+  it("is Skybridge unless legacy is named", () => {
+    for (const unset of [undefined, "", "skybridge"])
+      expect(cardUiFiles("/app", unset).dashboard).toBe(
+        "/app/dist/views/dashboard/dashboard.html",
+      );
+    expect(cardUiFiles("/app", "legacy").dashboard).toBe(
+      "/app/dist/ui/dashboard.html",
+    );
+    expect(() => cardUiFiles("/app", "neu")).toThrow(/unbekannt/);
+  });
+});
 
 describe("UI resource URIs", () => {
   it("follow the bundle's content", () => {
@@ -44,8 +57,13 @@ type UiMeta = { ui?: Record<string, unknown> };
 
 async function cardMeta(env: Record<string, string>, withAuth = false) {
   const root = mkdtempSync(join(tmpdir(), "arnold-root-"));
-  mkdirSync(join(root, "dist/ui"), { recursive: true });
-  writeFileSync(join(root, "dist/ui/dashboard.html"), "<html>stub</html>");
+  for (const view of ["dashboard", "onboarding"]) {
+    mkdirSync(join(root, "dist/views", view), { recursive: true });
+    writeFileSync(
+      join(root, "dist/views", view, `${view}.html`),
+      "<html>stub</html>",
+    );
+  }
   const http = createHttpApp({
     env,
     root,

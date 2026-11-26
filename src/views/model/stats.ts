@@ -170,7 +170,7 @@ export function runSeries(
   );
   const distance = seriesOf(
     "run_distance",
-    "Lauf-km",
+    "km",
     "Laufkilometer pro Woche",
     "km",
     starts.map((s) => {
