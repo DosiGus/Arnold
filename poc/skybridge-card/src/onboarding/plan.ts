@@ -1,4 +1,5 @@
 import { levelOf } from "./model.js";
+import { GOAL_LABEL, type PlanExplanation } from "./model.js";
 import type {
   MobFocus,
   Plan,
@@ -8,11 +9,27 @@ import type {
 } from "./model.js";
 
 type Tpl = {
+  muscle: string;
   id: string;
   name: string;
   sets: number;
   reps: string;
   bwFactor: number;
+};
+
+const MUSCLE: Record<string, string> = {
+  squat: "Quadrizeps",
+  bench: "Brust",
+  row: "Rücken",
+  ohp: "Schultern",
+  rdl: "Hintere Beinseite",
+  lat: "Rücken",
+  legpress: "Quadrizeps",
+  curl: "Bizeps",
+  tri: "Trizeps",
+  plank: "Rumpf",
+  lunge: "Quadrizeps",
+  pushup: "Brust",
 };
 
 const T = (
@@ -22,6 +39,7 @@ const T = (
   reps: string,
   bwFactor = 0,
 ): Tpl => ({
+  muscle: MUSCLE[id] ?? "Sonstiges",
   id,
   name,
   sets,
@@ -62,6 +80,7 @@ function exercises(p: Profile, list: Tpl[]): PlanExercise[] {
       reps: t.reps,
       kg: known ? ROUND(p.weight! * t.bwFactor * level * sex) : null,
       estimated: known,
+      muscle: t.muscle,
     };
   });
 }
@@ -286,4 +305,99 @@ export function buildPlan(p: Profile): Plan {
   if (p.mobility) parts.push(...mobilityDays(p));
   if (p.morning) parts.push(morningDay(p));
   return { split: split || "Eigener Mix", days: parts };
+}
+
+/** Direct working sets per muscle group and week, strength days only. */
+export function volumeByMuscle(plan: Plan): [string, number][] {
+  const sets = new Map<string, number>();
+  for (const d of plan.days)
+    if (d.kind === "strength")
+      for (const e of d.exercises)
+        if (e.muscle) sets.set(e.muscle, (sets.get(e.muscle) ?? 0) + e.sets);
+  return [...sets.entries()].sort((a, b) => b[1] - a[1]);
+}
+
+const RANGE: Record<string, [number, number, string?]> = {
+  Brust: [8, 12],
+  Rücken: [8, 12],
+  Quadrizeps: [8, 12],
+  "Hintere Beinseite": [6, 10],
+  Schultern: [6, 10, "Bekommt zusätzlich Reiz durch alle Drück-Übungen."],
+  Bizeps: [4, 8, "Wird von Rudern und Latzug schon mittrainiert."],
+  Trizeps: [4, 8, "Wird von allen Drück-Übungen schon mittrainiert."],
+  Rumpf: [4, 8],
+};
+
+const WHY: Record<string, (p: Profile) => string> = {
+  Kniebeuge: () => "Große Muskelmasse, hoher Reiz pro Zeit.",
+  Bankdrücken: () => "Hauptübung für Brust, Schultern und Trizeps.",
+  "Rudern am Kabel": (p) =>
+    p.job === "sitting"
+      ? "Gleicht deinen Sitzalltag aus: starker Rücken, aufrechte Haltung."
+      : "Starker Rücken für Haltung und Zug.",
+  "Rumänisches Kreuzheben": () =>
+    "Trainiert die hintere Beinseite und den unteren Rücken.",
+  Latzug: () => "Baut die breite Rückenmuskulatur auf, gelenkschonend.",
+  Beinpresse: () => "Viel Beinreiz bei geringer Belastung des Rückens.",
+  Schulterdrücken: () => "Direkte Schulterarbeit für Kraft und Form.",
+};
+
+/**
+ * Demo wording only. In the real app the model writes these texts from the
+ * saved answers and passes them to the plan tool; this stands in for it.
+ */
+export function demoExplanation(p: Profile, plan: Plan): PlanExplanation {
+  const strengthDays = plan.days.filter((d) => d.kind === "strength");
+  const days = strengthDays.length;
+  const goals = (p.goals ?? []).map((g) => GOAL_LABEL[g]).join(" und ");
+  const parts = [
+    days ? `${days} Krafttage` : "",
+    plan.days.some((d) => d.kind === "run")
+      ? `${plan.days.filter((d) => d.kind === "run").length} Läufe`
+      : "",
+    p.mobility ? "Mobility" : "",
+    p.morning ? "eine tägliche Morgenroutine" : "",
+  ].filter(Boolean);
+  const summary = `${parts.join(", ")}${goals ? `, ausgerichtet auf ${goals}` : ""}${p.job === "sitting" ? " und abgestimmt auf deinen sitzenden Alltag" : ""}.`;
+  const split =
+    plan.split === "Ganzkörper"
+      ? `Mit ${days} Krafttagen pro Woche trainierst du jede Muskelgruppe mehrmals. Ganzkörpertage sind dafür effizient und lassen genug Erholung.`
+      : plan.split === "Oberkörper / Unterkörper"
+        ? "Jede Muskelgruppe kommt zweimal pro Woche dran, mit mindestens einem Tag Pause dazwischen. Das ist bei deiner Trainingszeit der beste Kompromiss für Muskelaufbau."
+        : plan.split === "Eigener Mix"
+          ? "Du hast kein Krafttraining gewählt, deshalb bestimmen Laufen, Mobility und Morgenroutine die Woche."
+          : "Bei fünf oder mehr Krafttagen lohnt sich eine Aufteilung nach Bewegungsmustern, damit jede Einheit konzentriert bleibt.";
+  const volume = volumeByMuscle(plan).map(([muscle]) => {
+    const [min, max, note] = RANGE[muscle] ?? [6, 10];
+    return { muscle, min, max, note };
+  });
+  const seen = new Set<string>();
+  const exercises: { name: string; reason: string }[] = [];
+  for (const d of strengthDays)
+    for (const e of d.exercises)
+      if (WHY[e.name] && !seen.has(e.name) && exercises.length < 4) {
+        seen.add(e.name);
+        exercises.push({ name: e.name, reason: WHY[e.name](p) });
+      }
+  const unknowns = [
+    p.weight === undefined
+      ? "Dein Körpergewicht kenne ich nicht, deshalb sind die Gewichte offen."
+      : "Die Startgewichte sind Schätzungen aus Körpergewicht und Trainingsstand. Nach dem ersten Training zählen deine echten Werte.",
+    p.notes ? "" : "Verletzungen oder Beschwerden kenne ich nicht.",
+  ].filter(Boolean);
+  return {
+    summary,
+    split,
+    volume,
+    exercises,
+    progression:
+      "Schaffst du bei allen Sätzen die obere Wiederholungszahl, erhöhe das Gewicht um die nächste Stufe. Nach vier bis sechs Wochen sollte eine leichtere Woche folgen.",
+    adjust: [
+      "Mehr Brust und Schultern",
+      "Kniebeuge gegen Beinpresse tauschen",
+      "Einheiten auf 45 Minuten kürzen",
+      "Einen Trainingstag streichen",
+    ],
+    unknowns,
+  };
 }

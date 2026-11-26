@@ -16,7 +16,7 @@ export default function DashboardView() {
   const view = (info.output as { state: OnboardingView }).state;
   return (
     <DataLLM content="Dashboard mit Beispieldaten: nächstes Training, Woche, Scores, Ziele, Rekorde.">
-      <main className="mx-auto flex w-full max-w-xl flex-col gap-6 p-4">
+      <main className="mx-auto flex w-full max-w-xl min-w-0 flex-col gap-6 overflow-x-hidden p-4">
         <AppShell
           view={view}
           onAsk={(t) => void sendFollowUp(t)}

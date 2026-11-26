@@ -9,7 +9,7 @@ import {
   SEXES,
   Setup,
 } from "./onboarding/model.js";
-import { buildPlan } from "./onboarding/plan.js";
+import { buildPlan, demoExplanation } from "./onboarding/plan.js";
 
 // POC: synthetic data only, one in-memory setup. No database, no login.
 const setup = new Setup();
@@ -107,11 +107,39 @@ export const app = new Skybridge({
         {
           name: "create_plan_draft",
           description:
-            "Builds a draft training plan from the saved profile. Only when all required answers are present.",
-          inputSchema: {},
+            "Builds a draft training plan from the saved profile. Only when all required answers are present. Always pass `explanation` in German, based only on the saved answers and sound training science: a one-sentence summary, why this split, per muscle group the recommended weekly set range for the goal (min, max) with an optional note, the 3 to 4 key exercises with one reason each, how to progress, up to 5 sentences the user can say to change the plan, and what is unknown or estimated. Never state set counts (the card counts them) and never invent facts about the user.",
+          inputSchema: {
+            explanation: z
+              .object({
+                summary: z.string().min(1).max(400),
+                split: z.string().min(1).max(600),
+                volume: z
+                  .array(
+                    z.object({
+                      muscle: z.string().max(40),
+                      min: z.number().int().min(0).max(40),
+                      max: z.number().int().min(0).max(40),
+                      note: z.string().max(200).optional(),
+                    }),
+                  )
+                  .max(10),
+                exercises: z
+                  .array(
+                    z.object({
+                      name: z.string().max(60),
+                      reason: z.string().max(200),
+                    }),
+                  )
+                  .max(6),
+                progression: z.string().max(500),
+                adjust: z.array(z.string().max(120)).max(5),
+                unknowns: z.array(z.string().max(200)).max(5),
+              })
+              .optional(),
+          },
           annotations: writes("Plan erstellen"),
         },
-        async () => {
+        async ({ explanation }) => {
           if (!setup.view().canCreatePlan)
             return {
               isError: true,
@@ -123,7 +151,10 @@ export const app = new Skybridge({
                 },
               ],
             };
-          setup.plan = buildPlan(setup.profile);
+          const plan = buildPlan(setup.profile);
+          plan.explanation =
+            explanation ?? demoExplanation(setup.profile, plan);
+          setup.plan = plan;
           setup.confirmed = false;
           return ok(
             "Planentwurf erstellt. Der Nutzer prüft ihn und bestätigt ausdrücklich.",

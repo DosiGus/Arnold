@@ -85,7 +85,7 @@ export function PlanScreen({
     <div className="flex flex-col gap-5">
       <ScreenHeader title="Dein Plan" onBack={onBack} />
       {view.plan ? (
-        <PlanOverview plan={view.plan} />
+        <PlanOverview plan={view.plan} profile={view.profile} onAsk={onAsk} />
       ) : (
         <Box>
           <p className="m-0 text-secondary">

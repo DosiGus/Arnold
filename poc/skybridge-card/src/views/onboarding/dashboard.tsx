@@ -140,7 +140,10 @@ export function Dashboard({
         </div>
 
         <section className="flex flex-col gap-4 rounded-2xl border border-subtle bg-surface p-4">
-          <div aria-label="Scores" className="grid grid-cols-3 gap-2">
+          <div
+            aria-label="Scores"
+            className="grid grid-cols-[repeat(3,minmax(0,1fr))] gap-2"
+          >
             {d.scores.map((s, i) => (
               <Popover key={s.name} showOnHover hoverOpenDelay={150}>
                 <Popover.Trigger>
@@ -193,7 +196,7 @@ export function Dashboard({
               <span className="text-secondary"> / {d.week.goal}</span>
             </span>
           </div>
-          <div className="grid grid-cols-7 gap-1">
+          <div className="grid grid-cols-[repeat(7,minmax(0,1fr))] gap-1">
             {d.week.days.map((day) => {
               const dot = (
                 <span

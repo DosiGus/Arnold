@@ -116,6 +116,8 @@ export type PlanExercise = {
   /** null = unknown. Never shown as 0. */
   kg: number | null;
   estimated: boolean;
+  /** Primary muscle group (strength only), for the weekly volume overview. */
+  muscle?: string;
   /** Free text for runs, mobility and morning routine (instead of sets × reps). */
   detail?: string;
 };
@@ -127,7 +129,28 @@ export type PlanDay = {
   focus: string;
   exercises: PlanExercise[];
 };
-export type Plan = { split: string; days: PlanDay[] };
+/**
+ * Why the plan looks the way it does. Written by the model from the saved
+ * answers (the demo writes a stand-in). The set counts are NOT in here: the
+ * card counts them from the plan itself, the model only supplies the range
+ * that fits the goal and a short note.
+ */
+export type PlanExplanation = {
+  summary: string;
+  split: string;
+  volume: { muscle: string; min: number; max: number; note?: string }[];
+  exercises: { name: string; reason: string }[];
+  progression: string;
+  /** Sentences the user can say to change the plan. */
+  adjust: string[];
+  /** What is estimated or unknown. */
+  unknowns: string[];
+};
+export type Plan = {
+  split: string;
+  days: PlanDay[];
+  explanation?: PlanExplanation;
+};
 
 export type Wearable = "open" | "connect" | "later";
 export type Phase = "welcome" | "profile" | "plan" | "wearable" | "done";

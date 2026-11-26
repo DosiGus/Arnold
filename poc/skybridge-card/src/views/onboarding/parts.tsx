@@ -50,7 +50,7 @@ export function Stepper({
                 {done ? <CheckMd className="size-3.5" /> : i + 1}
               </span>
               <span
-                className={`text-sm ${current ? "font-medium" : "text-secondary"}`}
+                className={`text-sm ${current ? "font-medium" : "text-secondary max-[480px]:hidden"}`}
               >
                 {label}
               </span>

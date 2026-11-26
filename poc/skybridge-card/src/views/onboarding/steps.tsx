@@ -13,7 +13,6 @@ import { Input } from "@openai/apps-sdk-ui/components/Input";
 import { SegmentedControl } from "@openai/apps-sdk-ui/components/SegmentedControl";
 import { LoadingDots } from "@openai/apps-sdk-ui/components/Indicator";
 import { ShimmerText } from "@openai/apps-sdk-ui/components/ShimmerText";
-import { Slider } from "@openai/apps-sdk-ui/components/Slider";
 import { Textarea } from "@openai/apps-sdk-ui/components/Textarea";
 import {
   Animate,
@@ -40,8 +39,10 @@ import {
   RUN_GOALS,
   type OnboardingView,
   type Plan,
+  type PlanDay,
   type Profile,
 } from "../../onboarding/model.js";
+import { volumeByMuscle } from "../../onboarding/plan.js";
 import { Choice, MultiChoice, MultiSegmented, Section } from "./parts.js";
 
 type Props = {
@@ -277,9 +278,11 @@ export function OwnPlan({ update }: Pick<Props, "update">) {
 
 export function Tile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex flex-col gap-0.5 rounded-xl bg-secondary-soft px-3 py-2.5">
-      <span className="text-xs text-secondary">{label}</span>
-      <span className="heading-xs m-0">{value}</span>
+    <div className="flex min-h-[5rem] min-w-0 flex-col justify-between gap-1 rounded-xl bg-secondary-soft px-3 py-2.5">
+      <span className="text-xs leading-tight text-secondary">{label}</span>
+      <span className="text-base leading-tight font-semibold break-words hyphens-auto">
+        {value}
+      </span>
     </div>
   );
 }
@@ -552,33 +555,21 @@ export function ProfileStep({
 
             <Section
               title="Minuten pro Training"
-              aside={
-                p.minutes ? (
-                  <span className="text-sm font-medium tabular-nums">
-                    {p.minutes} Min.
-                  </span>
-                ) : null
-              }
               answered={rowAnswered(view, "minutes")}
             >
-              <Slider
-                className="[&>div:first-child]:hidden"
-                value={p.minutes ?? 60}
-                min={20}
-                max={120}
-                step={5}
-                unit="Min."
-                marks={[
-                  { value: 30, label: "30" },
-                  { value: 60, label: "60" },
-                  { value: 90, label: "90" },
-                  { value: 120, label: "120 Min." },
-                ]}
-                onChange={(minutes) => update({ minutes })}
-                onBlur={() => {
-                  if (!p.minutes) update({ minutes: 60 });
-                }}
-              />
+              <SegmentedControl
+                aria-label="Minuten pro Training"
+                block
+                pill
+                value={p.minutes ? String(p.minutes) : ""}
+                onChange={(m) => update({ minutes: Number(m) })}
+              >
+                {[30, 60, 90, 120].map((m) => (
+                  <SegmentedControl.Option key={m} value={String(m)}>
+                    {m}
+                  </SegmentedControl.Option>
+                ))}
+              </SegmentedControl>
             </Section>
 
             <Section
@@ -660,19 +651,417 @@ const KIND_LABEL = {
   morning: "Morgenroutine",
 } as const;
 
-export function PlanOverview({ plan }: { plan: Plan }) {
+function VolumeChart({ plan }: { plan: Plan }) {
+  const rows = volumeByMuscle(plan);
+  const [open, setOpen] = useState(false);
+  if (!rows.length) return null;
+  // The bar is scaled to 20 sets: the upper end of the usual weekly range.
+  const scale = Math.max(20, ...rows.map(([, n]) => n));
+  // Rows are 20px high with a 10px gap. Closed: two rows in full and the
+  // third fading out; the rest is not visible at all.
+  const ROW = 30;
+  const collapsible = rows.length > 2;
+  const closedHeight = Math.min(rows.length, 3) * ROW - 10;
+  const fade = collapsible && !open;
+  return (
+    <section className="flex flex-col gap-3 rounded-2xl border border-subtle bg-surface p-4">
+      <div className="flex flex-col">
+        <h3 className="heading-xs m-0">Wöchentliches Volumen</h3>
+        <span className="text-sm text-secondary">
+          Direkte Arbeitssätze pro Muskelgruppe
+        </span>
+      </div>
+      <div
+        className="overflow-hidden transition-[max-height] duration-500 ease-out"
+        style={{
+          maxHeight: collapsible
+            ? open
+              ? rows.length * ROW
+              : closedHeight
+            : undefined,
+          maskImage: fade
+            ? "linear-gradient(to bottom, black 55%, transparent 100%)"
+            : undefined,
+          WebkitMaskImage: fade
+            ? "linear-gradient(to bottom, black 55%, transparent 100%)"
+            : undefined,
+        }}
+      >
+        <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
+          {rows.map(([muscle, n]) => (
+            <li
+              key={muscle}
+              className="grid grid-cols-[minmax(0,8.5rem)_minmax(0,1fr)_1.75rem] items-center gap-3"
+            >
+              <span className="truncate text-sm">{muscle}</span>
+              <span
+                className="h-2 overflow-hidden rounded-full bg-secondary-soft"
+                role="img"
+                aria-label={`${muscle}: ${n} Sätze pro Woche`}
+              >
+                <span
+                  className="block h-full rounded-full bg-primary-solid transition-all duration-700"
+                  style={{ width: `${Math.min(100, (n / scale) * 100)}%` }}
+                />
+              </span>
+              <span className="text-right text-sm font-medium tabular-nums">
+                {n}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      {collapsible && (
+        <Button
+          color="secondary"
+          variant="ghost"
+          size="sm"
+          pill
+          className="self-center"
+          aria-expanded={open}
+          aria-label={
+            open ? "Weniger Muskelgruppen zeigen" : "Alle Muskelgruppen zeigen"
+          }
+          onClick={() => setOpen((o) => !o)}
+        >
+          <ChevronDown
+            className={`size-4 transition-transform duration-300 ${open ? "rotate-180" : ""}`}
+          />
+        </Button>
+      )}
+    </section>
+  );
+}
+
+const WEEK = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+/** Training days for n sessions, spread so that rest days fall between. */
+const SPREAD: number[][] = [
+  [],
+  [0],
+  [0, 3],
+  [0, 2, 4],
+  [0, 1, 3, 4],
+  [0, 1, 3, 4, 5],
+  [0, 1, 2, 3, 4, 5],
+  [0, 1, 2, 3, 4, 5, 6],
+];
+
+/** Sample week: which kind of session lands on which day (demo layout only). */
+function sampleWeek(plan: Plan): PlanDay["kind"][][] {
+  const by = (k: PlanDay["kind"]) => plan.days.filter((d) => d.kind === k);
+  const strength = by("strength");
+  const run = by("run");
+  const mob = by("mobility");
+  // Interleave so that the same kind rarely lands on neighbouring days.
+  const order: PlanDay["kind"][] = [];
+  for (let i = 0; i < Math.max(strength.length, run.length, mob.length); i++) {
+    if (strength[i]) order.push("strength");
+    if (run[i]) order.push("run");
+    if (mob[i]) order.push("mobility");
+  }
+  const days: PlanDay["kind"][][] = WEEK.map(() => []);
+  const spots = SPREAD[Math.min(order.length, 7)];
+  order.forEach((k, i) => {
+    days[i < spots.length ? spots[i] : i % 7].push(k);
+  });
+  return days;
+}
+
+const KIND_SHORT: Record<PlanDay["kind"], string> = {
+  strength: "Kraft",
+  run: "Lauf",
+  mobility: "Mobil",
+  morning: "",
+};
+
+function SampleWeek({ plan }: { plan: Plan }) {
+  const days = sampleWeek(plan);
+  if (!days.some((d) => d.length)) return null;
+  const morning = plan.days.some((d) => d.kind === "morning");
+  return (
+    <section className="flex flex-col gap-2 rounded-2xl border border-subtle bg-surface p-3">
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="heading-xs m-0">Beispielwoche</h3>
+        {morning && (
+          <span className="text-xs text-secondary">
+            + Morgenroutine täglich
+          </span>
+        )}
+      </div>
+      <div className="grid grid-cols-[repeat(7,minmax(0,1fr))] gap-1">
+        {days.map((kinds, i) => (
+          <div
+            key={WEEK[i]}
+            className="flex min-w-0 flex-col items-center gap-1"
+          >
+            <span className="text-xs text-secondary">{WEEK[i]}</span>
+            {kinds.length ? (
+              kinds.map((k, n) => (
+                <span
+                  key={n}
+                  className={[
+                    "w-full truncate rounded-md px-0.5 py-1 text-center text-xs leading-none",
+                    k === "strength"
+                      ? "bg-primary-solid text-primary-solid"
+                      : k === "run"
+                        ? "border border-strong"
+                        : "bg-secondary-soft",
+                  ].join(" ")}
+                >
+                  {KIND_SHORT[k]}
+                </span>
+              ))
+            ) : (
+              <span className="w-full rounded-md py-1 text-center text-xs leading-none text-secondary">
+                –
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/** Facts taken straight from the saved answers, no model involved. */
+function considered(p: Profile): string[] {
+  const out: string[] = [];
+  if (p.goals?.length) out.push(...p.goals.map((g) => GOAL_LABEL[g]));
+  if (p.strengthStand?.years)
+    out.push(
+      {
+        lt1: "Unter 1 Jahr Erfahrung",
+        "1to3": "1 bis 3 Jahre Erfahrung",
+        gt3: "Über 3 Jahre Erfahrung",
+      }[p.strengthStand.years],
+    );
+  if (p.days) out.push(`${p.days} Trainingstage`);
+  if (p.minutes) out.push(`${p.minutes} Min. pro Einheit`);
+  if (p.places?.length) out.push(...p.places.map((x) => PLACE_LABEL[x]));
+  if (p.run && p.runGoals?.length)
+    out.push(...p.runGoals.map((g) => `Laufen: ${RUN_GOAL_LABEL[g]}`));
+  if (p.mobility && p.job) out.push(JOB_LABEL[p.job]);
+  return out;
+}
+
+function ReportSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5 border-t border-subtle pt-3 first:border-t-0 first:pt-0">
+      <h4 className="m-0 text-sm font-medium">{title}</h4>
+      {children}
+    </div>
+  );
+}
+
+/** Collapsed row; the report comes from the plan, written by the model. */
+function PlanExplanationRow({
+  plan,
+  profile,
+  onAsk,
+}: {
+  plan: Plan;
+  profile?: Profile;
+  onAsk?: (sentence: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const x = plan.explanation;
+  if (!x) return null;
+  const sets = new Map(volumeByMuscle(plan));
+  const facts = profile ? considered(profile) : [];
+  const scale = Math.max(
+    20,
+    ...x.volume.map((v) => Math.max(v.max, sets.get(v.muscle) ?? 0)),
+  );
+  return (
+    <section className="-mt-2 flex flex-col gap-2">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1 self-start rounded-full text-sm text-secondary transition-colors hover:text-default focus-visible:outline-2"
+      >
+        Erklärung zum Plan
+        <ChevronDown
+          className={`size-4 transition-transform duration-300 ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      <AnimateLayout
+        hideOverflow
+        initial={{ opacity: 0 }}
+        enter={{ opacity: 1, duration: 200 }}
+        exit={{ opacity: 0, duration: 100 }}
+      >
+        {open && (
+          <div
+            key="body"
+            className="flex flex-col gap-3 rounded-2xl border border-subtle bg-surface p-4"
+          >
+            <ReportSection title="Dein Plan in einem Satz">
+              <p className="m-0 text-sm text-secondary">{x.summary}</p>
+            </ReportSection>
+
+            {facts.length > 0 && (
+              <ReportSection title="Das habe ich berücksichtigt">
+                <div className="flex flex-wrap gap-1.5">
+                  {facts.map((f) => (
+                    <Badge
+                      key={f}
+                      color="secondary"
+                      variant="soft"
+                      size="sm"
+                      pill
+                    >
+                      {f}
+                    </Badge>
+                  ))}
+                </div>
+              </ReportSection>
+            )}
+
+            <ReportSection title="Warum dieser Aufbau">
+              <p className="m-0 text-sm text-secondary">{x.split}</p>
+            </ReportSection>
+
+            {x.volume.length > 0 && (
+              <ReportSection title="Dein Volumen im Vergleich">
+                <ul className="m-0 flex list-none flex-col gap-3 p-0">
+                  {x.volume.map((v) => {
+                    const n = sets.get(v.muscle) ?? 0;
+                    return (
+                      <li key={v.muscle} className="flex flex-col gap-1">
+                        <div className="flex items-baseline justify-between gap-3 text-sm">
+                          <span>{v.muscle}</span>
+                          <span className="tabular-nums">
+                            <span className="font-medium">{n} Sätze</span>
+                            <span className="text-secondary">
+                              {" "}
+                              · Ziel {v.min} bis {v.max}
+                            </span>
+                          </span>
+                        </div>
+                        <div
+                          className="relative h-1.5 w-full rounded-full bg-secondary-soft"
+                          role="img"
+                          aria-label={`${v.muscle}: ${n} Sätze, empfohlen ${v.min} bis ${v.max}`}
+                        >
+                          <span
+                            className="absolute top-0 h-full rounded-full bg-[var(--color-border-strong)]"
+                            style={{
+                              left: `${(v.min / scale) * 100}%`,
+                              width: `${((v.max - v.min) / scale) * 100}%`,
+                            }}
+                          />
+                          <span
+                            className="absolute -top-0.5 h-2.5 w-[3px] rounded-full bg-primary-solid"
+                            style={{
+                              left: `${Math.min(100, (n / scale) * 100)}%`,
+                            }}
+                          />
+                        </div>
+                        {v.note && (
+                          <span className="text-xs text-secondary">
+                            {v.note}
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+                <p className="m-0 text-xs text-secondary">
+                  Der helle Bereich ist die empfohlene Spanne für dein Ziel, der
+                  Strich dein Wert.
+                </p>
+              </ReportSection>
+            )}
+
+            {x.exercises.length > 0 && (
+              <ReportSection title="Die wichtigsten Übungen und warum">
+                <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+                  {x.exercises.map((e) => (
+                    <li key={e.name} className="flex flex-col text-sm">
+                      <span>{e.name}</span>
+                      <span className="text-secondary">{e.reason}</span>
+                    </li>
+                  ))}
+                </ul>
+              </ReportSection>
+            )}
+
+            <ReportSection title="So steigerst du dich">
+              <p className="m-0 text-sm text-secondary">{x.progression}</p>
+            </ReportSection>
+
+            {x.adjust.length > 0 && onAsk && (
+              <ReportSection title="So passt du den Plan an">
+                <div className="flex flex-wrap gap-1.5">
+                  {x.adjust.map((a) => (
+                    <Button
+                      key={a}
+                      color="secondary"
+                      variant="outline"
+                      size="sm"
+                      pill
+                      onClick={() => onAsk(a)}
+                    >
+                      {a}
+                    </Button>
+                  ))}
+                </div>
+                <p className="m-0 text-xs text-secondary">
+                  Tippe einen Vorschlag an oder sag es im Chat in eigenen
+                  Worten.
+                </p>
+              </ReportSection>
+            )}
+
+            {x.unknowns.length > 0 && (
+              <ReportSection title="Was ich nicht wusste">
+                <ul className="m-0 flex list-none flex-col gap-1 p-0 text-sm text-secondary">
+                  {x.unknowns.map((u) => (
+                    <li key={u}>{u}</li>
+                  ))}
+                </ul>
+              </ReportSection>
+            )}
+          </div>
+        )}
+      </AnimateLayout>
+    </section>
+  );
+}
+
+export function PlanOverview({
+  plan,
+  profile,
+  onAsk,
+}: {
+  plan: Plan;
+  profile?: Profile;
+  onAsk?: (sentence: string) => void;
+}) {
   const [openId, setOpenId] = useState<string | null>(null);
   const exercises = plan.days.reduce((n, d) => n + d.exercises.length, 0);
   return (
     <div className="flex flex-col gap-5">
-      <div className="grid grid-cols-3 gap-2">
-        <Tile label="Aufbau" value={plan.split} />
+      <PlanExplanationRow plan={plan} profile={profile} onAsk={onAsk} />
+
+      <div className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2">
+        <Tile label="Aufbau" value={plan.split.replace(" / ", " /\u200b ")} />
         <Tile
-          label="Pro Woche"
-          value={`${plan.days.filter((d) => d.kind !== "morning").length} Einheiten`}
+          label="Einheiten pro Woche"
+          value={String(plan.days.filter((d) => d.kind !== "morning").length)}
         />
-        <Tile label="Übungen" value={String(exercises)} />
+        <Tile label="Übungen gesamt" value={String(exercises)} />
       </div>
+
+      <VolumeChart plan={plan} />
+      <SampleWeek plan={plan} />
 
       <div className="flex flex-col gap-2.5">
         {plan.days.map((d, i) => {
@@ -783,12 +1172,14 @@ export function PlanStep({
   onConfirm,
   onRebuild,
   onBack,
+  onAsk,
 }: {
   view: OnboardingView;
   busy: string | null;
   onConfirm: () => void;
   onRebuild: () => void;
   onBack: () => void;
+  onAsk?: (sentence: string) => void;
 }) {
   const plan = view.plan!;
   return (
@@ -800,7 +1191,7 @@ export function PlanStep({
         </p>
       </div>
 
-      <PlanOverview plan={plan} />
+      <PlanOverview plan={plan} profile={view.profile} onAsk={onAsk} />
 
       <Tip>
         Etwas ändern? Sag im Chat: „Tausche Kniebeuge gegen Beinpresse.“
@@ -816,11 +1207,11 @@ export function PlanStep({
         >
           Plan bestätigen
         </Button>
-        <div className="flex gap-2">
+        <div className="grid grid-cols-2 gap-2">
           <Button color="secondary" variant="soft" block onClick={onRebuild}>
             <ArrowRotateCcw className="size-4" /> Neu erstellen
           </Button>
-          <Button color="secondary" variant="ghost" block onClick={onBack}>
+          <Button color="secondary" variant="outline" block onClick={onBack}>
             Angaben ändern
           </Button>
         </div>
