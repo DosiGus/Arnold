@@ -33,7 +33,23 @@ export function dayDot(date: string): string {
   return `${Number(date.slice(8, 10))}.${Number(date.slice(5, 7))}.`;
 }
 
-/** A goal value with its unit: "84,5 kg", "24 kg pro Hantel", "7 Wdh.". */
+/** Seconds as a clock: 1470 → "24:30", 3725 → "1:02:05". */
+export function clockText(seconds: number): string {
+  const total = Math.round(Math.abs(seconds));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sec = String(total % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${sec}` : `${m}:${sec}`;
+}
+
+/** True for a running goal (km, minutes or a time). */
+export const isRunGoal = (goal: Pick<HomeGoal, "unit">) =>
+  goal.unit === "km" || goal.unit === "min" || goal.unit === "s";
+
+/**
+ * A goal value with its unit: "84,5 kg", "24 kg pro Hantel", "7 Wdh.",
+ * "10,5 km", "45 Min.", "24:30".
+ */
 export function goalValue(
   goal: Pick<HomeGoal, "unit" | "load_basis">,
   value: number | null,
@@ -41,6 +57,9 @@ export function goalValue(
 ): string {
   if (value === null) return "–";
   if (goal.unit === "reps") return `${formatNumber(value, 0)} Wdh.`;
+  if (goal.unit === "km") return `${formatNumber(value, 2)} km`;
+  if (goal.unit === "min") return `${formatNumber(value, 1)} Min.`;
+  if (goal.unit === "s") return clockText(value);
   const basis =
     withBasis && goal.load_basis === "per_implement" ? " pro Hantel" : "";
   return `${formatNumber(value, 1)} kg${basis}`;

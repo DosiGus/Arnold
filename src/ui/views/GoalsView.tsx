@@ -15,6 +15,7 @@ import {
   GoalChart,
   ProgressBar,
   goalValue,
+  isRunGoal,
 } from "../components/home";
 import { RecoveryNotice } from "../components/recovery";
 import { useGoalWriter } from "../hooks/useGoalWriter";
@@ -455,20 +456,34 @@ function GoalDetail({
   onEnd: () => void;
 }) {
   const body = goal.kind === "body_weight";
+  const run = isRunGoal(goal);
   const left =
     goal.current_value === null
       ? null
       : Math.abs(goal.target_value - goal.current_value);
   const unit = goal.unit === "reps" ? "Wdh." : "kg";
+  // A difference or a weekly rate: kg/Wdh. as before, seconds for a time.
+  const amount = (value: number) =>
+    goal.unit === "s"
+      ? `${formatNumber(Math.abs(value), 0)} Sek.`
+      : run
+        ? goalValue(goal, Math.abs(value))
+        : `${formatNumber(Math.abs(value), 1)} ${unit}`;
   const step =
     edit?.mode === "weigh" ? 0.1 : body ? 0.5 : goal.unit === "reps" ? 1 : 2.5;
-  const metricLabel = body
-    ? goal.current_date
-      ? `Körpergewicht · zuletzt ${dateLabel(goal.current_date)}`
-      : "Körpergewicht"
-    : goal.unit === "kg"
-      ? `${goal.name} · schwerster Arbeitssatz${goal.load_basis === "per_implement" ? " pro Hantel" : ""}`
-      : `${goal.name} · meiste Wiederholungen in einem Satz`;
+  const metricLabel = run
+    ? goal.kind === "run_distance"
+      ? "Längster gemessener Lauf"
+      : goal.kind === "run_duration"
+        ? "Längste Laufzeit am Stück"
+        : `Beste gemessene Zeit über ${formatNumber((goal.run_distance_m ?? 0) / 1000, 1)} km`
+    : body
+      ? goal.current_date
+        ? `Körpergewicht · zuletzt ${dateLabel(goal.current_date)}`
+        : "Körpergewicht"
+      : goal.unit === "kg"
+        ? `${goal.name} · schwerster Arbeitssatz${goal.load_basis === "per_implement" ? " pro Hantel" : ""}`
+        : `${goal.name} · meiste Wiederholungen in einem Satz`;
   return (
     <ArnoldCard aria-label={`Ziel ${goal.name}`}>
       <DetailHead
@@ -482,8 +497,10 @@ function GoalDetail({
           <strong>
             {goal.current_value === null
               ? "–"
-              : formatNumber(goal.current_value, 1)}
-            <small> {unit}</small>
+              : run
+                ? goalValue(goal, goal.current_value)
+                : formatNumber(goal.current_value, 1)}
+            {!run && <small> {unit}</small>}
           </strong>
           {goal.progress !== null && (
             <span className={`ac-pill ${goal.achieved ? "" : "muted"}`}>
@@ -499,8 +516,10 @@ function GoalDetail({
             : left === null
               ? body
                 ? "Trag dein Gewicht ein, dann siehst du deinen Weg zum Ziel."
-                : "Sobald du die Übung trainierst, siehst du hier deinen Weg zum Ziel."
-              : `Noch ${formatNumber(left, 1)} ${unit} bis ${goalValue(goal, goal.target_value, true)}`}
+                : run
+                  ? "Sobald ein Lauf das misst, siehst du hier deinen Weg zum Ziel."
+                  : "Sobald du die Übung trainierst, siehst du hier deinen Weg zum Ziel."
+              : `Noch ${amount(left)} bis ${goalValue(goal, goal.target_value, true)}`}
         </span>
       </div>
 
@@ -516,7 +535,7 @@ function GoalDetail({
               ? "Geschafft"
               : goal.rate_per_week === null
                 ? "Noch zu wenig Daten"
-                : `Etwa ${goal.rate_per_week > 0 ? "+" : "−"}${formatNumber(Math.abs(goal.rate_per_week), 1)} ${unit} pro Woche`}
+                : `Etwa ${goal.rate_per_week > 0 ? "+" : "−"}${amount(goal.rate_per_week)} pro Woche`}
           </strong>
           <br />
           <span className="ac-text">
@@ -566,6 +585,10 @@ function GoalDetail({
             }}
           />
         </div>
+      ) : canWrite && run ? (
+        <span className="ac-text">
+          Den Zielwert eines Laufziels änderst du im Chat.
+        </span>
       ) : canWrite ? (
         <CardActions
           primary={
