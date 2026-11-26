@@ -410,8 +410,14 @@ export function Dashboard({
             <div className="flex items-baseline justify-between gap-2">
               <h3 className="m-0 truncate text-xs font-medium">Diese Woche</h3>
               <span className="text-sm font-semibold tabular-nums">
-                {d.week.done}
-                <span className="text-secondary"> / {d.week.goal}</span>
+                {d.week.goal === null ? (
+                  d.week.done || "–"
+                ) : (
+                  <>
+                    {d.week.done}
+                    <span className="text-secondary"> / {d.week.goal}</span>
+                  </>
+                )}
               </span>
             </div>
             <div className="grid grid-cols-[repeat(7,minmax(0,1fr))] gap-0.5">

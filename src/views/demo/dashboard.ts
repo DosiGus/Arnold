@@ -31,7 +31,8 @@ export type DashboardData = {
   /** Set while an adjustment for a while applies (UX-008). */
   adjustmentHint?: string;
   week: {
-    goal: number;
+    /** Null without a weekly goal (no plan): shown as "–", never 0. */
+    goal: number | null;
     done: number;
     days: {
       label: string;

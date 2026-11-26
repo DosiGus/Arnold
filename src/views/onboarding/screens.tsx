@@ -8,7 +8,12 @@ import { SegmentedControl } from "@openai/apps-sdk-ui/components/SegmentedContro
 import { Select } from "@openai/apps-sdk-ui/components/Select";
 import { useState } from "react";
 import type { HealthData } from "../demo/dashboard.js";
-import type { OnboardingView, PlanDay, PlanKind } from "../demo/model.js";
+import {
+  PLACE_LABEL,
+  type OnboardingView,
+  type PlanDay,
+  type PlanKind,
+} from "../demo/model.js";
 import { PlanOverview } from "./steps.js";
 import type { GoalChoice, GoalFormUnit, LiveGoal } from "../model/goals.js";
 import { clock } from "../model/dashboard.js";
@@ -1051,7 +1056,7 @@ export function SettingsScreen({
           {[
             p.days && `${p.days} Trainingstage`,
             p.minutes && `${p.minutes} Min.`,
-            p.places?.length && `${p.places.length} Orte`,
+            p.places?.length && p.places.map((x) => PLACE_LABEL[x]).join(", "),
           ]
             .filter(Boolean)
             .join(" · ") || "Tage, Dauer und Ort fehlen noch."}
@@ -1133,7 +1138,7 @@ export function HealthScreen({
   const total = h.sleep.phases.reduce((n, p) => n + p.minutes, 0);
   const shades = [
     "bg-primary-solid",
-    "bg-[var(--color-border-stronger)]",
+    "bg-primary-solid opacity-60",
     "bg-[var(--color-border-strong)]",
     "bg-secondary-soft",
   ];

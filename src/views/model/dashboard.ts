@@ -292,7 +292,7 @@ function week(view: ArnoldDashboardView): DashboardData["week"] {
   const trained = new Set(current?.trained_dates ?? []);
   const dates = monday ? weekDates(monday) : [];
   return {
-    goal: view.home.streak.weekly_goal ?? 0,
+    goal: view.home.streak.weekly_goal,
     done: view.home.streak.current_week_training_days,
     days: WEEKDAYS.map((label, i) => {
       const date = dates[i];
