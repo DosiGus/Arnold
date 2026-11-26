@@ -30,6 +30,7 @@ import {
   minutesText,
   missingText,
   moveInput,
+  plainText,
   previewModel,
   RUN_GOALS,
   runDraft,
@@ -116,6 +117,8 @@ function Today({ onBack, onOpen }: CardProps) {
       today: w.today,
     };
   });
+  // Survives the reload after a write, which remounts the run below.
+  const [saved, setSaved] = useState<string | null>(null);
   const title = "Heutiger Lauf";
   if (load.failed)
     return (
@@ -144,6 +147,8 @@ function Today({ onBack, onOpen }: CardProps) {
       onBack={onBack}
       onOpen={onOpen}
       reload={load.reload}
+      saved={saved}
+      setSaved={setSaved}
     />
   );
 }
@@ -154,16 +159,19 @@ function TodayRun({
   onBack,
   onOpen,
   reload,
+  saved,
+  setSaved,
 }: CardProps & {
   model: RunTodayModel;
   today: string;
   reload: () => Promise<void>;
+  saved: string | null;
+  setSaved: (text: string | null) => void;
 }) {
   const write = useCardWrite("update_planned_run", RunWriteResponseSchema);
   const [mode, setMode] = useState<"shorter" | "move" | null>(null);
   const [minutes, setMinutes] = useState<number | null>(null);
   const [day, setDay] = useState("");
-  const [saved, setSaved] = useState<string | null>(null);
   const close = () => {
     write.clear();
     setMode(null);
@@ -464,7 +472,7 @@ function Week({ onBack, onOpen }: CardProps) {
   } | null>(null);
   const failed = (e: unknown) =>
     e instanceof ArnoldCallError
-      ? e.message
+      ? plainText(e.message)
       : "Das hat gerade nicht geklappt. Versuche es noch einmal.";
 
   const requestPreview = async (note?: string) => {
@@ -559,7 +567,7 @@ function Week({ onBack, onOpen }: CardProps) {
             title={next.violations.join(" ")}
           />
         )}
-        {message && (
+        {message && !(next?.notes ?? head.notes).includes(message.text) && (
           <Alert color={message.color} variant="soft" title={message.text} />
         )}
         {next ? (

@@ -415,18 +415,23 @@ export function weekDays(days: Week["days"]) {
   }));
 }
 
+/** Server hints name tools for the model; the user does not need them. */
+export const plainText = (text: string) =>
+  text.replace(/\s*\([^()]*\b[a-z]+(_[a-z]+)+\b[^()]*\)/g, "");
+
 export function weekHeading(week: Week) {
   const s = week.summary;
   return {
     title: `${formatShortDay(week.week_start)} bis ${formatShortDay(week.week_end)}`,
-    subtitle: `Läufe ${s.runs_completed} von ${s.runs_planned} erledigt · Kraft ${s.strength_completed} von ${s.strength_planned}`,
+    // "planned" counts what is still open, so it is not a total.
+    subtitle: `Läufe: ${s.runs_completed} gelaufen, ${s.runs_planned} offen · Kraft: ${s.strength_completed} gemacht, ${s.strength_planned} offen`,
     missed:
       s.runs_missed > 0
         ? `${s.runs_missed} ${s.runs_missed === 1 ? "Lauf" : "Läufe"} verpasst.`
         : null,
     notes: week.notes
       .filter((n) => n.code !== "session_dropped")
-      .map((n) => n.text),
+      .map((n) => plainText(n.text)),
   };
 }
 
@@ -566,9 +571,12 @@ const MISSING: Record<string, string> = {
   running_experience_months: "wie lange du schon läufst",
   base_minutes_per_week: "wie viele Minuten du pro Woche läufst",
 };
+const missingWord = (m: string) =>
+  // The server spells this one out with the field name in front.
+  m.startsWith("reference") ? "eine Referenzleistung" : (MISSING[m] ?? m);
 export const missingText = (missing: string[]) =>
   missing.length
-    ? `Für bessere Pläne fehlt Arnold noch: ${missing.map((m) => MISSING[m] ?? m).join(", ")}. Eine Referenzleistung (Test oder Wettkampf) nennst du Arnold im Chat.`
+    ? `Für bessere Pläne fehlt Arnold noch: ${missing.map(missingWord).join(", ")}. Eine Referenzleistung (Test oder Wettkampf) nennst du Arnold im Chat.`
     : null;
 
 export type RunDraft = {

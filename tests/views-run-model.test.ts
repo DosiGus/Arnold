@@ -14,7 +14,9 @@ import {
 } from "../src/shared/run-contract";
 import {
   lastCompletedRun,
+  missingText,
   moveInput,
+  plainText,
   previewModel,
   runDraft,
   runProfileInput,
@@ -158,7 +160,27 @@ describe("result, week and stats", () => {
   });
 });
 
+describe("server hints", () => {
+  it("drops the tool names meant for the model", () => {
+    expect(
+      plainText(
+        "Erst Laufeinheiten ergänzen (update_plan_draft mit add_run_session) und aktivieren.",
+      ),
+    ).toBe("Erst Laufeinheiten ergänzen und aktivieren.");
+    expect(plainText("Pause (90 s) einhalten.")).toBe(
+      "Pause (90 s) einhalten.",
+    );
+  });
+});
+
 describe("profile", () => {
+  it("names what is missing in everyday words", () => {
+    expect(
+      missingText(["reference (Test, Wettkampf oder eigene Angabe)"]),
+    ).toContain("fehlt Arnold noch: eine Referenzleistung.");
+    expect(missingText([])).toBeNull();
+  });
+
   it("creates one only from chosen answers, then sends only changes", async () => {
     expect(runProfileInput(null, runDraft(null))).toEqual({
       ok: false,
