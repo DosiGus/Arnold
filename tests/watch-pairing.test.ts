@@ -41,6 +41,12 @@ import {
   validClaims,
 } from "./fixtures/arnold-auth.js";
 import { appDatabase, asOwner } from "./fixtures/arnold-db.js";
+import {
+  pairConfirmInput,
+  pairConfirmation,
+  watchCode,
+  watchStatus,
+} from "../src/views/model/settings.js";
 
 const key = makeRsaKey("pairing-issuer");
 const scopes = "arnold.read arnold.write arnold.plan arnold.account";
@@ -291,6 +297,43 @@ describe("pairing a watch (GAR-B2-03)", () => {
         })
       ).status,
     ).toBe(401);
+  });
+
+  it("lets the settings card pair, list and unpair with its own model", async () => {
+    const alice = await chat(`alice-${randomUUID()}`);
+    const started = await startPairing();
+    const first = await alice("pair_garmin_watch", {
+      user_code: watchCode(` ${started.user_code.toLowerCase()} `)!,
+      timezone: "Europe/Berlin",
+    });
+    const confirm = pairConfirmation(
+      (first._meta as { arnold: Record<string, unknown> }).arnold,
+    );
+    expect(confirm?.device_label).toBe("Forerunner 255");
+    const paired = await alice("pair_garmin_watch", pairConfirmInput(confirm!));
+    expect(paired.structuredContent).toEqual({
+      stage: "paired",
+      device_label: "Forerunner 255",
+    });
+    // The watch appears once it has fetched its token.
+    await waitPoll(started.device_code);
+    expect("access_token" in (await poll(started.device_code))).toBe(true);
+    const list = ListGarminWatchesSchema.parse(
+      (await alice("list_garmin_watches", {})).structuredContent,
+    );
+    const status = watchStatus(list);
+    expect(status).toMatchObject({ connected: true, label: "Forerunner 255" });
+    const gone = await alice("unpair_garmin_watch", {
+      device_id: status.deviceId!,
+    });
+    expect(gone.structuredContent).toMatchObject({ unpaired: true });
+    expect(
+      watchStatus(
+        ListGarminWatchesSchema.parse(
+          (await alice("list_garmin_watches", {})).structuredContent,
+        ),
+      ).connected,
+    ).toBe(false);
   });
 
   it("gives the card its time zone only in _meta and the account card the watch's label (GAR-B5-01)", async () => {

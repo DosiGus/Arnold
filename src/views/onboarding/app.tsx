@@ -1,4 +1,10 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import {
+  ArnoldDashboardViewSchema,
+  type ArnoldDashboardView,
+} from "../../shared/arnold-view.js";
+import { useArnoldTool } from "../arnold-client.js";
+import { dashboardModel } from "../model/dashboard.js";
 import type { OnboardingView, PlanKind } from "../demo/model.js";
 import { Dashboard, type Screen } from "./dashboard.js";
 import { LivePlanScreen } from "../live/plan.js";
@@ -6,8 +12,8 @@ import { LiveTrainingScreen } from "../live/training.js";
 import { LiveGoalsScreen } from "../live/goals.js";
 import { LiveStatsScreen } from "../live/stats.js";
 import { LiveHealthScreen } from "../live/health.js";
+import { LiveSettingsScreen } from "../live/settings.js";
 import { dashboardOf, type DashboardData } from "../demo/dashboard.js";
-import type { ArnoldDashboardView } from "../../shared/arnold-view.js";
 import { recordsScreenModel } from "../model/records.js";
 import {
   GoalsScreen,
@@ -25,9 +31,9 @@ export function AppShell({
   onAsk,
   onEditProfile,
   initial = "dashboard",
-  dashboard,
-  source,
-  onRefresh = async () => undefined,
+  dashboard: givenDashboard,
+  source: givenSource,
+  onRefresh: givenRefresh,
   live = false,
 }: {
   /** Screens read Arnold's real data where they are wired up. */
@@ -44,6 +50,28 @@ export function AppShell({
   /** Back to the setup form (or, in the standalone view, a chat sentence). */
   onEditProfile: () => void;
 }) {
+  // Live without a dashboard answer (the shell after the setup): read it
+  // here, so overview, records, goals and progress show real figures too.
+  const own = !givenSource && live;
+  const { call } = useArnoldTool(
+    "get_arnold_dashboard",
+    ArnoldDashboardViewSchema,
+  );
+  const [loaded, setLoaded] = useState<ArnoldDashboardView | null>(null);
+  const reload = useCallback(
+    () =>
+      call({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone })
+        .then(setLoaded)
+        .catch(() => undefined),
+    [call],
+  );
+  useEffect(() => {
+    if (own) void reload();
+  }, [own, reload]);
+  const source = givenSource ?? loaded ?? undefined;
+  const dashboard =
+    givenDashboard ?? (own && loaded ? dashboardModel(loaded) : undefined);
+  const onRefresh = givenRefresh ?? (own ? reload : async () => undefined);
   const [screen, setScreen] = useState<Screen>(initial);
   const [kind, setKind] = useState<PlanKind>("strength");
   const go = (next: Screen, k?: PlanKind) => {
@@ -103,13 +131,20 @@ export function AppShell({
         ) : (
           <HealthScreen view={view} onBack={back} />
         ))}
-      {screen === "settings" && (
-        <SettingsScreen
-          view={view}
-          onBack={back}
-          onEditProfile={onEditProfile}
-        />
-      )}
+      {screen === "settings" &&
+        (live ? (
+          <LiveSettingsScreen
+            view={view}
+            onBack={back}
+            onEditProfile={onEditProfile}
+          />
+        ) : (
+          <SettingsScreen
+            view={view}
+            onBack={back}
+            onEditProfile={onEditProfile}
+          />
+        ))}
     </div>
   );
 }

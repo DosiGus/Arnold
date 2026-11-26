@@ -1353,7 +1353,7 @@ const WATCH_STEPS: { title: string; text: string }[] = [
   },
   {
     title: "Arnold auf der Uhr öffnen",
-    text: "Die Uhr zeigt einen sechsstelligen Kopplungscode.",
+    text: "Die Uhr zeigt einen Kopplungscode mit acht Zeichen, z. B. ABCD-2345.",
   },
   {
     title: "Code hier bestätigen",
@@ -1367,12 +1367,15 @@ export function WearableStep({
   onChoose,
   onFinish,
   onOpenStore,
+  pairing,
 }: {
   view: OnboardingView;
   busy: string | null;
   onChoose: (c: "connect" | "later") => void;
   onFinish: () => void;
   onOpenStore: () => void;
+  /** The real pairing (code from the watch, then confirm); else the sample. */
+  pairing?: React.ReactNode;
 }) {
   const connecting = view.wearable === "connect";
   return (
@@ -1395,12 +1398,14 @@ export function WearableStep({
       >
         {connecting ? (
           <div key="code" className="flex flex-col gap-3">
-            <Alert
-              color="success"
-              variant="soft"
-              title="Kopplungscode: 482 913"
-              description="Öffne Arnold auf deiner Uhr und gib den Code ein. Er gilt zehn Minuten."
-            />
+            {pairing ?? (
+              <Alert
+                color="success"
+                variant="soft"
+                title="Kopplungscode: 482 913"
+                description="Öffne Arnold auf deiner Uhr und gib den Code ein. Er gilt zehn Minuten."
+              />
+            )}
             <Button
               color="primary"
               size="lg"

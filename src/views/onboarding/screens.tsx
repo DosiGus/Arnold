@@ -849,10 +849,16 @@ export function SettingsScreen({
   view,
   onBack,
   onEditProfile,
+  watchBox,
+  dataBox,
 }: {
   view: OnboardingView;
   onBack: () => void;
   onEditProfile: () => void;
+  /** Live contents of the Garmin box (pairing on Arnold's account). */
+  watchBox?: React.ReactNode;
+  /** Live contents of the data box (account deletion). */
+  dataBox?: React.ReactNode;
 }) {
   const p = view.profile;
   const [watch, setWatch] = useState(view.wearable === "connect");
@@ -896,22 +902,30 @@ export function SettingsScreen({
 
       <Box>
         <h3 className="heading-xs m-0">Garmin-Uhr</h3>
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-secondary">
-            {watch ? "Verbunden" : "Nicht verbunden"}
-          </span>
-          <Badge color={watch ? "success" : "secondary"} variant="soft" pill>
-            {watch ? "Aktiv" : "Aus"}
-          </Badge>
-        </div>
-        <Button
-          color="secondary"
-          variant="soft"
-          block
-          onClick={() => setWatch((w) => !w)}
-        >
-          {watch ? "Verbindung trennen" : "Garmin-Uhr verbinden"}
-        </Button>
+        {watchBox ?? (
+          <>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-secondary">
+                {watch ? "Verbunden" : "Nicht verbunden"}
+              </span>
+              <Badge
+                color={watch ? "success" : "secondary"}
+                variant="soft"
+                pill
+              >
+                {watch ? "Aktiv" : "Aus"}
+              </Badge>
+            </div>
+            <Button
+              color="secondary"
+              variant="soft"
+              block
+              onClick={() => setWatch((w) => !w)}
+            >
+              {watch ? "Verbindung trennen" : "Garmin-Uhr verbinden"}
+            </Button>
+          </>
+        )}
       </Box>
 
       <Box>
@@ -941,29 +955,33 @@ export function SettingsScreen({
         <p className="m-0 text-sm text-secondary">
           Deine Daten gehören dir. Du kannst sie jederzeit löschen.
         </p>
-        {confirmDelete ? (
-          <div className="grid auto-cols-fr grid-flow-col gap-2">
-            <Button color="danger" variant="soft" block>
-              Endgültig löschen
-            </Button>
-            <Button
-              color="secondary"
-              variant="ghost"
-              block
-              onClick={() => setConfirmDelete(false)}
-            >
-              Abbrechen
-            </Button>
-          </div>
-        ) : (
-          <Button
-            color="danger"
-            variant="ghost"
-            block
-            onClick={() => setConfirmDelete(true)}
-          >
-            Alle Daten löschen
-          </Button>
+        {dataBox ?? (
+          <>
+            {confirmDelete ? (
+              <div className="grid auto-cols-fr grid-flow-col gap-2">
+                <Button color="danger" variant="soft" block>
+                  Endgültig löschen
+                </Button>
+                <Button
+                  color="secondary"
+                  variant="ghost"
+                  block
+                  onClick={() => setConfirmDelete(false)}
+                >
+                  Abbrechen
+                </Button>
+              </div>
+            ) : (
+              <Button
+                color="danger"
+                variant="ghost"
+                block
+                onClick={() => setConfirmDelete(true)}
+              >
+                Alle Daten löschen
+              </Button>
+            )}
+          </>
         )}
       </Box>
     </div>

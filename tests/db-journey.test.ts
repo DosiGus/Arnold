@@ -3,6 +3,7 @@
  * real token verification and the real Postgres. Two people use Arnold at the
  * same time; neither ever sees the other.
  */
+import { deleteConfirmation } from "../src/views/model/settings";
 import {
   afterAll,
   afterEach,
@@ -824,6 +825,12 @@ describe("signed-in users with the database", () => {
       (first._meta as { arnold: { delete_account: unknown } }).arnold
         .delete_account,
     );
+    // The settings card reads the same confirmation with its own model.
+    expect(
+      deleteConfirmation(
+        (first._meta as { arnold: Record<string, unknown> }).arnold,
+      ),
+    ).toEqual(confirm);
     // A guessed token deletes nothing.
     const guessed = await call(alice, "delete_arnold_account", {
       confirmation_token: "x".repeat(32),

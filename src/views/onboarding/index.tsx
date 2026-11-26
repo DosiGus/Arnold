@@ -29,6 +29,7 @@ import {
   Welcome,
 } from "./steps.js";
 import { useSetup } from "./use-setup.js";
+import { WatchPairing } from "../live/watch-pairing.js";
 
 const STEP_INDEX = {
   welcome: 0,
@@ -37,9 +38,6 @@ const STEP_INDEX = {
   wearable: 3,
   done: 4,
 } as const;
-
-/** The sentence "Uhr koppeln" sends: ChatGPT asks for the watch's code. */
-export const PAIR_SENTENCE = "Ich möchte jetzt meine Garmin-Uhr koppeln.";
 
 /** View of `show_arnold_onboarding`: the setup against Arnold's service. */
 export default function Onboarding() {
@@ -66,6 +64,7 @@ function Flow({ initial }: { initial: OnboardingState }) {
   // "Angaben ändern" while a plan is under review: the answers are shown
   // again; the stored status stays until a new plan is asked for.
   const [editing, setEditing] = useState(false);
+  const [pairedWatch, setPairedWatch] = useState<string | null>(null);
   const openExternal = useOpenExternal();
   const { view } = s;
 
@@ -171,12 +170,23 @@ function Flow({ initial }: { initial: OnboardingState }) {
                 onChoose={(c) =>
                   void s.finish().then((ok) => {
                     if (!ok) return;
-                    if (c === "connect") void sendFollowUp(PAIR_SENTENCE);
                     s.chooseWearable(c);
                   })
                 }
                 onFinish={() => s.chooseWearable("later")}
                 onOpenStore={() => openExternal(GARMIN_STORE_URL)}
+                pairing={
+                  pairedWatch ? (
+                    <Alert
+                      color="success"
+                      variant="soft"
+                      title={`${pairedWatch} ist mit Arnold verbunden.`}
+                      description="Die Uhr lädt deinen Plan in wenigen Sekunden."
+                    />
+                  ) : (
+                    <WatchPairing onPaired={setPairedWatch} />
+                  )
+                }
               />
             )}
             {key === "done" && (
