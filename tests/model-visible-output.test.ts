@@ -545,6 +545,7 @@ async function runOnboardingScenario() {
     },
   });
   await onboard("get_onboarding_state");
+  await onboard("get_plan_card");
   await onboard("request_onboarding_plan", { request_id: rid() });
   const brief = OnboardingBriefSchema.parse(
     card(await onboard("get_onboarding_brief")),
@@ -626,6 +627,7 @@ describe("model-visible tool output (D-20)", () => {
         "start_arnold_onboarding",
         "update_onboarding_profile",
         "get_onboarding_state",
+        "get_plan_card",
         "submit_onboarding_plan_proposal",
         "get_onboarding_plan",
       ].flatMap(failed),

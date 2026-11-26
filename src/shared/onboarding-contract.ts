@@ -1394,6 +1394,27 @@ export const PlanInsightsSchema = z.strictObject({
 export type PlanInsights = z.infer<typeof PlanInsightsSchema>;
 
 /**
+ * The plan card after the setup (`get_plan_card`, app only): the active plan
+ * or newest draft, Arnold's figures for it, the start-weight estimates and
+ * the saved setup answers the card names under "Das habe ich berücksichtigt".
+ */
+export const PlanCardInputSchema = z.object({});
+export const PlanCardSchema = z.strictObject({
+  plan: TrainingPlanVersionSchema.nullable(),
+  plan_insights: PlanInsightsSchema.nullable(),
+  load_estimates: z.array(
+    z.strictObject({
+      plan_item_id: ArnoldIdSchema,
+      lighter: z.number().positive(),
+      normal: z.number().positive(),
+      heavier: z.number().positive(),
+    }),
+  ),
+  profile: OnboardingProfileSchema.nullable(),
+});
+export type PlanCard = z.infer<typeof PlanCardSchema>;
+
+/**
  * One onboarding state as every caller sees it: the session, what is possible
  * next, and the referenced plan when there is one.
  *

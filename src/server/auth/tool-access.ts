@@ -135,6 +135,8 @@ export const TOOL_ACCESS: Readonly<Record<string, ToolAccessClass>> = {
   // Activates the confirmed plan; behind a login it needs arnold.plan.
   finish_arnold_setup: "ONBOARDING_PREVIEW",
   cancel_onboarding: "ONBOARDING_PREVIEW",
+  // Skybridge plan card (app only): reads the user's plan like get_training_plan.
+  get_plan_card: "AUTHENTICATED_READ",
 };
 
 export class UnclassifiedToolError extends Error {

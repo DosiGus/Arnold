@@ -47,7 +47,10 @@ import {
   splitsForDays,
   stepForStatus,
   WEEKDAYS,
+  PlanCardInputSchema,
+  PlanCardSchema,
   type HandoffStatus,
+  type PlanCard,
   type PlanInsights,
   type OnboardingErrorCode,
   type OnboardingHandoff,
@@ -977,6 +980,49 @@ export class OnboardingService {
   }
 
   /** The current state. A read: it never moves a status. */
+  /**
+   * The plan card after the setup (app only): the active plan, or the newest
+   * draft, with Arnold's figures and the saved answers it was built from.
+   * Without a stored setup the figures carry no range (experience unknown).
+   */
+  async planCard(raw: unknown, context?: unknown): Promise<PlanCard> {
+    PlanCardInputSchema.parse(raw);
+    const principal = await this.establish(context);
+    const record = await this.options.repository.findLatestByOwner(
+      principal.subject,
+    );
+    if (record)
+      try {
+        await this.options.access.authorize(record, context);
+      } catch (error) {
+        if (error instanceof OnboardingAccessError)
+          throw fail(error.code, error.message);
+        throw fail("PERMISSION_DENIED", "Zugriff verweigert.");
+      }
+    const profile = record?.session.profile ?? null;
+    const empty = {
+      plan: null,
+      plan_insights: null,
+      load_estimates: [],
+      profile,
+    };
+    if (!this.options.plans) return PlanCardSchema.parse(empty);
+    let plan: TrainingPlanVersion;
+    try {
+      plan = (await this.options.plans.getPlan({})).plan;
+    } catch {
+      // No plan yet is an answer the card shows, not an error.
+      return PlanCardSchema.parse(empty);
+    }
+    const catalog = await this.catalog();
+    return PlanCardSchema.parse({
+      plan,
+      plan_insights: planInsights(plan, profile, catalog),
+      load_estimates: profile ? loadEstimates(plan, profile, catalog) : [],
+      profile,
+    });
+  }
+
   async getOnboardingState(
     raw: unknown,
     context?: unknown,
@@ -2030,13 +2076,16 @@ function planQuality(
 /** Arnold's figures for the plan card, from the referenced plan. */
 function planInsights(
   plan: TrainingPlanVersion,
-  profile: OnboardingProfile,
+  profile: OnboardingProfile | null,
   catalog: readonly ArnoldExercise[],
 ): PlanInsights {
   const muscles = new Map(
     catalog.map((e) => [e.exercise_id, muscleGroupOf(e.primary_muscle)]),
   );
-  const training = profile.training;
+  const training = profile?.training ?? {
+    experience: null,
+    training_days: undefined,
+  };
   const insights = buildPlanInsights({
     sessions: plan.sessions
       .map((session) => ({

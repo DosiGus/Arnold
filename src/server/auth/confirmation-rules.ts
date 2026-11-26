@@ -173,6 +173,7 @@ export const CONFIRMATION_RULES: Readonly<Record<string, ConfirmationEntry>> = {
   show_arnold_onboarding: read,
   start_arnold_onboarding: setup,
   get_onboarding_state: read,
+  get_plan_card: read,
   update_onboarding_profile: setup,
   get_onboarding_brief: read,
   request_onboarding_plan: setup,

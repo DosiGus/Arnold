@@ -15,6 +15,7 @@ import {
   type OnboardingProfile,
   type OnboardingProfilePatch,
   type OnboardingState,
+  type PlanInsights,
   type RequiredProfileField,
   type RunBackground,
   type StrengthBackground,
@@ -192,22 +193,36 @@ const reps = (min: number | null, max: number | null) =>
         ? `${max}`
         : `${min}–${max}`;
 
-const splitLabel = (key: string | null) =>
-  key && key in SPLIT_LABEL
+/** Short keys older plans carry for the same splits. */
+const SPLIT_ALIAS: Record<string, Split> = {
+  ppl: "push_pull_legs",
+  fullbody: "full_body",
+  full_body_3x: "full_body",
+  upper_lower_4x: "upper_lower",
+};
+const splitLabel = (raw: string | null) => {
+  const key = raw ? (SPLIT_ALIAS[raw.toLowerCase()] ?? raw) : null;
+  return key && key in SPLIT_LABEL
     ? SPLIT_LABEL[key as Split]
     : key && key !== "auto"
       ? key
       : "Dein Aufbau";
+};
 
 const mobilityName = new Map(MOBILITY_CATALOG.map((e) => [e.id, e.name_de]));
 
 /** The card's plan from the stored draft plus Arnold's figures. */
-export function cardPlanOf(state: OnboardingState): Plan | null {
-  const plan: TrainingPlanVersion | null = state.plan;
+export const cardPlanOf = (state: OnboardingState): Plan | null =>
+  cardPlanFrom(state.plan, state.plan_insights, state.load_estimates);
+
+/** The card's plan from a stored version, Arnold's figures and estimates. */
+export function cardPlanFrom(
+  plan: TrainingPlanVersion | null,
+  insights: PlanInsights | null,
+  loadEstimates: OnboardingState["load_estimates"],
+): Plan | null {
   if (!plan) return null;
-  const estimates = new Map(
-    state.load_estimates.map((e) => [e.plan_item_id, e]),
-  );
+  const estimates = new Map(loadEstimates.map((e) => [e.plan_item_id, e]));
   const strength: PlanDay[] = plan.sessions
     .map((session) => {
       const items = session.exercises.filter((e) => e.status === "active");
@@ -279,7 +294,6 @@ export function cardPlanOf(state: OnboardingState): Plan | null {
             : `${item.seconds_per_side} s${item.sides === 2 ? " je Seite" : ""}`,
       })),
     }));
-  const insights = state.plan_insights;
   const x = plan.explanation;
   return {
     split: splitLabel(plan.split_key),

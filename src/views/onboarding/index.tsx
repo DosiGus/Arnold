@@ -86,6 +86,7 @@ function Flow({ initial }: { initial: OnboardingState }) {
       <DataLLM content="Arnold-Überblick nach der Einrichtung.">
         <main className="mx-auto flex w-full max-w-xl min-w-0 flex-col gap-6 overflow-x-hidden p-4">
           <AppShell
+            live
             initial={screen}
             view={view}
             onAsk={(t) => void sendFollowUp(t)}

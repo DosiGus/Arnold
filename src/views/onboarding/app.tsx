@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { OnboardingView, PlanKind } from "../demo/model.js";
 import { Dashboard, type Screen } from "./dashboard.js";
+import { LivePlanScreen } from "../live/plan.js";
 import { dashboardOf, type DashboardData } from "../demo/dashboard.js";
 import {
   GoalsScreen,
@@ -19,7 +20,10 @@ export function AppShell({
   onEditProfile,
   initial = "dashboard",
   dashboard,
+  live = false,
 }: {
+  /** Screens read Arnold's real data where they are wired up. */
+  live?: boolean;
   /** Real overview figures; without them the POC sample figures are shown. */
   dashboard?: DashboardData;
   initial?: Screen;
@@ -40,9 +44,12 @@ export function AppShell({
       {screen === "dashboard" && (
         <Dashboard d={dashboard ?? dashboardOf(view)} onAsk={onAsk} go={go} />
       )}
-      {screen === "plan" && (
-        <PlanScreen view={view} onBack={back} onAsk={onAsk} />
-      )}
+      {screen === "plan" &&
+        (live ? (
+          <LivePlanScreen view={view} onBack={back} onAsk={onAsk} />
+        ) : (
+          <PlanScreen view={view} onBack={back} onAsk={onAsk} />
+        ))}
       {screen === "training" && (
         <TrainingScreen view={view} kind={kind} onBack={back} />
       )}

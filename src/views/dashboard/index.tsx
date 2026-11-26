@@ -77,6 +77,7 @@ export default function DashboardView() {
           />
         )}
         <AppShell
+          live
           view={PLACEHOLDER}
           dashboard={d}
           onAsk={(t) => void sendFollowUp(t)}

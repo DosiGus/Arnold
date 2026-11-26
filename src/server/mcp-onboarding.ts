@@ -41,6 +41,8 @@ import {
   OnboardingStateSchema,
   OnboardingToolInputs,
   OnboardingViewSchema,
+  PlanCardInputSchema,
+  PlanCardSchema,
   REQUIRED_FIELD_LABEL,
   STATUS_LABEL,
   STEP_LABEL,
@@ -296,6 +298,32 @@ export function registerOnboardingTools(
     },
     async (input: unknown) =>
       respond(await onboarding.startOnboarding(input, actorContext)),
+  );
+
+  server.registerTool(
+    "get_plan_card",
+    {
+      title: "Plan-Karte laden",
+      description:
+        "Nur für die Plan-Karte: aktiver Plan (oder neuester Entwurf) mit Arnolds Wochensätzen je Muskelgruppe, Beispielwoche und Startgewichts-Schätzungen. Im Chat get_training_plan verwenden.",
+      inputSchema: PlanCardInputSchema,
+      outputSchema: PlanCardSchema,
+      annotations: readOnly,
+      _meta: { ui: { visibility: ["app"] } },
+    },
+    async (input) => {
+      try {
+        const card = await onboarding.planCard(input, actorContext);
+        return ok(
+          card,
+          card.plan
+            ? `${card.plan.name}: ${card.plan.session_count} Trainingseinheiten.`
+            : "Noch kein Trainingsplan.",
+        );
+      } catch (error) {
+        return failure(error);
+      }
+    },
   );
 
   server.registerTool(

@@ -7,7 +7,9 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createFixtureOnboarding } from "../src/server/onboarding/fixture";
 import type { OnboardingState } from "../src/shared/onboarding-contract";
+import { planFixtureDataset } from "../src/server/plan/fixture";
 import {
+  cardPlanFrom,
   cardProfileOf,
   cardViewOf,
   patchOf,
@@ -154,5 +156,32 @@ describe("card taps → service → card", () => {
     expect(finished.state!.session.status).toBe("COMPLETED");
     expect(cardViewOf(finished.state!, "open").phase).toBe("wearable");
     expect(cardViewOf(finished.state!, "later").phase).toBe("done");
+  });
+
+  it("reads the plan card after the setup: plan, figures, saved answers", async () => {
+    const { onboarding } = createFixtureOnboarding({
+      dataset: planFixtureDataset(),
+    });
+    const card = await onboarding.planCard({});
+    expect(card.plan).not.toBeNull();
+    // No stored setup: no range is claimed.
+    expect(card.profile).toBeNull();
+    expect(card.plan_insights!.weekly_sets.every((r) => r.min === null)).toBe(
+      true,
+    );
+    const plan = cardPlanFrom(
+      card.plan,
+      card.plan_insights,
+      card.load_estimates,
+    )!;
+    expect(plan.split).toBe("Push / Pull / Beine");
+    expect(plan.days.length).toBe(card.plan!.session_count);
+    expect(plan.week).toHaveLength(7);
+  });
+
+  it("answers without a plan instead of failing", async () => {
+    const { onboarding } = createFixtureOnboarding();
+    const card = await onboarding.planCard({});
+    expect(card).toMatchObject({ plan: null, plan_insights: null });
   });
 });
