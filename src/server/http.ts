@@ -337,6 +337,8 @@ export function createHttpApp(options: ServerOptions = {}) {
   app.get("/host", (_req, res) =>
     res.sendFile(resolve(root, "dist/host/host.html"), { dotfiles: "allow" }),
   );
+  // Which card interface the tools point at (ARNOLD_UI, checked at start).
+  const uiFiles = cardUiFiles(root, process.env.ARNOLD_UI);
   app.all("/mcp", auth.bearerGate, async (req, res) => {
     logProtocolStep(req.body);
     const handle = async () => {
@@ -355,7 +357,7 @@ export function createHttpApp(options: ServerOptions = {}) {
       const requestSource = userRuntime?.source ?? arnoldSource;
       const server = createArnoldMcpServer(
         requestSource!,
-        resolve(root, "dist/ui/dashboard.html"),
+        uiFiles,
         undefined,
         userRuntime?.service,
         userRuntime && "actorContext" in userRuntime
@@ -369,9 +371,7 @@ export function createHttpApp(options: ServerOptions = {}) {
         uiOrigin,
       );
       if (options.database) {
-        const uri = dashboardResourceUri(
-          resolve(root, "dist/ui/dashboard.html"),
-        );
+        const uri = dashboardResourceUri(uiFiles.dashboard);
         registerAccountTools(server, options.database, uri);
         registerWatchTools(server, options.database, uri);
       }
@@ -425,4 +425,29 @@ export function createHttpApp(options: ServerOptions = {}) {
         .json({ error: "Serverfehler. Build und Serverprotokoll prüfen." });
   });
   return app;
+}
+
+/**
+ * The card bundles the MCP tools hand out. `legacy` (default while the new
+ * interface is built) is the single React bundle in dist/ui; `skybridge` is
+ * one self-contained file per view in dist/views. Any other value stops the
+ * start instead of silently serving the wrong interface.
+ */
+export function cardUiFiles(
+  root: string,
+  setting: string | undefined,
+): { dashboard: string; onboarding: string } {
+  const mode = setting?.trim() || "legacy";
+  if (mode === "legacy") {
+    const file = resolve(root, "dist/ui/dashboard.html");
+    return { dashboard: file, onboarding: file };
+  }
+  if (mode === "skybridge")
+    return {
+      dashboard: resolve(root, "dist/views/dashboard/dashboard.html"),
+      onboarding: resolve(root, "dist/views/onboarding/onboarding.html"),
+    };
+  throw new Error(
+    `ARNOLD_UI="${mode}" ist unbekannt. Erlaubt: legacy, skybridge.`,
+  );
 }

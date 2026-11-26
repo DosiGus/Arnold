@@ -4,15 +4,30 @@
     {
       "name": "arnold-fixture",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 8787
     },
     {
       "name": "arnold-test-fixtures",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["tsx", "tests/fixtures/arnold-server.ts"],
+      "runtimeArgs": [
+        "tsx",
+        "tests/fixtures/arnold-server.ts"
+      ],
       "port": 8796,
       "autoPort": false
+    },
+    {
+      "name": "arnold-skybridge",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "ARNOLD_UI=skybridge PORT=8788 HOST=127.0.0.1 ARNOLD_ENV=development STORAGE_MODE=arnold_fixture ARNOLD_WRITE_MODE=fixture AUTH_MODE=open ALLOWED_HOSTS=127.0.0.1,localhost node dist/server/main.js"
+      ],
+      "port": 8788
     }
   ]
 }

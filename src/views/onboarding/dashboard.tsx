@@ -12,8 +12,8 @@ import {
   AnimateLayout,
 } from "@openai/apps-sdk-ui/components/Transition";
 import { useLayoutEffect, useRef, useState } from "react";
-import type { OnboardingView, PlanKind } from "../demo/model.js";
-import { dashboardOf, type DashboardToday } from "../demo/dashboard.js";
+import type { PlanKind } from "../demo/model.js";
+import type { DashboardData, DashboardToday } from "../demo/dashboard.js";
 
 const KIND_LABEL: Record<DashboardToday["kind"], string> = {
   strength: "Krafttraining",
@@ -204,16 +204,15 @@ export type Screen =
   | "health";
 
 export function Dashboard({
-  view,
+  d,
   onAsk,
   go,
 }: {
-  view: OnboardingView;
+  d: DashboardData;
   /** Sends a sentence to the chat (the model answers with the right tool). */
   onAsk: (sentence: string) => void;
   go: (screen: Screen, kind?: PlanKind) => void;
 }) {
-  const d = dashboardOf(view);
   return (
     <Animate
       initial={{ opacity: 0, y: 10 }}
@@ -224,9 +223,11 @@ export function Dashboard({
           <div className="flex flex-col gap-1">
             <h2 className="heading-lg m-0">Dein Überblick</h2>
           </div>
-          <Badge color="secondary" variant="outline" pill>
-            Beispieldaten
-          </Badge>
+          {d.sample && (
+            <Badge color="secondary" variant="outline" pill>
+              Beispieldaten
+            </Badge>
+          )}
         </div>
 
         <div className="grid grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] gap-2">

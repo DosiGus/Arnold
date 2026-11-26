@@ -338,9 +338,15 @@ function welcomeHint(
   return `${lead} Den nächsten Schritt kurz nennen.`;
 }
 
+/**
+ * The card bundles: one HTML file each for the overview and the setup. A plain
+ * string serves both from the same file (the earlier single-bundle UI).
+ */
+export type UiFiles = { dashboard: string; onboarding: string };
+
 export function createArnoldMcpServer(
   source: ArnoldDataSource,
-  uiFile: string,
+  ui: string | UiFiles,
   clock: ArnoldServerClock = () => new Date(),
   logging?: WorkoutLoggingService,
   actorContext?: unknown,
@@ -351,6 +357,8 @@ export function createArnoldMcpServer(
   mobility?: MobilityService,
   uiDomain?: string,
 ) {
+  const uiFile = typeof ui === "string" ? ui : ui.dashboard;
+  const onboardingUiFile = typeof ui === "string" ? ui : ui.onboarding;
   // D-20: patched first, so every registration below — and account and
   // watch tools added later — advertises and returns no internals.
   const bare = hideModelInternals(
@@ -696,6 +704,12 @@ export function createArnoldMcpServer(
   // Onboarding is its own app resource and tool set. Registering it last keeps
   // the dashboard surface above byte-for-byte unchanged for a deployment that
   // publishes no onboarding at all.
-  registerOnboardingTools(server, onboarding, uiFile, actorContext, uiDomain);
+  registerOnboardingTools(
+    server,
+    onboarding,
+    onboardingUiFile,
+    actorContext,
+    uiDomain,
+  );
   return server;
 }

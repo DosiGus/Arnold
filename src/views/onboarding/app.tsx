@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { OnboardingView, PlanKind } from "../demo/model.js";
 import { Dashboard, type Screen } from "./dashboard.js";
+import { dashboardOf, type DashboardData } from "../demo/dashboard.js";
 import {
   GoalsScreen,
   HealthScreen,
@@ -17,7 +18,10 @@ export function AppShell({
   onAsk,
   onEditProfile,
   initial = "dashboard",
+  dashboard,
 }: {
+  /** Real overview figures; without them the POC sample figures are shown. */
+  dashboard?: DashboardData;
   initial?: Screen;
   view: OnboardingView;
   onAsk: (sentence: string) => void;
@@ -34,7 +38,7 @@ export function AppShell({
   return (
     <div key={screen} className="flex flex-col gap-4">
       {screen === "dashboard" && (
-        <Dashboard view={view} onAsk={onAsk} go={go} />
+        <Dashboard d={dashboard ?? dashboardOf(view)} onAsk={onAsk} go={go} />
       )}
       {screen === "plan" && (
         <PlanScreen view={view} onBack={back} onAsk={onAsk} />
