@@ -85,6 +85,24 @@ const number = (text: string) => {
   return Number.isFinite(n) ? n : Number.NaN;
 };
 
+/** A ticked row as numbers, or why it cannot be stored as typed. */
+function measured(
+  exercise: string,
+  r: SetRow,
+):
+  { ok: true; reps: number; kg: number | null } | { ok: false; error: string } {
+  const reps = number(r.reps);
+  const kg = number(r.kg);
+  if (reps === null || !Number.isInteger(reps) || reps <= 0)
+    return {
+      ok: false,
+      error: `Bei ${exercise} fehlen die Wiederholungen eines erledigten Satzes.`,
+    };
+  if (Number.isNaN(kg) || (kg !== null && kg < 0))
+    return { ok: false, error: `Das Gewicht bei ${exercise} ist keine Zahl.` };
+  return { ok: true, reps, kg };
+}
+
 /**
  * The `log_workout` arguments for the ticked sets, or an error sentence when
  * a ticked set cannot be stored as typed.
@@ -104,18 +122,9 @@ export function logWorkoutInput(
     }
     const sets: { reps: number; load_kg?: number }[] = [];
     for (const r of done) {
-      const reps = number(r.reps);
-      const kg = number(r.kg);
-      if (reps === null || !Number.isInteger(reps) || reps <= 0)
-        return {
-          ok: false,
-          error: `Bei ${e.exercise_name} fehlen die Wiederholungen eines erledigten Satzes.`,
-        };
-      if (Number.isNaN(kg) || (kg !== null && kg < 0))
-        return {
-          ok: false,
-          error: `Das Gewicht bei ${e.exercise_name} ist keine Zahl.`,
-        };
+      const checked = measured(e.exercise_name, r);
+      if (!checked.ok) return checked;
+      const { reps, kg } = checked;
       sets.push({ reps, ...(kg !== null ? { load_kg: kg } : {}) });
     }
     exercises.push(
@@ -135,4 +144,82 @@ export function logWorkoutInput(
       exercises,
     },
   };
+}
+
+/* ------------------------------------------------------ open training */
+
+/** The latest strength training that was started and never finished. */
+export function openWorkoutOf(
+  context: WorkoutContext,
+): WorkoutContext["workouts"][number] | null {
+  return (
+    context.workouts
+      .filter(
+        (w) =>
+          w.status === "in_progress" &&
+          (w.activity_type === undefined || w.activity_type === "strength"),
+      )
+      .sort((a, b) => b.created_at_utc.localeCompare(a.created_at_utc))[0] ??
+    null
+  );
+}
+
+type StoredSet = WorkoutContext["sets"][number];
+
+/**
+ * The proposal's rows with what an open training already holds: stored sets
+ * first (ticked, not changeable), then the proposal's remaining sets.
+ */
+export function resumeRows(
+  proposal: SessionProposal,
+  stored: readonly StoredSet[],
+): Record<string, SetRow[]> {
+  const proposed = rowsOf(proposal);
+  return Object.fromEntries(
+    proposal.exercises.map((e, i) => {
+      const key = keyOf(e, i);
+      const kept = stored
+        .filter(
+          (s) =>
+            s.status === "active" &&
+            (e.plan_item_id
+              ? s.plan_item_id === e.plan_item_id
+              : s.plan_item_id === null && s.exercise_id === e.exercise_id),
+        )
+        .sort((a, b) => a.set_number - b.set_number)
+        .map((s) => ({
+          kg: kgText(s.load_kg),
+          reps: String(s.reps),
+          done: true,
+          stored: true,
+        }));
+      return [key, [...kept, ...(proposed[key] ?? []).slice(kept.length)]];
+    }),
+  );
+}
+
+/** The newly ticked sets of a continued training, for `log_workout_sets`. */
+export function newSetsOf(
+  proposal: SessionProposal,
+  rows: Record<string, SetRow[]>,
+):
+  { ok: true; sets: Record<string, unknown>[] } | { ok: false; error: string } {
+  const sets: Record<string, unknown>[] = [];
+  for (const [i, e] of proposal.exercises.entries()) {
+    for (const [n, r] of (rows[keyOf(e, i)] ?? []).entries()) {
+      if (!r.done || r.stored) continue;
+      const checked = measured(e.exercise_name, r);
+      if (!checked.ok) return checked;
+      sets.push({
+        exercise_id: e.exercise_id,
+        plan_item_id: e.plan_item_id,
+        set_type: "working",
+        reps: checked.reps,
+        load_kg: checked.kg,
+        side: e.sets[n]?.side ?? e.sets[0]?.side ?? "both",
+        ...e.conventions,
+      });
+    }
+  }
+  return { ok: true, sets };
 }

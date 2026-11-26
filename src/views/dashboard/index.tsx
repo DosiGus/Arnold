@@ -1,13 +1,14 @@
 import "../index.css";
 
 import { Alert } from "@openai/apps-sdk-ui/components/Alert";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { DataLLM, useSendFollowUpMessage } from "skybridge/web";
 import {
   ArnoldDashboardViewSchema,
   type ArnoldDashboardView,
 } from "../../shared/arnold-view.js";
 import { useArnoldTool, useOpeningResult } from "../arnold-client.js";
+import { onDataChanged } from "../live/data-changed.js";
 import { EMPTY, viewOf } from "../demo/model.js";
 import { dashboardModel } from "../model/dashboard.js";
 import { useHostTheme } from "../use-host-theme.js";
@@ -42,12 +43,24 @@ export default function DashboardView() {
   const [failed, setFailed] = useState(false);
   const ready = opening.status !== "pending";
   const { call } = refresh;
+  // Always with the user's zone, else Arnold cannot know what "today" is.
+  const reload = useCallback(
+    () =>
+      call({
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      }).then((next) => {
+        setFresh(next);
+        setFailed(false);
+      }),
+    [call],
+  );
   useEffect(() => {
     if (!ready) return;
-    call()
-      .then(setFresh)
-      .catch(() => setFailed(true));
-  }, [ready, call]);
+    const load = () => void reload().catch(() => setFailed(true));
+    load();
+    // A screen saved something: read the overview again.
+    return onDataChanged(load);
+  }, [ready, reload]);
 
   const view = fresh ?? (opening.status === "ok" ? opening.data : null);
   if (!view) {
@@ -69,11 +82,15 @@ export default function DashboardView() {
       content={`Arnold-Überblick: Woche ${d.week.done} von ${d.week.goal} Trainingstagen, ${d.goals.length} Ziele, nächstes Training ${d.next?.name ?? "keins geplant"}.`}
     >
       <main className="mx-auto flex w-full max-w-xl min-w-0 flex-col gap-6 overflow-x-hidden p-4">
-        {fresh === null && failed && (
+        {failed && (
           <Alert
             color="warning"
             variant="soft"
-            title="Stand vom Öffnen der Karte, nicht ganz aktuell."
+            title={
+              fresh === null
+                ? "Stand vom Öffnen der Karte, nicht ganz aktuell."
+                : "Neu laden ging nicht, der Stand ist nicht ganz aktuell."
+            }
           />
         )}
         <AppShell
@@ -81,7 +98,7 @@ export default function DashboardView() {
           view={PLACEHOLDER}
           dashboard={d}
           source={view}
-          onRefresh={() => call().then(setFresh)}
+          onRefresh={reload}
           onAsk={(t) => void sendFollowUp(t)}
           onEditProfile={() =>
             void sendFollowUp("Ich möchte meine Angaben ändern.")

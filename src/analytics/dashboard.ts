@@ -14,7 +14,7 @@ import {
 import { prepareAnalyticsInput, type PreparedInput } from "./eligibility.js";
 import { isCalendarDate } from "./period.js";
 import { computePlanAdherence } from "./plans.js";
-import { computeHome, type HomeAnalytics } from "./home.js";
+import { computeHome, type HomeAnalytics, type HomeRunInputs } from "./home.js";
 import { completedRunsOf, type DatasetWithRunInputs } from "./run-records.js";
 import {
   computeScores,
@@ -169,6 +169,8 @@ export function buildHomeAnalytics(
   options: {
     reference_date?: string | null;
     weekly_goal_training_days?: number | null;
+    /** Planned and completed runs, for "today" and the week. */
+    day_runs?: HomeRunInputs;
   } = {},
 ): HomeAnalytics {
   const input = prepareAnalytics(dataset, {
@@ -184,6 +186,7 @@ export function buildHomeAnalytics(
     options.weekly_goal_training_days ?? null,
     runs,
     completedRunsOf(dataset as DatasetWithRunInputs),
+    options.day_runs,
   );
 }
 

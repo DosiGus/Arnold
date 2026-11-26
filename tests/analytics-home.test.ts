@@ -382,3 +382,69 @@ describe("data contract", () => {
     expect(data.bodyWeights).toEqual([]);
   });
 });
+
+describe("today and the week, per kind", () => {
+  const run = (
+    workout_id: string,
+    date: string,
+    status: "planned" | "completed",
+  ) => ({
+    workout_id,
+    date,
+    status,
+    name: "Grundlage",
+    planned_seconds: 2400,
+    planned_distance_m: null,
+    timer_s: status === "completed" ? 1800 : null,
+    distance_m: null,
+  });
+  const home = buildHomeAnalytics(
+    dataset({
+      workouts: [
+        day("mon", "2026-02-02"),
+        day("today", "2026-02-04", { session_name_snapshot: "Push" }),
+        day("open", "2026-02-04", { status: "in_progress" }),
+      ],
+    }),
+    {
+      reference_date: "2026-02-04",
+      day_runs: {
+        has_run_plan: true,
+        runs: [
+          run("r-done", "2026-02-03", "completed"),
+          run("r-missed", "2026-02-02", "planned"),
+          run("r-today", "2026-02-04", "planned"),
+          run("r-later", "2026-02-12", "planned"),
+          run("r-next", "2026-02-06", "planned"),
+        ],
+      },
+    },
+  );
+
+  test("names what was done today and what is still planned", () => {
+    expect(home.today).toMatchObject({
+      date: "2026-02-04",
+      has_run_plan: true,
+    });
+    expect(home.today!.done.map((s) => [s.kind, s.name])).toEqual([
+      ["strength", "Push"],
+    ]);
+    expect(home.today!.planned_runs.map((r) => r.workout_id)).toEqual([
+      "r-today",
+    ]);
+    expect(home.today!.next_run?.workout_id).toBe("r-next");
+  });
+
+  test("lists the week's completed trainings; unknown distance stays null", () => {
+    expect(home.week_sessions.map((s) => s.workout_id)).toEqual([
+      "mon",
+      "r-done",
+      "today",
+    ]);
+    expect(home.week_sessions[1]).toMatchObject({
+      timer_s: 1800,
+      distance_m: null,
+      working_sets: null,
+    });
+  });
+});

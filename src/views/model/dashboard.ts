@@ -237,6 +237,50 @@ export function latestRecords(
   return top.map((d) => d.row);
 }
 
+type DoneSession = NonNullable<
+  ArnoldDashboardView["home"]["week_sessions"]
+>[number];
+
+/** What is known about a done training, e.g. "5,2 km · 31:00". */
+export function doneDetail(s: DoneSession): string {
+  const parts =
+    s.kind === "run"
+      ? [
+          s.distance_m === null ? null : `${kmText(s.distance_m / 1000)} km`,
+          s.timer_s === null ? null : clock(s.timer_s),
+        ]
+      : [
+          s.working_sets === null
+            ? null
+            : `${s.working_sets} ${s.working_sets === 1 ? "Arbeitssatz" : "Arbeitssätze"}`,
+        ];
+  return parts.filter((p) => p !== null).join(" · ") || "erledigt";
+}
+
+type RunDay = NonNullable<
+  ArnoldDashboardView["home"]["today"]
+>["planned_runs"][number];
+
+/** The planned totals of a run, only those the plan really gives. */
+export function plannedDetail(r: RunDay): string {
+  const parts = [
+    r.planned_distance_m === null
+      ? null
+      : `${kmText(r.planned_distance_m / 1000)} km`,
+    r.planned_seconds === null
+      ? null
+      : `${Math.round(r.planned_seconds / 60)} Min.`,
+  ];
+  return parts.filter((p) => p !== null).join(" · ");
+}
+
+/** "2026-11-27" → "Fr, 27. Nov." */
+export function weekdayDate(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const day = new Date(Date.UTC(y!, m! - 1, d!)).getUTCDay();
+  return `${WEEKDAYS[(day + 6) % 7]}, ${shortDate(iso)}`;
+}
+
 function week(view: ArnoldDashboardView): DashboardData["week"] {
   const current = view.weeks.find((w) => w.is_current_week);
   const today =
@@ -252,20 +296,18 @@ function week(view: ArnoldDashboardView): DashboardData["week"] {
     days: WEEKDAYS.map((label, i) => {
       const date = dates[i];
       const done = date !== undefined && trained.has(date);
-      const workouts = date
-        ? view.recent_workouts.filter(
-            (w) => w.date === date && w.status === "completed",
-          )
-        : [];
+      const sessions = (view.home.week_sessions ?? []).filter(
+        (s) => s.date === date,
+      );
       return {
         label,
         trained: done,
         today: date !== undefined && date === today,
         session:
-          done && workouts.length
+          done && sessions.length
             ? {
-                title: workouts.map((w) => w.title).join(", "),
-                sub: workouts[0]!.status_label,
+                title: sessions.map((s) => s.name).join(", "),
+                sub: sessions.map(doneDetail).join(", "),
                 when: WEEKDAY_LONG[i]!,
               }
             : undefined,
@@ -274,42 +316,115 @@ function week(view: ArnoldDashboardView): DashboardData["week"] {
   };
 }
 
+/**
+ * "Heute", per kind: what the server says was done today (with the real name),
+ * the runs planned for today, the next strength session of the plan and the
+ * mobility routines of the day. Without the user's time zone nothing counts as
+ * today's.
+ */
 function today(view: ArnoldDashboardView): DashboardToday[] {
+  const known = view.reference?.source === "timezone";
+  const day = known ? view.home.today : null;
   const out: DashboardToday[] = [];
-  const day =
-    view.reference?.source === "timezone" ? view.reference.date : null;
-  const trainedToday =
-    day !== null && view.weeks.some((w) => w.trained_dates.includes(day));
-  const next = view.home.next_session;
-  if (next)
+  const strengthDone = day?.done.filter((s) => s.kind === "strength") ?? [];
+  for (const s of strengthDone)
     out.push({
+      id: s.workout_id,
+      kind: "strength",
+      title: s.name,
+      sub: doneDetail(s),
+      state: "done",
+    });
+  const next = view.home.next_session;
+  if (next && !strengthDone.length)
+    out.push({
+      id: next.session_id,
       kind: "strength",
       title: next.session_name,
-      sub: `${next.exercise_count} Übungen`,
-      state: trainedToday ? "done" : "next",
+      sub: `Nächste Einheit · ${next.exercise_count} Übungen`,
+      state: "next",
     });
-  const mob = view.home.mobility;
-  if (mob && mob.sessions_open > 0)
+  for (const s of day?.done.filter((x) => x.kind === "run") ?? [])
     out.push({
-      kind: "mobility",
-      title: "Mobility",
-      sub: mob.line,
-      state: "open",
+      id: s.workout_id,
+      kind: "run",
+      title: s.name,
+      sub: doneDetail(s),
+      state: "done",
     });
-  if (mob?.morning)
+  for (const r of day?.planned_runs ?? [])
     out.push({
-      kind: "morning",
-      title: "Morgenroutine",
-      sub: mob.line,
-      state: mob.morning === "done" ? "done" : "open",
+      id: r.workout_id,
+      kind: "run",
+      title: r.name,
+      sub: plannedDetail(r) || "für heute geplant",
+      state: out.some((t) => t.state === "next") ? "open" : "next",
+      ask: "Zeig mir meinen heutigen Lauf.",
+    });
+  for (const m of (known ? view.home.mobility?.today : undefined) ?? [])
+    out.push({
+      id: m.session_id ?? `${m.kind}-${m.name}`,
+      kind: m.kind === "morning" ? "morning" : "mobility",
+      title: m.name,
+      sub:
+        m.minutes === null
+          ? m.done
+            ? "erledigt"
+            : "offen"
+          : `${m.minutes} Min.`,
+      state: m.done ? "done" : "open",
     });
   return out;
+}
+
+function todayNote(
+  view: ArnoldDashboardView,
+  rows: readonly DashboardToday[],
+): DashboardData["todayNote"] {
+  if (!view.active_plan) return undefined;
+  const day =
+    view.reference?.source === "timezone" ? view.home.today : undefined;
+  const hasRun = rows.some((t) => t.kind === "run");
+  if (day?.has_run_plan && !hasRun) {
+    if (day.next_run)
+      return {
+        text: `Heute ist kein Lauf geplant. Nächster Lauf: ${[
+          weekdayDate(day.next_run.date),
+          day.next_run.name,
+          plannedDetail(day.next_run),
+        ]
+          .filter(Boolean)
+          .join(" · ")}`,
+      };
+    return {
+      text: "Deine Läufe sind noch auf keinen Tag gelegt.",
+      action: { label: "Laufwoche planen", ask: "Plane meine Laufwoche." },
+    };
+  }
+  return rows.length ? undefined : { text: "Heute steht nichts an." };
+}
+
+/** "Dranbleiben" of mobility; nothing planned stays unsaid, never 0 %. */
+function mobilityNote(view: ArnoldDashboardView): string | undefined {
+  const a = view.home.mobility?.adherence;
+  if (!a) return undefined;
+  const parts = [
+    a.ratio === null
+      ? null
+      : `${a.done_count} von ${a.planned_count} geplanten Routinen (letzte ${a.days} Tage)`,
+    a.streak_days >= 2 ? `${a.streak_days} Tage in Folge` : null,
+  ].filter((p) => p !== null);
+  return parts.length
+    ? `Mobility-Dranbleiben: ${parts.join(" · ")}`
+    : undefined;
 }
 
 /** The overview card's model, from one dashboard answer. */
 export function dashboardModel(view: ArnoldDashboardView): DashboardData {
   const t = today(view);
   const next = view.home.next_session;
+  const note = todayNote(view, t);
+  const mobility = mobilityNote(view);
   return {
     sample: false,
     hasPlan: view.active_plan !== null,
@@ -321,6 +436,8 @@ export function dashboardModel(view: ArnoldDashboardView): DashboardData {
         }
       : null,
     today: t,
+    ...(note ? { todayNote: note } : {}),
+    ...(mobility ? { mobilityNote: mobility } : {}),
     week: week(view),
     scores: scores(view),
     goals: goals(view),

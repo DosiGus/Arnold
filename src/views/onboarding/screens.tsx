@@ -120,7 +120,13 @@ export function PlanScreen({
 
 /* ----------------------------------------------------------- training */
 
-export type SetRow = { kg: string; reps: string; done: boolean };
+export type SetRow = {
+  kg: string;
+  reps: string;
+  done: boolean;
+  /** Already saved in an open training; shown, not changeable here. */
+  stored?: boolean;
+};
 
 export function TrainingScreen({
   view,
@@ -129,6 +135,8 @@ export function TrainingScreen({
   liveDay,
   initialRows,
   onFinish,
+  onRowsChange,
+  notice,
 }: {
   view: OnboardingView;
   kind: PlanKind;
@@ -139,6 +147,10 @@ export function TrainingScreen({
   initialRows?: Record<string, SetRow[]>;
   /** Saves the training; resolves with an error text, or null when stored. */
   onFinish?: (rows: Record<string, SetRow[]>) => Promise<string | null>;
+  /** Every change of the rows, so unsaved ticks survive leaving the screen. */
+  onRowsChange?: (rows: Record<string, SetRow[]>) => void;
+  /** A hint above the sets (live), e.g. an open training being continued. */
+  notice?: string;
 }) {
   const day: PlanDay | undefined =
     liveDay ??
@@ -166,11 +178,14 @@ export function TrainingScreen({
     (n, r) => n + r.filter((x) => x.done).length,
     0,
   );
-  const patch = (id: string, i: number, p: Partial<SetRow>) =>
-    setSets((s) => ({
-      ...s,
-      [id]: s[id].map((r, k) => (k === i ? { ...r, ...p } : r)),
-    }));
+  const patch = (id: string, i: number, p: Partial<SetRow>) => {
+    const next = {
+      ...sets,
+      [id]: sets[id].map((r, k) => (k === i ? { ...r, ...p } : r)),
+    };
+    setSets(next);
+    onRowsChange?.(next);
+  };
 
   if (!day)
     return (
@@ -203,6 +218,7 @@ export function TrainingScreen({
         {day.focus}. Auf der Uhr trainierst du ohne Handy, hier erfasst du Sätze
         von Hand.
       </p>
+      {notice && <Alert color="info" variant="soft" title={notice} />}
       <Bar value={total ? done / total : 0} />
       {day.exercises.map((e) => (
         <Box key={e.id}>
@@ -222,6 +238,7 @@ export function TrainingScreen({
                   aria-label={`${e.name} Satz ${i + 1} Gewicht`}
                   inputMode="decimal"
                   value={r.kg}
+                  disabled={r.stored}
                   endAdornment="kg"
                   placeholder="offen"
                   onChange={(ev) => patch(e.id, i, { kg: ev.target.value })}
@@ -230,12 +247,14 @@ export function TrainingScreen({
                   aria-label={`${e.name} Satz ${i + 1} Wiederholungen`}
                   inputMode="numeric"
                   value={r.reps}
+                  disabled={r.stored}
                   endAdornment="×"
                   onChange={(ev) => patch(e.id, i, { reps: ev.target.value })}
                 />
                 <Checkbox
                   aria-label="Satz erledigt"
                   checked={r.done}
+                  disabled={r.stored}
                   onCheckedChange={(v) => patch(e.id, i, { done: v })}
                 />
               </li>
@@ -262,10 +281,11 @@ export function TrainingScreen({
           color="primary"
           size="lg"
           block
-          disabled={done === 0}
+          disabled={done === 0 || saving}
           loading={saving}
           onClick={() => {
             if (!onFinish) return setSaved(true);
+            if (saving) return;
             setSaving(true);
             void onFinish(sets).then((error) => {
               setSaving(false);
@@ -281,16 +301,39 @@ export function TrainingScreen({
   );
 }
 
-function SessionChecklist({
+export function SessionChecklist({
   day,
   onBack,
+  live,
 }: {
   day: PlanDay;
   onBack: () => void;
+  /** Arnold's routine: saving writes it; without it the template's demo. */
+  live?: {
+    initial: Record<string, boolean>;
+    onChange: (done: Record<string, boolean>) => void;
+    /** Resolves with an error text, or null when stored. */
+    onFinish: () => Promise<string | null>;
+    /** Saved already (today): no button. */
+    saved: boolean;
+  };
 }) {
-  const [done, setDone] = useState<Record<string, boolean>>({});
-  const [saved, setSaved] = useState(false);
-  const count = day.exercises.filter((e) => done[e.id]).length;
+  const [done, setDone] = useState<Record<string, boolean>>(
+    live?.initial ?? {},
+  );
+  const [stored, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const saved = stored || (live?.saved ?? false);
+  const count = saved
+    ? day.exercises.length
+    : day.exercises.filter((e) => done[e.id]).length;
+  const change = (next: Record<string, boolean>) => {
+    setDone(next);
+    live?.onChange(next);
+  };
+  // Arnold stores a routine as a whole; the demo takes any number of ticks.
+  const ready = live ? count === day.exercises.length : count > 0;
   return (
     <div className="flex flex-col gap-4">
       <ScreenHeader
@@ -313,7 +356,9 @@ function SessionChecklist({
             >
               <span className="flex flex-col">
                 <span
-                  className={done[e.id] ? "text-secondary line-through" : ""}
+                  className={
+                    saved || done[e.id] ? "text-secondary line-through" : ""
+                  }
                 >
                   {e.name}
                 </span>
@@ -323,27 +368,63 @@ function SessionChecklist({
               </span>
               <Checkbox
                 aria-label={`${e.name} erledigt`}
-                checked={!!done[e.id]}
-                onCheckedChange={(v) => setDone((d) => ({ ...d, [e.id]: v }))}
+                checked={saved || !!done[e.id]}
+                disabled={saved}
+                onCheckedChange={(v) => change({ ...done, [e.id]: v })}
               />
             </li>
           ))}
         </ul>
       </Box>
+      {failure && <Alert color="danger" variant="soft" title={failure} />}
       {saved ? (
         <Box>
-          <p className="m-0 font-medium">Gespeichert (Test).</p>
+          <p className="m-0 font-medium">
+            {live ? "Routine gespeichert." : "Gespeichert (Test)."}
+          </p>
         </Box>
       ) : (
-        <Button
-          color="primary"
-          size="lg"
-          block
-          disabled={count === 0}
-          onClick={() => setSaved(true)}
-        >
-          Fertig
-        </Button>
+        <>
+          {live && !ready && (
+            <>
+              <p className="m-0 text-sm text-secondary">
+                Arnold speichert die Routine als Ganzes: Hake alle Übungen ab,
+                dann kannst du speichern.
+              </p>
+              <Button
+                color="secondary"
+                variant="soft"
+                block
+                onClick={() =>
+                  change(
+                    Object.fromEntries(day.exercises.map((e) => [e.id, true])),
+                  )
+                }
+              >
+                Alle abhaken
+              </Button>
+            </>
+          )}
+          <Button
+            color="primary"
+            size="lg"
+            block
+            disabled={!ready || saving}
+            loading={saving}
+            onClick={() => {
+              if (!live) return setSaved(true);
+              if (saving) return;
+              setSaving(true);
+              void live.onFinish().then((error) => {
+                setSaving(false);
+                setFailure(error);
+                if (!error) setSaved(true);
+              });
+            }}
+          >
+            Fertig
+          </Button>
+        </>
       )}
     </div>
   );

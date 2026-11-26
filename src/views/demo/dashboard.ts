@@ -11,6 +11,10 @@ export type DashboardToday = {
   title: string;
   sub: string;
   state: "next" | "open" | "done";
+  /** Distinct per row; the kind alone is not (two runs on one day). */
+  id?: string;
+  /** The button sends this sentence to the chat instead of opening a screen. */
+  ask?: string;
 };
 
 export type DashboardData = {
@@ -19,6 +23,10 @@ export type DashboardData = {
   hasPlan: boolean;
   next: { name: string; sub: string; sessionId?: string } | null;
   today: DashboardToday[];
+  /** What else to say about today (nothing planned, next run). */
+  todayNote?: { text: string; action?: { label: string; ask: string } };
+  /** Mobility "Dranbleiben" in one line. */
+  mobilityNote?: string;
   week: {
     goal: number;
     done: number;

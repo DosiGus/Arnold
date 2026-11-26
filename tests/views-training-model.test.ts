@@ -5,11 +5,16 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  LogSetSchema,
   LogWorkoutExerciseSchema,
   type SessionProposal,
+  type WorkoutContext,
 } from "../src/shared/workout-contract";
 import {
   logWorkoutInput,
+  newSetsOf,
+  openWorkoutOf,
+  resumeRows,
   rowsOf,
   trainingDayOf,
 } from "../src/views/model/training";
@@ -125,5 +130,52 @@ describe("training card model", () => {
     });
     rows["pi-bench"]![0] = { kg: "sechzig", reps: "8", done: true };
     expect(logWorkoutInput(proposal, rows, options).ok).toBe(false);
+  });
+});
+
+describe("an open training", () => {
+  const stored = [
+    {
+      status: "active",
+      plan_item_id: "pi-bench",
+      exercise_id: "bench",
+      set_number: 1,
+      load_kg: 60,
+      reps: 9,
+    },
+  ] as unknown as WorkoutContext["sets"];
+
+  it("is the latest unfinished strength training", () => {
+    const w = (id: string, status: string, created_at_utc: string) => ({
+      workout_id: id,
+      status,
+      created_at_utc,
+    });
+    const context = {
+      workouts: [
+        w("old", "in_progress", "2026-11-01T10:00:00Z"),
+        w("new", "in_progress", "2026-11-20T10:00:00Z"),
+      ],
+    } as unknown as WorkoutContext;
+    expect(openWorkoutOf(context)?.workout_id).toBe("new");
+  });
+
+  it("keeps stored sets and sends only the newly ticked ones", () => {
+    const rows = resumeRows(proposal, stored);
+    expect(rows["pi-bench"]).toEqual([
+      { kg: "60", reps: "9", done: true, stored: true },
+      { kg: "62,5", reps: "8", done: false },
+    ]);
+    expect(newSetsOf(proposal, rows)).toEqual({ ok: true, sets: [] });
+    rows["pi-bench"]![1]!.done = true;
+    const built = newSetsOf(proposal, rows);
+    if (!built.ok) throw new Error(built.error);
+    expect(built.sets).toHaveLength(1);
+    expect(LogSetSchema.parse(built.sets[0])).toMatchObject({
+      plan_item_id: "pi-bench",
+      reps: 8,
+      load_kg: 62.5,
+      set_type: "working",
+    });
   });
 });

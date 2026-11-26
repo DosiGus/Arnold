@@ -193,6 +193,31 @@ function Bar({ value }: { value: number | null }) {
   );
 }
 
+function TodayNote({
+  note,
+  onAsk,
+}: {
+  note: NonNullable<DashboardData["todayNote"]>;
+  onAsk: (sentence: string) => void;
+}) {
+  const { action } = note;
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="m-0 text-sm text-secondary">{note.text}</p>
+      {action && (
+        <Button
+          color="secondary"
+          variant="soft"
+          block
+          onClick={() => onAsk(action.ask)}
+        >
+          {action.label}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 export type Screen =
   | "dashboard"
   | "plan"
@@ -377,16 +402,30 @@ export function Dashboard({
 
         {d.today.length === 0 && (
           <Card title="Heute">
-            <p className="m-0 text-secondary">
-              Du hast noch keinen Plan. Arnold baut dir einen.
-            </p>
-            <Button
-              color="primary"
-              block
-              onClick={() => onAsk("Erstelle meinen Plan.")}
-            >
-              Plan erstellen
-            </Button>
+            {d.hasPlan ? (
+              <>
+                <TodayNote
+                  note={d.todayNote ?? { text: "Heute steht nichts an." }}
+                  onAsk={onAsk}
+                />
+                {d.mobilityNote && (
+                  <p className="m-0 text-sm text-secondary">{d.mobilityNote}</p>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="m-0 text-secondary">
+                  Du hast noch keinen Plan. Arnold baut dir einen.
+                </p>
+                <Button
+                  color="primary"
+                  block
+                  onClick={() => onAsk("Erstelle meinen Plan.")}
+                >
+                  Plan erstellen
+                </Button>
+              </>
+            )}
           </Card>
         )}
 
@@ -402,7 +441,7 @@ export function Dashboard({
                 const next = t.state === "next";
                 const done = t.state === "done";
                 return (
-                  <li key={t.kind} className="flex gap-3">
+                  <li key={t.id ?? t.kind} className="flex gap-3">
                     <span className="flex flex-col items-center">
                       <span
                         className={[
@@ -439,9 +478,11 @@ export function Dashboard({
                           variant={next ? "solid" : "soft"}
                           size="sm"
                           pill
-                          onClick={() => go("training", t.kind)}
+                          onClick={() =>
+                            t.ask ? onAsk(t.ask) : go("training", t.kind)
+                          }
                         >
-                          Starten
+                          {t.ask ? "Ansehen" : "Starten"}
                         </Button>
                       )}
                     </span>
@@ -449,6 +490,14 @@ export function Dashboard({
                 );
               })}
             </ol>
+            {(d.todayNote || d.mobilityNote) && (
+              <div className="mt-3 flex flex-col gap-2">
+                {d.todayNote && <TodayNote note={d.todayNote} onAsk={onAsk} />}
+                {d.mobilityNote && (
+                  <p className="m-0 text-sm text-secondary">{d.mobilityNote}</p>
+                )}
+              </div>
+            )}
           </Fold>
         )}
 

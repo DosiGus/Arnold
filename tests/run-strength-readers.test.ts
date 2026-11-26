@@ -8,6 +8,7 @@
  * of completed runs count there (tests/analytics-run-days.test.ts), so the
  * comparisons below leave those figures out; everything else is identical.
  */
+import type { DatasetWithHomeRuns } from "../src/server/run/home-days";
 import { describe, expect, it } from "vitest";
 import {
   buildArnoldDashboardAnalytics,
@@ -261,8 +262,16 @@ describe("strength readers with running data in the dataset", () => {
       runRecapInputs: runRecaps,
       // Running records and running goals read the completed runs whole.
       runRecordInputs: runRecords,
+      // The start screen reads planned and completed runs by day.
+      homeRuns,
       ...fromMixed
-    } = loaded;
+    } = loaded as DatasetWithRunDays & DatasetWithHomeRuns;
+    expect(homeRuns?.runs.map((r) => [r.workout_id, r.status])).toEqual([
+      ["run-1", "completed"],
+      ["run-2", "completed"],
+      ["run-3", "planned"],
+      ["run-4", "planned"],
+    ]);
     expect(runRecords?.map((r) => r.workout_id)).toEqual(["run-1", "run-2"]);
     expect(runDays).toEqual(["2026-09-08", "2026-10-12"]);
     expect(runScores?.map((r) => [r.workout_id, r.date])).toEqual([

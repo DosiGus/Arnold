@@ -20,6 +20,7 @@ import {
   type DatasetWithMobility,
 } from "./mobility/day.js";
 import { trainingView } from "./plan/adjustment-rules.js";
+import { homeRunsOf, type DatasetWithHomeRuns } from "./run/home-days.js";
 import { scoreRunsOf, type ScoreHealthInput } from "../analytics/scores.js";
 import type { Recovery } from "../shared/write-recovery.js";
 import type { HealthDayInput } from "../analytics/health-summary.js";
@@ -193,7 +194,7 @@ export function storeSource(
       // Running records and running goals read the completed runs whole.
       const runRecords = completedRunsOf(parsed.data);
       const strength = strengthTrainingView(parsed.data);
-      const withRuns: DatasetWithRunDays = runDays.length
+      const withDays: DatasetWithRunDays = runDays.length
         ? {
             ...strength,
             runTrainingDates: runDays,
@@ -202,6 +203,13 @@ export function storeSource(
             ...(runRecords.length ? { runRecordInputs: runRecords } : {}),
           }
         : strength;
+      // The start screen also needs planned runs and whether the plan that
+      // applies now has run sessions.
+      const homeRuns = homeRunsOf(trainingView(parsed.data, new Date()));
+      const withRuns: DatasetWithRunDays & DatasetWithHomeRuns =
+        homeRuns.has_run_plan || homeRuns.runs.length
+          ? { ...withDays, homeRuns }
+          : withDays;
       // MOB-005: the mobility facts travel next to the strength view, as the
       // run days do, only where mobility exists at all (anything else stays
       // byte-identical). The plan that applies now is the one a running

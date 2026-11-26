@@ -24,6 +24,7 @@ import {
   mobilityDueToday,
   type DatasetWithMobility,
 } from "./mobility/day.js";
+import { homeRunsOf, type DatasetWithHomeRuns } from "./run/home-days.js";
 import {
   buildArnoldDashboardAnalytics,
   buildHomeAnalytics,
@@ -732,7 +733,32 @@ function homeMobility(
       ? `${Math.round(adherence.ratio * 100)} % der geplanten Routinen in ${Math.round(adherence.days / 7)} Wochen`
       : null,
   ].filter((part): part is string => part !== null);
+  const dueIds = new Set(due.map((entry) => entry.session.session_id));
+  const today = [
+    ...due.map(({ session, done }) => ({
+      session_id: session.session_id,
+      kind: session.kind,
+      name: session.session_name,
+      minutes: session.minutes,
+      done,
+    })),
+    // Routines done today that were not due (free, or another day's).
+    ...inputs.done
+      .filter(
+        (d) =>
+          d.date_local === referenceDate &&
+          (d.session_id === null || !dueIds.has(d.session_id)),
+      )
+      .map((d) => ({
+        session_id: d.session_id,
+        kind: d.kind ?? ("session" as const),
+        name: d.name ?? (d.kind === "morning" ? "Morgenroutine" : "Mobility"),
+        minutes: null,
+        done: true,
+      })),
+  ];
   return {
+    today,
     morning: morning ? (morning.done ? "done" : "open") : null,
     sessions_open: sessionsOpen,
     adherence: {
@@ -779,7 +805,38 @@ function homeView(
       "1970"
     ).slice(0, 4),
   );
+  const workouts = new Map(dataset.workouts.map((w) => [w.workout_id, w]));
+  const doneSession = (s: HomeAnalytics["week_sessions"][number]) => ({
+    ...s,
+    name:
+      s.name ??
+      workoutTitle(
+        workouts.get(s.workout_id)!,
+        dataset.sets.filter(
+          (x) => x.workout_id === s.workout_id && x.status === "active",
+        ),
+      ),
+  });
+  const runDay = (
+    r: NonNullable<HomeAnalytics["today"]>["planned_runs"][0],
+  ) => ({
+    workout_id: r.workout_id,
+    date: r.date,
+    name: r.name,
+    planned_seconds: r.planned_seconds,
+    planned_distance_m: r.planned_distance_m,
+  });
   return {
+    today: home.today
+      ? {
+          date: home.today.date,
+          done: home.today.done.map(doneSession),
+          planned_runs: home.today.planned_runs.map(runDay),
+          next_run: home.today.next_run ? runDay(home.today.next_run) : null,
+          has_run_plan: home.today.has_run_plan,
+        }
+      : null,
+    week_sessions: home.week_sessions.map(doneSession),
     next_session: home.next_session,
     streak: {
       ...home.streak,
@@ -1100,6 +1157,8 @@ export function buildDashboardView(
         reference_date: options.reference_date ?? null,
         // The weekly goal is the plan's training days (server instructions).
         weekly_goal_training_days: activePlan?.days_per_week ?? null,
+        day_runs:
+          (dataset as DatasetWithHomeRuns).homeRuns ?? homeRunsOf(dataset),
       }),
     ),
     // Copied, not computed: every figure comes from src/analytics/scores.ts.

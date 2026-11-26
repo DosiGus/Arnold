@@ -6,7 +6,10 @@
  * workouts and calendar dates as written (`workout_date_local`); no clock is
  * read, the reference date comes in from the caller.
  */
-import type { ArnoldLoadBasis } from "../shared/arnold-schema-v1.js";
+import {
+  isStrengthWorkout,
+  type ArnoldLoadBasis,
+} from "../shared/arnold-schema-v1.js";
 import { weekActivity, weekStreak, type RunDays } from "./activity.js";
 import type { PreparedInput } from "./eligibility.js";
 import { goalProgress, type GoalProgress } from "./goals.js";
@@ -95,8 +98,58 @@ export type HomeNextSession = Readonly<{
   exercise_count: number;
 }>;
 
+/** One planned or completed run, as the start screen reads it. */
+export type HomeRunDay = Readonly<{
+  workout_id: string;
+  date: string;
+  status: "planned" | "completed";
+  name: string;
+  /** From the prescription, only when every segment gives it; else null. */
+  planned_seconds: number | null;
+  planned_distance_m: number | null;
+  /** Measured; null while planned or when unknown. */
+  timer_s: number | null;
+  distance_m: number | null;
+}>;
+
+/** The runs the start screen needs next to the strength view. */
+export type HomeRunInputs = Readonly<{
+  /** The active plan that applies now has run sessions. */
+  has_run_plan: boolean;
+  runs: readonly HomeRunDay[];
+}>;
+
+/** One completed training of a day, strength or run. */
+export type HomeDoneSession = Readonly<{
+  kind: "strength" | "run";
+  workout_id: string;
+  date: string;
+  /** The recorded name; null when none was stored. */
+  name: string | null;
+  /** Strength only. */
+  working_sets: number | null;
+  /** Runs only. */
+  timer_s: number | null;
+  distance_m: number | null;
+}>;
+
+/** The reference day, per kind of training. */
+export type HomeToday = Readonly<{
+  date: string;
+  done: readonly HomeDoneSession[];
+  /** Runs planned for the day and not yet done. */
+  planned_runs: readonly HomeRunDay[];
+  /** The first planned run after the day. */
+  next_run: HomeRunDay | null;
+  has_run_plan: boolean;
+}>;
+
 export type HomeAnalytics = Readonly<{
   reference_date: string | null;
+  /** Null without a reference date. */
+  today: HomeToday | null;
+  /** Completed trainings of the reference date's week, oldest first. */
+  week_sessions: readonly HomeDoneSession[];
   /** The plan session after the last one trained; the first one to begin with. */
   next_session: HomeNextSession | null;
   streak: HomeStreak;
@@ -373,12 +426,87 @@ export function nextSession(input: PreparedInput): HomeNextSession | null {
   });
 }
 
+/** Completed strength workouts and runs between two calendar days. */
+function doneBetween(
+  input: PreparedInput,
+  runs: readonly HomeRunDay[],
+  from: string,
+  to: string,
+): HomeDoneSession[] {
+  const inside = (date: string) =>
+    compareDate(date, from) >= 0 && compareDate(date, to) <= 0;
+  const workingSets = new Map(
+    input.completedWorkouts.map((w) => [
+      w.workout.workout_id,
+      w.analyses.filter((a) => a.bucket === "working").length,
+    ]),
+  );
+  const strength = input.dataset.workouts
+    .filter(
+      (w) =>
+        isStrengthWorkout(w) &&
+        w.status === "completed" &&
+        inside(w.workout_date_local),
+    )
+    .sort((a, b) => (a.created_at_utc < b.created_at_utc ? -1 : 1))
+    .map((w): HomeDoneSession =>
+      Object.freeze({
+        kind: "strength",
+        workout_id: w.workout_id,
+        date: w.workout_date_local,
+        name: w.session_name_snapshot?.trim() || null,
+        working_sets: workingSets.get(w.workout_id) ?? null,
+        timer_s: null,
+        distance_m: null,
+      }),
+    );
+  const completedRuns = runs
+    .filter((r) => r.status === "completed" && inside(r.date))
+    .map((r): HomeDoneSession =>
+      Object.freeze({
+        kind: "run",
+        workout_id: r.workout_id,
+        date: r.date,
+        name: r.name,
+        working_sets: null,
+        timer_s: r.timer_s,
+        distance_m: r.distance_m,
+      }),
+    );
+  // Stable: by day; within a day strength first, as stored.
+  return [...strength, ...completedRuns].sort((a, b) =>
+    compareDate(a.date, b.date),
+  );
+}
+
+function todayOf(
+  input: PreparedInput,
+  runs: HomeRunInputs,
+  date: string,
+): HomeToday {
+  const planned = runs.runs
+    .filter((r) => r.status === "planned")
+    .sort(
+      (a, b) =>
+        compareDate(a.date, b.date) || (a.workout_id < b.workout_id ? -1 : 1),
+    );
+  return Object.freeze({
+    date,
+    done: Object.freeze(doneBetween(input, runs.runs, date, date)),
+    planned_runs: Object.freeze(planned.filter((r) => r.date === date)),
+    next_run: planned.find((r) => compareDate(r.date, date) > 0) ?? null,
+    has_run_plan: runs.has_run_plan,
+  });
+}
+
 export function computeHome(
   input: PreparedInput,
   weeklyGoal: number | null,
   runs?: RunDays,
   /** Completed runs, for running records and running goals. */
   runInputs: readonly RunInput[] = [],
+  /** Planned and completed runs, for "today" and the week. */
+  dayRuns: HomeRunInputs = { has_run_plan: false, runs: [] },
 ): HomeAnalytics {
   const reference = input.referenceDate ?? input.dataLastDate;
   const completed = input.completedWorkouts;
@@ -477,6 +605,20 @@ export function computeHome(
 
   return Object.freeze({
     reference_date: input.referenceDate,
+    today:
+      input.referenceDate === null
+        ? null
+        : todayOf(input, dayRuns, input.referenceDate),
+    week_sessions: Object.freeze(
+      reference === null
+        ? []
+        : doneBetween(
+            input,
+            dayRuns.runs,
+            weekStart(reference),
+            addDays(weekStart(reference), 6),
+          ),
+    ),
     next_session: nextSession(input),
     streak: streakOf(input, weeklyGoal, runs),
     workouts_this_year:

@@ -5,9 +5,14 @@ import {
   PlanCardSchema,
   type PlanCard,
 } from "../../shared/onboarding-contract.js";
+import {
+  RunWeekResponseSchema,
+  type RunWeekResponse,
+} from "../../shared/run-contract.js";
 import { useArnoldTool } from "../arnold-client.js";
 import type { OnboardingView } from "../demo/model.js";
 import { cardPlanFrom, cardProfileOf } from "../model/onboarding.js";
+import { withRunWeek } from "../model/plan-runs.js";
 import { PlanScreen } from "../onboarding/screens.js";
 
 /**
@@ -31,6 +36,17 @@ export function LivePlanScreen({
       .then(setCard)
       .catch(() => setFailed(true));
   }, [call]);
+  // Days and lengths of the runs; the plan shows without them too.
+  const runs = useArnoldTool("get_run_week", RunWeekResponseSchema);
+  const [week, setWeek] = useState<RunWeekResponse | null>(null);
+  const hasRuns = !!card?.plan?.run_sessions?.length;
+  const readWeek = runs.call;
+  useEffect(() => {
+    if (!hasRuns) return;
+    readWeek({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone })
+      .then(setWeek)
+      .catch(() => setWeek(null));
+  }, [hasRuns, readWeek]);
 
   if (failed)
     return (
@@ -41,7 +57,12 @@ export function LivePlanScreen({
       />
     );
   if (!card) return <p className="m-0 text-secondary">Plan wird geladen …</p>;
-  const plan = cardPlanFrom(card.plan, card.plan_insights, card.load_estimates);
+  const stored = cardPlanFrom(
+    card.plan,
+    card.plan_insights,
+    card.load_estimates,
+  );
+  const plan = stored && week ? withRunWeek(stored, week) : stored;
   const live: OnboardingView = {
     ...view,
     plan,

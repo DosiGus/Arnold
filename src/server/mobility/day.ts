@@ -46,6 +46,9 @@ export type MobilityDoneRoutine = Readonly<{
   date_local: string;
   /** Null for a routine done without a plan. */
   session_id: string | null;
+  /** The name stored with the routine, when there is one. */
+  name?: string;
+  kind?: MobilityKind;
 }>;
 
 /** The plain facts, small enough to travel with a dataset. */
@@ -166,11 +169,19 @@ export function mobilityDayInputsOf(dataset: ArnoldDataset): MobilityDayInputs {
     strength_done: strengthDone,
     done: dataset.workouts
       .filter((w) => isMobilityWorkout(w) && w.status === "completed")
-      .map((w) => ({
-        workout_id: w.workout_id,
-        date_local: w.workout_date_local,
-        session_id: w.session_id,
-      })),
+      .map((w) => {
+        const kind = dataset.mobilityResults?.find(
+          (r) => r.workout_id === w.workout_id,
+        )?.kind;
+        const name = w.session_name_snapshot?.trim();
+        return {
+          workout_id: w.workout_id,
+          date_local: w.workout_date_local,
+          session_id: w.session_id,
+          ...(name ? { name } : {}),
+          ...(kind ? { kind } : {}),
+        };
+      }),
   };
 }
 

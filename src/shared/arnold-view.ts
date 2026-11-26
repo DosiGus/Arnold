@@ -451,7 +451,46 @@ export const HomeRunRecordSchema = z.object({
 });
 export type HomeRunRecord = z.infer<typeof HomeRunRecordSchema>;
 
+/** A run planned or done, for the start screen. Unknown values are null. */
+export const HomeRunDaySchema = z.object({
+  workout_id: ArnoldIdSchema,
+  date: isoDate,
+  name: z.string().min(1),
+  /** Planned totals; null when the prescription does not give them. */
+  planned_seconds: finiteNumber.nonnegative().nullable(),
+  planned_distance_m: finiteNumber.nonnegative().nullable(),
+});
+export type HomeRunDay = z.infer<typeof HomeRunDaySchema>;
+
+/** One completed training of a day. */
+export const HomeDoneSessionSchema = z.object({
+  kind: z.enum(["strength", "run"]),
+  workout_id: ArnoldIdSchema,
+  date: isoDate,
+  name: z.string().min(1),
+  working_sets: count.nullable(),
+  timer_s: finiteNumber.nonnegative().nullable(),
+  distance_m: finiteNumber.nonnegative().nullable(),
+});
+export type HomeDoneSession = z.infer<typeof HomeDoneSessionSchema>;
+
 export const ArnoldHomeSchema = z.object({
+  /**
+   * The reference day per kind of training (src/analytics/home.ts). Absent in
+   * older payloads, null without a reference day.
+   */
+  today: z
+    .object({
+      date: isoDate,
+      done: z.array(HomeDoneSessionSchema),
+      planned_runs: z.array(HomeRunDaySchema),
+      next_run: HomeRunDaySchema.nullable(),
+      has_run_plan: z.boolean(),
+    })
+    .nullable()
+    .optional(),
+  /** Completed trainings of the current week, oldest first. */
+  week_sessions: z.array(HomeDoneSessionSchema).optional(),
   next_session: z
     .object({
       plan_version_id: ArnoldIdSchema,
@@ -544,6 +583,19 @@ export const ArnoldHomeSchema = z.object({
       }),
       /** One sentence for the start screen. */
       line: z.string().min(1),
+      /** The routines of the day by name: due ones and others done. */
+      today: z
+        .array(
+          z.object({
+            session_id: ArnoldIdSchema.nullable(),
+            kind: z.enum(["morning", "session"]),
+            name: z.string().min(1),
+            /** Planned minutes; null for a routine outside the plan. */
+            minutes: count.nullable(),
+            done: z.boolean(),
+          }),
+        )
+        .optional(),
     })
     .optional(),
 });
