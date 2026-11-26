@@ -344,7 +344,10 @@ export function ProfileStep({
             onPointerDownCapture={closeAreaOnOutside}
             onFocusCapture={closeAreaOnOutside}
           >
-            <Section title="Über dich">
+            <Section
+              title="Über dich"
+              hint="Freiwillig. Damit schätze ich deine Startgewichte, mehr nicht."
+            >
               <SegmentedControl
                 aria-label="Geschlecht (optional)"
                 pill
