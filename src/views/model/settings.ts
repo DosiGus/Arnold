@@ -12,11 +12,15 @@ import {
   DeleteAccountConfirmSchema,
   type DeleteAccountResponse,
 } from "../../shared/account-contract.js";
+import type { ArnoldDashboardView } from "../../shared/arnold-view.js";
+import { HEALTH_CONSENT_TEXT_VERSION } from "../../shared/health-consent.js";
 import {
   PairGarminWatchConfirmMetaSchema,
   type ListGarminWatches,
   type PairGarminWatchConfirmMeta,
 } from "../../shared/watch-contract.js";
+
+type WatchDelivery = ArnoldDashboardView["watch_delivery"];
 
 export type WatchStatus = {
   connected: boolean;
@@ -35,6 +39,46 @@ export function watchStatus(list: ListGarminWatches): WatchStatus {
       : null,
     deviceId: newest?.device_id ?? null,
   };
+}
+
+export type ConsentStatus = {
+  granted: boolean;
+  /**
+   * False when the server's current text is not the one this card shows: then
+   * no consent is offered (revoking always is).
+   */
+  textIsCurrent: boolean;
+};
+
+export function consentStatus(list: ListGarminWatches): ConsentStatus {
+  return {
+    granted: list.health_consent.granted,
+    textIsCurrent:
+      list.health_consent.current_text_version === HEALTH_CONSENT_TEXT_VERSION,
+  };
+}
+
+/** The yes refers to the text on screen; a revocation needs no version. */
+export const consentInput = (granted: boolean) =>
+  granted
+    ? { granted, text_version: HEALTH_CONSENT_TEXT_VERSION }
+    : { granted };
+
+export const consentDoneText = (granted: boolean, deleted: number) =>
+  granted
+    ? "Einwilligung erteilt: Arnold speichert ab jetzt Messwerte deiner Uhr."
+    : deleted > 0
+      ? `Einwilligung widerrufen. Gelöschte Messwert-Datensätze: ${deleted}.`
+      : "Einwilligung widerrufen. Arnold speichert keine Messwerte mehr.";
+
+/** The watch line for the plan; nothing unless Arnold knows it. */
+export function planOnWatchText(
+  delivery: WatchDelivery | undefined,
+): string | null {
+  if (delivery === "delivered") return "Dein Plan ist auf der Uhr.";
+  if (delivery === "pending")
+    return "Dein Plan ist noch nicht auf der Uhr. Öffne Arnold auf der Uhr.";
+  return null;
 }
 
 /** The code as the watch shows it, cleaned; null when it cannot be one. */

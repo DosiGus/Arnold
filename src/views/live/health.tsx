@@ -7,23 +7,25 @@ import {
   type HealthData,
 } from "../../shared/health-contract.js";
 import { useArnoldTool } from "../arnold-client.js";
-import type { OnboardingView } from "../demo/model.js";
-import { healthDayLabel, healthModel } from "../model/health.js";
+import {
+  healthDayLabel,
+  healthEmptyText,
+  healthModel,
+} from "../model/health.js";
 import { HealthScreen, ScreenHeader } from "../onboarding/screens.js";
 
 /**
  * The Health Data screen on the user's own Garmin values (`get_health_data`,
- * app only). Without consent no value is read; the screen says so and offers
- * to give it in the chat, where Arnold asks before switching it on.
+ * app only). Without consent no value is read; the screen says so and leads to
+ * the consent in the settings. Where no values can come, or none have come
+ * yet, it says that in one sentence instead of showing empty tiles.
  */
 export function LiveHealthScreen({
-  view,
   onBack,
-  onAsk,
+  onConsent,
 }: {
-  view: OnboardingView;
   onBack: () => void;
-  onAsk: (sentence: string) => void;
+  onConsent: () => void;
 }) {
   const { call } = useArnoldTool("get_health_data", HealthDataSchema);
   const [data, setData] = useState<HealthData | null>(null);
@@ -47,53 +49,56 @@ export function LiveHealthScreen({
     );
   if (!data)
     return <p className="m-0 text-secondary">Health Data wird geladen …</p>;
-  if (!data.summary)
+  const s = data.summary;
+  if (!s || s.latest_date === null)
     return (
-      <DataLLM content="Health-Data-Karte: keine Gesundheitsdaten freigegeben.">
-        <div className="flex flex-col gap-5">
-          <ScreenHeader title="Health Data" onBack={onBack} />
-          <p className="m-0 text-sm text-secondary">
-            Das sammelt deine Garmin-Uhr. Arnold liest diese Werte nur mit
-            deiner Einwilligung und nutzt sie für die Erholung.
-          </p>
-          <Alert
-            color="info"
-            variant="soft"
-            title={
-              data.status === "no_consent"
-                ? "Du hast Arnold deine Gesundheitsdaten noch nicht freigegeben."
-                : "Für dein Konto liegen noch keine Werte deiner Uhr vor."
-            }
-          />
-          {data.status === "no_consent" && (
-            <Button
-              color="secondary"
-              variant="soft"
-              size="lg"
-              block
-              onClick={() =>
-                onAsk(
-                  "Ich möchte Arnold meine Garmin-Gesundheitsdaten freigeben.",
-                )
-              }
-            >
-              Im Chat freigeben
-            </Button>
-          )}
-        </div>
+      <DataLLM content="Health-Data-Karte: keine Gesundheitswerte vorhanden.">
+        <HealthEmpty
+          status={data.status}
+          onBack={onBack}
+          onConsent={onConsent}
+        />
       </DataLLM>
     );
-  const s = data.summary;
   return (
-    <DataLLM
-      content={`Health-Data-Karte: Werte ${s.latest_date ? `bis ${s.latest_date}` : "noch keine in den letzten sieben Tagen"}.`}
-    >
+    <DataLLM content={`Health-Data-Karte: Werte bis ${s.latest_date}.`}>
       <HealthScreen
-        view={view}
         onBack={onBack}
         data={healthModel(s)}
         dayLabel={healthDayLabel(s)}
+        onConsent={onConsent}
       />
     </DataLLM>
+  );
+}
+
+/** Why there is nothing to show, and the one thing the user can do. */
+export function HealthEmpty({
+  status,
+  onBack,
+  onConsent,
+}: {
+  status: HealthData["status"];
+  onBack: () => void;
+  onConsent: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-5">
+      <ScreenHeader title="Health Data" onBack={onBack} />
+      <Alert color="info" variant="soft" title={healthEmptyText(status)} />
+      {status !== "not_connected" && (
+        <Button
+          color="secondary"
+          variant="soft"
+          size="lg"
+          block
+          onClick={onConsent}
+        >
+          {status === "no_consent"
+            ? "Einwilligung ansehen"
+            : "Einwilligung verwalten"}
+        </Button>
+      )}
+    </div>
   );
 }

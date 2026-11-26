@@ -10,10 +10,13 @@ import type {
   ArnoldDashboardView,
   ArnoldExerciseProgressView,
 } from "../src/shared/arnold-view";
+import type { RunAnalysisResponse } from "../src/shared/run-contract";
 import {
   exerciseSeries,
   rangeStart,
-  statsExercise,
+  runQueryDates,
+  runSeries,
+  statsExercises,
   weeklySeries,
 } from "../src/views/model/stats";
 
@@ -74,6 +77,15 @@ describe("weeklySeries", () => {
     expect(rangeStart(view(weeks), "4")).toBe("2026-11-02");
   });
 
+  it("labels the ends with real weeks and gives the scale", () => {
+    const [volume] = weeklySeries(view(weeks), "4");
+    expect(volume!.axis).toEqual({
+      from: "Woche ab 2. Nov.",
+      to: "diese Woche",
+    });
+    expect(volume!.range).toEqual({ low: 900, high: 5200 });
+  });
+
   it("keeps all weeks when there are fewer than the range", () => {
     const [volume] = weeklySeries(view(weeks), "12");
     expect(volume!.points).toEqual([4000, null, null, 5200, 900]);
@@ -87,9 +99,9 @@ describe("weeklySeries", () => {
 });
 
 describe("exercise curve", () => {
-  it("picks the exercise with most logged sets", () => {
+  it("offers the trained exercises, most logged sets first", () => {
     expect(
-      statsExercise(
+      statsExercises(
         view(
           [],
           [
@@ -98,9 +110,9 @@ describe("exercise curve", () => {
             { exercise_id: "c", name: "Neu", logged_sets: 0 },
           ],
         ),
-      ),
-    ).toEqual({ id: "b", name: "Bankdrücken" });
-    expect(statsExercise(view([], []))).toBeNull();
+      ).map((e) => e.id),
+    ).toEqual(["b", "a"]);
+    expect(statsExercises(view([], []))).toEqual([]);
   });
 
   it("takes points and change from the analytics answer", () => {
@@ -121,11 +133,75 @@ describe("exercise curve", () => {
       unit: "kg",
       points: [70, 72.5],
       delta: 2.5,
+      axis: { from: "1. Nov.", to: "8. Nov." },
+      range: { low: 70, high: 72.5 },
     });
     const unavailable = {
       ...progress,
       selected_comparison: { status: "not_available", delta: null },
     } as unknown as ArnoldExerciseProgressView;
     expect(exerciseSeries(unavailable).delta).toBeNull();
+  });
+});
+
+describe("running series", () => {
+  const weeks = [
+    week("2026-11-02", 1, 0),
+    week("2026-11-09", 0, 0),
+    week("2026-11-16", 2, 0),
+    week("2026-11-23", 1, 0, true),
+  ];
+  const running = (
+    week_start: string,
+    run_count: number,
+    metres: number | null,
+    pace: number | null,
+    known = run_count,
+  ) => ({
+    week_start,
+    running: {
+      run_count,
+      distance_m: { value: metres, known, total: run_count, reason: null },
+      pace_s_per_km: { value: pace, reason: null },
+    },
+  });
+  const answer = (rows: ReturnType<typeof running>[]) =>
+    ({ weeks: rows }) as unknown as RunAnalysisResponse;
+
+  it("shows distance and pace, a partly known week as a gap", () => {
+    const [distance, pace] = runSeries(view(weeks), "4", [
+      answer([
+        running("2026-11-02", 1, 5000, 360),
+        running("2026-11-09", 0, 0, null),
+        running("2026-11-16", 2, 4000, 355, 1),
+        running("2026-11-23", 1, 6000, 340),
+      ]),
+    ]);
+    expect(distance!.points).toEqual([5, 0, null, 6]);
+    expect(pace).toMatchObject({
+      points: [360, null, 355, 340],
+      delta: -20,
+      pace: true,
+    });
+  });
+
+  it("is left out without runs or before all weeks are read", () => {
+    const none = weeks.map((w) => running(w.week_start, 0, 0, null));
+    expect(runSeries(view(weeks), "4", [answer(none)])).toEqual([]);
+    expect(
+      runSeries(view(weeks), "4", [
+        answer([running("2026-11-23", 1, 6000, 340)]),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("asks for four weeks per call, back from the current one", () => {
+    expect(runQueryDates(view(weeks), "4")).toEqual(["2026-11-23"]);
+    const eight = Array.from({ length: 8 }, (_, i) => week(`w${i}`, 0, 0));
+    expect(runQueryDates(view(eight), "8")).toEqual(["w7", "w3"]);
+  });
+
+  it("hides the volume of someone who only runs", () => {
+    expect(weeklySeries(view(weeks), "4").map((s) => s.key)).toEqual(["days"]);
   });
 });

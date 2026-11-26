@@ -11,6 +11,10 @@ import { useEffect, useState } from "react";
 import { DataLLM } from "skybridge/web";
 import { DeleteAccountPublicResponseSchema } from "../../shared/account-contract.js";
 import {
+  HEALTH_CONSENT_TEXT,
+  HEALTH_CONSENT_TEXT_VERSION,
+} from "../../shared/health-consent.js";
+import {
   ListGarminWatchesSchema,
   PairGarminWatchResponseSchema,
   SetGarminHealthConsentResponseSchema,
@@ -28,7 +32,6 @@ import {
   consentDoneText,
   consentInput,
   expired,
-  HEALTH_CONSENT_TEXT,
   watchRows,
 } from "../model/watches.js";
 import { Actions, Box, Card, Note, Rows, useLoad } from "./card-kit.js";
@@ -179,6 +182,10 @@ export function HealthConsent({
   const [done, setDone] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const granted = list.health_consent.granted;
+  // No yes to a text this card does not show; revoking always works.
+  const outdated =
+    !granted &&
+    list.health_consent.current_text_version !== HEALTH_CONSENT_TEXT_VERSION;
   const run = async () => {
     setError(null);
     try {
@@ -200,7 +207,12 @@ export function HealthConsent({
       </Note>
       {done && <Alert color="success" variant="soft" title={done} />}
       {error && <Alert color="danger" variant="soft" title={error} />}
-      {asking ? (
+      {outdated ? (
+        <Note>
+          Der Einwilligungstext wurde geändert. Öffne Arnold neu, um den
+          aktuellen Text zu sehen.
+        </Note>
+      ) : asking ? (
         <>
           <p className="m-0 text-sm">
             {granted

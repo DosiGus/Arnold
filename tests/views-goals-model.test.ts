@@ -16,6 +16,8 @@ import {
   placeholderFor,
   unitsFor,
   updateGoalInput,
+  bodyWeightInput,
+  latestWeightText,
 } from "../src/views/model/goals";
 
 const goal = (over: Partial<HomeGoal>): HomeGoal => ({
@@ -273,5 +275,37 @@ describe("goal writes", () => {
   it("explains an existing goal in plain words", () => {
     expect(goalErrorText("GOAL_EXISTS", "x")).toMatch(/schon ein Ziel/);
     expect(goalErrorText("OTHER", "Fallback")).toBe("Fallback");
+  });
+});
+
+describe("body weight by hand", () => {
+  const day = {
+    requestId: "11111111-1111-4111-8111-111111111111",
+    date: "2026-11-26",
+    timezone: "Europe/Berlin",
+  };
+
+  it("writes the user's own number for their calendar day", () => {
+    const built = bodyWeightInput(" 82,5 ", day);
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    expect(WriteInputs.log_body_weight.parse(built.input)).toMatchObject({
+      measured_on: "2026-11-26",
+      weight_kg: 82.5,
+    });
+  });
+
+  it("never turns an empty or impossible entry into a number", () => {
+    for (const text of ["", "0", "abc", "12", "900"])
+      expect(bodyWeightInput(text, day).ok).toBe(false);
+  });
+
+  it("shows the newest stored weight, or nothing", () => {
+    const view = (latest: unknown) =>
+      ({ home: { latest_body_weight: latest } }) as never;
+    expect(latestWeightText(view(null))).toBeNull();
+    expect(
+      latestWeightText(view({ date: "2026-11-24", weight_kg: 82.5 })),
+    ).toBe("82,5 kg · 24. Nov.");
   });
 });

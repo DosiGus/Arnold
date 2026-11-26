@@ -105,6 +105,7 @@ export class DatabaseArnoldRuntime {
           context.userId,
           trackerId,
           this.options.auth,
+          this.options.dailyHealth?.covers(context.userId) ?? false,
         );
       })();
       runtime.catch(() => this.users.delete(context.userId));
@@ -302,6 +303,8 @@ export class DatabaseUserRuntime {
     private readonly userId: string,
     trackerId: string,
     private readonly auth: AuthSurface,
+    /** True when daily watch values can arrive for this account. */
+    dailyValues: boolean,
   ) {
     this.store = new PostgresArnoldStore(db, userId, trackerId);
     this.source = {
@@ -315,7 +318,14 @@ export class DatabaseUserRuntime {
       watchDelivery: (dataset) => watchDelivery(db, userId, dataset),
       scoreHealth: (referenceDate, now) =>
         readScoreHealth(db, userId, referenceDate, now),
-      healthDays: (from, to) => readHealthDays(db, userId, from, to),
+      // Without a source of daily values the Health Data screen is not
+      // offered at all (`get_health_data` answers not_connected).
+      ...(dailyValues
+        ? {
+            healthDays: (from: string, to: string) =>
+              readHealthDays(db, userId, from, to),
+          }
+        : {}),
     };
     const authorization: AuthorizationGuard = {
       authorize: async (tracker, _permission, context): Promise<Actor> => {
@@ -406,8 +416,15 @@ export class DatabaseUserRuntime {
     userId: string,
     trackerId: string,
     auth: AuthSurface,
+    dailyValues = false,
   ) {
-    const runtime = new DatabaseUserRuntime(db, userId, trackerId, auth);
+    const runtime = new DatabaseUserRuntime(
+      db,
+      userId,
+      trackerId,
+      auth,
+      dailyValues,
+    );
     await ensureStarterCatalog(runtime.store, trackerId, userId);
     return runtime;
   }

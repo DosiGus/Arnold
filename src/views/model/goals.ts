@@ -14,7 +14,7 @@ import type {
   ArnoldDashboardView,
   HomeGoal,
 } from "../../shared/arnold-view.js";
-import { goalValueText, kmText, num } from "./dashboard.js";
+import { goalValueText, kmText, num, shortDate } from "./dashboard.js";
 
 export const BODY_WEIGHT = "body_weight";
 export const RUNNING = "running";
@@ -224,4 +224,34 @@ export function goalErrorText(code: string, fallback: string): string {
   if (code === "REVISION_CONFLICT")
     return "Das Ziel wurde inzwischen geändert. Die Liste ist jetzt aktuell, versuch es noch einmal.";
   return fallback;
+}
+
+/** "82,5 kg · 24. Nov.", or null while no body weight is stored. */
+export function latestWeightText(view: ArnoldDashboardView): string | null {
+  const w = view.home.latest_body_weight;
+  return w ? `${num(w.weight_kg)} kg · ${shortDate(w.date)}` : null;
+}
+
+/**
+ * The weight form → `log_body_weight`. The user's own number for their own
+ * calendar day; a second entry of a day replaces the first.
+ */
+export function bodyWeightInput(
+  text: string,
+  day: { requestId: string; date: string; timezone: string },
+): Built {
+  const t = text.trim().replace(",", ".");
+  const kg = t === "" ? Number.NaN : Number(t);
+  if (!Number.isFinite(kg) || kg < 20 || kg > 400)
+    return { ok: false, error: "Gib dein Gewicht in kg ein, z. B. 82,5." };
+  return {
+    ok: true,
+    input: {
+      request_id: day.requestId,
+      measured_on: day.date,
+      timezone: day.timezone,
+      weight_kg: kg,
+      source: "ui",
+    },
+  };
 }

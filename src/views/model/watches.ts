@@ -4,15 +4,6 @@
  */
 import type { ListGarminWatches } from "../../shared/watch-contract.js";
 
-/**
- * The consent text approved by the owner (GAR-B7-01, 03 M077), version
- * HEALTH_CONSENT_TEXT_VERSION. Shown before the user grants, so the click
- * refers to this text. The English text is on the privacy page
- * (/datenschutz#garmin-watch). Do not reword without a new text version.
- */
-export const HEALTH_CONSENT_TEXT =
-  "Mit deiner Einwilligung speichert Arnold zu jedem Training von der Uhr deine Messwerte: Puls, Kalorien, Body Battery, Stress und Ruhepuls. Das sind Gesundheitsdaten. Arnold nutzt sie nur, um sie dir zu deinen Trainings zu zeigen. Die Einwilligung ist freiwillig, Arnold funktioniert auch ohne sie. Du kannst sie jederzeit hier widerrufen; Arnold löscht dann sofort alle gespeicherten Messwerte.";
-
 const STAMP = new Intl.DateTimeFormat("de-DE", {
   dateStyle: "medium",
   timeStyle: "short",

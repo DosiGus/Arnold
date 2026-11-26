@@ -231,7 +231,6 @@ function Overview({ focused }: { focused: boolean }) {
           content={`Arnold-Überblick: Woche ${d.week.done} von ${d.week.goal} Trainingstagen, ${d.goals.length} Ziele, nächstes Training ${d.next?.name ?? "keins geplant"}.`}
         >
           <AppShell
-            live
             initial={
               !left && asked?.type === "screen" ? asked.screen : "dashboard"
             }

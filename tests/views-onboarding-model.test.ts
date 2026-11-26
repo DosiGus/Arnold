@@ -155,6 +155,9 @@ describe("card taps → service → card", () => {
         : await onboarding.finishSetup({ request_id: rid() });
     expect(finished.state!.session.status).toBe("COMPLETED");
     expect(cardViewOf(finished.state!, "open").phase).toBe("wearable");
+    // Choosing "Uhr koppeln" keeps the step until paired or skipped.
+    expect(cardViewOf(finished.state!, "connect").phase).toBe("wearable");
+    expect(cardViewOf(finished.state!, "paired").phase).toBe("done");
     expect(cardViewOf(finished.state!, "later").phase).toBe("done");
   });
 

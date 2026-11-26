@@ -167,3 +167,14 @@ export function healthModel(s: HealthSummaryView): HealthData {
     ],
   };
 }
+
+/** One clear sentence for a screen without values. */
+export function healthEmptyText(
+  status: "consented" | "no_consent" | "not_connected",
+): string {
+  if (status === "not_connected")
+    return "Für dein Konto kann Arnold noch keine Gesundheitswerte aus Garmin abrufen.";
+  if (status === "no_consent")
+    return "Du hast Arnold noch nicht erlaubt, Messwerte deiner Uhr zu speichern.";
+  return "In den letzten sieben Tagen sind noch keine Werte deiner Uhr angekommen.";
+}

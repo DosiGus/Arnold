@@ -99,6 +99,11 @@ export class DailyHealthSync {
     this.log = options.log ?? ((line) => console.log(line));
   }
 
+  /** True for the one account daily values are fetched for. */
+  covers(userId: string): boolean {
+    return userId === this.options.config.userId;
+  }
+
   /** Fire and forget: never awaited by the overview, never throws. */
   onOverviewOpened(userId: string): void {
     if (userId !== this.options.config.userId) return;

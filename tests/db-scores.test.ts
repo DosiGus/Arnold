@@ -5,7 +5,11 @@
  * fixed, nothing depends on the clock.
  */
 import { afterAll, describe, expect, it } from "vitest";
-import { readHealthDays, readScoreHealth } from "../src/server/db/runtime";
+import {
+  DatabaseUserRuntime,
+  readHealthDays,
+  readScoreHealth,
+} from "../src/server/db/runtime";
 import { appDatabase, newAccount } from "./fixtures/arnold-db.js";
 
 const db = appDatabase();
@@ -93,6 +97,17 @@ describe("readScoreHealth", () => {
     expect(await readScoreHealth(db, a.userId, "2026-11-16", NOW)).toEqual({
       status: "no_consent",
     });
+  });
+});
+
+describe("Health Data is offered only where values can come", () => {
+  it("has a source only for an account daily values are fetched for", async () => {
+    const a = await newAccount(db);
+    const auth = { assertActive: async () => {} } as never;
+    const create = (dailyValues?: boolean) =>
+      DatabaseUserRuntime.create(db, a.userId, a.trackerId, auth, dailyValues);
+    expect((await create()).source.healthDays).toBeUndefined();
+    expect((await create(true)).source.healthDays).toBeDefined();
   });
 });
 
