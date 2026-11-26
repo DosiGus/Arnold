@@ -47,6 +47,9 @@ export const TOOL_ACCESS: Readonly<Record<string, ToolAccessClass>> = {
   get_arnold_dashboard: "AUTHENTICATED_READ",
   get_arnold_workouts: "AUTHENTICATED_READ",
   get_arnold_exercise_progress: "AUTHENTICATED_READ",
+  // Health Data card (app only): the caller's own daily Garmin values, only
+  // with active consent (checked in the same transaction as the read).
+  get_health_data: "AUTHENTICATED_READ",
 
   // ── mcp-run.ts — RUN-007 ──
   get_run_profile: "AUTHENTICATED_READ",

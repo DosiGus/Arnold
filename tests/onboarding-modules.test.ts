@@ -42,10 +42,7 @@ const STRENGTH = [
   "training.session_minutes",
   "training.environment",
 ];
-const RUN = [
-  "training.run.aims",
-  "training.run.background",
-];
+const RUN = ["training.run.aims", "training.run.background"];
 
 const modules = (partial: Partial<OnboardingModules>): OnboardingModules => ({
   running: false,

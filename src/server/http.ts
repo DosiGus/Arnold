@@ -24,6 +24,7 @@ import { registerWatchTools } from "./mcp-watch.js";
 import { dashboardResourceUri, uiDomain } from "./ui-resource.js";
 import { withArnoldContext } from "./auth/guarded-server.js";
 import { FixtureSandboxes } from "./fixture-sandboxes.js";
+import { demoHealthDays } from "./health/demo.js";
 import { mountWatchApi } from "./watch/router.js";
 
 export interface ServerOptions {
@@ -153,9 +154,13 @@ export function createHttpApp(options: ServerOptions = {}) {
         // With invented history, so the start screen has something to show.
         // "Today" of the history is the calendar day of the demo user (Berlin),
         // not the UTC day: for the first hour after midnight they differ.
-        createFixtureOnboarding({
-          dataset: demoHistoryDataset(localDayOf(new Date(), "Europe/Berlin")),
-        })
+        withDemoHealth(
+          createFixtureOnboarding({
+            dataset: demoHistoryDataset(
+              localDayOf(new Date(), "Europe/Berlin"),
+            ),
+          }),
+        )
       : undefined);
   if (runtime && options.arnoldSource)
     throw new Error(
@@ -450,4 +455,10 @@ export function cardUiFiles(
   throw new Error(
     `ARNOLD_UI="${mode}" ist unbekannt. Erlaubt: legacy, skybridge.`,
   );
+}
+
+/** The demo runtime's invented watch values (fixture mode only). */
+function withDemoHealth<R extends { source: ArnoldDataSource }>(runtime: R): R {
+  Object.assign(runtime.source, { healthDays: demoHealthDays });
+  return runtime;
 }

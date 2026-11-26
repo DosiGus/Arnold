@@ -80,6 +80,8 @@ export default function DashboardView() {
           live
           view={PLACEHOLDER}
           dashboard={d}
+          source={view}
+          onRefresh={() => call().then(setFresh)}
           onAsk={(t) => void sendFollowUp(t)}
           onEditProfile={() =>
             void sendFollowUp("Ich möchte meine Angaben ändern.")

@@ -5,6 +5,7 @@ import { Checkbox } from "@openai/apps-sdk-ui/components/Checkbox";
 import { ChevronLeft } from "@openai/apps-sdk-ui/components/Icon";
 import { Input } from "@openai/apps-sdk-ui/components/Input";
 import { SegmentedControl } from "@openai/apps-sdk-ui/components/SegmentedControl";
+import { Select } from "@openai/apps-sdk-ui/components/Select";
 import { Switch } from "@openai/apps-sdk-ui/components/Switch";
 import { useState } from "react";
 import {
@@ -12,9 +13,12 @@ import {
   dashboardOf,
   healthData,
   statsSeries,
+  type HealthData,
 } from "../demo/dashboard.js";
 import type { OnboardingView, PlanDay, PlanKind } from "../demo/model.js";
 import { PlanOverview } from "./steps.js";
+import type { GoalChoice, GoalUnit, LiveGoal } from "../model/goals.js";
+import type { LiveSeries } from "../model/stats.js";
 
 /* -------------------------------------------------------------- shared */
 
@@ -350,20 +354,30 @@ function SessionChecklist({
 export function RecordsScreen({
   view,
   onBack,
+  records,
 }: {
   view: OnboardingView;
   onBack: () => void;
+  /** Arnold's real records; without them the sample list is shown. */
+  records?: { exercise: string; value: string; when: string }[];
 }) {
-  const recs = allRecords(view);
+  const sample = records === undefined;
+  const recs = records
+    ? records.length
+      ? records
+      : [{ exercise: "Noch keine Rekorde", value: "–", when: "" }]
+    : allRecords(view);
   return (
     <div className="flex flex-col gap-5">
       <ScreenHeader
         title="Rekorde"
         onBack={onBack}
         aside={
-          <Badge color="secondary" variant="outline" pill>
-            Beispieldaten
-          </Badge>
+          sample && (
+            <Badge color="secondary" variant="outline" pill>
+              Beispieldaten
+            </Badge>
+          )
         }
       />
       <Box>
@@ -392,46 +406,189 @@ export function RecordsScreen({
 
 type Goal = ReturnType<typeof dashboardOf>["goals"][number];
 
+/** Arnold's real goals and the writes behind the form (live mode). */
+export type GoalsLive = {
+  goals: LiveGoal[];
+  choices: GoalChoice[];
+  unitsFor: (choice: string) => GoalUnit[];
+  /** Each resolves with an error sentence, or null when saved. */
+  onCreate: (form: {
+    choice: string;
+    unit: GoalUnit;
+    target: string;
+  }) => Promise<string | null>;
+  onUpdate: (goal: LiveGoal, target: string) => Promise<string | null>;
+  onArchive: (goal: LiveGoal) => Promise<string | null>;
+};
+
 export function GoalsScreen({
   view,
   onBack,
+  live,
 }: {
   view: OnboardingView;
   onBack: () => void;
+  live?: GoalsLive;
 }) {
-  const [goals, setGoals] = useState<Goal[]>(() => dashboardOf(view).goals);
+  const [sampleGoals, setSampleGoals] = useState<Goal[]>(
+    () => dashboardOf(view).goals,
+  );
+  const goals: (Goal & { live?: LiveGoal })[] = live
+    ? live.goals.map((g) => ({ ...g, live: g }))
+    : sampleGoals;
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [target, setTarget] = useState("");
   const [unit, setUnit] = useState("kg");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<LiveGoal | null>(null);
+  const [editTarget, setEditTarget] = useState("");
+  const [confirmEnd, setConfirmEnd] = useState(false);
+  const units: string[] = live ? live.unitsFor(name) : ["kg", "km", "Min."];
   const valid = name.trim() !== "" && target.trim() !== "";
+  const run = async (write: () => Promise<string | null>) => {
+    setBusy(true);
+    setError(null);
+    const failed = await write();
+    setBusy(false);
+    setError(failed);
+    return failed === null;
+  };
+  const closeEdit = () => {
+    setEditing(null);
+    setConfirmEnd(false);
+    setError(null);
+  };
   return (
     <div className="flex flex-col gap-5">
       <ScreenHeader title="Ziele" onBack={onBack} />
       <Box>
-        <ul className="m-0 flex list-none flex-col gap-4 p-0">
-          {goals.map((g) => (
-            <li key={g.name} className="flex flex-col gap-2">
-              <div className="flex items-baseline justify-between gap-3">
-                <span>{g.name}</span>
-                <span className="text-sm tabular-nums text-secondary">
-                  {g.current} / {g.target}
-                </span>
-              </div>
-              <Bar value={g.progress} />
-            </li>
-          ))}
-        </ul>
+        {goals.length ? (
+          <ul className="m-0 flex list-none flex-col gap-4 p-0">
+            {goals.map((g) => (
+              <li key={g.live?.id ?? g.name}>
+                <button
+                  type="button"
+                  disabled={!g.live}
+                  className="flex w-full flex-col gap-2 border-0 bg-transparent p-0 text-left text-inherit enabled:cursor-pointer"
+                  onClick={() => {
+                    if (!g.live) return;
+                    setAdding(false);
+                    setEditing(g.live);
+                    setEditTarget(g.live.targetText);
+                    setConfirmEnd(false);
+                    setError(null);
+                  }}
+                >
+                  <div className="flex w-full items-baseline justify-between gap-3">
+                    <span>{g.name}</span>
+                    <span className="text-sm tabular-nums text-secondary">
+                      {g.current} / {g.target}
+                    </span>
+                  </div>
+                  <Bar value={g.progress} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <span className="text-sm text-secondary">
+            Noch keine Ziele. Leg dein erstes Ziel an.
+          </span>
+        )}
       </Box>
-      {adding ? (
+      {editing && live ? (
+        <Box>
+          <h3 className="heading-xs m-0">{editing.name}</h3>
+          <div className="flex gap-2">
+            <Input
+              aria-label="Zielwert"
+              inputMode="decimal"
+              placeholder="Zielwert"
+              value={editTarget}
+              onChange={(e) => setEditTarget(e.target.value)}
+            />
+            <span className="self-center text-secondary">{editing.unit}</span>
+          </div>
+          {error && <Alert color="danger" variant="soft" title={error} />}
+          {confirmEnd ? (
+            <div className="grid auto-cols-fr grid-flow-col gap-2">
+              <Button
+                color="danger"
+                variant="soft"
+                block
+                disabled={busy}
+                onClick={async () => {
+                  if (await run(() => live.onArchive(editing))) closeEdit();
+                }}
+              >
+                Ziel wirklich beenden
+              </Button>
+              <Button
+                color="secondary"
+                variant="ghost"
+                block
+                onClick={() => setConfirmEnd(false)}
+              >
+                Behalten
+              </Button>
+            </div>
+          ) : (
+            <div className="grid auto-cols-fr grid-flow-col gap-2">
+              <Button
+                color="primary"
+                block
+                disabled={busy || editTarget.trim() === ""}
+                onClick={async () => {
+                  if (await run(() => live.onUpdate(editing, editTarget)))
+                    closeEdit();
+                }}
+              >
+                Speichern
+              </Button>
+              <Button
+                color="danger"
+                variant="ghost"
+                block
+                onClick={() => setConfirmEnd(true)}
+              >
+                Ziel beenden
+              </Button>
+              <Button
+                color="secondary"
+                variant="ghost"
+                block
+                onClick={closeEdit}
+              >
+                Abbrechen
+              </Button>
+            </div>
+          )}
+        </Box>
+      ) : adding ? (
         <Box>
           <h3 className="heading-xs m-0">Neues Ziel</h3>
-          <Input
-            aria-label="Ziel"
-            placeholder="Zum Beispiel „Kreuzheben“ oder „5 km laufen“"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
+          {live ? (
+            <Select
+              block
+              placeholder="Übung oder Körpergewicht wählen"
+              options={live.choices}
+              value={name}
+              onChange={(o) => {
+                setName(o.value);
+                if (!live.unitsFor(o.value).includes(unit as GoalUnit))
+                  setUnit("kg");
+              }}
+            />
+          ) : (
+            <Input
+              aria-label="Ziel"
+              placeholder="Zum Beispiel „Kreuzheben“ oder „5 km laufen“"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          )}
           <div className="flex gap-2">
             <Input
               aria-label="Zielwert"
@@ -442,32 +599,44 @@ export function GoalsScreen({
             />
             <SegmentedControl
               aria-label="Einheit"
+              className="shrink-0"
               pill
               value={unit}
               onChange={setUnit}
             >
-              {["kg", "km", "Min."].map((u) => (
+              {units.map((u) => (
                 <SegmentedControl.Option key={u} value={u}>
                   {u}
                 </SegmentedControl.Option>
               ))}
             </SegmentedControl>
           </div>
-          <div className="flex gap-2">
+          {error && <Alert color="danger" variant="soft" title={error} />}
+          <div className="grid auto-cols-fr grid-flow-col gap-2">
             <Button
               color="primary"
               block
-              disabled={!valid}
-              onClick={() => {
-                setGoals((g) => [
-                  ...g,
-                  {
-                    name: name.trim(),
-                    current: "–",
-                    target: `${target.trim()} ${unit}`,
-                    progress: null,
-                  },
-                ]);
+              disabled={!valid || busy}
+              onClick={async () => {
+                if (live) {
+                  const ok = await run(() =>
+                    live.onCreate({
+                      choice: name,
+                      unit: unit as GoalUnit,
+                      target,
+                    }),
+                  );
+                  if (!ok) return;
+                } else
+                  setSampleGoals((g) => [
+                    ...g,
+                    {
+                      name: name.trim(),
+                      current: "–",
+                      target: `${target.trim()} ${unit}`,
+                      progress: null,
+                    },
+                  ]);
                 setName("");
                 setTarget("");
                 setAdding(false);
@@ -479,7 +648,10 @@ export function GoalsScreen({
               color="secondary"
               variant="ghost"
               block
-              onClick={() => setAdding(false)}
+              onClick={() => {
+                setAdding(false);
+                setError(null);
+              }}
             >
               Abbrechen
             </Button>
@@ -502,25 +674,33 @@ export function GoalsScreen({
 
 /* -------------------------------------------------------------- stats */
 
-function Chart({ points, unit }: { points: number[]; unit: string }) {
+function Chart({ points, unit }: { points: (number | null)[]; unit: string }) {
   const W = 320;
   const H = 120;
   const pad = 8;
-  const min = Math.min(...points);
-  const max = Math.max(...points);
+  // Unknown values are gaps: only known points are drawn and joined.
+  const known = points
+    .map((v, i) => (v === null ? null : { v, i }))
+    .filter((p): p is { v: number; i: number } => p !== null);
+  const values = known.map((p) => p.v);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
   const span = max - min || 1;
-  const x = (i: number) => pad + (i * (W - 2 * pad)) / (points.length - 1);
+  const x = (i: number) =>
+    pad + (i * (W - 2 * pad)) / Math.max(1, points.length - 1);
   const y = (v: number) => H - pad - ((v - min) / span) * (H - 2 * pad);
-  const line = points
-    .map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`)
+  const line = known
+    .map((p, k) => `${k ? "L" : "M"}${x(p.i)},${y(p.v)}`)
     .join(" ");
-  const area = `${line} L${x(points.length - 1)},${H} L${x(0)},${H} Z`;
+  const first = known[0]!;
+  const last = known[known.length - 1]!;
+  const area = `${line} L${x(last.i)},${H} L${x(first.i)},${H} Z`;
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
       className="h-32 w-full text-primary"
       role="img"
-      aria-label={`Verlauf von ${points[0]} auf ${points[points.length - 1]} ${unit}`}
+      aria-label={`Verlauf von ${first.v} auf ${last.v} ${unit}`}
     >
       <path d={area} fill="currentColor" opacity="0.08" />
       <path
@@ -531,44 +711,60 @@ function Chart({ points, unit }: { points: number[]; unit: string }) {
         strokeLinejoin="round"
         strokeLinecap="round"
       />
-      <circle
-        cx={x(points.length - 1)}
-        cy={y(points[points.length - 1])}
-        r="4"
-        fill="currentColor"
-      />
+      <circle cx={x(last.i)} cy={y(last.v)} r="4" fill="currentColor" />
     </svg>
   );
 }
 
 const RANGES = { "4": "4 Wochen", "8": "8 Wochen", "12": "12 Wochen" } as const;
 
+/** Arnold's real series (live mode); the range is chosen by the caller. */
+export type StatsLive = {
+  series: LiveSeries[];
+  range: keyof typeof RANGES;
+  onRange: (range: keyof typeof RANGES) => void;
+};
+
 export function StatsScreen({
   view,
   onBack,
+  live,
 }: {
   view: OnboardingView;
   onBack: () => void;
+  live?: StatsLive;
 }) {
-  const series = statsSeries(view);
-  const [key, setKey] = useState(series[0].key);
-  const [range, setRange] = useState<keyof typeof RANGES>("12");
+  const sampleSeries = statsSeries(view);
+  // Live series arrive one by one; until the user picks, show the first.
+  const [key, setKey] = useState<string | null>(
+    live ? null : sampleSeries[0].key,
+  );
+  const [sampleRange, setSampleRange] = useState<keyof typeof RANGES>("12");
+  const range = live ? live.range : sampleRange;
+  const setRange = live ? live.onRange : setSampleRange;
+  const series: LiveSeries[] = live
+    ? live.series
+    : sampleSeries.map((x) => {
+        const pts = x.points.slice(-Number(range));
+        return { ...x, points: pts, delta: pts[pts.length - 1] - pts[0] };
+      });
   const s = series.find((x) => x.key === key) ?? series[0];
-  const pts = s.points.slice(-Number(range));
-  const first = pts[0];
-  const last = pts[pts.length - 1];
-  const delta = last - first;
+  const known = s ? s.points.filter((v): v is number => v !== null) : [];
+  const last = known.length ? known[known.length - 1] : null;
+  const delta = s?.delta ?? null;
   const fmt = (v: number) =>
-    `${String(Math.round(v * 10) / 10).replace(".", ",")}${s.unit ? ` ${s.unit}` : ""}`;
+    `${String(Math.round(v * 10) / 10).replace(".", ",")}${s?.unit ? ` ${s.unit}` : ""}`;
   return (
     <div className="flex flex-col gap-5">
       <ScreenHeader
         title="Trainingsentwicklung"
         onBack={onBack}
         aside={
-          <Badge color="secondary" variant="outline" pill>
-            Beispieldaten
-          </Badge>
+          !live && (
+            <Badge color="secondary" variant="outline" pill>
+              Beispieldaten
+            </Badge>
+          )
         }
       />
       {series.length > 1 && (
@@ -576,7 +772,7 @@ export function StatsScreen({
           aria-label="Auswertung"
           block
           pill
-          value={key}
+          value={s!.key}
           onChange={setKey}
         >
           {series.map((x) => (
@@ -587,21 +783,48 @@ export function StatsScreen({
         </SegmentedControl>
       )}
       <Box>
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex flex-col">
-            <span className="text-sm text-secondary">{s.label}</span>
-            <span className="heading-lg tabular-nums">{fmt(last)}</span>
-          </div>
-          <Badge color={delta >= 0 ? "success" : "warning"} variant="soft" pill>
-            {delta >= 0 ? "+" : "−"}
-            {fmt(Math.abs(delta))}
-          </Badge>
-        </div>
-        <Chart points={pts} unit={s.unit} />
-        <div className="flex justify-between text-xs text-secondary">
-          <span>vor {pts.length - 1} Wochen</span>
-          <span>jetzt</span>
-        </div>
+        {s ? (
+          <>
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-col">
+                <span className="text-sm text-secondary">
+                  {s.title ?? s.label}
+                </span>
+                <span className="heading-lg tabular-nums">
+                  {last === null ? "–" : fmt(last)}
+                </span>
+              </div>
+              {delta !== null && (
+                <Badge
+                  color={delta >= 0 ? "success" : "warning"}
+                  variant="soft"
+                  pill
+                >
+                  {delta >= 0 ? "+" : "−"}
+                  {fmt(Math.abs(delta))}
+                </Badge>
+              )}
+            </div>
+            {known.length >= 2 ? (
+              <Chart points={s.points} unit={s.unit} />
+            ) : (
+              <p className="m-0 text-sm text-secondary">
+                Noch zu wenige Messwerte für eine Kurve.
+              </p>
+            )}
+            <div className="flex justify-between text-xs text-secondary">
+              <span>
+                vor {live ? Number(range) : s.points.length - 1} Wochen
+              </span>
+              <span>jetzt</span>
+            </div>
+          </>
+        ) : (
+          <p className="m-0 text-sm text-secondary">
+            Noch keine Trainings gespeichert. Nach deinem ersten Training siehst
+            du hier deine Entwicklung.
+          </p>
+        )}
       </Box>
       <SegmentedControl
         aria-label="Zeitraum"
@@ -719,7 +942,7 @@ export function SettingsScreen({
           Deine Daten gehören dir. Du kannst sie jederzeit löschen.
         </p>
         {confirmDelete ? (
-          <div className="flex gap-2">
+          <div className="grid auto-cols-fr grid-flow-col gap-2">
             <Button color="danger" variant="soft" block>
               Endgültig löschen
             </Button>
@@ -784,11 +1007,18 @@ function Metric({
 export function HealthScreen({
   view,
   onBack,
+  data,
+  dayLabel = "heute",
 }: {
   view: OnboardingView;
   onBack: () => void;
+  /** Arnold's real values; without them the sample values are shown. */
+  data?: HealthData;
+  /** Which day "today" is: "heute" or "Stand 25. Nov.". */
+  dayLabel?: string;
 }) {
-  const h = healthData(view);
+  const sample = data === undefined;
+  const h = data ?? healthData(view);
   const total = h.sleep.phases.reduce((n, p) => n + p.minutes, 0);
   const shades = [
     "bg-primary-solid",
@@ -802,9 +1032,11 @@ export function HealthScreen({
         title="Health Data"
         onBack={onBack}
         aside={
-          <Badge color="secondary" variant="outline" pill>
-            Beispieldaten
-          </Badge>
+          sample && (
+            <Badge color="secondary" variant="outline" pill>
+              Beispieldaten
+            </Badge>
+          )
         }
       />
       <p className="m-0 text-sm text-secondary">
@@ -813,7 +1045,9 @@ export function HealthScreen({
       </p>
 
       <Box>
-        <h3 className="heading-xs m-0">Heute</h3>
+        <h3 className="heading-xs m-0">
+          {dayLabel.charAt(0).toUpperCase() + dayLabel.slice(1)}
+        </h3>
         <div className="grid grid-cols-2 gap-2">
           {h.today.map((m) => (
             <Metric
@@ -832,7 +1066,11 @@ export function HealthScreen({
         <div className="flex items-baseline justify-between gap-3">
           <h3 className="heading-xs m-0">Schlaf</h3>
           <span className="text-sm text-secondary tabular-nums">
-            letzte Nacht {String(h.sleep.hours).replace(".", ",")} Std.
+            letzte Nacht{" "}
+            {h.sleep.hours === null
+              ? "–"
+              : String(h.sleep.hours).replace(".", ",")}{" "}
+            Std.
           </span>
         </div>
         <div className="grid grid-cols-2 gap-2">
@@ -841,7 +1079,7 @@ export function HealthScreen({
             value={h.sleep.score}
             unit=""
             avg7={h.sleep.avg7}
-            note="gut"
+            note={h.sleep.note}
           />
           <div className="flex min-w-0 flex-col gap-1.5 rounded-xl bg-secondary-soft px-3 py-2.5">
             <span className="text-xs text-secondary">
@@ -868,33 +1106,35 @@ export function HealthScreen({
             </div>
           </div>
         </div>
-        <div className="flex flex-col gap-2">
-          <span className="text-xs text-secondary">
-            Schlafphasen letzte Nacht
-          </span>
-          <div className="flex h-2.5 w-full gap-0.5 overflow-hidden rounded-full">
-            {h.sleep.phases.map((p, i) => (
-              <span
-                key={p.label}
-                className={shades[i]}
-                style={{ width: `${(p.minutes / total) * 100}%` }}
-              />
-            ))}
+        {total > 0 && (
+          <div className="flex flex-col gap-2">
+            <span className="text-xs text-secondary">
+              Schlafphasen letzte Nacht
+            </span>
+            <div className="flex h-2.5 w-full gap-0.5 overflow-hidden rounded-full">
+              {h.sleep.phases.map((p, i) => (
+                <span
+                  key={p.label}
+                  className={shades[i]}
+                  style={{ width: `${(p.minutes / total) * 100}%` }}
+                />
+              ))}
+            </div>
+            <ul className="m-0 grid list-none grid-cols-4 gap-1 p-0 text-xs">
+              {h.sleep.phases.map((p, i) => (
+                <li key={p.label} className="flex min-w-0 flex-col">
+                  <span className="flex items-center gap-1 text-secondary">
+                    <span className={`size-2 rounded-full ${shades[i]}`} />
+                    {p.label}
+                  </span>
+                  <span className="tabular-nums">
+                    {Math.floor(p.minutes / 60)} Std. {p.minutes % 60} Min.
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
-          <ul className="m-0 grid list-none grid-cols-4 gap-1 p-0 text-xs">
-            {h.sleep.phases.map((p, i) => (
-              <li key={p.label} className="flex min-w-0 flex-col">
-                <span className="flex items-center gap-1 text-secondary">
-                  <span className={`size-2 rounded-full ${shades[i]}`} />
-                  {p.label}
-                </span>
-                <span className="tabular-nums">
-                  {Math.floor(p.minutes / 60)} Std. {p.minutes % 60} Min.
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
+        )}
       </Box>
 
       <Box>
@@ -920,7 +1160,7 @@ export function HealthScreen({
       </Box>
 
       <Box>
-        <h3 className="heading-xs m-0">Aktivität heute</h3>
+        <h3 className="heading-xs m-0">Aktivität {dayLabel}</h3>
         <div className="grid grid-cols-3 gap-2">
           {h.activity.map((m) => (
             <Metric

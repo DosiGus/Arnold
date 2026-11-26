@@ -202,6 +202,7 @@ async function runTrackerScenario() {
     dash.exercises?.[0]?.exercise_id ??
     dash.plan?.sessions?.[0]?.exercises?.[0]?.exercise_id;
   await call("get_arnold_exercise_progress", { exercise_id: exerciseId });
+  await call("get_health_data", { timezone: TZ });
 
   // plans
   const planCtx = card(await call("get_plan_editor_context", {}));
@@ -607,6 +608,7 @@ describe("model-visible tool output (D-20)", () => {
         "show_arnold_dashboard",
         "get_arnold_workouts",
         "get_arnold_exercise_progress",
+        "get_health_data",
         "get_plan_editor_context",
         "get_training_plan",
         "list_training_plans",

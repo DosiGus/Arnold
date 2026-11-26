@@ -6,7 +6,12 @@ import {
   WriteResponseSchema,
   type WorkoutContext,
 } from "../../shared/workout-contract.js";
-import { ArnoldCallError, useArnoldTool } from "../arnold-client.js";
+import {
+  ArnoldCallError,
+  localDate,
+  newRequestId,
+  useArnoldTool,
+} from "../arnold-client.js";
 import type { OnboardingView, PlanKind } from "../demo/model.js";
 import {
   logWorkoutInput,
@@ -15,14 +20,6 @@ import {
   trainingDayOf,
 } from "../model/training.js";
 import { TrainingScreen } from "../onboarding/screens.js";
-
-const requestId = () =>
-  typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `card-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-
-/** The user's calendar day, as the device shows it (never from UTC). */
-const localDate = () => new Date().toLocaleDateString("sv-SE");
 
 /**
  * The training screen on Arnold's proposal for the next session: weights and
@@ -85,7 +82,7 @@ export function LiveTrainingScreen({
         initialRows={rowsOf(proposal)}
         onFinish={async (rows) => {
           const built = logWorkoutInput(proposal, rows, {
-            requestId: requestId(),
+            requestId: newRequestId(),
             date: localDate(),
             timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           });

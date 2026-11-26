@@ -68,6 +68,14 @@ import {
 } from "../analytics/index.js";
 import { formatNumber } from "../shared/arnold-format.js";
 import { addDays } from "../analytics/period.js";
+import {
+  HEALTH_WINDOW_DAYS,
+  healthSummary,
+} from "../analytics/health-summary.js";
+import {
+  HealthDataInputSchema,
+  HealthDataSchema,
+} from "../shared/health-contract.js";
 import { runningAdjustment, trainingView } from "./plan/adjustment-rules.js";
 
 /** The first fixed dashboard URI; the live one comes from `dashboardResourceUri`. */
@@ -646,6 +654,47 @@ export function createArnoldMcpServer(
         return result(
           view,
           `${view.total} Trainingseinheiten gefunden (${sourceLabel}); ${view.workouts.length} geliefert.`,
+        );
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "get_health_data",
+    {
+      title: "Gesundheitsdaten laden",
+      description:
+        "Nur für die Health-Data-Karte: Garmin-Tageswerte der letzten sieben Tage (Ruhepuls, HRV, Body Battery, Schlaf, Aktivität, Fitness) mit Arnolds Durchschnitten. Nur mit aktiver Einwilligung garmin_health, sonst status no_consent ohne Werte. Unbekannte Werte sind null, nie 0.",
+      inputSchema: HealthDataInputSchema,
+      outputSchema: HealthDataSchema,
+      annotations: readOnly,
+      _meta: { ui: { visibility: ["app"] } },
+    },
+    async (input) => {
+      try {
+        const day = referenceDay(clock(), input.timezone);
+        if (!source.healthDays)
+          return result(
+            { status: "not_connected", summary: null },
+            "Für dieses Konto liegen keine Uhrwerte vor.",
+          );
+        const read = await source.healthDays(
+          addDays(day.date, -(HEALTH_WINDOW_DAYS - 1)),
+          day.date,
+        );
+        if (read.status === "no_consent")
+          return result(
+            { status: "no_consent", summary: null },
+            "Keine Einwilligung für Gesundheitsdaten; es werden keine Werte gezeigt.",
+          );
+        const summary = healthSummary(read.days, day.date);
+        return result(
+          { status: "consented", summary },
+          summary.latest_date
+            ? `Gesundheitsdaten bis ${summary.latest_date}.`
+            : "Noch keine Gesundheitsdaten in den letzten sieben Tagen.",
         );
       } catch (error) {
         return failure(error);

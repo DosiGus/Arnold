@@ -61,11 +61,24 @@ export function readResult<S extends z.ZodType>(
 ): z.infer<S> {
   if (res.isError) {
     const m = arnoldMeta(res.meta);
+    // Write tools report their failure in the result: { error: { code, message } }.
+    const e = (res.structuredContent as { error?: unknown } | undefined)
+      ?.error as Record<string, unknown> | null | undefined;
+    const code =
+      typeof m?.code === "string"
+        ? m.code
+        : typeof e?.code === "string"
+          ? e.code
+          : "TOOL_ERROR";
+    const message =
+      typeof e?.message === "string" && e.message
+        ? e.message
+        : textOf(res.content) || "Das hat nicht geklappt.";
     throw new ArnoldCallError(
       tool,
-      typeof m?.code === "string" ? m.code : "TOOL_ERROR",
-      textOf(res.content) || "Das hat nicht geklappt.",
-      m?.retryable === true,
+      code,
+      message,
+      m?.retryable === true || e?.recovery === "retry_same_request",
     );
   }
   const parsed = schema.safeParse(
@@ -101,7 +114,31 @@ export function useArnoldTool<S extends z.ZodType>(name: string, schema: S) {
     // `tool` changes identity per render; only name and schema matter.
     [name, schema],
   );
-  return useMemo(() => ({ call, pending: pending > 0 }), [call, pending]);
+  /**
+   * Like `call`, plus the answer's `_meta.arnold`: two-step tools hand the
+   * card its confirmation token there, out of the model's sight.
+   */
+  const callWithMeta = useCallback(
+    async (
+      args: Record<string, unknown> = {},
+    ): Promise<{ data: z.infer<S>; arnold: Record<string, unknown> }> => {
+      setPending((n) => n + 1);
+      try {
+        const res = await tool.callToolAsync(args);
+        return {
+          data: readResult(name, schema, res),
+          arnold: arnoldMeta(res.meta) ?? {},
+        };
+      } finally {
+        setPending((n) => n - 1);
+      }
+    },
+    [name, schema],
+  );
+  return useMemo(
+    () => ({ call, callWithMeta, pending: pending > 0 }),
+    [call, callWithMeta, pending],
+  );
 }
 
 /**
@@ -141,3 +178,12 @@ export function useOpeningResult<S extends z.ZodType>(
     }
   }, [info.isPending, info.output, info.responseMetadata, tool, schema]);
 }
+
+/** A fresh request id for one write (retries reuse it). */
+export const newRequestId = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `card-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+/** The user's calendar day, as the device shows it (never from UTC). */
+export const localDate = () => new Date().toLocaleDateString("sv-SE");

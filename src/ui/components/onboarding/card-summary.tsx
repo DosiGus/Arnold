@@ -18,12 +18,6 @@ import { formatNumber } from "../../format";
  * stored; nothing is computed, and a value that is not stored stays unknown.
  */
 
-const RUN_PLACE: Record<string, string> = {
-  outdoor: "Draußen",
-  treadmill: "Laufband",
-  track: "Bahn",
-};
-
 /** "31 Jahre, 182 cm, 78,5 kg" – only what is known; undefined if nothing. */
 export function personLine(person: OnboardingProfile["person"]) {
   const parts = [

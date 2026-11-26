@@ -8,7 +8,10 @@ import { RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import { type Server } from "node:http";
 import { createHttpApp } from "../src/server/http";
 import { ARNOLD_RESOURCE_URI } from "../src/server/mcp-arnold";
-import { StaticArnoldDataSource } from "../src/server/arnold-source";
+import {
+  StaticArnoldDataSource,
+  type ArnoldDataSource,
+} from "../src/server/arnold-source";
 import {
   ARNOLD_UI_CONTRACT,
   ArnoldDashboardViewSchema,
@@ -23,6 +26,7 @@ import {
   singleSetDataset,
 } from "./fixtures/arnold-dashboard";
 import { asCard } from "./fixtures/card-view";
+import { HealthDataSchema } from "../src/shared/health-contract";
 
 let client: Client;
 let http: Server;
@@ -76,6 +80,7 @@ describe("Arnold v2 MCP surface", () => {
       "get_arnold_dashboard",
       "get_arnold_exercise_progress",
       "get_arnold_workouts",
+      "get_health_data",
       "get_workout",
       "show_arnold_dashboard",
     ]);
@@ -485,6 +490,59 @@ describe("failure handling over MCP", () => {
       from: "2026-10-20",
       to: "2026-09-01",
     });
+    expect(result.isError).toBe(true);
+  });
+});
+
+describe("get_health_data (Health Data card, app only)", () => {
+  const health = async () =>
+    HealthDataSchema.parse(
+      (await call("get_health_data", { timezone: "Europe/Berlin" }))
+        .structuredContent,
+    );
+  const withHealth = (fn: ArnoldDataSource["healthDays"]) =>
+    Object.assign(source, { healthDays: fn });
+  afterAll(() => Object.assign(source, { healthDays: undefined }));
+
+  it("is for the card only, not for the model", async () => {
+    const { tools } = await client.listTools();
+    const tool = tools.find((t) => t.name === "get_health_data")!;
+    expect(tool._meta?.ui).toEqual({ visibility: ["app"] });
+  });
+
+  it("shows no value without a source of watch values", async () => {
+    withHealth(undefined);
+    expect(await health()).toEqual({
+      status: "not_connected",
+      summary: null,
+    });
+  });
+
+  it("shows no value without consent", async () => {
+    withHealth(async () => ({ status: "no_consent" }));
+    expect(await health()).toEqual({ status: "no_consent", summary: null });
+  });
+
+  it("asks for the seven local days up to today and summarises them", async () => {
+    const asked: string[][] = [];
+    withHealth(async (from, to) => {
+      asked.push([from, to]);
+      return { status: "consented", days: [] };
+    });
+    const data = await health();
+    expect(data.status).toBe("consented");
+    const [from, to] = asked[0]!;
+    expect(data.summary!.reference_date).toBe(to);
+    expect(data.summary!.latest_date).toBeNull();
+    expect(data.summary!.avg7.resting_hr_bpm).toBeNull();
+    expect(Date.parse(to!) - Date.parse(from!)).toBe(6 * 86_400_000);
+  });
+
+  it("reports a failed read as an error, never as empty values", async () => {
+    withHealth(async () => {
+      throw new Error("boom");
+    });
+    const result = await call("get_health_data", {});
     expect(result.isError).toBe(true);
   });
 });

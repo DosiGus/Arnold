@@ -21,6 +21,7 @@ import {
 import { trainingView } from "./plan/adjustment-rules.js";
 import { scoreRunsOf, type ScoreHealthInput } from "../analytics/scores.js";
 import type { Recovery } from "../shared/write-recovery.js";
+import type { HealthDayInput } from "../analytics/health-summary.js";
 import type { ArnoldDataset } from "../shared/arnold-schema-v1.js";
 import type { WatchDelivery } from "../shared/watch-contract.js";
 import type { ArnoldStore } from "./workout/infrastructure.js";
@@ -88,12 +89,23 @@ export interface ArnoldDataSource {
    */
   scoreHealth?(referenceDate: string, now: Date): Promise<ScoreHealthInput>;
   /**
+   * Stored daily Garmin values of the caller from `from` to `to` (local
+   * days, inclusive), only with active consent; consent and values are read
+   * together. Only a database source (or the synthetic fixture) has them.
+   */
+  healthDays?(from: string, to: string): Promise<HealthDaysInput>;
+  /**
    * UX-007: whether this dataset's plan is on the user's watch, from the
    * marks the watches confirmed. Only a database source has watches; never
    * throws (a failure is `unknown`).
    */
   watchDelivery?(dataset: ArnoldDataset): Promise<WatchDelivery>;
 }
+
+/** The daily values for the health screen, or why there are none. */
+export type HealthDaysInput =
+  | { status: "no_consent" }
+  | { status: "consented"; days: readonly HealthDayInput[] };
 
 /**
  * The watch values for the scores, failing safe: a source without them has

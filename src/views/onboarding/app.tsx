@@ -3,7 +3,12 @@ import type { OnboardingView, PlanKind } from "../demo/model.js";
 import { Dashboard, type Screen } from "./dashboard.js";
 import { LivePlanScreen } from "../live/plan.js";
 import { LiveTrainingScreen } from "../live/training.js";
+import { LiveGoalsScreen } from "../live/goals.js";
+import { LiveStatsScreen } from "../live/stats.js";
+import { LiveHealthScreen } from "../live/health.js";
 import { dashboardOf, type DashboardData } from "../demo/dashboard.js";
+import type { ArnoldDashboardView } from "../../shared/arnold-view.js";
+import { recordsScreenModel } from "../model/records.js";
 import {
   GoalsScreen,
   HealthScreen,
@@ -21,12 +26,18 @@ export function AppShell({
   onEditProfile,
   initial = "dashboard",
   dashboard,
+  source,
+  onRefresh = async () => undefined,
   live = false,
 }: {
   /** Screens read Arnold's real data where they are wired up. */
   live?: boolean;
   /** Real overview figures; without them the POC sample figures are shown. */
   dashboard?: DashboardData;
+  /** The dashboard answer the real figures come from (live mode). */
+  source?: ArnoldDashboardView;
+  /** Reads the dashboard again (after a write on a screen). */
+  onRefresh?: () => Promise<void>;
   initial?: Screen;
   view: OnboardingView;
   onAsk: (sentence: string) => void;
@@ -62,10 +73,36 @@ export function AppShell({
         ) : (
           <TrainingScreen view={view} kind={kind} onBack={back} />
         ))}
-      {screen === "records" && <RecordsScreen view={view} onBack={back} />}
-      {screen === "goals" && <GoalsScreen view={view} onBack={back} />}
-      {screen === "stats" && <StatsScreen view={view} onBack={back} />}
-      {screen === "health" && <HealthScreen view={view} onBack={back} />}
+      {screen === "records" && (
+        <RecordsScreen
+          view={view}
+          onBack={back}
+          records={live && source ? recordsScreenModel(source.home) : undefined}
+        />
+      )}
+      {screen === "goals" &&
+        (live && source ? (
+          <LiveGoalsScreen
+            view={view}
+            source={source}
+            onBack={back}
+            onRefresh={onRefresh}
+          />
+        ) : (
+          <GoalsScreen view={view} onBack={back} />
+        ))}
+      {screen === "stats" &&
+        (live && source ? (
+          <LiveStatsScreen view={view} source={source} onBack={back} />
+        ) : (
+          <StatsScreen view={view} onBack={back} />
+        ))}
+      {screen === "health" &&
+        (live ? (
+          <LiveHealthScreen view={view} onBack={back} onAsk={onAsk} />
+        ) : (
+          <HealthScreen view={view} onBack={back} />
+        ))}
       {screen === "settings" && (
         <SettingsScreen
           view={view}

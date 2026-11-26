@@ -9,6 +9,7 @@
 import {
   storeSource,
   type ArnoldDataSource,
+  type HealthDaysInput,
   type WatchRecordingData,
   type WatchSnapshotData,
 } from "../arnold-source.js";
@@ -49,7 +50,7 @@ import type { Database } from "./database.js";
 import type { PostgresIdentityRepository } from "./identity.js";
 import { PostgresOnboardingRepository } from "./onboarding.js";
 import { PostgresArnoldStore } from "./store.js";
-import type { DailyHealthSync } from "../health/sync.js";
+import { selectDailyHealth, type DailyHealthSync } from "../health/sync.js";
 import { watchDelivery } from "../watch/delivery.js";
 
 export interface DatabaseRuntimeOptions {
@@ -314,6 +315,7 @@ export class DatabaseUserRuntime {
       watchDelivery: (dataset) => watchDelivery(db, userId, dataset),
       scoreHealth: (referenceDate, now) =>
         readScoreHealth(db, userId, referenceDate, now),
+      healthDays: (from, to) => readHealthDays(db, userId, from, to),
     };
     const authorization: AuthorizationGuard = {
       authorize: async (tracker, _permission, context): Promise<Actor> => {
@@ -510,6 +512,31 @@ export async function readScoreHealth(
           : [],
       ),
       now_utc: now.toISOString(),
+    };
+  });
+}
+
+/**
+ * Daily health values for the health screen, only the caller's own and only
+ * with active consent. Consent and values are read in one transaction, so a
+ * revocation in between cannot leak values.
+ */
+export async function readHealthDays(
+  db: Database,
+  userId: string,
+  from: string,
+  to: string,
+): Promise<HealthDaysInput> {
+  return db.asUser(userId, async (c) => {
+    const consent = await c.query(
+      `select 1 from arnold.health_consents
+        where user_id = $1 and scope = 'garmin_health' and revoked_at is null`,
+      [userId],
+    );
+    if (consent.rowCount !== 1) return { status: "no_consent" };
+    return {
+      status: "consented",
+      days: await selectDailyHealth(c, userId, from, to),
     };
   });
 }

@@ -5,7 +5,7 @@
  * fixed, nothing depends on the clock.
  */
 import { afterAll, describe, expect, it } from "vitest";
-import { readScoreHealth } from "../src/server/db/runtime";
+import { readHealthDays, readScoreHealth } from "../src/server/db/runtime";
 import { appDatabase, newAccount } from "./fixtures/arnold-db.js";
 
 const db = appDatabase();
@@ -92,6 +92,44 @@ describe("readScoreHealth", () => {
     await revoke(a);
     expect(await readScoreHealth(db, a.userId, "2026-11-16", NOW)).toEqual({
       status: "no_consent",
+    });
+  });
+});
+
+describe("readHealthDays (Health Data card)", () => {
+  it("reads nothing without consent", async () => {
+    const a = await newAccount(db);
+    await grant(a);
+    await insertDay(a, "2026-11-15", { resting: 50 });
+    await revoke(a);
+    expect(
+      await readHealthDays(db, a.userId, "2026-11-10", "2026-11-16"),
+    ).toEqual({ status: "no_consent" });
+  });
+
+  it("reads only the caller's own days of the window, unknown as null", async () => {
+    const alice = await newAccount(db);
+    const bob = await newAccount(db);
+    await grant(alice);
+    await grant(bob);
+    await insertDay(alice, "2026-11-16", { resting: 52, sleep: 81 });
+    await insertDay(alice, "2026-11-09", { resting: 49 }); // before the window
+    await insertDay(bob, "2026-11-16", { resting: 61 });
+    const read = await readHealthDays(
+      db,
+      alice.userId,
+      "2026-11-10",
+      "2026-11-16",
+    );
+    expect(read.status).toBe("consented");
+    if (read.status !== "consented") return;
+    expect(read.days).toHaveLength(1);
+    expect(read.days[0]).toMatchObject({
+      local_date: "2026-11-16",
+      resting_hr_bpm: 52,
+      sleep_score: 81,
+      steps: null,
+      vo2max_running: null,
     });
   });
 });

@@ -358,9 +358,11 @@ export type HealthMetric = {
 export type HealthData = {
   today: HealthMetric[];
   sleep: {
-    hours: number;
-    score: number;
-    avg7: number;
+    hours: number | null;
+    score: number | null;
+    avg7: number | null;
+    /** Plain-language reading of the score (sample data only). */
+    note?: string;
     phases: { label: string; minutes: number }[];
     week: { day: string; score: number | null }[];
   };
@@ -409,6 +411,7 @@ export function healthData(view: OnboardingView): HealthData {
       hours: 7.5,
       score: 82,
       avg7: 78,
+      note: "gut",
       phases: [
         { label: "Tief", minutes: 86 },
         { label: "Leicht", minutes: 232 },
