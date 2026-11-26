@@ -105,7 +105,8 @@ export class DatabaseArnoldRuntime {
           context.userId,
           trackerId,
           this.options.auth,
-          this.options.dailyHealth?.covers(context.userId) ?? false,
+          this.options.db.readOnly ||
+            (this.options.dailyHealth?.covers(context.userId) ?? false),
         );
       })();
       runtime.catch(() => this.users.delete(context.userId));
@@ -425,7 +426,8 @@ export class DatabaseUserRuntime {
       auth,
       dailyValues,
     );
-    await ensureStarterCatalog(runtime.store, trackerId, userId);
+    if (!db.readOnly)
+      await ensureStarterCatalog(runtime.store, trackerId, userId);
     return runtime;
   }
 

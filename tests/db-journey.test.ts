@@ -11,6 +11,7 @@ import {
   beforeEach,
   describe,
   expect,
+  inject,
   it,
   vi,
 } from "vitest";
@@ -31,7 +32,7 @@ import { loadAuthConfig } from "../src/server/auth/config.js";
 import { fetchAuthorizationServerMetadata } from "../src/server/auth/discovery.js";
 import { PostgresIdentityRepository } from "../src/server/db/identity.js";
 import { DatabaseArnoldRuntime } from "../src/server/db/runtime.js";
-import type { Database } from "../src/server/db/database.js";
+import { Database } from "../src/server/db/database.js";
 import {
   OnboardingResponseSchema,
   OnboardingViewSchema,
@@ -155,6 +156,115 @@ afterEach(async () => {
   await Promise.all([...clients.values()].map((client) => client.close()));
   clients.clear();
   await close(http);
+});
+
+it("serves preview cards for one existing account with read-only tools and transactions", async () => {
+  const { user } = await runtime.options.identities.register(issuer, alice);
+  await runtime.options.identities.register(issuer, bob);
+  await (
+    await clientFor(alice)
+  ).callTool({
+    name: "show_arnold_onboarding",
+    arguments: {},
+  });
+
+  const previewDb = new Database({
+    url: inject("databaseUrl"),
+    readOnly: true,
+  });
+  const previewHttp = createServer().listen(0, "127.0.0.1");
+  await listen(previewHttp);
+  const previewBase = `http://127.0.0.1:${portOf(previewHttp)}`;
+  const config = loadAuthConfig({
+    AUTH_MODE: "oidc",
+    AUTH_ISSUER: issuer,
+    AUTH_JWKS_URI: `${issuer}jwks`,
+    ARNOLD_PUBLIC_BASE_URL: previewBase,
+  });
+  const identities = new PostgresIdentityRepository(previewDb, user.user_id);
+  const auth = buildAuthSurface({
+    config,
+    repository: identities,
+    authorizationServerMetadata: await fetchAuthorizationServerMetadata({
+      issuer,
+    }),
+    readOnly: true,
+  });
+  const previewRuntime = new DatabaseArnoldRuntime({
+    db: previewDb,
+    auth,
+    identities,
+    retentionDays: 30,
+  });
+  previewHttp.on(
+    "request",
+    createHttpApp({
+      env: { ARNOLD_PUBLIC_BASE_URL: previewBase },
+      auth,
+      database: previewRuntime,
+      previewUi: {
+        origin: previewBase,
+        render: async (kind) => `<main>${kind}</main>`,
+      },
+    }),
+  );
+
+  const headers = (subject: string) => ({
+    authorization: `Bearer ${signJwt(
+      key,
+      validClaims({
+        iss: issuer,
+        aud: `${previewBase}/mcp`,
+        sub: subject,
+        scope: scopes,
+      }),
+    )}`,
+  });
+  const client = new Client({ name: "preview-test", version: "1" });
+  try {
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(`${previewBase}/mcp`), {
+        requestInit: { headers: headers(alice) },
+      }),
+    );
+    const { tools } = await client.listTools();
+    expect(tools.map((tool) => tool.name)).not.toContain("log_workout");
+    expect(tools.map((tool) => tool.name)).not.toContain(
+      "delete_arnold_account",
+    );
+    const setup = tools.find((tool) => tool.name === "show_arnold_onboarding");
+    expect(setup?.annotations?.readOnlyHint).toBe(true);
+    const { contents } = await client.readResource({
+      uri: "ui://arnold/onboarding-v2-preview-v1.html",
+    });
+    expect(contents[0]).toMatchObject({
+      text: "<main>onboarding</main>",
+      _meta: { ui: { csp: { resourceDomains: [previewBase] } } },
+    });
+    expect(
+      (await client.callTool({ name: "show_arnold_onboarding", arguments: {} }))
+        .isError,
+    ).not.toBe(true);
+    expect(
+      (await client.callTool({ name: "show_arnold_dashboard", arguments: {} }))
+        .isError,
+    ).not.toBe(true);
+    const other = await fetch(`${previewBase}/mcp`, {
+      method: "POST",
+      headers: { ...headers(bob), "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
+    expect(other.status).toBe(403);
+    await expect(
+      previewDb.asUser(user.user_id, (c) =>
+        c.query("delete from arnold.users where false"),
+      ),
+    ).rejects.toMatchObject({ code: "25006" });
+  } finally {
+    await client.close();
+    await close(previewHttp);
+    await previewDb.close();
+  }
 });
 
 async function clientFor(subject: string, scope = scopes) {

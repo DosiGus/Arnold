@@ -80,6 +80,8 @@ function Flow({ initial }: { initial: OnboardingState }) {
       ? "own"
       : phase;
 
+  const preview = import.meta.env.ARNOLD_PREVIEW_CLIENT_READ_ONLY;
+
   if (screen !== "setup")
     return (
       <DataLLM content="Arnold-Überblick nach der Einrichtung.">
@@ -99,6 +101,14 @@ function Flow({ initial }: { initial: OnboardingState }) {
   return (
     <DataLLM content={context}>
       <main className="mx-auto flex w-full max-w-xl min-w-0 flex-col gap-6 overflow-x-hidden p-4">
+        {preview && (
+          <Alert
+            color="warning"
+            variant="soft"
+            title="Vorschau mit deinem gespeicherten Stand"
+            description="Angaben kannst du im regulären Arnold speichern."
+          />
+        )}
         <Stepper
           index={STEP_INDEX[phase]}
           complete={phase === "done"}

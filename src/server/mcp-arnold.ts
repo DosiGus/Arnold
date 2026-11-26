@@ -1,4 +1,8 @@
-import { LEGACY_DASHBOARD_URIS, registerUiBundle } from "./ui-resource.js";
+import {
+  LEGACY_DASHBOARD_URIS,
+  registerUiBundle,
+  type PreviewUi,
+} from "./ui-resource.js";
 import {
   failureText,
   recoveryFor,
@@ -364,6 +368,7 @@ export function createArnoldMcpServer(
   runs?: RunService,
   mobility?: MobilityService,
   uiDomain?: string,
+  previewUi?: PreviewUi,
 ) {
   const uiFile = typeof ui === "string" ? ui : ui.dashboard;
   const onboardingUiFile = typeof ui === "string" ? ui : ui.onboarding;
@@ -371,8 +376,15 @@ export function createArnoldMcpServer(
   // watch tools added later — advertises and returns no internals.
   const bare = hideModelInternals(
     new McpServer(
-      { name: "arnold", version: "0.5.0" },
-      onboarding ? { instructions: ARNOLD_INSTRUCTIONS } : undefined,
+      { name: previewUi ? "arnold-preview" : "arnold", version: "0.5.0" },
+      previewUi
+        ? {
+            instructions:
+              "Arnold Vorschau zeigt den gespeicherten Stand des angemeldeten Nutzers. Verwende show_arnold_dashboard für den Überblick und show_arnold_onboarding für den gespeicherten Einrichtungsstand. Speichern und Einrichtung abschließen sind im regulären Arnold möglich.",
+          }
+        : onboarding
+          ? { instructions: ARNOLD_INSTRUCTIONS }
+          : undefined,
     ),
   );
   // Patched before any registration, so the tools registered here and the ones
@@ -390,9 +402,10 @@ export function createArnoldMcpServer(
     : bare;
   // Onboarding first: a verified account that is not set up yet gets
   // SETUP_REQUIRED from every tracker tool. Inert where there is no account.
-  const server = onboarding
-    ? gateUntilSetUp(guarded, onboarding, actorContext)
-    : guarded;
+  const server =
+    onboarding && !previewUi
+      ? gateUntilSetUp(guarded, onboarding, actorContext)
+      : guarded;
   const sourceLabel = source.label;
   // UX-008: every reader here sees the training view, in which a running
   // adjustment for a while stands in for the active plan.
@@ -448,6 +461,7 @@ export function createArnoldMcpServer(
     description: `Interaktiver Trainingsbegleiter Arnold auf Basis des Arnold-Schemas v1. Quelle: ${sourceLabel}.`,
     legacyUris: LEGACY_DASHBOARD_URIS,
     domain: uiDomain,
+    preview: previewUi,
   });
 
   /**
@@ -759,6 +773,7 @@ export function createArnoldMcpServer(
     onboardingUiFile,
     actorContext,
     uiDomain,
+    previewUi,
   );
   return server;
 }

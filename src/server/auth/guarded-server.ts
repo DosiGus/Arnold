@@ -101,9 +101,13 @@ export function guardToolRegistrations(
   ) => {
     // Throws for an unclassified tool, taking the server down at startup.
     const declared = requireToolAccess(name);
-    const access =
-      options.syntheticWrites &&
-      (declared === "AUTHENTICATED_WRITE" || declared === "PLAN_WRITE")
+    const readsPreviewOnboarding =
+      guard.readOnly &&
+      (name === "show_arnold_onboarding" || name === "get_onboarding_state");
+    const access = readsPreviewOnboarding
+      ? "AUTHENTICATED_READ"
+      : options.syntheticWrites &&
+          (declared === "AUTHENTICATED_WRITE" || declared === "PLAN_WRITE")
         ? "SYNTHETIC_SANDBOX"
         : options.authenticatedOnboarding && declared === "ONBOARDING_PREVIEW"
           ? "PLAN_WRITE"
@@ -177,11 +181,11 @@ export function guardToolRegistrations(
       }
     };
 
-    return (original as unknown as (...a: unknown[]) => unknown)(
-      name,
-      guardedConfig,
-      guardedHandler,
-    );
+    const registered = (
+      original as unknown as (...a: unknown[]) => ReturnType<RegisterTool>
+    )(name, guardedConfig, guardedHandler);
+    if (guard.readOnly && access !== "AUTHENTICATED_READ") registered.disable();
+    return registered;
   }) as unknown as RegisterTool;
 
   Object.defineProperty(server, "registerTool", {

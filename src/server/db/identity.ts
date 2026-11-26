@@ -30,7 +30,10 @@ type ResolvedRow = {
 const iso = (value: Date) => value.toISOString();
 
 export class PostgresIdentityRepository implements IdentityRepository {
-  constructor(private readonly db: Database) {}
+  constructor(
+    private readonly db: Database,
+    private readonly previewUserId?: string,
+  ) {}
 
   private async resolve(
     issuer: string,
@@ -66,7 +69,22 @@ export class PostgresIdentityRepository implements IdentityRepository {
   }
 
   find(issuer: string, subject: string) {
+    if (this.previewUserId)
+      return this.findPreviewIdentity(this.previewUserId, issuer, subject);
     return this.resolve(issuer, subject, false);
+  }
+
+  private async findPreviewIdentity(
+    userId: string,
+    issuer: string,
+    subject: string,
+  ): Promise<ResolvedIdentity | undefined> {
+    const connection = (await this.connectionsFor(userId)).find(
+      (entry) => entry.issuer === issuer && entry.subject === subject,
+    );
+    if (!connection) return undefined;
+    const user = await this.byId(userId);
+    return user ? { user, connection, created: false } : undefined;
   }
 
   async register(issuer: string, subject: string) {

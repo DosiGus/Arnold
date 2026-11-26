@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "npm run build:ui && tsx watch src/server/main.ts",
     "dev:preview": "bash scripts/dev-preview.sh",
+    "dev:chatgpt": "tsx watch --clear-screen=false scripts/dev-chatgpt.ts",
     "build:ui": "vite build && vite build --config vite.host.config.ts && npm run build:views",
     "build": "npm run typecheck && npm run build:ui && tsc -p tsconfig.server.json",
     "start": "node dist/server/main.js",

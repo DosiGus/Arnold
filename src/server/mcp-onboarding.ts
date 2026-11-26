@@ -25,6 +25,7 @@ import {
   LEGACY_ONBOARDING_URIS,
   onboardingResourceUri,
   registerUiBundle,
+  type PreviewUi,
 } from "./ui-resource.js";
 import { failureText, recoveryFor } from "../shared/write-recovery.js";
 import { z } from "zod";
@@ -226,6 +227,7 @@ export function registerOnboardingTools(
   uiFile?: string,
   actorContext?: unknown,
   uiDomain?: string,
+  previewUi?: PreviewUi,
 ) {
   if (!onboarding) return;
 
@@ -244,6 +246,7 @@ export function registerOnboardingTools(
           "Geführte Einrichtung von Arnold als Gespräch mit kleinen Karten: Eckdaten, Module, Checkliste, Richtwerte, Laufreferenz, Planvorschlag mit Bearbeitung im Vollbild, Garmin-Uhr und Start.",
         legacyUris: LEGACY_ONBOARDING_URIS,
         domain: uiDomain,
+        preview: previewUi,
       })
     : onboardingResourceUri(uiFile);
 
@@ -259,17 +262,23 @@ export function registerOnboardingTools(
     "show_arnold_onboarding",
     {
       title: "Arnold einrichten",
-      description:
-        "Öffnet die Einrichtung von Arnold als interaktive Oberfläche. Bei einem neuen Nutzer IMMER zuerst aufrufen, bevor andere Arnold-Werkzeuge verwendet werden – auch wenn der Nutzer nur 'Hallo' sagt oder direkt trainieren möchte. Die Oberfläche zeigt kleine Karten im Gespräch. Ohne `card` wird die Karte zum aktuellen Stand gezeigt (Wiederaufnahme: der Server wählt sie aus dem Zustand). Ohne Argumente wird die offene Einrichtung des Kontos fortgesetzt oder eine neue begonnen; ist Arnold bereits eingerichtet, zeigt sie das an und es wird keine neue Einrichtung gestartet. Antworten kommen per Sprachnachricht, Chat oder Knopf; alles landet im selben Zustand. Erzählt der Nutzer frei, wird alles Erkannte in EINEM update_onboarding_profile-Aufruf gespeichert, danach diese Karte gezeigt und höchstens drei Fragen aus open_questions gestellt. Nicht Genanntes wird nie geraten. Der Weg ist arnold_plan. Optional zeigt `card` eine kleine Karte: person (Eckdaten: Alter, Größe, Gewicht, Geschlecht), modules (Krafttraining fest, dazu Laufen und Mobility), checklist (was Arnold schon weiß und was noch fehlt), benchmarks (Richtwerte Kraft: bekannte Gewichte × Wiederholungen, optional, überspringbar) oder run_reference (Laufreferenz: beste oder letzte Zeit, nur mit dem Modul Laufen, überspringbar) oder plan (Planvorschlag als Kacheln je Einheit mit genau zwei Aktionen: Plan bestätigen und Selbst bearbeiten im Vollbild; erst zeigen, wenn ein Plan-Entwurf vorliegt; Anpassen per Sprache bleibt im Chat, also nach der Karte fragen, was geändert werden soll; hat der Nutzer von Hand geändert, vom gespeicherten Wert in der Karte ausgehen, nicht vom Wert im Chat). Danach, erst nach bestätigtem Plan: wearable (Garmin verbinden: die Uhr zeigt einen Code mit 8 Zeichen, den der Nutzer in die Karte eintippt; genau zwei Aktionen Verbinden und Später; die Uhr ist optional, nur Garmin, keine Einwilligung für Gesundheitsdaten abfragen; Code nie selbst raten oder aus dem Chat in ein Werkzeug übernehmen) und zum Abschluss start (Arnold ist bereit: nächste Einheit, Woche, geschätzte Richtwerte, Ziele und Uhrstatus in einer Karte mit den Aktionen Einheit ansehen und Plan öffnen; Werte nur wie gespeichert nennen, Unbekanntes bleibt offen und ist nie 0; die Uhr holt den Plan selbst). Wurden Richtwerte oder die Laufreferenz übersprungen, nie sagen, etwas sei daraus berechnet. Jede Karte zeigt den vollen aktuellen Stand und lädt sich beim Antippen selbst neu. Text VOR der Karte klappt der Chat ein: Die wichtigen Aussagen und die nächste Frage gehören deshalb in den Text NACH der Karte, kurz und ohne die Karte zu wiederholen.",
+      description: previewUi
+        ? "Öffnet den gespeicherten Einrichtungsstand in der lesenden Vorschau. Teile mit, dass Eingaben im regulären Arnold gespeichert werden."
+        : "Öffnet die Einrichtung von Arnold als interaktive Oberfläche. Bei einem neuen Nutzer IMMER zuerst aufrufen, bevor andere Arnold-Werkzeuge verwendet werden – auch wenn der Nutzer nur 'Hallo' sagt oder direkt trainieren möchte. Die Oberfläche zeigt kleine Karten im Gespräch. Ohne `card` wird die Karte zum aktuellen Stand gezeigt (Wiederaufnahme: der Server wählt sie aus dem Zustand). Ohne Argumente wird die offene Einrichtung des Kontos fortgesetzt oder eine neue begonnen; ist Arnold bereits eingerichtet, zeigt sie das an und es wird keine neue Einrichtung gestartet. Antworten kommen per Sprachnachricht, Chat oder Knopf; alles landet im selben Zustand. Erzählt der Nutzer frei, wird alles Erkannte in EINEM update_onboarding_profile-Aufruf gespeichert, danach diese Karte gezeigt und höchstens drei Fragen aus open_questions gestellt. Nicht Genanntes wird nie geraten. Der Weg ist arnold_plan. Optional zeigt `card` eine kleine Karte: person (Eckdaten: Alter, Größe, Gewicht, Geschlecht), modules (Krafttraining fest, dazu Laufen und Mobility), checklist (was Arnold schon weiß und was noch fehlt), benchmarks (Richtwerte Kraft: bekannte Gewichte × Wiederholungen, optional, überspringbar) oder run_reference (Laufreferenz: beste oder letzte Zeit, nur mit dem Modul Laufen, überspringbar) oder plan (Planvorschlag als Kacheln je Einheit mit genau zwei Aktionen: Plan bestätigen und Selbst bearbeiten im Vollbild; erst zeigen, wenn ein Plan-Entwurf vorliegt; Anpassen per Sprache bleibt im Chat, also nach der Karte fragen, was geändert werden soll; hat der Nutzer von Hand geändert, vom gespeicherten Wert in der Karte ausgehen, nicht vom Wert im Chat). Danach, erst nach bestätigtem Plan: wearable (Garmin verbinden: die Uhr zeigt einen Code mit 8 Zeichen, den der Nutzer in die Karte eintippt; genau zwei Aktionen Verbinden und Später; die Uhr ist optional, nur Garmin, keine Einwilligung für Gesundheitsdaten abfragen; Code nie selbst raten oder aus dem Chat in ein Werkzeug übernehmen) und zum Abschluss start (Arnold ist bereit: nächste Einheit, Woche, geschätzte Richtwerte, Ziele und Uhrstatus in einer Karte mit den Aktionen Einheit ansehen und Plan öffnen; Werte nur wie gespeichert nennen, Unbekanntes bleibt offen und ist nie 0; die Uhr holt den Plan selbst). Wurden Richtwerte oder die Laufreferenz übersprungen, nie sagen, etwas sei daraus berechnet. Jede Karte zeigt den vollen aktuellen Stand und lädt sich beim Antippen selbst neu. Text VOR der Karte klappt der Chat ein: Die wichtigen Aussagen und die nächste Frage gehören deshalb in den Text NACH der Karte, kurz und ohne die Karte zu wiederholen.",
       inputSchema: OnboardingToolInputs.show_arnold_onboarding,
       outputSchema: OnboardingViewSchema,
-      annotations: { ...writing, readOnlyHint: false },
+      annotations: previewUi ? readOnly : writing,
       _meta: { ui: { resourceUri: currentUri } },
     },
     async ({ card }) => {
       try {
         // No argument names the setup: the verified identity finds it (D-11).
-        const opened = await onboarding.openOnboarding(actorContext);
+        const opened = previewUi
+          ? {
+              state: await onboarding.getOnboardingState({}, actorContext),
+              resumed: true,
+            }
+          : await onboarding.openOnboarding(actorContext);
         return ok(
           {
             onboarding_contract: ONBOARDING_CONTRACT,
@@ -278,7 +287,9 @@ export function registerOnboardingTools(
             resumed: opened.resumed,
             source: sourceFor(opened.state, opened.resumed),
           },
-          summarize(opened.state),
+          previewUi
+            ? "Gespeicherten Einrichtungsstand geöffnet. Eingaben werden im regulären Arnold gespeichert."
+            : summarize(opened.state),
         );
       } catch (error) {
         return failure(error);

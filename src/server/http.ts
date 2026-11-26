@@ -18,10 +18,15 @@ import type { ArnoldDataSource } from "./arnold-source.js";
 import { requireSafeArnoldBinding } from "./storage-config.js";
 import { loadAuthConfig } from "./auth/config.js";
 import { buildAuthSurface, type AuthSurface } from "./auth/router.js";
+import { ArnoldAuthError } from "./auth/errors.js";
 import type { DatabaseArnoldRuntime } from "./db/runtime.js";
 import { registerAccountTools } from "./account/mcp-account.js";
 import { registerWatchTools } from "./mcp-watch.js";
-import { dashboardResourceUri, uiDomain } from "./ui-resource.js";
+import {
+  dashboardResourceUri,
+  uiDomain,
+  type PreviewUi,
+} from "./ui-resource.js";
 import { withArnoldContext } from "./auth/guarded-server.js";
 import { FixtureSandboxes } from "./fixture-sandboxes.js";
 import { demoHealthDays } from "./health/demo.js";
@@ -31,6 +36,7 @@ export interface ServerOptions {
   env?: NodeJS.ProcessEnv;
   /** Signed-in users with their data in Postgres (`arnold_database`). */
   database?: DatabaseArnoldRuntime;
+  previewUi?: PreviewUi;
   /** A fixed read-only source; for tests. */
   arnoldSource?: ArnoldDataSource;
   workoutRuntime?: {
@@ -190,6 +196,15 @@ export function createHttpApp(options: ServerOptions = {}) {
   // acceptable depends on whether bearer validation is actually active.
   const auth =
     options.auth ?? buildAuthSurface({ config: loadAuthConfig(env) });
+  if (
+    options.previewUi &&
+    (auth.summary.mode !== "oidc" ||
+      !auth.guard.readOnly ||
+      !options.database?.options.db.readOnly)
+  )
+    throw new Error(
+      "Die ChatGPT-Vorschau benötigt authentifizierten Lesezugriff.",
+    );
   // The card resources carry the app's own origin; none without a configured
   // address (the development default is no origin to announce).
   // Independent of the auth branch: bootstrap always passes its own `auth`,
@@ -376,8 +391,9 @@ export function createHttpApp(options: ServerOptions = {}) {
         userRuntime?.runs,
         userRuntime?.mobility,
         uiOrigin,
+        options.previewUi,
       );
-      if (options.database) {
+      if (options.database && !options.previewUi) {
         const uri = dashboardResourceUri(uiFiles.dashboard);
         registerAccountTools(server, options.database, uri);
         registerWatchTools(server, options.database, uri);
@@ -411,12 +427,20 @@ export function createHttpApp(options: ServerOptions = {}) {
     } else await handle();
   });
   // The watch API exists only for signed-in users with a database (07 D-07).
-  if (options.database && auth.summary.mode === "oidc")
+  if (options.database && auth.summary.mode === "oidc" && !options.previewUi)
     mountWatchApi(app, { runtime: options.database });
   app.use((_req, res) => res.status(404).json({ error: "Nicht gefunden." }));
   app.use((error: Error, _req: Request, res: Response, _next: NextFunction) => {
     // Type and status only: a body-parser message quotes the request body.
     logServerError("http request failed", error);
+    if (
+      !res.headersSent &&
+      options.previewUi &&
+      error instanceof ArnoldAuthError
+    ) {
+      res.status(403).json({ error: error.publicMessage });
+      return;
+    }
     const bodyError = error as Error & { status?: number; type?: string };
     if (!res.headersSent && bodyError.type === "entity.parse.failed") {
       res.status(400).json({ error: "Ungültiger JSON-Request." });

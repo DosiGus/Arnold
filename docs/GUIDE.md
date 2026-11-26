@@ -249,6 +249,40 @@ Ohne jede Einstellung läuft `arnold_fixture` mit `ARNOLD_WRITE_MODE=fixture`. H
 - `HOST`/`ALLOWED_HOSTS`/`ALLOWED_ORIGINS` werden bei jeder Anfrage geprüft (DNS-Rebinding-Schutz). Echte Daten sind ohne Anmeldung nie öffentlich erreichbar.
 - `AUTH_MODE=open` nur mit `ARNOLD_ENV=development` und synthetischen Daten.
 
+## Live-Vorschau in ChatGPT
+
+Für gemeinsame Entwicklungsrunden gibt es das persönliche Custom-MCP-Plugin
+**Arnold Vorschau**. Es zeigt gespeicherte Daten eines freigegebenen Kontos.
+Der Server verlangt WorkOS-OAuth mit eigener Audience, akzeptiert nur das
+konfigurierte Konto und öffnet Postgres-Transaktionen nur lesend. Schreiben,
+Garmin-Synchronisierung und Kontoanlage laufen im regulären Arnold.
+
+1. Einen Arbeitsbranch verwenden. Für die Vorschau einen HTTPS-Tunnel mit
+   WebSocket-Unterstützung auf `127.0.0.1:8788` starten. Ein Cloudflare
+   Quick Tunnel genügt für eine Runde. Eine dauerhafte HTTPS-Adresse erspart
+   die Neueinrichtung nach Tunnel-Neustarts.
+2. In WorkOS Connect → Configuration die exakte Vorschau-Adresse inklusive
+   `/mcp` als zusätzlichen Resource Indicator anlegen. Der Live-Endpunkt
+   bleibt der Standard. In ChatGPT unter Plugins einen separaten
+   benutzerdefinierten MCP-Server mit der Vorschau-Adresse und OAuth verbinden.
+3. Vor `npm run dev:chatgpt` die Variablen `ARNOLD_PREVIEW_URL` (nur der
+   HTTPS-Origin), `ARNOLD_PREVIEW_USER_ID` (freigegebene interne Kontokennung),
+   `AUTH_ISSUER`, `AUTH_JWKS_URI` und `AUTH_SCOPE_CLAIM` setzen. Die
+   Datenbankverbindung `DATABASE_URL` und bei Bedarf `DATABASE_CA_CERT` aus
+   Secret Manager in die Prozessumgebung laden.
+4. In einem neuen Chat „Arnold Vorschau“ auswählen und die gewünschte Karte
+   öffnen. Änderungen an React-Komponenten und CSS laufen über Vite und den
+   WebSocket zum offenen Widget. Serveränderungen starten den lokalen Prozess
+   neu. Nach Änderungen an Tool-Namen, Schemas oder Metadaten in ChatGPT
+   zusätzlich die Vorschau-Verbindung aktualisieren.
+5. Geprüfte Zwischenstände auf dem Arbeitsbranch committen und pushen.
+   Zusammengehörige, abgenommene Änderungen bündeln. Erst den grünen Stand
+   auf `main` als Produktionsrelease deployen.
+
+Wenn sich die Tunnel-Adresse ändert, WorkOS und die Vorschau-Verbindung auf
+die neue exakte URL einstellen. Die Vorschau braucht den lokalen Prozess und
+den Tunnel, solange Karten geöffnet sind.
+
 ## Arnold in ChatGPT testen (synthetisch, ohne Konto)
 
 Daten sind erfunden und liegen im Arbeitsspeicher, ein Neustart verwirft alles. Es gibt keine Anmeldung: Die Tunnel-Adresse nicht weitergeben.

@@ -54,6 +54,11 @@ export const dashboardResourceUri = (file: string | undefined) =>
 export const onboardingResourceUri = (file: string | undefined) =>
   `ui://arnold/onboarding-v2-${bundleTag(file)}.html`;
 
+export interface PreviewUi {
+  origin: string;
+  render: (kind: "dashboard" | "onboarding") => Promise<string>;
+}
+
 /**
  * `_meta.ui` of a card resource. `domain` is the app's own origin (from the
  * checked configuration) and is left out when none is configured. The CSP
@@ -92,18 +97,35 @@ export function registerUiBundle(
     legacyUris: readonly string[];
     /** Origin for `_meta.ui.domain`; omitted when not configured. */
     domain?: string;
+    preview?: PreviewUi;
   },
 ): string {
-  const { kind, file, name, legacyName, description, legacyUris, domain } =
-    options;
+  const {
+    kind,
+    file,
+    name,
+    legacyName,
+    description,
+    legacyUris,
+    domain,
+    preview,
+  } = options;
   const UI_META = uiMeta(domain);
-  const currentUri = `ui://arnold/${kind}-v2-${bundleTag(file)}.html`;
+  if (preview) {
+    const ws = new URL(preview.origin);
+    ws.protocol = ws.protocol === "https:" ? "wss:" : "ws:";
+    UI_META.ui.csp.resourceDomains.push(preview.origin);
+    UI_META.ui.csp.connectDomains.push(preview.origin, ws.origin);
+  }
+  const currentUri = `ui://arnold/${kind}-v2-${preview ? "preview-v1" : bundleTag(file)}.html`;
   const read = async (uri: string) => ({
     contents: [
       {
         uri,
         mimeType: RESOURCE_MIME_TYPE,
-        text: await readFile(file, "utf8"),
+        text: preview
+          ? await preview.render(kind)
+          : await readFile(file, "utf8"),
         _meta: UI_META,
       },
     ],
