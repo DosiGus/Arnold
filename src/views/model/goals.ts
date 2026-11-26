@@ -232,6 +232,21 @@ export function latestWeightText(view: ArnoldDashboardView): string | null {
   return w ? `${num(w.weight_kg)} kg · ${shortDate(w.date)}` : null;
 }
 
+/** `void_body_weight` for the newest entry; null while none is stored. */
+export function voidWeightInput(
+  view: ArnoldDashboardView,
+  requestId: string,
+): Record<string, unknown> | null {
+  const w = view.home.latest_body_weight;
+  return w
+    ? {
+        request_id: requestId,
+        body_weight_id: w.body_weight_id,
+        expected_row_revision: w.row_revision,
+      }
+    : null;
+}
+
 /**
  * The weight form → `log_body_weight`. The user's own number for their own
  * calendar day; a second entry of a day replaces the first.

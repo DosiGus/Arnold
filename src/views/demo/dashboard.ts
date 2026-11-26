@@ -3,6 +3,8 @@
  * value comes from the server (src/views/model maps it, src/analytics
  * computes it). Unknown stays unknown: no weight is shown as 0.
  */
+import type { RecapModel } from "../model/recap.js";
+
 export type DashboardToday = {
   kind: "strength" | "run" | "mobility" | "morning";
   title: string;
@@ -24,6 +26,10 @@ export type DashboardData = {
   todayNote?: { text: string; action?: { label: string; ask: string } };
   /** Mobility "Dranbleiben" in one line. */
   mobilityNote?: string;
+  /** A new, not yet seen training or run (UX-006). */
+  recap?: RecapModel;
+  /** Set while an adjustment for a while applies (UX-008). */
+  adjustmentHint?: string;
   week: {
     goal: number;
     done: number;

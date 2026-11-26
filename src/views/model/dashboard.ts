@@ -6,6 +6,7 @@
  */
 import type { ArnoldDashboardView } from "../../shared/arnold-view.js";
 import type { DashboardData, DashboardToday } from "../demo/dashboard.js";
+import { adjustmentHint, recapModel } from "./recap.js";
 
 const WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 const WEEKDAY_LONG = [
@@ -425,7 +426,11 @@ export function dashboardModel(view: ArnoldDashboardView): DashboardData {
   const next = view.home.next_session;
   const note = todayNote(view, t);
   const mobility = mobilityNote(view);
+  const recap = recapModel(view);
+  const adjusted = adjustmentHint(view);
   return {
+    ...(recap ? { recap } : {}),
+    ...(adjusted ? { adjustmentHint: adjusted } : {}),
     sample: false,
     hasPlan: view.active_plan !== null,
     next: next

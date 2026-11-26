@@ -6,7 +6,9 @@ import {
   type ArnoldDashboardView,
 } from "../../shared/arnold-view.js";
 import { HealthDataSchema } from "../../shared/health-contract.js";
+import { MarkRecapSeenOutputSchema } from "../../shared/recap-contract.js";
 import { useArnoldTool } from "../arnold-client.js";
+import { PlanAdjustmentCard } from "../live/card-plan-change.js";
 import { onDataChanged } from "../live/data-changed.js";
 import { dashboardModel } from "../model/dashboard.js";
 import type { OnboardingView, PlanKind } from "../demo/model.js";
@@ -111,6 +113,14 @@ export function AppShell({
     givenDashboard ?? (source ? dashboardModel(source) : undefined);
   const onRefresh = givenRefresh ?? reload;
 
+  const { call: markRecapSeen } = useArnoldTool(
+    "mark_recap_seen",
+    MarkRecapSeenOutputSchema,
+  );
+  // A failed marker is not shown: at worst the recap returns once.
+  const recapSeen = (workoutId: string) =>
+    void markRecapSeen({ workout_id: workoutId }).catch(() => undefined);
+
   // Health Data is offered only where values can come for this account.
   const { call: readHealth } = useArnoldTool(
     "get_health_data",
@@ -150,7 +160,13 @@ export function AppShell({
       )}
       {screen === "dashboard" &&
         (dashboard ? (
-          <Dashboard d={dashboard} health={health} onAsk={onAsk} go={go} />
+          <Dashboard
+            d={dashboard}
+            health={health}
+            onAsk={onAsk}
+            go={go}
+            onRecapSeen={recapSeen}
+          />
         ) : (
           waiting
         ))}
@@ -187,6 +203,13 @@ export function AppShell({
         ))}
       {screen === "stats" &&
         (source ? <LiveStatsScreen source={source} onBack={back} /> : waiting)}
+      {screen === "adjustment" && (
+        <PlanAdjustmentCard
+          onBack={back}
+          onAsk={onAsk}
+          onChanged={() => void onRefresh().catch(() => undefined)}
+        />
+      )}
       {screen === "health" && (
         <LiveHealthScreen onBack={back} onConsent={() => go("settings")} />
       )}

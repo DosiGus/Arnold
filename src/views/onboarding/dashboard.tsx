@@ -1,3 +1,4 @@
+import { Alert } from "@openai/apps-sdk-ui/components/Alert";
 import { Badge } from "@openai/apps-sdk-ui/components/Badge";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
 import { Popover } from "@openai/apps-sdk-ui/components/Popover";
@@ -225,6 +226,71 @@ function TodayNote({
   );
 }
 
+/** What the server says about the newest training, until it is dismissed. */
+function Recap({
+  recap,
+  onSeen,
+  onNext,
+}: {
+  recap: NonNullable<DashboardData["recap"]>;
+  onSeen: () => void;
+  onNext: () => void;
+}) {
+  const [hidden, setHidden] = useState(false);
+  if (hidden) return null;
+  const done = (then?: () => void) => {
+    setHidden(true);
+    onSeen();
+    then?.();
+  };
+  return (
+    <section
+      aria-label={
+        recap.kind === "run"
+          ? "Rückblick auf deinen Lauf"
+          : "Rückblick auf dein Training"
+      }
+      className="flex flex-col gap-3 rounded-2xl border border-subtle bg-surface p-4"
+    >
+      <Badge color="success" variant="soft" pill className="self-start">
+        Rückblick
+      </Badge>
+      <div className="flex flex-col gap-1">
+        <h3 className="heading-xs m-0">{recap.title}</h3>
+        {recap.detail && (
+          <p className="m-0 text-sm text-secondary">{recap.detail}</p>
+        )}
+      </div>
+      {recap.lines.length > 0 && (
+        <ul className="m-0 flex list-none flex-col gap-1 p-0 text-sm">
+          {recap.lines.map((line) => (
+            <li key={line} className="flex items-start gap-2">
+              <CheckMd className="mt-0.5 size-4 shrink-0" />
+              {line}
+            </li>
+          ))}
+        </ul>
+      )}
+      {recap.suggestion && <p className="m-0 text-sm">{recap.suggestion}</p>}
+      <div className="flex flex-col gap-2">
+        {recap.suggestion && (
+          <Button color="primary" block onClick={() => done(onNext)}>
+            Nächstes Training ansehen
+          </Button>
+        )}
+        <Button
+          color={recap.suggestion ? "secondary" : "primary"}
+          variant={recap.suggestion ? "soft" : "solid"}
+          block
+          onClick={() => done()}
+        >
+          Verstanden
+        </Button>
+      </div>
+    </section>
+  );
+}
+
 export type Screen =
   | "dashboard"
   | "plan"
@@ -233,14 +299,18 @@ export type Screen =
   | "goals"
   | "stats"
   | "settings"
-  | "health";
+  | "health"
+  | "adjustment";
 
 export function Dashboard({
   d,
   onAsk,
   go,
   health = false,
+  onRecapSeen,
 }: {
+  /** The user dismissed the recap or followed it to the next training. */
+  onRecapSeen?: (workoutId: string) => void;
   /** True when Health Data can show values for this account. */
   health?: boolean;
   d: DashboardData;
@@ -264,6 +334,28 @@ export function Dashboard({
             </Badge>
           )}
         </div>
+
+        {d.recap && (
+          <Recap
+            recap={d.recap}
+            onSeen={() => onRecapSeen?.(d.recap!.workoutId)}
+            onNext={() => go("training", "strength")}
+          />
+        )}
+
+        {d.adjustmentHint && (
+          <div role="note" className="flex flex-col gap-2">
+            <Alert color="info" variant="soft" title={d.adjustmentHint} />
+            <Button
+              color="secondary"
+              variant="soft"
+              block
+              onClick={() => go("adjustment")}
+            >
+              Anpassung ansehen
+            </Button>
+          </div>
+        )}
 
         <div className="grid grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] gap-2">
           <section className="flex min-w-0 flex-col justify-center rounded-2xl border border-subtle bg-surface p-3">

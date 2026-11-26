@@ -504,6 +504,8 @@ export type GoalsLive = {
   /** The newest body weight, ready to read; null while none is stored. */
   latestWeight: string | null;
   onLogWeight: (text: string) => Promise<string | null>;
+  /** Discards the newest entry (a typo); it stays stored as voided. */
+  onVoidWeight: () => Promise<string | null>;
 };
 
 /** Body weight by hand: without it a weight goal has no current value. */
@@ -511,6 +513,8 @@ function WeightBox({ live }: { live: GoalsLive }) {
   const [weight, setWeight] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Discarding asks once more before it writes. */
+  const [confirming, setConfirming] = useState(false);
   return (
     <Box>
       <div className="flex items-baseline justify-between gap-3">
@@ -544,6 +548,25 @@ function WeightBox({ live }: { live: GoalsLive }) {
           Eintragen
         </Button>
       </div>
+      {live.latestWeight && (
+        <Button
+          color={confirming ? "danger" : "secondary"}
+          variant={confirming ? "soft" : "ghost"}
+          size="sm"
+          className="self-start"
+          disabled={busy}
+          onClick={async () => {
+            if (!confirming) return setConfirming(true);
+            setBusy(true);
+            const failed = await live.onVoidWeight();
+            setBusy(false);
+            setConfirming(false);
+            setError(failed);
+          }}
+        >
+          {confirming ? "Wirklich verwerfen?" : "Letzten Eintrag verwerfen"}
+        </Button>
+      )}
       {error && <Alert color="danger" variant="soft" title={error} />}
     </Box>
   );

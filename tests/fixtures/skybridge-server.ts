@@ -5,7 +5,10 @@
 import { createHttpApp } from "../../src/server/http";
 import { newTrackerDataset } from "../../src/server/account/catalog";
 import { createFixtureOnboarding } from "../../src/server/onboarding/fixture";
-import { planFixtureDataset } from "../../src/server/plan/fixture";
+import {
+  createFixturePlanning,
+  planFixtureDataset,
+} from "../../src/server/plan/fixture";
 
 const common = {
   allowedHosts: ["127.0.0.1", "localhost"],
@@ -14,6 +17,12 @@ const common = {
 
 /** The demo runtime: invented history with runs, goals and watch values. */
 createHttpApp({ ...common, env: {} }).listen(8850, "127.0.0.1");
+
+/** A plan without history, for the adjustment hint (writes of its own). */
+createHttpApp({
+  ...common,
+  workoutRuntime: createFixturePlanning(),
+}).listen(8852, "127.0.0.1");
 
 /** A new account with the starter catalog, for the setup. */
 createHttpApp({
