@@ -377,14 +377,7 @@ export function createArnoldMcpServer(
   const bare = hideModelInternals(
     new McpServer(
       { name: previewUi ? "arnold-preview" : "arnold", version: "0.5.0" },
-      previewUi
-        ? {
-            instructions:
-              "Arnold Vorschau zeigt den gespeicherten Stand des angemeldeten Nutzers. Verwende show_arnold_dashboard für den Überblick und show_arnold_onboarding für den gespeicherten Einrichtungsstand. Speichern und Einrichtung abschließen sind im regulären Arnold möglich.",
-          }
-        : onboarding
-          ? { instructions: ARNOLD_INSTRUCTIONS }
-          : undefined,
+      onboarding ? { instructions: ARNOLD_INSTRUCTIONS } : undefined,
     ),
   );
   // Patched before any registration, so the tools registered here and the ones
@@ -402,10 +395,9 @@ export function createArnoldMcpServer(
     : bare;
   // Onboarding first: a verified account that is not set up yet gets
   // SETUP_REQUIRED from every tracker tool. Inert where there is no account.
-  const server =
-    onboarding && !previewUi
-      ? gateUntilSetUp(guarded, onboarding, actorContext)
-      : guarded;
+  const server = onboarding
+    ? gateUntilSetUp(guarded, onboarding, actorContext)
+    : guarded;
   const sourceLabel = source.label;
   // UX-008: every reader here sees the training view, in which a running
   // adjustment for a while stands in for the active plan.

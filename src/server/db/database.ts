@@ -27,7 +27,6 @@ export interface DatabaseOptions {
    * certificate). Without it the system's trusted CAs are used.
    */
   caCert?: string;
-  readOnly?: boolean;
 }
 
 const LOCAL_HOSTS = ["localhost", "127.0.0.1", "[::1]", "::1"];
@@ -70,12 +69,10 @@ const USER_ID =
 
 export class Database {
   readonly pool: pg.Pool;
-  readonly readOnly: boolean;
   private healthValue?: { ok: boolean; checkedAt: number };
   private healthCheck?: Promise<boolean>;
 
   constructor(options: DatabaseOptions) {
-    this.readOnly = options.readOnly ?? false;
     this.pool = new pg.Pool({
       ...connectionConfig(options.url, options.caCert),
       max: options.maxConnections ?? 10,
@@ -131,10 +128,6 @@ export class Database {
     text: string,
     values: readonly unknown[] = [],
   ): Promise<pg.QueryResult<R>> {
-    if (this.readOnly)
-      return this.transaction((client) =>
-        client.query<R>(text, values as unknown[]),
-      );
     return this.pool.query<R>(text, values as unknown[]);
   }
 
@@ -148,21 +141,13 @@ export class Database {
   ): Promise<T> {
     if (!USER_ID.test(userId))
       throw new Error("Ungültige Nutzerkennung für den Datenbankzugriff.");
-    return this.transaction(async (client) => {
-      await client.query("select set_config('arnold.user_id', $1, true)", [
-        userId,
-      ]);
-      return work(client);
-    });
-  }
-
-  private async transaction<T>(
-    work: (client: Queryable) => Promise<T>,
-  ): Promise<T> {
     const client = await this.pool.connect();
     let broken: Error | undefined;
     try {
-      await client.query(this.readOnly ? "begin read only" : "begin");
+      await client.query("begin");
+      await client.query("select set_config('arnold.user_id', $1, true)", [
+        userId,
+      ]);
       const result = await work(client);
       await client.query("commit");
       return result;

@@ -52,7 +52,6 @@ const db = new Database({
   url: config.identityStore.url,
   caCert: env.DATABASE_CA_CERT,
   maxConnections: 2,
-  readOnly: true,
 });
 await db.assertReady();
 const identities = new PostgresIdentityRepository(db, userId);
@@ -62,13 +61,14 @@ const auth = buildAuthSurface({
   config,
   authorizationServerMetadata: metadata,
   repository: identities,
-  readOnly: true,
+  autoProvision: false,
 });
 const database = new DatabaseArnoldRuntime({
   db,
   auth,
   identities,
   retentionDays: 30,
+  showStoredDailyHealth: true,
 });
 
 const app = express();
@@ -85,7 +85,6 @@ const vite = await createViteServer({
   publicDir: false,
   envDir: false,
   envPrefix: "ARNOLD_PREVIEW_CLIENT_",
-  define: { "import.meta.env.ARNOLD_PREVIEW_CLIENT_READ_ONLY": "true" },
   plugins: [react(), tailwindcss()],
   resolve: { dedupe: ["react", "react-dom"] },
   optimizeDeps: {
@@ -153,7 +152,9 @@ app.use(
 );
 
 server.listen(port, host, () => {
-  console.log(`Arnold Vorschau · ${resourceUrl} · Kontozugriff nur lesend`);
+  console.log(
+    `Arnold Vorschau · ${resourceUrl} · Schreibzugriff für das freigegebene Konto`,
+  );
 });
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {

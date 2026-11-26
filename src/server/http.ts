@@ -199,11 +199,10 @@ export function createHttpApp(options: ServerOptions = {}) {
   if (
     options.previewUi &&
     (auth.summary.mode !== "oidc" ||
-      !auth.guard.readOnly ||
-      !options.database?.options.db.readOnly)
+      !options.database?.options.identities.restrictedUserId)
   )
     throw new Error(
-      "Die ChatGPT-Vorschau benötigt authentifizierten Lesezugriff.",
+      "Die ChatGPT-Vorschau benötigt OAuth und genau ein freigegebenes Konto.",
     );
   // The card resources carry the app's own origin; none without a configured
   // address (the development default is no origin to announce).
@@ -393,8 +392,8 @@ export function createHttpApp(options: ServerOptions = {}) {
         uiOrigin,
         options.previewUi,
       );
-      if (options.database && !options.previewUi) {
-        const uri = dashboardResourceUri(uiFiles.dashboard);
+      if (options.database) {
+        const uri = dashboardResourceUri(uiFiles.dashboard, options.previewUi);
         registerAccountTools(server, options.database, uri);
         registerWatchTools(server, options.database, uri);
       }

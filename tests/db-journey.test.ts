@@ -11,7 +11,6 @@ import {
   beforeEach,
   describe,
   expect,
-  inject,
   it,
   vi,
 } from "vitest";
@@ -32,7 +31,7 @@ import { loadAuthConfig } from "../src/server/auth/config.js";
 import { fetchAuthorizationServerMetadata } from "../src/server/auth/discovery.js";
 import { PostgresIdentityRepository } from "../src/server/db/identity.js";
 import { DatabaseArnoldRuntime } from "../src/server/db/runtime.js";
-import { Database } from "../src/server/db/database.js";
+import type { Database } from "../src/server/db/database.js";
 import {
   OnboardingResponseSchema,
   OnboardingViewSchema,
@@ -158,20 +157,10 @@ afterEach(async () => {
   await close(http);
 });
 
-it("serves preview cards for one existing account with read-only tools and transactions", async () => {
+it("uses the regular setup and writes for one existing preview account", async () => {
   const { user } = await runtime.options.identities.register(issuer, alice);
   await runtime.options.identities.register(issuer, bob);
-  await (
-    await clientFor(alice)
-  ).callTool({
-    name: "show_arnold_onboarding",
-    arguments: {},
-  });
 
-  const previewDb = new Database({
-    url: inject("databaseUrl"),
-    readOnly: true,
-  });
   const previewHttp = createServer().listen(0, "127.0.0.1");
   await listen(previewHttp);
   const previewBase = `http://127.0.0.1:${portOf(previewHttp)}`;
@@ -181,17 +170,17 @@ it("serves preview cards for one existing account with read-only tools and trans
     AUTH_JWKS_URI: `${issuer}jwks`,
     ARNOLD_PUBLIC_BASE_URL: previewBase,
   });
-  const identities = new PostgresIdentityRepository(previewDb, user.user_id);
+  const identities = new PostgresIdentityRepository(db, user.user_id);
   const auth = buildAuthSurface({
     config,
     repository: identities,
     authorizationServerMetadata: await fetchAuthorizationServerMetadata({
       issuer,
     }),
-    readOnly: true,
+    autoProvision: false,
   });
   const previewRuntime = new DatabaseArnoldRuntime({
-    db: previewDb,
+    db,
     auth,
     identities,
     retentionDays: 30,
@@ -228,12 +217,19 @@ it("serves preview cards for one existing account with read-only tools and trans
       }),
     );
     const { tools } = await client.listTools();
-    expect(tools.map((tool) => tool.name)).not.toContain("log_workout");
-    expect(tools.map((tool) => tool.name)).not.toContain(
-      "delete_arnold_account",
+    expect(tools.map((tool) => tool.name)).toEqual(
+      (await (await clientFor(alice)).listTools()).tools.map(
+        (tool) => tool.name,
+      ),
     );
     const setup = tools.find((tool) => tool.name === "show_arnold_onboarding");
-    expect(setup?.annotations?.readOnlyHint).toBe(true);
+    expect(setup?.annotations?.readOnlyHint).toBe(false);
+    const deletion = tools.find(
+      (tool) => tool.name === "delete_arnold_account",
+    );
+    expect(deletion?._meta?.ui).toMatchObject({
+      resourceUri: "ui://arnold/dashboard-v2-preview-v1.html",
+    });
     const { contents } = await client.readResource({
       uri: "ui://arnold/onboarding-v2-preview-v1.html",
     });
@@ -248,22 +244,33 @@ it("serves preview cards for one existing account with read-only tools and trans
     expect(
       (await client.callTool({ name: "show_arnold_dashboard", arguments: {} }))
         .isError,
-    ).not.toBe(true);
+    ).toBe(true);
+    const saved = asCard(
+      await client.callTool({
+        name: "update_onboarding_profile",
+        arguments: {
+          request_id: randomUUID(),
+          profile: { training: { days_per_week: 3 } },
+        },
+      }),
+    );
+    expect(OnboardingResponseSchema.parse(saved.structuredContent).ok).toBe(
+      true,
+    );
+    const regular = await call(alice, "show_arnold_onboarding", {});
+    expect(
+      OnboardingViewSchema.parse(regular.structuredContent).state.session
+        .profile.training.days_per_week,
+    ).toBe(3);
     const other = await fetch(`${previewBase}/mcp`, {
       method: "POST",
       headers: { ...headers(bob), "content-type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
     });
     expect(other.status).toBe(403);
-    await expect(
-      previewDb.asUser(user.user_id, (c) =>
-        c.query("delete from arnold.users where false"),
-      ),
-    ).rejects.toMatchObject({ code: "25006" });
   } finally {
     await client.close();
     await close(previewHttp);
-    await previewDb.close();
   }
 });
 

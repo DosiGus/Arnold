@@ -32,7 +32,7 @@ const iso = (value: Date) => value.toISOString();
 export class PostgresIdentityRepository implements IdentityRepository {
   constructor(
     private readonly db: Database,
-    private readonly previewUserId?: string,
+    readonly restrictedUserId?: string,
   ) {}
 
   private async resolve(
@@ -69,12 +69,16 @@ export class PostgresIdentityRepository implements IdentityRepository {
   }
 
   find(issuer: string, subject: string) {
-    if (this.previewUserId)
-      return this.findPreviewIdentity(this.previewUserId, issuer, subject);
+    if (this.restrictedUserId)
+      return this.findRestrictedIdentity(
+        this.restrictedUserId,
+        issuer,
+        subject,
+      );
     return this.resolve(issuer, subject, false);
   }
 
-  private async findPreviewIdentity(
+  private async findRestrictedIdentity(
     userId: string,
     issuer: string,
     subject: string,
@@ -88,7 +92,9 @@ export class PostgresIdentityRepository implements IdentityRepository {
   }
 
   async register(issuer: string, subject: string) {
-    const resolved = await this.resolve(issuer, subject, true);
+    const resolved = this.restrictedUserId
+      ? await this.find(issuer, subject)
+      : await this.resolve(issuer, subject, true);
     if (!resolved) throw new Error("Konto konnte nicht angelegt werden.");
     return resolved;
   }
@@ -105,6 +111,7 @@ export class PostgresIdentityRepository implements IdentityRepository {
   }
 
   async byId(userId: string): Promise<ArnoldUser | undefined> {
+    if (this.restrictedUserId && this.restrictedUserId !== userId) return;
     const row = (
       await this.db.query<{
         user_id: string;

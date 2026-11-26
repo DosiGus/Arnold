@@ -252,10 +252,13 @@ Ohne jede Einstellung läuft `arnold_fixture` mit `ARNOLD_WRITE_MODE=fixture`. H
 ## Live-Vorschau in ChatGPT
 
 Für gemeinsame Entwicklungsrunden gibt es das persönliche Custom-MCP-Plugin
-**Arnold Vorschau**. Es zeigt gespeicherte Daten eines freigegebenen Kontos.
-Der Server verlangt WorkOS-OAuth mit eigener Audience, akzeptiert nur das
-konfigurierte Konto und öffnet Postgres-Transaktionen nur lesend. Schreiben,
-Garmin-Synchronisierung und Kontoanlage laufen im regulären Arnold.
+**Arnold Vorschau**. Dieselben ChatGPT-Werkzeuge und Karten speichern
+Einrichtung, Pläne und Training im freigegebenen Arnold-Testkonto.
+Änderungen sind damit auch im regulären Arnold sichtbar. Die Vorschau
+verlangt WorkOS-OAuth mit eigener Audience und akzeptiert nur den
+vorhandenen Login des konfigurierten Kontos. Die Garmin-Uhr und der Abruf
+neuer Garmin-Tageswerte bleiben am regulären Server. Die Vorschau kann
+die bereits gespeicherten Garmin-Daten anzeigen.
 
 1. Einen Arbeitsbranch verwenden. Für die Vorschau einen HTTPS-Tunnel mit
    WebSocket-Unterstützung auf `127.0.0.1:8788` starten. Ein Cloudflare

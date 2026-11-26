@@ -63,6 +63,8 @@ export interface DatabaseRuntimeOptions {
   now?: () => number;
   /** Daily health values (UX-015); absent when the feature is off. */
   dailyHealth?: DailyHealthSync;
+  /** Show the existing daily values in preview without a second Garmin sync. */
+  showStoredDailyHealth?: boolean;
   /** Status label of the daily health values for /health. */
   dailyHealthStatus?: string;
 }
@@ -105,7 +107,7 @@ export class DatabaseArnoldRuntime {
           context.userId,
           trackerId,
           this.options.auth,
-          this.options.db.readOnly ||
+          this.options.showStoredDailyHealth ||
             (this.options.dailyHealth?.covers(context.userId) ?? false),
         );
       })();
@@ -426,8 +428,7 @@ export class DatabaseUserRuntime {
       auth,
       dailyValues,
     );
-    if (!db.readOnly)
-      await ensureStarterCatalog(runtime.store, trackerId, userId);
+    await ensureStarterCatalog(runtime.store, trackerId, userId);
     return runtime;
   }
 

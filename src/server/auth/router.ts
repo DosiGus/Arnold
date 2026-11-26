@@ -45,7 +45,7 @@ export interface AuthSurfaceOptions {
   /** Overrides the store implied by the configuration. For tests. */
   repository?: IdentityRepository;
   onGuardEvent?: (event: GuardEvent) => void;
-  readOnly?: boolean;
+  autoProvision?: boolean;
 }
 
 export interface AuthSurface {
@@ -99,7 +99,7 @@ export function buildAuthSurface(options: AuthSurfaceOptions): AuthSurface {
   const repository = options.repository ?? createRepository(config);
   const resolver = new ArnoldIdentityResolver({
     repository,
-    autoProvision: !options.readOnly,
+    autoProvision: options.autoProvision,
   });
   const resolveRequest = async (request: Request) => {
     if (config.mode !== "oidc" || !request.auth)
@@ -209,7 +209,6 @@ export function buildAuthSurface(options: AuthSurfaceOptions): AuthSurface {
     mode: "enforced",
     resolver,
     onEvent: options.onGuardEvent,
-    readOnly: options.readOnly,
   });
 
   return {

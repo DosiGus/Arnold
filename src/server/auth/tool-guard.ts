@@ -46,7 +46,6 @@ export type GuardMode = (typeof GUARD_MODES)[number];
 export interface ToolGuardOptions {
   mode: GuardMode;
   resolver: ArnoldIdentityResolver;
-  readOnly?: boolean;
   /**
    * The synthetic context served in `open` mode. Required in that mode and
    * forbidden in `enforced`, so a fixture identity cannot leak into a
@@ -79,14 +78,12 @@ export function authInfoOf(ctx: ServerContext): AuthInfo | undefined {
 export class ArnoldToolGuard {
   /** Read by the server factory: sandbox writes exist only in `open`. */
   readonly mode: GuardMode;
-  readonly readOnly: boolean;
   private readonly resolver: ArnoldIdentityResolver;
   private readonly openModeContext: AuthenticatedArnoldContext | undefined;
   private readonly onEvent: ((event: GuardEvent) => void) | undefined;
 
   constructor(options: ToolGuardOptions) {
     this.mode = options.mode;
-    this.readOnly = options.readOnly ?? false;
     this.resolver = options.resolver;
     this.onEvent = options.onEvent;
     if (options.mode === "open") {
@@ -117,9 +114,6 @@ export class ArnoldToolGuard {
     access: ToolAccessClass,
     ctx: ServerContext,
   ): Promise<AuthenticatedArnoldContext | undefined> {
-    if (this.readOnly && access !== "AUTHENTICATED_READ")
-      throw new ArnoldAuthError("FORBIDDEN");
-
     try {
       const context = await this.resolveFor(tool, access, ctx);
       if (context)

@@ -49,15 +49,23 @@ export const LEGACY_ONBOARDING_URIS = [
   "ui://arnold/onboarding-v1.html",
 ];
 
-export const dashboardResourceUri = (file: string | undefined) =>
-  `ui://arnold/dashboard-v2-${bundleTag(file)}.html`;
-export const onboardingResourceUri = (file: string | undefined) =>
-  `ui://arnold/onboarding-v2-${bundleTag(file)}.html`;
-
 export interface PreviewUi {
   origin: string;
   render: (kind: "dashboard" | "onboarding") => Promise<string>;
 }
+
+const resourceUri = (
+  kind: "dashboard" | "onboarding",
+  file: string | undefined,
+  preview?: PreviewUi,
+) => `ui://arnold/${kind}-v2-${preview ? "preview-v1" : bundleTag(file)}.html`;
+
+export const dashboardResourceUri = (
+  file: string | undefined,
+  preview?: PreviewUi,
+) => resourceUri("dashboard", file, preview);
+export const onboardingResourceUri = (file: string | undefined) =>
+  resourceUri("onboarding", file);
 
 /**
  * `_meta.ui` of a card resource. `domain` is the app's own origin (from the
@@ -117,7 +125,7 @@ export function registerUiBundle(
     UI_META.ui.csp.resourceDomains.push(preview.origin);
     UI_META.ui.csp.connectDomains.push(preview.origin, ws.origin);
   }
-  const currentUri = `ui://arnold/${kind}-v2-${preview ? "preview-v1" : bundleTag(file)}.html`;
+  const currentUri = resourceUri(kind, file, preview);
   const read = async (uri: string) => ({
     contents: [
       {
