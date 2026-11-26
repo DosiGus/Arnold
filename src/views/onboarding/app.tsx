@@ -14,7 +14,7 @@ import { LiveStatsScreen } from "../live/stats.js";
 import { LiveHealthScreen } from "../live/health.js";
 import { LiveSettingsScreen } from "../live/settings.js";
 import { dashboardOf, type DashboardData } from "../demo/dashboard.js";
-import { recordsScreenModel } from "../model/records.js";
+import { recordsScreenModel, runRecordsScreenModel } from "../model/records.js";
 import {
   GoalsScreen,
   HealthScreen,
@@ -106,6 +106,9 @@ export function AppShell({
           view={view}
           onBack={back}
           records={live && source ? recordsScreenModel(source.home) : undefined}
+          runRecords={
+            live && source ? runRecordsScreenModel(source.home) : undefined
+          }
         />
       )}
       {screen === "goals" &&

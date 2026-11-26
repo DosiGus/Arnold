@@ -4,20 +4,31 @@
  * `archive_training_goal` arguments.
  *
  * Mapping only: start value, current value and progress come from
- * `src/analytics/goals.ts`. Arnold knows three kinds of goal: body weight
- * (kg), the weight of an exercise (kg) and repetitions of an exercise; the
- * form offers exactly those. A target is the user's own number, never filled
- * in or guessed.
+ * `src/analytics/goals.ts`. Arnold knows body weight (kg), the weight of an
+ * exercise (kg), repetitions of an exercise, and three running goals: a
+ * distance in one run (km), minutes in one run, and a time for 5 or 10 km
+ * (mm:ss, lower is better). The form offers exactly those. A target is the
+ * user's own number, never filled in or guessed.
  */
 import type {
   ArnoldDashboardView,
   HomeGoal,
 } from "../../shared/arnold-view.js";
-import { num } from "./dashboard.js";
+import { goalValueText, kmText, num } from "./dashboard.js";
 
 export const BODY_WEIGHT = "body_weight";
+export const RUNNING = "running";
 
-export type GoalUnit = "kg" | "Wdh.";
+/** Units of a stored goal, as the list and the change form show them. */
+export type GoalUnit = "kg" | "Wdh." | "km" | "Min." | "mm:ss";
+/** What the form's unit switch offers; "5 km" and "10 km" are time goals. */
+export type GoalFormUnit = GoalUnit | "5 km" | "10 km";
+
+/** Distances a time goal can be set for in the form. */
+const TIME_GOAL_METERS: Partial<Record<GoalFormUnit, number>> = {
+  "5 km": 5000,
+  "10 km": 10_000,
+};
 
 export type LiveGoal = {
   id: string;
@@ -33,23 +44,33 @@ export type LiveGoal = {
 
 export type GoalChoice = { value: string; label: string };
 
-const unitOf = (g: HomeGoal): GoalUnit => (g.unit === "kg" ? "kg" : "Wdh.");
+const UNIT: Record<HomeGoal["unit"], GoalUnit> = {
+  kg: "kg",
+  reps: "Wdh.",
+  km: "km",
+  min: "Min.",
+  s: "mm:ss",
+};
+
+/** "24:30" for a time, "10,5" for kilometres, "62,5" otherwise. */
+function editText(g: HomeGoal): string {
+  if (g.unit === "s") return goalValueText(g.target_value, "s");
+  if (g.unit === "km") return kmText(g.target_value);
+  return num(g.target_value);
+}
 
 export function goalRows(home: ArnoldDashboardView["home"]): LiveGoal[] {
-  return home.goals.map((g) => {
-    const unit = unitOf(g);
-    return {
-      id: g.goal_id,
-      revision: g.row_revision,
-      name: g.name,
-      current:
-        g.current_value === null ? "–" : `${num(g.current_value)} ${unit}`,
-      target: `${num(g.target_value)} ${unit}`,
-      targetText: num(g.target_value),
-      unit,
-      progress: g.progress,
-    };
-  });
+  return home.goals.map((g) => ({
+    id: g.goal_id,
+    revision: g.row_revision,
+    name: g.name,
+    current:
+      g.current_value === null ? "–" : goalValueText(g.current_value, g.unit),
+    target: goalValueText(g.target_value, g.unit),
+    targetText: editText(g),
+    unit: UNIT[g.unit],
+    progress: g.progress,
+  }));
 }
 
 /**
@@ -65,33 +86,72 @@ export function goalChoices(view: ArnoldDashboardView): GoalChoice[] {
         a.name.localeCompare(b.name, "de"),
     )
     .map((e) => ({ value: e.exercise_id, label: e.name }));
-  return [{ value: BODY_WEIGHT, label: "Körpergewicht" }, ...exercises];
+  return [
+    { value: BODY_WEIGHT, label: "Körpergewicht" },
+    { value: RUNNING, label: "Laufen" },
+    ...exercises,
+  ];
 }
 
-/** Units the form offers for a choice: body weight is always in kg. */
-export const unitsFor = (choice: string): GoalUnit[] =>
-  choice === BODY_WEIGHT ? ["kg"] : ["kg", "Wdh."];
+/**
+ * Units the form offers for a choice: body weight is always in kg; running
+ * is a distance (km), a duration (Min.) or a time for 5 or 10 km.
+ */
+export const unitsFor = (choice: string): GoalFormUnit[] =>
+  choice === BODY_WEIGHT
+    ? ["kg"]
+    : choice === RUNNING
+      ? ["km", "Min.", "5 km", "10 km"]
+      : ["kg", "Wdh."];
+
+/** The input hint for a unit: a time is typed as minutes and seconds. */
+export const placeholderFor = (unit: string): string =>
+  unit === "mm:ss" || unit in TIME_GOAL_METERS ? "mm:ss" : "Zielwert";
 
 type Built =
   { ok: true; input: Record<string, unknown> } | { ok: false; error: string };
 
-function target(text: string, unit: GoalUnit): number | string {
+const isTime = (unit: GoalFormUnit) =>
+  unit === "mm:ss" || unit in TIME_GOAL_METERS;
+
+/** "24:30" or "1:05:00" → seconds; a plain number is minutes. */
+function seconds(text: string): number | null {
+  const parts = text.split(":").map((p) => p.trim());
+  if (parts.some((p) => !/^\d+([.,]\d+)?$/.test(p))) return null;
+  const n = parts.map((p) => Number(p.replace(",", ".")));
+  if (n.length === 1) return Math.round(n[0]! * 60);
+  if (n.length > 3 || n.slice(1).some((x) => x >= 60)) return null;
+  return Math.round(n.reduce((sum, x) => sum * 60 + x, 0));
+}
+
+function target(text: string, unit: GoalFormUnit): number | string {
   const t = text.trim().replace(",", ".");
+  if (isTime(unit)) {
+    const s = t === "" ? null : seconds(text.trim());
+    if (s === null || s <= 0)
+      return "Gib die Zielzeit als Minuten und Sekunden ein, z. B. 24:30.";
+    if (s > 86_400) return "Die Zielzeit darf höchstens 24 Stunden sein.";
+    return s;
+  }
   const n = t === "" ? Number.NaN : Number(t);
   if (!Number.isFinite(n) || n <= 0)
     return "Der Zielwert muss eine Zahl über 0 sein.";
-  if (n > 1000) return "Der Zielwert darf höchstens 1000 sein.";
+  const max = unit === "km" ? 300 : unit === "Min." ? 1440 : 1000;
+  if (n > max) return `Der Zielwert darf höchstens ${max} sein.`;
   if (unit === "Wdh." && !Number.isInteger(n))
     return "Wiederholungen sind eine ganze Zahl.";
   return n;
 }
 
 export function createGoalInput(
-  form: { choice: string; unit: GoalUnit; target: string },
+  form: { choice: string; unit: GoalFormUnit; target: string },
   requestId: string,
 ): Built {
   if (!form.choice)
-    return { ok: false, error: "Wähle zuerst Übung oder Körpergewicht." };
+    return {
+      ok: false,
+      error: "Wähle zuerst Übung, Körpergewicht oder Laufen.",
+    };
   const value = target(form.target, form.unit);
   if (typeof value === "string") return { ok: false, error: value };
   if (form.choice === BODY_WEIGHT)
@@ -104,6 +164,23 @@ export function createGoalInput(
         source: "ui",
       },
     };
+  if (form.choice === RUNNING) {
+    const meters = TIME_GOAL_METERS[form.unit];
+    return {
+      ok: true,
+      input: {
+        request_id: requestId,
+        kind: meters
+          ? "run_time_for_distance"
+          : form.unit === "km"
+            ? "run_distance"
+            : "run_duration",
+        ...(meters ? { run_distance_m: meters } : {}),
+        target_value: value,
+        source: "ui",
+      },
+    };
+  }
   return {
     ok: true,
     input: {

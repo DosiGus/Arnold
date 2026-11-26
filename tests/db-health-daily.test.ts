@@ -208,7 +208,7 @@ describe("rollback script 005 → 4 → 5", () => {
       ).rows.map((r) => r.table_name as string);
     try {
       expect(await migrate(url.toString())).toEqual([
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
       ]);
       expect(await tables()).toEqual([
         "health_daily",
@@ -216,6 +216,7 @@ describe("rollback script 005 → 4 → 5", () => {
         "health_daily_sync",
       ]);
       // 006 to 008 sit on top of 005 and are undone first (db/rollback).
+      await exec(await readFile("db/rollback/012_down.sql", "utf8"));
       await exec(await readFile("db/rollback/011_down.sql", "utf8"));
       await exec(await readFile("db/rollback/010_down.sql", "utf8"));
       await exec(await readFile("db/rollback/009_down.sql", "utf8"));
@@ -240,7 +241,9 @@ describe("rollback script 005 → 4 → 5", () => {
         ).rows[0].n,
       ).toBe(0);
       await expect(exec(script)).rejects.toThrow(/not applied/);
-      expect(await migrate(url.toString())).toEqual([5, 6, 7, 8, 9, 10, 11]);
+      expect(await migrate(url.toString())).toEqual([
+        5, 6, 7, 8, 9, 10, 11, 12,
+      ]);
       expect(await tables()).toEqual([
         "health_daily",
         "health_daily_raw",

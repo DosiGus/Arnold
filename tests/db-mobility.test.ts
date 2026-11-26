@@ -1004,7 +1004,7 @@ describe("migration 010: has_mat (D-07, RDS-016)", () => {
           )
         ).rows[0].v,
     );
-    expect(version).toBe(11);
+    expect(version).toBe(12);
     await expect(db.assertReady()).resolves.toBeUndefined();
     const policy = await asOwner(
       async (c) =>
@@ -1147,7 +1147,7 @@ describe("rollback script 009 → 8 → 9", () => {
     const local = new Database({ url: appUrl.toString() });
     try {
       expect(await migrate(ownerUrl.toString())).toEqual([
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
       ]);
       await expect(local.assertReady()).resolves.toBeUndefined();
       const old = (await tables()).filter((t) => !MOBILITY_TABLES.includes(t));
@@ -1217,6 +1217,7 @@ describe("rollback script 009 → 8 → 9", () => {
 
       // 010 → 9: the column and only the receipt carrying has_mat go; the
       // profile itself stays.
+      await exec(await readFile("db/rollback/012_down.sql", "utf8"));
       await exec(await readFile("db/rollback/011_down.sql", "utf8"));
       const down10 = await readFile("db/rollback/010_down.sql", "utf8");
       await exec(down10);
@@ -1269,16 +1270,16 @@ describe("rollback script 009 → 8 → 9", () => {
       expect(checks).toContain("workouts_activity_type_check");
       expect(checks).not.toContain("workouts_mobility_not_in_progress");
 
-      // A server built for schema 11 refuses to start on schema 8.
+      // A server built for schema 12 refuses to start on schema 8.
       await expect(local.assertReady()).rejects.toThrow(
-        /Version 8, erwartet 11/,
+        /Version 8, erwartet 12/,
       );
       // A second run of the script refuses instead of half-applying.
       await expect(exec(down)).rejects.toThrow(/not applied/);
 
       // 009 on a database with strength and running data changes no row.
       const atEight = await snapshot(dataTables);
-      expect(await migrate(ownerUrl.toString())).toEqual([9, 10, 11]);
+      expect(await migrate(ownerUrl.toString())).toEqual([9, 10, 11, 12]);
       expect(await snapshot(dataTables)).toEqual(atEight);
       expect(
         (await tables()).filter((t) => MOBILITY_TABLES.includes(t)),

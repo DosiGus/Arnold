@@ -4,8 +4,16 @@
  * no record means an empty list, never an invented one.
  */
 import { describe, expect, it } from "vitest";
-import type { ArnoldHome, HomeRecord } from "../src/shared/arnold-view";
-import { recordsScreenModel } from "../src/views/model/records";
+import type {
+  ArnoldHome,
+  HomeRecord,
+  HomeRunRecord,
+} from "../src/shared/arnold-view";
+import { latestRecords } from "../src/views/model/dashboard";
+import {
+  recordsScreenModel,
+  runRecordsScreenModel,
+} from "../src/views/model/records";
 
 const rec = (over: Partial<HomeRecord>): HomeRecord => ({
   key: "k",
@@ -80,5 +88,103 @@ describe("recordsScreenModel", () => {
 
   it("returns nothing when there is no record yet", () => {
     expect(recordsScreenModel(home([]))).toEqual([]);
+  });
+});
+
+const runRec = (
+  key: HomeRunRecord["key"],
+  value: number | null,
+  achieved_on: string | null = value === null ? null : "2026-11-10",
+): HomeRunRecord => ({
+  key,
+  unit: key === "longest_distance" ? "m" : "s",
+  value,
+  workout_id: value === null ? null : `run-${key}`,
+  achieved_on,
+  reason: value === null ? "distance_not_covered" : null,
+});
+
+describe("runRecordsScreenModel", () => {
+  it("shows all five running records, unknown ones as –", () => {
+    const rows = runRecordsScreenModel({
+      run_records: [
+        runRec("longest_distance", 12_340),
+        runRec("longest_duration", 4210),
+        runRec("fastest_1k", 281),
+        runRec("best_5k", 1530),
+        runRec("best_10k", null),
+      ],
+    } as unknown as ArnoldHome);
+    expect(rows).toEqual([
+      { exercise: "Längster Lauf", value: "12,34 km", when: "10. Nov." },
+      { exercise: "Längste Laufdauer", value: "1:10:10", when: "10. Nov." },
+      { exercise: "Schnellster Kilometer", value: "4:41", when: "10. Nov." },
+      { exercise: "Beste 5 km", value: "25:30", when: "10. Nov." },
+      { exercise: "Beste 10 km", value: "–", when: "" },
+    ]);
+  });
+
+  it("shows nothing for someone without a measured run", () => {
+    expect(
+      runRecordsScreenModel({
+        run_records: [
+          runRec("longest_distance", null),
+          runRec("longest_duration", null),
+          runRec("fastest_1k", null),
+          runRec("best_5k", null),
+          runRec("best_10k", null),
+        ],
+      } as unknown as ArnoldHome),
+    ).toEqual([]);
+  });
+});
+
+describe("latestRecords (overview box)", () => {
+  it("mixes strength and running records, newest first, at most four", () => {
+    const rows = latestRecords({
+      records: [
+        rec({ exercise_name: "Bankdrücken", achieved_on: "2026-11-12" }),
+        rec({ exercise_name: "Kniebeuge", achieved_on: "2026-11-01" }),
+      ],
+      run_records: [
+        runRec("longest_distance", 10_000, "2026-11-14"),
+        runRec("longest_duration", 3600, "2026-11-05"),
+        runRec("fastest_1k", 290, "2026-11-03"),
+        runRec("best_5k", null),
+        runRec("best_10k", null),
+      ],
+    } as unknown as ArnoldHome);
+    expect(rows.map((r) => r.exercise)).toEqual([
+      "Längster Lauf",
+      "Bankdrücken",
+      "Längste Laufdauer",
+      "Schnellster Kilometer",
+    ]);
+  });
+});
+
+describe("latestRecords keeps one running record", () => {
+  it("gives the newest running record the fourth place when strength is newer", () => {
+    const rows = latestRecords({
+      records: [12, 11, 10, 9].map((d) =>
+        rec({
+          exercise_name: `Übung ${d}`,
+          achieved_on: `2026-11-${String(d).padStart(2, "0")}`,
+        }),
+      ),
+      run_records: [
+        runRec("longest_distance", 8000, "2026-11-01"),
+        runRec("longest_duration", 3000, "2026-11-03"),
+        runRec("fastest_1k", null),
+        runRec("best_5k", null),
+        runRec("best_10k", null),
+      ],
+    } as unknown as ArnoldHome);
+    expect(rows.map((r) => r.exercise)).toEqual([
+      "Übung 12",
+      "Übung 11",
+      "Übung 10",
+      "Längste Laufdauer",
+    ]);
   });
 });

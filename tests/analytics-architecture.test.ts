@@ -34,6 +34,7 @@ describe("analytics engine boundaries", () => {
       "recap.ts",
       "recording.ts",
       "records.ts",
+      "run-records.ts",
       "scores.ts",
       "series-change.ts",
       "session-duration.ts",

@@ -13,6 +13,7 @@ import {
   goalChoices,
   goalErrorText,
   goalRows,
+  placeholderFor,
   unitsFor,
   updateGoalInput,
 } from "../model/goals.js";
@@ -71,6 +72,7 @@ export function LiveGoalsScreen({
           goals,
           choices: goalChoices(source),
           unitsFor,
+          placeholderFor,
           onCreate: (form) =>
             write(create.call, createGoalInput(form, newRequestId())),
           onUpdate: (goal, target) =>

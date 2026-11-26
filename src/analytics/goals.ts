@@ -1,11 +1,20 @@
-import { isStrengthWorkout } from "../shared/arnold-schema-v1.js";
+import {
+  isRunGoalKind,
+  isStrengthWorkout,
+} from "../shared/arnold-schema-v1.js";
 import type {
-  ArnoldDataset,
   ArnoldGoal,
   ArnoldGoalKind,
   ArnoldLoadBasis,
 } from "../shared/arnold-schema-v1.js";
 import { addDays, compareDate, daysBetween } from "./period.js";
+import {
+  completedRunsOf,
+  hasMeasuredDistance,
+  measuredTimeFor,
+  type DatasetWithRunInputs,
+} from "./run-records.js";
+import type { RunInput } from "./running/metrics/index.js";
 import { round } from "./validation.js";
 
 /** What a goal measures; the same shape for a stored goal and one being set. */
@@ -13,7 +22,27 @@ export type GoalTarget = Readonly<{
   kind: ArnoldGoalKind;
   exercise_id: string | null;
   load_basis: ArnoldLoadBasis | null;
+  /** Metres of a run_time_for_distance goal. */
+  run_distance_m?: number | null;
 }>;
+
+/** The unit a goal is counted in. */
+export type GoalUnit = "kg" | "reps" | "km" | "min" | "s";
+
+export const goalUnit = (kind: ArnoldGoalKind): GoalUnit =>
+  kind === "exercise_reps"
+    ? "reps"
+    : kind === "run_distance"
+      ? "km"
+      : kind === "run_duration"
+        ? "min"
+        : kind === "run_time_for_distance"
+          ? "s"
+          : "kg";
+
+/** A time goal: less is better, the best value is the lowest. */
+export const lowerIsBetter = (kind: ArnoldGoalKind) =>
+  kind === "run_time_for_distance";
 
 /** One measurement on the way to a goal: a day and the best value that day. */
 export type GoalPoint = Readonly<{ date: string; value: number }>;
@@ -23,7 +52,8 @@ export type GoalProgress = Readonly<{
   kind: ArnoldGoalKind;
   exercise_id: string | null;
   load_basis: ArnoldLoadBasis | null;
-  unit: "kg" | "reps";
+  run_distance_m: number | null;
+  unit: GoalUnit;
   target_value: number;
   /** Where the goal started; the stored value, or the first measurement. */
   start_value: number | null;
@@ -43,6 +73,24 @@ export type GoalProgress = Readonly<{
 /** How many weeks of measurements the rate looks at. */
 export const GOAL_RATE_WINDOW_DAYS = 56;
 
+/** One value per run for a running goal, or null when the run proves nothing. */
+function runGoalValue(run: RunInput, target: GoalTarget): number | null {
+  switch (target.kind) {
+    case "run_distance":
+      return hasMeasuredDistance(run) ? round(run.distance_m! / 1000) : null;
+    case "run_duration":
+      return run.timer_s !== null && run.timer_s > 0
+        ? round(run.timer_s / 60)
+        : null;
+    case "run_time_for_distance":
+      return target.run_distance_m
+        ? measuredTimeFor(run, target.run_distance_m)
+        : null;
+    default:
+      return null;
+  }
+}
+
 /**
  * The measurements a goal is judged by, one per calendar day.
  *
@@ -51,20 +99,38 @@ export const GOAL_RATE_WINDOW_DAYS = 56;
  *   only in the load convention of the goal (24 kg per dumbbell stays per
  *   dumbbell);
  * - exercise reps: the most repetitions in one working set of a completed
- *   workout.
+ *   workout;
+ * - run distance: the longest measured distance of a completed run in km
+ *   (treadmill estimates never count);
+ * - run duration: the longest timer time of a completed run in minutes;
+ * - run time for a distance: the fastest measured time over that distance
+ *   inside one completed run, in seconds (`measuredTimeFor` in
+ *   run-records.ts: 100 m checkpoints, kilometre laps or the whole run).
+ *   Never extrapolated from a shorter run or estimated.
  *
- * Warm-up sets, voided sets and unfinished workouts never count.
+ * Warm-up sets, voided sets and unfinished workouts never count. Running
+ * goals read the dataset's own runs and the ones a strength-only view carries
+ * (`runRecordInputs`), or `runs` when the caller has them at hand.
  */
 export function goalPoints(
-  dataset: ArnoldDataset,
+  dataset: DatasetWithRunInputs,
   target: GoalTarget,
+  runs?: readonly RunInput[],
 ): GoalPoint[] {
   const best = new Map<string, number>();
+  const lower = lowerIsBetter(target.kind);
   const keep = (date: string, value: number) => {
     const current = best.get(date);
-    if (current === undefined || value > current) best.set(date, value);
+    if (current === undefined || (lower ? value < current : value > current))
+      best.set(date, value);
   };
-  if (target.kind === "body_weight") {
+  if (isRunGoalKind(target.kind)) {
+    for (const run of runs ?? completedRunsOf(dataset)) {
+      if (run.status !== "completed") continue;
+      const value = runGoalValue(run, target);
+      if (value !== null && value > 0) keep(run.workout_date_local, value);
+    }
+  } else if (target.kind === "body_weight") {
     // One valid entry per day is guaranteed by the schema.
     for (const row of dataset.bodyWeights)
       if (row.status === "active") best.set(row.measured_on, row.weight_kg);
@@ -94,8 +160,9 @@ export function goalPoints(
 }
 
 /**
- * The value a goal stands at now: the latest body weight, or the best set ever
- * for an exercise goal. A personal best does not go down after an off day.
+ * The value a goal stands at now: the latest body weight, or the best value
+ * ever for an exercise or running goal (the lowest time for a time goal). A
+ * personal best does not go back after an off day.
  */
 export function currentGoalValue(
   points: readonly GoalPoint[],
@@ -103,31 +170,38 @@ export function currentGoalValue(
 ): GoalPoint | null {
   if (!points.length) return null;
   if (kind === "body_weight") return points[points.length - 1];
-  return points.reduce((top, point) => (point.value > top.value ? point : top));
+  const lower = lowerIsBetter(kind);
+  return points.reduce((top, point) =>
+    (lower ? point.value < top.value : point.value > top.value) ? point : top,
+  );
 }
 
-/** For an exercise the best value up to each day, so the line never dips. */
+/** Otherwise the best value up to each day, so the line never goes back. */
 function chartPoints(
   points: readonly GoalPoint[],
   kind: ArnoldGoalKind,
 ): GoalPoint[] {
   if (kind === "body_weight") return [...points];
-  let top = -Infinity;
+  const lower = lowerIsBetter(kind);
+  let top = lower ? Infinity : -Infinity;
   return points.map((point) => {
-    top = Math.max(top, point.value);
+    top = lower ? Math.min(top, point.value) : Math.max(top, point.value);
     return Object.freeze({ date: point.date, value: top });
   });
 }
 
 /**
- * How far a goal has come. Works in both directions: losing weight and lifting
- * more are both progress towards their own target.
+ * How far a goal has come. Works in both directions: losing weight, lifting
+ * more and running a distance faster are all progress towards their own
+ * target. A time goal reached the first time it is measured counts as
+ * achieved, never as 0 % progress.
  */
 export function goalProgress(
-  dataset: ArnoldDataset,
+  dataset: DatasetWithRunInputs,
   goal: ArnoldGoal,
+  runs?: readonly RunInput[],
 ): GoalProgress {
-  const raw = goalPoints(dataset, goal);
+  const raw = goalPoints(dataset, goal, runs);
   const points = chartPoints(raw, goal.kind);
   const current = currentGoalValue(raw, goal.kind);
   const start = goal.start_value ?? points[0]?.value ?? null;
@@ -139,8 +213,12 @@ export function goalProgress(
     const done = current.value - start;
     if (span === 0) progress = 1;
     else progress = Math.min(1, Math.max(0, done / span));
-    achieved =
-      target >= start ? current.value >= target : current.value <= target;
+    // A running goal has one direction: further, longer, or faster (a lower
+    // time). Body weight and exercise goals follow the start value.
+    const downwards = isRunGoalKind(goal.kind)
+      ? lowerIsBetter(goal.kind)
+      : target < start;
+    achieved = downwards ? current.value <= target : current.value >= target;
     if (achieved) progress = 1;
   }
 
@@ -167,7 +245,8 @@ export function goalProgress(
     kind: goal.kind,
     exercise_id: goal.exercise_id,
     load_basis: goal.load_basis,
-    unit: goal.kind === "exercise_reps" ? "reps" : "kg",
+    run_distance_m: goal.run_distance_m ?? null,
+    unit: goalUnit(goal.kind),
     target_value: target,
     start_value: start,
     current_value: current?.value ?? null,

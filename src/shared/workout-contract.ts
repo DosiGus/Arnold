@@ -5,6 +5,8 @@ import {
   ArnoldBodyWeightSchema,
   ArnoldGoalKindSchema,
   ArnoldGoalSchema,
+  GOAL_TARGET_MAX,
+  GoalRunDistanceSchema,
   ArnoldExerciseSchema,
   ArnoldWorkoutSchema,
   ArnoldSetSchema,
@@ -290,10 +292,13 @@ export const WriteInputs = {
     target_value: z
       .number()
       .positive()
-      .max(1000)
+      .max(GOAL_TARGET_MAX.run_time_for_distance)
       .describe(
-        "Zielwert: kg für body_weight und exercise_load, Wiederholungen für exercise_reps.",
+        "Zielwert: kg für body_weight und exercise_load, Wiederholungen für exercise_reps, Kilometer am Stück für run_distance, Minuten am Stück für run_duration, Sekunden für die Strecke bei run_time_for_distance (5 km unter 25 Minuten = 1500).",
       ),
+    run_distance_m: GoalRunDistanceSchema.optional().describe(
+      "Nur für run_time_for_distance: die Strecke in Metern, z. B. 5000 oder 10000.",
+    ),
     load_basis: ArnoldGoalSchema.unwrap()
       .shape.load_basis.unwrap()
       .optional()
@@ -306,7 +311,11 @@ export const WriteInputs = {
     ...request,
     goal_id: id,
     expected_row_revision: z.number().int().positive(),
-    target_value: z.number().positive().max(1000),
+    target_value: z
+      .number()
+      .positive()
+      .max(GOAL_TARGET_MAX.run_time_for_distance)
+      .describe("Neuer Zielwert in der Einheit der Zielart."),
   }),
   archive_training_goal: z.strictObject({
     ...request,

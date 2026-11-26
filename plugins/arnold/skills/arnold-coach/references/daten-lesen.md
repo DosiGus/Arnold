@@ -18,7 +18,8 @@ Stand 1.0 (November 2026). Alle Zahlen kommen aus der Arnold-Auswertung auf dem 
 | `home.strength_change`    | Durchschnittliche Kraftveränderung in Prozent seit `since`, über `exercises` Übungen                                                                                    |
 | `home.muscle_groups`      | Je Muskelgruppe: `sets_per_week` (direkte Arbeitssätze pro Woche, Mittel der letzten 28 Tage, nach der groben Muskelgruppe der Übung), `strength_change_pct`, `records` |
 | `home.records`, `records` | Bestleistungen mit Datum                                                                                                                                                |
-| `home.goals`              | Ziele mit Fortschritt und, wenn berechenbar, `eta_weeks`                                                                                                                |
+| `home.run_records`        | Laufrekorde: längster Lauf (`m`), längste Dauer, schnellster Kilometer, beste 5 und 10 km (`s`), je mit Datum; `value: null` heißt noch nicht gemessen, nie 0           |
+| `home.goals`              | Ziele mit Fortschritt und, wenn berechenbar, `eta_weeks`; Laufziele in `km`, `min` oder `s` (bei `s` ist kleiner besser)                                                |
 | `home.latest_body_weight` | Letztes eingetragenes Körpergewicht                                                                                                                                     |
 | `kpis`                    | Kennzahlen des Zeitraums mit `value`, `status`, `note`                                                                                                                  |
 | `exercises`               | Übungen mit `exercise_id`, `logged_sets`, `last_trained_on`                                                                                                             |

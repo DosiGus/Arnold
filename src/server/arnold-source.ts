@@ -14,6 +14,7 @@ import {
   type DatasetWithRunDays,
 } from "../analytics/activity.js";
 import { runRecapInputsOf } from "../analytics/recap.js";
+import { completedRunsOf } from "../analytics/run-records.js";
 import {
   mobilityDayInputsOf,
   type DatasetWithMobility,
@@ -189,6 +190,8 @@ export function storeSource(
       const runScores = scoreRunsOf(parsed.data);
       // UX-014: the recap after a run reads the same way.
       const runRecaps = runRecapInputsOf(parsed.data);
+      // Running records and running goals read the completed runs whole.
+      const runRecords = completedRunsOf(parsed.data);
       const strength = strengthTrainingView(parsed.data);
       const withRuns: DatasetWithRunDays = runDays.length
         ? {
@@ -196,6 +199,7 @@ export function storeSource(
             runTrainingDates: runDays,
             ...(runScores.length ? { runScoreInputs: runScores } : {}),
             ...(runRecaps.length ? { runRecapInputs: runRecaps } : {}),
+            ...(runRecords.length ? { runRecordInputs: runRecords } : {}),
           }
         : strength;
       // MOB-005: the mobility facts travel next to the strength view, as the

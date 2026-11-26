@@ -1,5 +1,6 @@
 /**
- * Nine weeks of invented training history on top of the plan fixture.
+ * Nine weeks of invented training history on top of the plan fixture, and,
+ * with `runs: true`, seven invented runs and a 5 km goal.
  *
  * Only for the synthetic profile (local preview, the ChatGPT fixture test): a
  * start screen with a streak, records and goals needs more than two workouts
@@ -12,6 +13,7 @@ import {
   type ArnoldBodyWeight,
   type ArnoldDataset,
   type ArnoldGoal,
+  type ArnoldRun,
   type ArnoldSet,
   type ArnoldWorkout,
 } from "../../shared/arnold-schema-v1.js";
@@ -49,6 +51,7 @@ const roundTo = (value: number, step: number) =>
 export function demoHistoryDataset(
   today: string,
   now: Date = new Date(),
+  options: { runs?: boolean } = {},
 ): ArnoldDataset {
   const nowStamp = now.toISOString();
   const upTo = (stamp: string) => (stamp > nowStamp ? nowStamp : stamp);
@@ -207,11 +210,106 @@ export function demoHistoryDataset(
     });
   }
 
+  const running = options.runs ? demoRuns(thisWeek, today, upTo) : null;
+  if (running)
+    goals.push({
+      ...goal("demo-goal-5k", "run_time_for_distance", null, null, 1500, 1710),
+      run_distance_m: 5000,
+    });
+
   return ArnoldDatasetSchema.parse({
     ...base,
-    workouts: [...base.workouts, ...workouts],
+    workouts: [...base.workouts, ...workouts, ...(running?.workouts ?? [])],
     sets: [...base.sets, ...sets],
     goals,
     bodyWeights,
+    ...(running ? { runs: running.runs } : {}),
   });
+}
+
+/**
+ * Seven invented runs, mostly on Saturdays (only with `runs: true`, the local preview and
+ * the fixture server), so running records and running goals have something
+ * to show. Watch-style GPS runs with 100 m checkpoints at an even pace.
+ */
+const DEMO_RUNS: readonly [weeksAgo: number, meters: number, perKm: number][] =
+  [
+    [6, 5000, 342],
+    [5, 6000, 335],
+    [4, 5000, 326],
+    [3, 8000, 345],
+    [2, 10_000, 338],
+    [1, 5000, 318],
+    [0, 5000, 312],
+  ];
+
+function demoRuns(
+  thisWeek: string,
+  today: string,
+  upTo: (stamp: string) => string,
+): { workouts: ArnoldWorkout[]; runs: ArnoldRun[] } {
+  const workouts: ArnoldWorkout[] = [];
+  const runs: ArnoldRun[] = [];
+  for (const [weeksAgo, meters, perKm] of DEMO_RUNS) {
+    // Saturdays; in the current week the Wednesday, so a fresh record shows.
+    const date = addDays(thisWeek, weeksAgo === 0 ? 2 : -7 * weeksAgo + 5);
+    if (date >= today) continue;
+    const timer = Math.round((meters / 1000) * perKm);
+    const start = upTo(`${date}T08:00:00.000Z`);
+    const end = upTo(
+      new Date(
+        Date.parse(`${date}T08:00:00.000Z`) + timer * 1000,
+      ).toISOString(),
+    );
+    const workoutId = `demo-run-${date}`;
+    workouts.push({
+      workout_id: workoutId,
+      workout_date_local: date,
+      timezone: "Europe/Berlin",
+      started_at_utc: start,
+      ended_at_utc: end,
+      plan_version_id: null,
+      session_id: null,
+      session_name_snapshot: "Freier Lauf",
+      status: "completed",
+      source: "sync",
+      notes: null,
+      created_at_utc: end,
+      updated_at_utc: end,
+      row_revision: 1,
+      activity_type: "run",
+    });
+    runs.push({
+      workout_id: workoutId,
+      run_type: "base",
+      environment: "outdoor",
+      prescription: null,
+      rationale: null,
+      rules_version: null,
+      timer_s: timer,
+      elapsed_s: timer,
+      distance_m: meters,
+      distance_source: "gps",
+      ascent_m: null,
+      descent_m: null,
+      cadence_spm: null,
+      calories_kcal: null,
+      te_aerobic: null,
+      te_anaerobic: null,
+      rpe: null,
+      splits_100m: Array.from({ length: meters / 100 }, (_, i) =>
+        Math.round(((i + 1) * perKm) / 10),
+      ),
+      pause_count: 0,
+      result_source: "watch",
+      hr_status: "not_provided",
+      hr_avg_bpm: null,
+      hr_max_bpm: null,
+      hr_zone_seconds: null,
+      created_at_utc: end,
+      updated_at_utc: end,
+      row_revision: 1,
+    });
+  }
+  return { workouts, runs };
 }

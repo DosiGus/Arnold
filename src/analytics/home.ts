@@ -12,6 +12,8 @@ import type { PreparedInput } from "./eligibility.js";
 import { goalProgress, type GoalProgress } from "./goals.js";
 import { addDays, compareDate, monthKey, weekStart } from "./period.js";
 import { computeRecords } from "./records.js";
+import { computeRunRecords, type RunRecord } from "./run-records.js";
+import type { RunInput } from "./running/metrics/index.js";
 import { round } from "./validation.js";
 import type { PersonalRecord } from "./types.js";
 
@@ -109,6 +111,8 @@ export type HomeAnalytics = Readonly<{
   muscle_groups: readonly HomeMuscleGroup[];
   records: readonly HomeRecord[];
   records_by_exercise: readonly HomeExerciseRecords[];
+  /** Running records over every completed run (src/analytics/run-records.ts). */
+  run_records: readonly RunRecord[];
   goals: readonly GoalProgress[];
   exercise_bests: readonly HomeExerciseBest[];
   latest_body_weight: Readonly<{ date: string; weight_kg: number }> | null;
@@ -373,6 +377,8 @@ export function computeHome(
   input: PreparedInput,
   weeklyGoal: number | null,
   runs?: RunDays,
+  /** Completed runs, for running records and running goals. */
+  runInputs: readonly RunInput[] = [],
 ): HomeAnalytics {
   const reference = input.referenceDate ?? input.dataLastDate;
   const completed = input.completedWorkouts;
@@ -501,10 +507,11 @@ export function computeHome(
             (a.exercise_id < b.exercise_id ? -1 : 1),
         ),
     ),
+    run_records: computeRunRecords(runInputs),
     goals: Object.freeze(
       dataset.goals
         .filter((goal) => goal.status === "active")
-        .map((goal) => goalProgress(dataset, goal)),
+        .map((goal) => goalProgress(dataset, goal, runInputs)),
     ),
     exercise_bests: Object.freeze(exerciseBests(input)),
     latest_body_weight: lastWeight

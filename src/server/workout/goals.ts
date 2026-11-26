@@ -10,8 +10,11 @@ import { currentGoalValue, goalPoints } from "../../analytics/goals.js";
 import {
   ArnoldBodyWeightSchema,
   ArnoldGoalSchema,
+  GOAL_TARGET_MAX,
+  isExerciseGoalKind,
   type ArnoldDataset,
   type ArnoldGoal,
+  type ArnoldGoalKind,
 } from "../../shared/arnold-schema-v1.js";
 import {
   WriteInputs,
@@ -51,6 +54,35 @@ function revision(row: { row_revision: number }, expected: number) {
     );
 }
 
+/** Units in words, for the error when a target is out of range. */
+const TARGET_UNIT: Record<ArnoldGoalKind, string> = {
+  body_weight: "kg",
+  exercise_load: "kg",
+  exercise_reps: "Wiederholungen",
+  run_distance: "km",
+  run_duration: "Minuten",
+  run_time_for_distance: "Sekunden",
+};
+
+/** A target the kind can hold: in range, whole repetitions and seconds. */
+function checkTarget(kind: ArnoldGoalKind, value: number) {
+  if (value > GOAL_TARGET_MAX[kind])
+    throw new WriteError(
+      "VALIDATION_ERROR",
+      `Der Zielwert ist zu groß (höchstens ${GOAL_TARGET_MAX[kind]} ${TARGET_UNIT[kind]}).`,
+    );
+  if (kind === "exercise_reps" && !Number.isInteger(value))
+    throw new WriteError(
+      "VALIDATION_ERROR",
+      "Wiederholungsziele sind ganze Zahlen.",
+    );
+  if (kind === "run_time_for_distance" && !Number.isInteger(value))
+    throw new WriteError(
+      "VALIDATION_ERROR",
+      "Zeitziele sind ganze Sekunden (25 Minuten = 1500).",
+    );
+}
+
 const emptyResult = (): WriteResult => ({
   workout: null,
   sets: [],
@@ -77,19 +109,30 @@ export function buildGoalChange(
   switch (operation) {
     case "create_training_goal": {
       const input = WriteInputs.create_training_goal.parse(raw);
-      const forExercise = input.kind !== "body_weight";
+      const forExercise = isExerciseGoalKind(input.kind);
       if (forExercise !== (input.exercise_id !== undefined))
         throw new WriteError(
           "VALIDATION_ERROR",
           forExercise
             ? "Für ein Übungsziel fehlt exercise_id."
-            : "Ein Körpergewichtsziel hat keine Übung.",
+            : "Ein Körpergewichts- oder Laufziel hat keine Übung.",
         );
       if (input.kind !== "exercise_load" && input.load_basis !== undefined)
         throw new WriteError(
           "VALIDATION_ERROR",
           "load_basis gehört nur zu einem Gewichtsziel für eine Übung.",
         );
+      if (
+        (input.kind === "run_time_for_distance") !==
+        (input.run_distance_m !== undefined)
+      )
+        throw new WriteError(
+          "VALIDATION_ERROR",
+          input.kind === "run_time_for_distance"
+            ? "Für ein Zeitziel fehlt die Strecke (run_distance_m, z. B. 5000)."
+            : "run_distance_m gehört nur zu einem Zeitziel (run_time_for_distance).",
+        );
+      checkTarget(input.kind, input.target_value);
       const exercise = forExercise
         ? data.exercises.find(
             (e) => e.exercise_id === input.exercise_id && e.status === "active",
@@ -109,19 +152,13 @@ export function buildGoalChange(
           "VALIDATION_ERROR",
           "Für eine Übung mit Körpergewicht oder Unterstützung ein Wiederholungsziel (exercise_reps) setzen.",
         );
-      if (
-        input.kind === "exercise_reps" &&
-        !Number.isInteger(input.target_value)
-      )
-        throw new WriteError(
-          "VALIDATION_ERROR",
-          "Wiederholungsziele sind ganze Zahlen.",
-        );
+      const distance = input.run_distance_m ?? null;
       const existing = data.goals.find(
         (g) =>
           g.status === "active" &&
           g.kind === input.kind &&
-          g.exercise_id === (input.exercise_id ?? null),
+          g.exercise_id === (input.exercise_id ?? null) &&
+          (g.run_distance_m ?? null) === distance,
       );
       if (existing)
         throw new WriteError(
@@ -134,12 +171,16 @@ export function buildGoalChange(
         kind: input.kind,
         exercise_id: input.exercise_id ?? null,
         load_basis: basis,
+        run_distance_m: distance,
       };
       const start = currentGoalValue(goalPoints(data, target), input.kind);
       result.goal = ArnoldGoalSchema.parse({
         ...technical,
         goal_id: newId(),
-        ...target,
+        kind: target.kind,
+        exercise_id: target.exercise_id,
+        load_basis: target.load_basis,
+        ...(distance === null ? {} : { run_distance_m: distance }),
         target_value: input.target_value,
         start_value: start?.value ?? null,
         status: "active",
@@ -160,9 +201,12 @@ export function buildGoalChange(
           "INVALID_STATUS_TRANSITION",
           "Ein archiviertes Ziel kann nicht mehr geändert werden. Ein neues Ziel anlegen.",
         );
+      const target =
+        "target_value" in input ? (input.target_value as number) : null;
+      if (target !== null) checkTarget(before.kind, target);
       const update =
-        "target_value" in input
-          ? { target_value: input.target_value }
+        target !== null
+          ? { target_value: target }
           : { status: "archived" as const };
       result.goal = ArnoldGoalSchema.parse({
         ...before,
@@ -170,14 +214,6 @@ export function buildGoalChange(
         updated_at_utc: now,
         row_revision: before.row_revision + 1,
       });
-      if (
-        result.goal.kind === "exercise_reps" &&
-        !Number.isInteger(result.goal.target_value)
-      )
-        throw new WriteError(
-          "VALIDATION_ERROR",
-          "Wiederholungsziele sind ganze Zahlen.",
-        );
       changes.push({ table: "goals", before, after: result.goal });
       break;
     }

@@ -799,17 +799,16 @@ function homeView(
       latest: record(entry.latest),
       history: entry.history.map(record),
     })),
+    run_records: home.run_records.map((r) => ({ ...r })),
     goals: home.goals.map((goal) => ({
       goal_id: goal.goal_id,
       row_revision: revisions.get(goal.goal_id) ?? 1,
       kind: goal.kind,
       exercise_id: goal.exercise_id,
-      name:
-        goal.exercise_id === null
-          ? "Körpergewicht"
-          : (names.get(goal.exercise_id) ?? "Unbekannte Übung"),
+      name: goalName(goal, names),
       unit: goal.unit,
       load_basis: goal.load_basis,
+      run_distance_m: goal.run_distance_m,
       target_value: goal.target_value,
       start_value: goal.start_value,
       current_value: goal.current_value,
@@ -826,6 +825,31 @@ function homeView(
       : null,
     ...(mobility ? { mobility } : {}),
   };
+}
+
+/** Kilometres in words: "5 km", "21,1 km". */
+const km = (meters: number) =>
+  `${(meters / 1000).toLocaleString("de-DE", { maximumFractionDigits: 2 })} km`;
+
+/** A goal's name: body weight, the exercise, or the running goal in words. */
+function goalName(
+  goal: HomeAnalytics["goals"][number],
+  names: ReadonlyMap<string, string>,
+): string {
+  switch (goal.kind) {
+    case "body_weight":
+      return "Körpergewicht";
+    case "run_distance":
+      return "Laufen: Strecke am Stück";
+    case "run_duration":
+      return "Laufen: Dauer am Stück";
+    case "run_time_for_distance":
+      return `Laufen: ${goal.run_distance_m ? km(goal.run_distance_m) : "Strecke"} auf Zeit`;
+    default:
+      return goal.exercise_id === null
+        ? "Unbekannte Übung"
+        : (names.get(goal.exercise_id) ?? "Unbekannte Übung");
+  }
 }
 
 /** The engine's scores as plain data; nothing is recomputed (UX-009). */

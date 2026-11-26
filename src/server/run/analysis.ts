@@ -23,6 +23,7 @@ import type {
   RunReadInputs,
 } from "../../shared/run-contract.js";
 import { RunAnalysisResponseSchema } from "../../shared/run-contract.js";
+import { runInputsOf } from "../../analytics/run-records.js";
 import { localDay, runView } from "./views.js";
 import type { z } from "zod";
 
@@ -37,28 +38,7 @@ export class RunNotFoundError extends Error {
 }
 
 /** All runs of the dataset in the shape the metrics read. */
-export function runInputs(data: ArnoldDataset): RunInput[] {
-  const workouts = new Map(data.workouts.map((w) => [w.workout_id, w]));
-  const segments = new Map<string, (typeof data.runSegments)[number][]>();
-  for (const segment of data.runSegments) {
-    const list = segments.get(segment.workout_id) ?? [];
-    list.push(segment);
-    segments.set(segment.workout_id, list);
-  }
-  const inputs: RunInput[] = [];
-  for (const run of data.runs) {
-    const workout = workouts.get(run.workout_id);
-    if (!workout || !isRunWorkout(workout)) continue;
-    inputs.push({
-      ...run,
-      workout_date_local: workout.workout_date_local,
-      status: workout.status,
-      started_at_utc: workout.started_at_utc ?? null,
-      segments: segments.get(run.workout_id) ?? [],
-    });
-  }
-  return inputs;
-}
+export const runInputs = (data: ArnoldDataset): RunInput[] => runInputsOf(data);
 
 /** Strength next to running: workouts and working sets of a week, only counted. */
 function strengthOfWeek(data: ArnoldDataset, start: string) {

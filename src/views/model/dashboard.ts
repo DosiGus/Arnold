@@ -42,6 +42,53 @@ export function shortDate(iso: string): string {
 export const num = (n: number) =>
   String(Math.round(n * 10) / 10).replace(".", ",");
 
+/** Timer seconds as a clock: 1470 → "24:30", 3725 → "1:02:05". */
+export function clock(seconds: number): string {
+  const total = Math.round(seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = String(total % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
+}
+
+/** Kilometres with up to two decimals: 21.0975 → "21,1", 5.03 → "5,03". */
+export const kmText = (km: number) =>
+  String(Math.round(km * 100) / 100).replace(".", ",");
+
+type GoalValueUnit = ArnoldDashboardView["home"]["goals"][number]["unit"];
+
+/** A goal value with its unit, as the goal card and screen show it. */
+export function goalValueText(value: number, unit: GoalValueUnit): string {
+  switch (unit) {
+    case "kg":
+      return `${num(value)} kg`;
+    case "reps":
+      return `${num(value)} Wdh.`;
+    case "km":
+      return `${kmText(value)} km`;
+    case "min":
+      return `${num(value)} Min.`;
+    case "s":
+      return clock(value);
+  }
+}
+
+type HomeRunRecord = ArnoldDashboardView["home"]["run_records"][number];
+
+export const RUN_RECORD_LABEL: Record<HomeRunRecord["key"], string> = {
+  longest_distance: "Längster Lauf",
+  longest_duration: "Längste Laufdauer",
+  fastest_1k: "Schnellster Kilometer",
+  best_5k: "Beste 5 km",
+  best_10k: "Beste 10 km",
+};
+
+/** A running record's value: kilometres for the distance, a clock otherwise. */
+export function runRecordValue(r: HomeRunRecord): string {
+  if (r.value === null) return "–";
+  return r.unit === "m" ? `${kmText(r.value / 1000)} km` : clock(r.value);
+}
+
 /** The seven calendar days of the week that starts on `monday` (ISO text). */
 export function weekDates(monday: string): string[] {
   const [y, m, d] = monday.split("-").map(Number);
@@ -120,16 +167,13 @@ function scores(view: ArnoldDashboardView): Score[] {
 }
 
 function goals(view: ArnoldDashboardView): DashboardData["goals"] {
-  return view.home.goals.map((g) => {
-    const unit = g.unit === "kg" ? " kg" : " Wdh.";
-    return {
-      name: g.name,
-      current:
-        g.current_value === null ? "–" : `${num(g.current_value)}${unit}`,
-      target: `${num(g.target_value)}${unit}`,
-      progress: g.progress,
-    };
-  });
+  return view.home.goals.map((g) => ({
+    name: g.name,
+    current:
+      g.current_value === null ? "–" : goalValueText(g.current_value, g.unit),
+    target: goalValueText(g.target_value, g.unit),
+    progress: g.progress,
+  }));
 }
 
 type HomeRecord = ArnoldDashboardView["home"]["records"][number];
@@ -148,6 +192,49 @@ export function records(list: readonly HomeRecord[]): DashboardData["records"] {
     value: recordValue(r),
     when: shortDate(r.achieved_on),
   }));
+}
+
+/** The running records that are known, in the engine's order. */
+export function runRecords(
+  list: readonly HomeRunRecord[],
+): DashboardData["records"] {
+  return list
+    .filter((r) => r.value !== null && r.achieved_on !== null)
+    .map((r) => ({
+      exercise: RUN_RECORD_LABEL[r.key],
+      value: runRecordValue(r),
+      when: shortDate(r.achieved_on!),
+    }));
+}
+
+/**
+ * The overview's records box: strength and running records together, the
+ * newest first, at most four. A known running record always keeps one place:
+ * when the four newest are all strength records, the newest running record
+ * takes the fourth.
+ */
+export function latestRecords(
+  home: ArnoldDashboardView["home"],
+): DashboardData["records"] {
+  const dated = [
+    ...home.records.slice(0, 4).map((r) => ({
+      date: r.achieved_on,
+      row: records([r])[0]!,
+      run: false,
+    })),
+    ...home.run_records
+      .filter((r) => r.value !== null && r.achieved_on !== null)
+      .map((r) => ({
+        date: r.achieved_on!,
+        row: runRecords([r])[0]!,
+        run: true,
+      })),
+  ];
+  const sorted = dated.sort((a, b) => b.date.localeCompare(a.date));
+  const top = sorted.slice(0, 4);
+  const firstRun = sorted.find((d) => d.run);
+  if (firstRun && !top.includes(firstRun)) top.splice(3, 1, firstRun);
+  return top.map((d) => d.row);
 }
 
 function week(view: ArnoldDashboardView): DashboardData["week"] {
@@ -237,6 +324,6 @@ export function dashboardModel(view: ArnoldDashboardView): DashboardData {
     week: week(view),
     scores: scores(view),
     goals: goals(view),
-    records: records(view.home.records.slice(0, 4)),
+    records: latestRecords(view.home),
   };
 }

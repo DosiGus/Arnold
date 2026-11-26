@@ -179,6 +179,8 @@ export const ARNOLD_TABLE_HEADERS = {
     "created_at_utc",
     "updated_at_utc",
     "row_revision",
+    // Migration 012: the distance of a run_time_for_distance goal (nullable).
+    "run_distance_m",
   ],
   BODY_WEIGHTS: [
     "body_weight_id",
@@ -714,15 +716,47 @@ export const ArnoldSetSchema = z
   .readonly();
 
 /**
- * A goal the user set: a body weight, or a load or repetition count for one
- * exercise. Only the target is stored; how far the user has come is computed
- * by the analytics engine from sets and body weight entries, never stored.
+ * A goal the user set: a body weight, a load or repetition count for one
+ * exercise, or a running goal (migration 012). Only the target is stored; how
+ * far the user has come is computed by the analytics engine from sets, body
+ * weight entries and completed runs, never stored.
+ *
+ * Units of `target_value` and `start_value` per kind:
+ * - body_weight, exercise_load: kg; exercise_reps: repetitions;
+ * - run_distance: kilometres in one run;
+ * - run_duration: minutes in one run (timer time);
+ * - run_time_for_distance: seconds for `run_distance_m` metres (lower is
+ *   better).
  */
 export const ArnoldGoalKindSchema = z.enum([
   "body_weight",
   "exercise_load",
   "exercise_reps",
+  "run_distance",
+  "run_time_for_distance",
+  "run_duration",
 ]);
+export type ArnoldRunGoalKind = Extract<
+  z.infer<typeof ArnoldGoalKindSchema>,
+  `run_${string}`
+>;
+export const isRunGoalKind = (kind: string): kind is ArnoldRunGoalKind =>
+  kind === "run_distance" ||
+  kind === "run_time_for_distance" ||
+  kind === "run_duration";
+export const isExerciseGoalKind = (kind: string) =>
+  kind === "exercise_load" || kind === "exercise_reps";
+/** Largest target per kind; time goals are seconds, so they go higher. */
+export const GOAL_TARGET_MAX = {
+  body_weight: 400,
+  exercise_load: 1000,
+  exercise_reps: 1000,
+  run_distance: 300,
+  run_duration: 1440,
+  run_time_for_distance: 86_400,
+} as const;
+/** Distance of a time goal: 100 m to 100 km. */
+export const GoalRunDistanceSchema = z.number().int().min(100).max(100_000);
 export const ArnoldGoalSchema = z
   .strictObject({
     goal_id: ArnoldIdSchema,
@@ -731,10 +765,22 @@ export const ArnoldGoalSchema = z
     exercise_id: ArnoldIdSchema.nullable(),
     /** The load convention of an exercise_load target ("24 kg pro Hantel"). */
     load_basis: ArnoldLoadBasisSchema.nullable(),
-    /** kg for body_weight and exercise_load, repetitions for exercise_reps. */
-    target_value: z.number().positive().max(1000),
+    /** In the unit of the kind, see ArnoldGoalKindSchema. */
+    target_value: z
+      .number()
+      .positive()
+      .max(GOAL_TARGET_MAX.run_time_for_distance),
     /** The value when the goal was set; null when nothing was known yet. */
-    start_value: z.number().nonnegative().max(1000).nullable(),
+    start_value: z
+      .number()
+      .nonnegative()
+      .max(GOAL_TARGET_MAX.run_time_for_distance)
+      .nullable(),
+    /**
+     * Metres of a run_time_for_distance goal (migration 012); absent for
+     * every other kind, so goals written before the column read back alike.
+     */
+    run_distance_m: GoalRunDistanceSchema.optional(),
     status: z.enum(["active", "archived"]),
     ...technical,
   })
@@ -743,13 +789,28 @@ export const ArnoldGoalSchema = z
     message: "updated_at_utc liegt vor created_at_utc.",
   })
   .superRefine((row, ctx) => {
-    const exercise = row.kind !== "body_weight";
+    const exercise = isExerciseGoalKind(row.kind);
+    if (row.target_value > GOAL_TARGET_MAX[row.kind])
+      ctx.addIssue({
+        code: "custom",
+        path: ["target_value"],
+        message: `Zielwert über ${GOAL_TARGET_MAX[row.kind]}.`,
+      });
+    if (
+      (row.kind === "run_time_for_distance") !==
+      (row.run_distance_m !== undefined)
+    )
+      ctx.addIssue({
+        code: "custom",
+        path: ["run_distance_m"],
+        message: "Nur ein Zeitziel für eine Strecke trägt eine Strecke.",
+      });
     if (exercise !== (row.exercise_id !== null))
       ctx.addIssue({
         code: "custom",
         path: ["exercise_id"],
         message:
-          "Übungsziele brauchen eine Übung, ein Körpergewichtsziel keine.",
+          "Übungsziele brauchen eine Übung, Körpergewichts- und Laufziele keine.",
       });
     if ((row.kind === "exercise_load") !== (row.load_basis !== null))
       ctx.addIssue({
@@ -1581,7 +1642,11 @@ export const ArnoldDatasetSchema = datasetBase
       if (row.exercise_id !== null && !exercises.has(row.exercise_id))
         issue(["goals", i, "exercise_id"], "Referenz auf EXERCISES fehlt.");
       if (row.status !== "active") return;
-      const key = JSON.stringify([row.kind, row.exercise_id]);
+      const key = JSON.stringify([
+        row.kind,
+        row.exercise_id,
+        row.run_distance_m ?? null,
+      ]);
       if (activeGoals.has(key))
         issue(
           ["goals", i, "kind"],

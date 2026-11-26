@@ -32,9 +32,9 @@ const descriptions: Record<WriteOperation, string> = {
   create_exercise:
     "Erstellt eine genaue Übungsvariante nach Dublettenprüfung. Verändert keinen Trainingsplan. Bei möglichen Katalogtreffern erfolgt keine automatische Neuanlage.",
   create_training_goal:
-    "Legt ein Ziel an: body_weight (Zielgewicht in kg), exercise_load (Zielgewicht einer Übung in kg, in der Lastdefinition der Übung, z. B. pro Hantel) oder exercise_reps (Wiederholungen in einem Satz, z. B. Klimmzüge). Nur nach ausdrücklichem Wunsch des Nutzers; den Zielwert nie erfinden. Den Startwert ermittelt Arnold selbst aus den gespeicherten Daten. Pro Art und Übung gibt es ein aktives Ziel; existiert es schon, antwortet Arnold mit GOAL_EXISTS und goal_id, dann update_training_goal verwenden.",
+    "Legt ein Ziel an: body_weight (Zielgewicht in kg), exercise_load (Zielgewicht einer Übung in kg, in der Lastdefinition der Übung, z. B. pro Hantel), exercise_reps (Wiederholungen in einem Satz, z. B. Klimmzüge), run_distance (Kilometer am Stück laufen), run_duration (Minuten am Stück laufen) oder run_time_for_distance (eine Strecke in einer Zeit laufen: run_distance_m in Metern, target_value in Sekunden, z. B. 5000 m unter 25 Minuten = 1500; kleiner ist besser). Laufziele haben keine Übung. Nur nach ausdrücklichem Wunsch des Nutzers; den Zielwert nie erfinden. Den Startwert ermittelt Arnold selbst aus den gespeicherten Daten (bei Läufen nur aus gemessenen Werten: Zwischenzeiten der Uhr, Kilometerrunden oder ein ganzer Lauf genau dieser Strecke; nie hochgerechnet). Pro Art und Übung (bei Zeitzielen pro Strecke) gibt es ein aktives Ziel; existiert es schon, antwortet Arnold mit GOAL_EXISTS und goal_id, dann update_training_goal verwenden.",
   update_training_goal:
-    "Ändert den Zielwert eines aktiven Ziels anhand goal_id und expected_row_revision (aus show_arnold_dashboard, card goals).",
+    "Ändert den Zielwert eines aktiven Ziels anhand goal_id und expected_row_revision (aus show_arnold_dashboard, card goals). Der Wert steht in der Einheit der Zielart (bei run_time_for_distance Sekunden).",
   archive_training_goal:
     "Beendet ein Ziel (z. B. erreicht oder nicht mehr gewünscht). Es bleibt im Verlauf erhalten, wird aber nicht mehr angezeigt. Vorher beim Nutzer nachfragen.",
   log_body_weight:

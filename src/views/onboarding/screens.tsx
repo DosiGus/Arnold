@@ -17,7 +17,7 @@ import {
 } from "../demo/dashboard.js";
 import type { OnboardingView, PlanDay, PlanKind } from "../demo/model.js";
 import { PlanOverview } from "./steps.js";
-import type { GoalChoice, GoalUnit, LiveGoal } from "../model/goals.js";
+import type { GoalChoice, GoalFormUnit, LiveGoal } from "../model/goals.js";
 import type { LiveSeries } from "../model/stats.js";
 
 /* -------------------------------------------------------------- shared */
@@ -351,17 +351,42 @@ function SessionChecklist({
 
 /* ------------------------------------------------------------ records */
 
+type RecordRow = { exercise: string; value: string; when: string };
+
+function RecordList({ rows }: { rows: RecordRow[] }) {
+  return (
+    <ul className="m-0 flex list-none flex-col p-0">
+      {rows.map((r) => (
+        <li
+          key={r.exercise}
+          className="flex items-center justify-between gap-3 border-b border-subtle py-3 first:pt-0 last:border-b-0 last:pb-0"
+        >
+          <span className="flex flex-col">
+            <span>{r.exercise}</span>
+            {r.when && <span className="text-sm text-secondary">{r.when}</span>}
+          </span>
+          <span className="font-medium tabular-nums">{r.value}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function RecordsScreen({
   view,
   onBack,
   records,
+  runRecords,
 }: {
   view: OnboardingView;
   onBack: () => void;
   /** Arnold's real records; without them the sample list is shown. */
-  records?: { exercise: string; value: string; when: string }[];
+  records?: RecordRow[];
+  /** Arnold's running records (live); empty or absent: no running box. */
+  runRecords?: RecordRow[];
 }) {
   const sample = records === undefined;
+  const running = runRecords?.length ? runRecords : null;
   const recs = records
     ? records.length
       ? records
@@ -381,23 +406,15 @@ export function RecordsScreen({
         }
       />
       <Box>
-        <ul className="m-0 flex list-none flex-col p-0">
-          {recs.map((r) => (
-            <li
-              key={r.exercise}
-              className="flex items-center justify-between gap-3 border-b border-subtle py-3 first:pt-0 last:border-b-0 last:pb-0"
-            >
-              <span className="flex flex-col">
-                <span>{r.exercise}</span>
-                {r.when && (
-                  <span className="text-sm text-secondary">{r.when}</span>
-                )}
-              </span>
-              <span className="font-medium tabular-nums">{r.value}</span>
-            </li>
-          ))}
-        </ul>
+        {running && <h3 className="heading-xs m-0">Kraft</h3>}
+        <RecordList rows={recs} />
       </Box>
+      {running && (
+        <Box>
+          <h3 className="heading-xs m-0">Laufen</h3>
+          <RecordList rows={running} />
+        </Box>
+      )}
     </div>
   );
 }
@@ -410,11 +427,13 @@ type Goal = ReturnType<typeof dashboardOf>["goals"][number];
 export type GoalsLive = {
   goals: LiveGoal[];
   choices: GoalChoice[];
-  unitsFor: (choice: string) => GoalUnit[];
+  unitsFor: (choice: string) => GoalFormUnit[];
+  /** "mm:ss" for a time, "Zielwert" otherwise. */
+  placeholderFor: (unit: string) => string;
   /** Each resolves with an error sentence, or null when saved. */
   onCreate: (form: {
     choice: string;
-    unit: GoalUnit;
+    unit: GoalFormUnit;
     target: string;
   }) => Promise<string | null>;
   onUpdate: (goal: LiveGoal, target: string) => Promise<string | null>;
@@ -504,8 +523,8 @@ export function GoalsScreen({
           <div className="flex gap-2">
             <Input
               aria-label="Zielwert"
-              inputMode="decimal"
-              placeholder="Zielwert"
+              inputMode={editing.unit === "mm:ss" ? "text" : "decimal"}
+              placeholder={live.placeholderFor(editing.unit)}
               value={editTarget}
               onChange={(e) => setEditTarget(e.target.value)}
             />
@@ -572,13 +591,14 @@ export function GoalsScreen({
           {live ? (
             <Select
               block
-              placeholder="Übung oder Körpergewicht wählen"
+              placeholder="Übung, Körpergewicht oder Laufen wählen"
               options={live.choices}
               value={name}
               onChange={(o) => {
                 setName(o.value);
-                if (!live.unitsFor(o.value).includes(unit as GoalUnit))
-                  setUnit("kg");
+                const offered = live.unitsFor(o.value);
+                if (!offered.includes(unit as GoalFormUnit))
+                  setUnit(offered[0] ?? "kg");
               }}
             />
           ) : (
@@ -592,8 +612,10 @@ export function GoalsScreen({
           <div className="flex gap-2">
             <Input
               aria-label="Zielwert"
-              inputMode="decimal"
-              placeholder="Zielwert"
+              inputMode={
+                live?.placeholderFor(unit) === "mm:ss" ? "text" : "decimal"
+              }
+              placeholder={live ? live.placeholderFor(unit) : "Zielwert"}
               value={target}
               onChange={(e) => setTarget(e.target.value)}
             />
@@ -622,7 +644,7 @@ export function GoalsScreen({
                   const ok = await run(() =>
                     live.onCreate({
                       choice: name,
-                      unit: unit as GoalUnit,
+                      unit: unit as GoalFormUnit,
                       target,
                     }),
                   );

@@ -12,6 +12,7 @@ import type { Server } from "node:http";
 import { createHttpApp } from "../src/server/http";
 import { createFixtureLogging } from "../src/server/workout/fixture";
 import { WriteResponseSchema } from "../src/shared/workout-contract";
+import { RunWriteResponseSchema } from "../src/shared/run-contract";
 import { ArnoldDashboardViewSchema } from "../src/shared/arnold-view";
 import { CONFIRMATION_RULES } from "../src/server/auth/confirmation-rules";
 import { TOOL_ACCESS } from "../src/server/auth/tool-access";
@@ -31,6 +32,8 @@ const call = async (name: string, args: Record<string, unknown> = {}) =>
   asCard((await client.callTool({ name, arguments: args })) as CallToolResult);
 const write = async (name: string, args: Record<string, unknown>) =>
   WriteResponseSchema.parse((await call(name, args)).structuredContent);
+const logRun = async (args: Record<string, unknown>) =>
+  RunWriteResponseSchema.parse((await call("log_run", args)).structuredContent);
 const dashboard = async () =>
   ArnoldDashboardViewSchema.parse(
     (await call("show_arnold_dashboard")).structuredContent,
@@ -189,5 +192,179 @@ describe("goal tools", () => {
     });
     expect(voided.result!.body_weight!.status).toBe("voided");
     expect((await dashboard()).home.latest_body_weight).toBeNull();
+  });
+
+  it("running goals: created, measured from logged runs, changed and ended", async () => {
+    const tz = "Europe/Berlin";
+    const distance = await write("create_training_goal", {
+      request_id: "r1",
+      kind: "run_distance",
+      target_value: 10,
+    });
+    expect(distance.ok, distance.error?.message).toBe(true);
+    const fiveK = await write("create_training_goal", {
+      request_id: "r2",
+      kind: "run_time_for_distance",
+      run_distance_m: 5000,
+      target_value: 1500,
+    });
+    expect(fiveK.result!.goal).toMatchObject({
+      kind: "run_time_for_distance",
+      run_distance_m: 5000,
+      exercise_id: null,
+      load_basis: null,
+      start_value: null,
+    });
+    // A second time goal for another distance is its own goal.
+    const tenK = await write("create_training_goal", {
+      request_id: "r3",
+      kind: "run_time_for_distance",
+      run_distance_m: 10_000,
+      target_value: 3300,
+    });
+    expect(tenK.ok).toBe(true);
+    const again = await write("create_training_goal", {
+      request_id: "r4",
+      kind: "run_time_for_distance",
+      run_distance_m: 5000,
+      target_value: 1450,
+    });
+    expect(again.error?.code).toBe("GOAL_EXISTS");
+    const duration = await write("create_training_goal", {
+      request_id: "r5",
+      kind: "run_duration",
+      target_value: 60,
+    });
+    expect(duration.ok).toBe(true);
+
+    // 5 km in 26:00 told in the chat, then 7.2 km with kilometre laps.
+    expect(
+      (
+        await logRun({
+          request_id: "run-a",
+          timezone: tz,
+          workout_date_local: "2026-10-12",
+          environment: "outdoor",
+          timer_s: 1560,
+          distance_m: 5000,
+        })
+      ).ok,
+    ).toBe(true);
+    expect(
+      (
+        await logRun({
+          request_id: "run-b",
+          timezone: tz,
+          workout_date_local: "2026-10-19",
+          environment: "outdoor",
+          timer_s: 2400,
+          distance_m: 7200,
+          laps: [
+            { timer_s: 310, distance_m: 1000 },
+            { timer_s: 300, distance_m: 1000 },
+            { timer_s: 295, distance_m: 1000 },
+            { timer_s: 290, distance_m: 1000 },
+            { timer_s: 300, distance_m: 1000 },
+            { timer_s: 335, distance_m: 1000 },
+            { timer_s: 340, distance_m: 1000 },
+            { timer_s: 60, distance_m: 200 },
+          ],
+        })
+      ).ok,
+    ).toBe(true);
+
+    const view = await dashboard();
+    const byKind = Object.fromEntries(
+      view.home.goals.map((g) => [
+        `${g.kind}${g.run_distance_m ? `-${g.run_distance_m}` : ""}`,
+        g,
+      ]),
+    );
+    expect(byKind.run_distance).toMatchObject({
+      name: "Laufen: Strecke am Stück",
+      unit: "km",
+      current_value: 7.2,
+      run_distance_m: null,
+    });
+    expect(byKind.run_duration).toMatchObject({
+      unit: "min",
+      current_value: 40,
+    });
+    // Laps 1–5 (310 + 300 + 295 + 290 + 300) beat the 26:00 of the first run.
+    expect(byKind["run_time_for_distance-5000"]).toMatchObject({
+      name: "Laufen: 5 km auf Zeit",
+      unit: "s",
+      current_value: 1495,
+      current_date: "2026-10-19",
+    });
+    expect(byKind["run_time_for_distance-10000"]).toMatchObject({
+      current_value: null,
+      progress: null,
+    });
+    const records = Object.fromEntries(
+      view.home.run_records.map((r) => [r.key, r]),
+    );
+    expect(records.longest_distance).toMatchObject({
+      value: 7200,
+      achieved_on: "2026-10-19",
+    });
+    expect(records.fastest_1k.value).toBe(290);
+    expect(records.best_5k.value).toBe(1495);
+    expect(records.best_10k).toMatchObject({ value: null, workout_id: null });
+
+    const id = fiveK.result!.goal!.goal_id;
+    const changed = await write("update_training_goal", {
+      request_id: "r6",
+      goal_id: id,
+      expected_row_revision: 1,
+      target_value: 1440,
+    });
+    expect(changed.result!.goal!).toMatchObject({
+      target_value: 1440,
+      run_distance_m: 5000,
+    });
+    const ended = await write("archive_training_goal", {
+      request_id: "r7",
+      goal_id: id,
+      expected_row_revision: 2,
+    });
+    expect(ended.result!.goal!.status).toBe("archived");
+    expect((await dashboard()).home.goals.some((g) => g.goal_id === id)).toBe(
+      false,
+    );
+  });
+
+  it("refuses running goals that do not fit together", async () => {
+    const cases: [Record<string, unknown>, string][] = [
+      [
+        { kind: "run_time_for_distance", target_value: 1500 },
+        "VALIDATION_ERROR",
+      ],
+      [
+        { kind: "run_distance", run_distance_m: 5000, target_value: 10 },
+        "VALIDATION_ERROR",
+      ],
+      [
+        { kind: "run_distance", exercise_id: "pfx-bench", target_value: 10 },
+        "VALIDATION_ERROR",
+      ],
+      [{ kind: "run_distance", target_value: 500 }, "VALIDATION_ERROR"],
+      [
+        {
+          kind: "run_time_for_distance",
+          run_distance_m: 5000,
+          target_value: 1500.5,
+        },
+        "VALIDATION_ERROR",
+      ],
+    ];
+    for (const [args, code] of cases) {
+      const answer = await write("create_training_goal", {
+        request_id: `x-${JSON.stringify(args)}`,
+        ...args,
+      });
+      expect(answer.error?.code, JSON.stringify(args)).toBe(code);
+    }
+    expect((await dashboard()).home.goals).toEqual([]);
   });
 });

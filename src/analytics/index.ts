@@ -67,6 +67,15 @@ export {
 } from "./goals.js";
 export { computeHome, type HomeAnalytics } from "./home.js";
 export {
+  completedRunsOf,
+  computeRunRecords,
+  runInputsOf,
+  RUN_RECORD_KEYS,
+  type DatasetWithRunInputs,
+  type RunRecord,
+  type RunRecordKey,
+} from "./run-records.js";
+export {
   PROGRESSION_VERSION,
   ProgressionSchema,
   recommendProgression,

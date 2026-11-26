@@ -1,7 +1,8 @@
 /**
  * The goals screen's model (src/views/model/goals.ts): Arnold's goals become
  * rows (unknown current value stays "–"), the form becomes exactly one of
- * Arnold's three goal kinds, and bad targets are named, never sent.
+ * Arnold's goal kinds (strength, body weight, running), and bad targets are
+ * named, never sent.
  */
 import { describe, expect, it } from "vitest";
 import type { ArnoldDashboardView, HomeGoal } from "../src/shared/arnold-view";
@@ -12,6 +13,7 @@ import {
   goalChoices,
   goalErrorText,
   goalRows,
+  placeholderFor,
   unitsFor,
   updateGoalInput,
 } from "../src/views/model/goals";
@@ -24,6 +26,7 @@ const goal = (over: Partial<HomeGoal>): HomeGoal => ({
   name: "Bankdrücken",
   unit: "kg",
   load_basis: "total",
+  run_distance_m: null,
   target_value: 80,
   start_value: 60,
   current_value: 62.5,
@@ -71,6 +74,46 @@ describe("goalRows", () => {
     });
   });
 
+  it("shows running goals in km, minutes and mm:ss", () => {
+    const rows = goalRows({
+      goals: [
+        goal({
+          kind: "run_distance",
+          unit: "km",
+          exercise_id: null,
+          load_basis: null,
+          name: "Laufen: Strecke am Stück",
+          target_value: 10,
+          current_value: 7.25,
+        }),
+        goal({
+          kind: "run_duration",
+          unit: "min",
+          exercise_id: null,
+          load_basis: null,
+          target_value: 60,
+          current_value: 42.5,
+        }),
+        goal({
+          kind: "run_time_for_distance",
+          unit: "s",
+          exercise_id: null,
+          load_basis: null,
+          run_distance_m: 5000,
+          target_value: 1500,
+          current_value: 1563,
+        }),
+      ],
+    } as unknown as ArnoldDashboardView["home"]);
+    expect(
+      rows.map((r) => [r.current, r.target, r.targetText, r.unit]),
+    ).toEqual([
+      ["7,25 km", "10 km", "10", "km"],
+      ["42,5 Min.", "60 Min.", "60", "Min."],
+      ["26:03", "25:00", "25:00", "mm:ss"],
+    ]);
+  });
+
   it("keeps an unmeasured goal unknown, not 0", () => {
     const [row] = goalRows({
       goals: [
@@ -103,6 +146,7 @@ describe("goalChoices", () => {
     } as unknown as ArnoldDashboardView);
     expect(choices.map((c) => c.label)).toEqual([
       "Körpergewicht",
+      "Laufen",
       "Bankdrücken",
       "Bizepscurl",
       "Rudern",
@@ -112,6 +156,9 @@ describe("goalChoices", () => {
   it("allows only kg for body weight", () => {
     expect(unitsFor("body_weight")).toEqual(["kg"]);
     expect(unitsFor("bench")).toEqual(["kg", "Wdh."]);
+    expect(unitsFor("running")).toEqual(["km", "Min.", "5 km", "10 km"]);
+    expect(placeholderFor("5 km")).toBe("mm:ss");
+    expect(placeholderFor("km")).toBe("Zielwert");
   });
 });
 
@@ -137,6 +184,59 @@ describe("goal writes", () => {
     );
     expect(bw.ok && bw.input).toMatchObject({ target_value: 78.5 });
     expect(bw.ok && "exercise_id" in bw.input).toBe(false);
+  });
+
+  it("builds running goals: distance, minutes, and a time for 5 or 10 km", () => {
+    const cases = [
+      [{ choice: "running", unit: "km", target: "10,5" }, "run_distance", 10.5],
+      [{ choice: "running", unit: "Min.", target: "45" }, "run_duration", 45],
+      [
+        { choice: "running", unit: "5 km", target: "24:30" },
+        "run_time_for_distance",
+        1470,
+      ],
+      [
+        { choice: "running", unit: "10 km", target: "0:52:10" },
+        "run_time_for_distance",
+        3130,
+      ],
+    ] as const;
+    for (const [form, kind, value] of cases) {
+      const built = createGoalInput(form, "r-1");
+      expect(built.ok, JSON.stringify(form)).toBe(true);
+      if (!built.ok) continue;
+      expect(built.input).toMatchObject({ kind, target_value: value });
+      expect("exercise_id" in built.input).toBe(false);
+      expect(
+        WriteInputs.create_training_goal.safeParse(built.input).success,
+      ).toBe(true);
+    }
+    const tenK = createGoalInput(
+      { choice: "running", unit: "10 km", target: "52:10" },
+      "r",
+    );
+    expect(tenK.ok && tenK.input.run_distance_m).toBe(10_000);
+    for (const target of ["", "abc", "24:75", "0:00", "-3"])
+      expect(
+        createGoalInput({ choice: "running", unit: "5 km", target }, "r").ok,
+      ).toBe(false);
+  });
+
+  it("changes a time goal typed as mm:ss", () => {
+    const [row] = goalRows({
+      goals: [
+        goal({
+          kind: "run_time_for_distance",
+          unit: "s",
+          exercise_id: null,
+          load_basis: null,
+          run_distance_m: 5000,
+          target_value: 1500,
+        }),
+      ],
+    } as unknown as ArnoldDashboardView["home"]);
+    const upd = updateGoalInput(row!, "23:45", "r-2");
+    expect(upd.ok && upd.input.target_value).toBe(1425);
   });
 
   it("names a bad target instead of sending it", () => {

@@ -158,6 +158,8 @@ export function createHttpApp(options: ServerOptions = {}) {
           createFixtureOnboarding({
             dataset: demoHistoryDataset(
               localDayOf(new Date(), "Europe/Berlin"),
+              new Date(),
+              { runs: true },
             ),
           }),
         )

@@ -14,6 +14,7 @@ import {
   buildHomeAnalytics,
 } from "../src/analytics/index";
 import type { DatasetWithRunDays } from "../src/analytics/activity";
+import type { HomeAnalytics } from "../src/analytics/home";
 import { goalPoints } from "../src/analytics/goals";
 import {
   buildDashboardView,
@@ -211,16 +212,28 @@ describe("strength readers with running data in the dataset", () => {
     expect(withoutDayFigures(buildArnoldDashboardAnalytics(mixed))).toEqual(
       withoutDayFigures(buildArnoldDashboardAnalytics(base)),
     );
+    // Running records are the one figure runs are meant to change.
+    const strengthOnly = ({ run_records: _, ...rest }: HomeAnalytics) => rest;
     for (const weekly of [null, 3])
       expect(
         withoutDayFigures(
-          buildHomeAnalytics(mixed, { weekly_goal_training_days: weekly }),
+          strengthOnly(
+            buildHomeAnalytics(mixed, { weekly_goal_training_days: weekly }),
+          ),
         ),
       ).toEqual(
         withoutDayFigures(
-          buildHomeAnalytics(base, { weekly_goal_training_days: weekly }),
+          strengthOnly(
+            buildHomeAnalytics(base, { weekly_goal_training_days: weekly }),
+          ),
         ),
       );
+    expect(
+      buildHomeAnalytics(base).run_records.every((r) => r.value === null),
+    ).toBe(true);
+    expect(
+      buildHomeAnalytics(mixed).run_records.some((r) => r.value !== null),
+    ).toBe(true);
   });
 
   it("keeps goal progress, plan proposals and plan workout counts identical", () => {
@@ -246,8 +259,11 @@ describe("strength readers with running data in the dataset", () => {
       runScoreInputs: runScores,
       // UX-014: the run recap's inputs travel the same way.
       runRecapInputs: runRecaps,
+      // Running records and running goals read the completed runs whole.
+      runRecordInputs: runRecords,
       ...fromMixed
     } = loaded;
+    expect(runRecords?.map((r) => r.workout_id)).toEqual(["run-1", "run-2"]);
     expect(runDays).toEqual(["2026-09-08", "2026-10-12"]);
     expect(runScores?.map((r) => [r.workout_id, r.date])).toEqual([
       ["run-1", "2026-09-08"],

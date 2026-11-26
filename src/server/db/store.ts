@@ -184,7 +184,12 @@ async function readDataset(
       }),
     ),
     sets: rows.sets,
-    goals: rows.goals,
+    // A goal without a run distance (null, migration 012) reads back without
+    // the field, so rows and receipts written before the column still match.
+    goals: (rows.goals as Record<string, unknown>[]).map(
+      ({ run_distance_m, ...row }) =>
+        run_distance_m == null ? row : { ...row, run_distance_m },
+    ),
     bodyWeights: rows.bodyWeights,
     runProfiles: rows.runProfiles,
     planRunSessions: rows.planRunSessions,

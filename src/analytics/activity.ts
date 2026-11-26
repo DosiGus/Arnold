@@ -12,6 +12,7 @@ import { exact, metric, round, unavailable } from "./validation.js";
 import type { AnalyticsReason } from "./types.js";
 import type { ScoreRunInput } from "./scores.js";
 import type { RunRecapInput } from "./recap.js";
+import type { RunInput } from "./running/metrics/types.js";
 
 export type WeekActivity = Readonly<{
   week_start: string;
@@ -35,6 +36,8 @@ export type DatasetWithRunDays = ArnoldDataset &
     runScoreInputs?: readonly ScoreRunInput[];
     /** Completed runs as the recap after a run needs them (UX-014). */
     runRecapInputs?: readonly RunRecapInput[];
+    /** Completed runs as running records and run goals read them. */
+    runRecordInputs?: readonly RunInput[];
   }>;
 
 /**

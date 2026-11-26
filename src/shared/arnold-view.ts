@@ -409,10 +409,13 @@ export const HomeGoalSchema = z.object({
   row_revision: z.number().int().positive(),
   kind: ArnoldGoalKindSchema,
   exercise_id: ArnoldIdSchema.nullable(),
-  /** "Körpergewicht" or the exercise name. */
+  /** "Körpergewicht", the exercise name, or the running goal in words. */
   name: z.string().min(1),
-  unit: z.enum(["kg", "reps"]),
+  /** km, min and s for running goals; a time goal (s) is lower-is-better. */
+  unit: z.enum(["kg", "reps", "km", "min", "s"]),
   load_basis: ArnoldLoadBasisSchema.nullable(),
+  /** Metres of a run_time_for_distance goal; null for every other kind. */
+  run_distance_m: z.number().int().positive().nullable(),
   target_value: finiteNumber,
   start_value: finiteNumber.nullable(),
   current_value: finiteNumber.nullable(),
@@ -425,6 +428,28 @@ export const HomeGoalSchema = z.object({
   points: z.array(z.object({ date: isoDate, value: finiteNumber })),
 });
 export type HomeGoal = z.infer<typeof HomeGoalSchema>;
+
+/**
+ * One running record (src/analytics/run-records.ts): longest run, longest
+ * duration, fastest kilometre, best 5 km and 10 km. Unknown stays
+ * `value: null` with the reason, never 0.
+ */
+export const HomeRunRecordSchema = z.object({
+  key: z.enum([
+    "longest_distance",
+    "longest_duration",
+    "fastest_1k",
+    "best_5k",
+    "best_10k",
+  ]),
+  /** Metres for longest_distance, seconds otherwise. */
+  unit: z.enum(["m", "s"]),
+  value: finiteNumber.nonnegative().nullable(),
+  workout_id: ArnoldIdSchema.nullable(),
+  achieved_on: isoDate.nullable(),
+  reason: z.string().min(1).nullable(),
+});
+export type HomeRunRecord = z.infer<typeof HomeRunRecordSchema>;
 
 export const ArnoldHomeSchema = z.object({
   next_session: z
@@ -482,6 +507,8 @@ export const ArnoldHomeSchema = z.object({
       history: z.array(HomeRecordSchema),
     }),
   ),
+  /** Running records, always the five keys in order (empty runs: all null). */
+  run_records: z.array(HomeRunRecordSchema),
   goals: z.array(HomeGoalSchema),
   /** Best sets per exercise, for choosing a new goal. */
   exercise_bests: z.array(

@@ -78,7 +78,7 @@ Wie die Felder zu lesen sind und ab wann eine Aussage trägt, steht in `referenc
 
 **Motivation, lange Pause.** Echte Fakten aus `home.streak` und `home.records` anerkennen, ohne Schuldgefühle. Einen kleinen nächsten Schritt nennen, meist die nächste Einheit (`home.next_session`). Nach langer Pause ruhig etwas leichter einsteigen und eintragen, was geht; keine konkreten Kilo nennen.
 
-**Ziel genannt** („100 kg Bankdrücken bis Sommer“): einordnen, ob es realistisch wirkt, und anbieten, es als Ziel in Arnold zu speichern. Erst nach einem ausdrücklichen Ja mit `create_training_goal` speichern; fehlt Übung oder Zielwert, genau das erfragen.
+**Ziel genannt** („100 kg Bankdrücken bis Sommer“, „10 km am Stück“, „5 km unter 25 Minuten“): einordnen, ob es realistisch wirkt, und anbieten, es als Ziel in Arnold zu speichern. Erst nach einem ausdrücklichen Ja mit `create_training_goal` speichern; fehlt Übung oder Zielwert, genau das erfragen.
 
 ## Knöpfe der Startansicht
 
