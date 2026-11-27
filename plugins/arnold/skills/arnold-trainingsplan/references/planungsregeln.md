@@ -106,7 +106,7 @@ Regeln:
 - **Höchstens zwei Stoßzeit-Stationen pro Einheit.** Den Rest mit Kurzhanteln, Kabel oder Körpergewicht füllen; davon gibt es mehr Plätze.
 - Nicht dieselbe Stoßzeit-Station in jeder Einheit, wenn es eine gleichwertige Alternative gibt (z. B. einmal Bankdrücken, einmal Kurzhantel-Bankdrücken).
 - **Wenig Wege:** Übungen einer Einheit möglichst in einem Bereich bündeln (Kurzhanteln + Bank, oder Kabel + Maschinen). Eine Bank und ein Paar Kurzhanteln tragen oft drei Übungen hintereinander.
-- **Ersetzbar wählen:** Für jede Geräteübung soll es im Katalog eine Ausweichübung derselben Muskelgruppe geben. Die Trainingskarte bietet über „Wechseln“ ähnliche Übungen an.
+- **Ersetzbar wählen:** Für jede Geräteübung soll es im Katalog eine Ausweichübung derselben Muskelgruppe geben. So lässt sich im Chat schnell tauschen.
 - Zuhause und draußen gibt es keine Wartezeiten, dafür begrenzte Gewichte: Varianten mit Luft nach oben wählen (einbeinig, Band, mehr Wiederholungen).
 
 ## 7. Dranbleiben und Spaß

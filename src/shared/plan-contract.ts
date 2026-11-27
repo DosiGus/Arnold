@@ -83,7 +83,7 @@ export type PlanSchemaLimit = z.infer<typeof PlanSchemaLimitSchema>;
 
 export const PLAN_SCHEMA_LIMIT_TEXT: Record<PlanSchemaLimit, string> = {
   EMPTY_SESSION_NOT_PERSISTABLE:
-    "Eine Trainingseinheit ohne Übung kann nicht gespeichert werden, weil eine Einheit nur über ihre Planpositionen existiert. Im Editor bleibt sie sichtbar und ausdrücklich als nicht gespeichert markiert.",
+    "Eine Trainingseinheit ohne Übung kann nicht gespeichert werden, weil eine Einheit nur über ihre Planpositionen existiert. Sie wird nicht gespeichert.",
   NO_SESSION_TABLE:
     "Es gibt keine SESSIONS-Tabelle. Name und Reihenfolge einer Einheit liegen auf jeder ihrer Planpositionen und werden gemeinsam geändert.",
   NO_PLAN_ITEM_TIMESTAMPS:

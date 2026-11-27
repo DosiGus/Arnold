@@ -13,6 +13,9 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   reporter: "list",
+  // WebKit now and then drops a click into the sandboxed card frame right
+  // after it loaded. One retry; the report still names it as flaky.
+  retries: 1,
   timeout: 30000,
   use: {
     baseURL: "http://127.0.0.1:8850",

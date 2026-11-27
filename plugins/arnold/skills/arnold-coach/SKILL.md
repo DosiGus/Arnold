@@ -80,9 +80,9 @@ Wie die Felder zu lesen sind und ab wann eine Aussage trägt, steht in `referenc
 
 **Ziel genannt** („100 kg Bankdrücken bis Sommer“, „10 km am Stück“, „5 km unter 25 Minuten“): einordnen, ob es realistisch wirkt, und anbieten, es als Ziel in Arnold zu speichern. Erst nach einem ausdrücklichen Ja mit `create_training_goal` speichern; fehlt Übung oder Zielwert, genau das erfragen.
 
-## Knöpfe der Startansicht
+## Sätze aus den Karten
 
-Die Startansicht schickt vier Sätze als Nutzernachricht in den Chat. Antworte kurz (höchstens zwei Sätze, vorlesbar) und leite weiter:
+Diese Sätze sagt der Nutzer oder schickt eine Arnold-Karte per Knopf in den Chat. Antworte kurz (höchstens zwei Sätze, vorlesbar) und leite weiter:
 
 - „Zeig mir mein nächstes Training.“ → `show_arnold_dashboard` mit `card: "today"`; steht als Nächstes ein Lauf an, `show_arnold_run` mit `card: "run_today"`.
 - „Ich möchte meinen Plan ändern.“ → in einem Satz fragen, was sich ändern soll, dann Ablauf von arnold-trainingsplan („D. Plan ändern“). Nie selbst bestätigen oder aktivieren.
@@ -126,7 +126,7 @@ Die Hintergründe stehen in `references/trainingswissenschaft.md`, Abschnitt 8. 
 **Schmerz bei einer Übung ohne Warnzeichen:**
 
 - Keine normale Steigerung dieser Übung empfehlen, auch wenn Arnold eine vorschlägt; sag offen, dass die Karte trotzdem eine Steigerung zeigen kann, und der Nutzer leichter eintragen soll, was schmerzfrei geht.
-- Optionen nennen: leichter und schmerzfrei, kleinerer Bewegungsumfang, die Übung heute in der Trainingskarte über „Wechseln“ tauschen oder dauerhaft im Plan ersetzen (Ablauf von arnold-trainingsplan).
+- Optionen nennen: leichter und schmerzfrei, kleinerer Bewegungsumfang, die Übung heute tauschen (im Chat sagen, beim Speichern vermerkt) oder dauerhaft im Plan ersetzen (Ablauf von arnold-trainingsplan).
 - Halten Beschwerden länger als etwa zwei Wochen an oder werden schlimmer: ärztlich oder physiotherapeutisch abklären lassen.
 - Keine Vermutung, was es sein könnte.
 

@@ -62,7 +62,10 @@ test("records show strength and running", async ({ page }) => {
 test("a new goal is stored and listed", async ({ page }) => {
   const { app, errors } = await overview(page);
   await app.getByRole("button", { name: "Ziel hinzufügen" }).click();
-  await expect(app.getByRole("heading", { name: "Ziele" })).toBeVisible();
+  // The overview has a heading "Ziele" too: wait for the goals screen.
+  await expect(
+    app.getByRole("textbox", { name: "Heutiges Körpergewicht" }),
+  ).toBeVisible();
   await app.getByRole("button", { name: "Ziel hinzufügen" }).click();
   await app.getByText("Übung, Körpergewicht oder Laufen wählen").click();
   await app.getByRole("option", { name: "Laufen", exact: true }).click();
