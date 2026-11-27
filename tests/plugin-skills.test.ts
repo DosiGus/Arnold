@@ -592,6 +592,9 @@ describe("start view buttons and chat tone (UX-003)", () => {
     }
     expect(planSkill).not.toContain("zurückwechseln");
     expect(planSkill).toContain("Nur heute");
+    // The training card has no swap button.
+    for (const text of [planSkill, coach])
+      expect(text).not.toContain("„Wechseln“");
     expect(planSkill).toContain("vorlesbar");
     expect(coach).toContain("vorlesbar");
   });

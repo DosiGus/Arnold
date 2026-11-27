@@ -17,16 +17,15 @@ import {
   onboardingResourceUri,
 } from "../src/server/ui-resource";
 
-describe("card interface (ARNOLD_UI)", () => {
-  it("is Skybridge unless legacy is named", () => {
+describe("card interface", () => {
+  it("is one file per view; the removed ARNOLD_UI modes stop the start", () => {
     for (const unset of [undefined, "", "skybridge"])
-      expect(cardUiFiles("/app", unset).dashboard).toBe(
-        "/app/dist/views/dashboard/dashboard.html",
-      );
-    expect(cardUiFiles("/app", "legacy").dashboard).toBe(
-      "/app/dist/ui/dashboard.html",
-    );
-    expect(() => cardUiFiles("/app", "neu")).toThrow(/unbekannt/);
+      expect(cardUiFiles("/app", unset)).toEqual({
+        dashboard: "/app/dist/views/dashboard/dashboard.html",
+        onboarding: "/app/dist/views/onboarding/onboarding.html",
+      });
+    for (const gone of ["legacy", "neu"])
+      expect(() => cardUiFiles("/app", gone)).toThrow(/unbekannt/);
   });
 });
 

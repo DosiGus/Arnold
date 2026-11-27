@@ -560,7 +560,7 @@ export class TrainingPlanService {
       if (ownExercises.input) input = ownExercises.input;
       if (ownExercises.changes.length)
         warnings.push(
-          `${ownExercises.changes.length} eigene Übung(en) angelegt. Gerät, Muskel und Lastbasis bei Bedarf im Plan-Editor ergänzen.`,
+          `${ownExercises.changes.length} eigene Übung(en) angelegt. Gerät, Muskel und Lastbasis bei Bedarf ergänzen.`,
         );
     }
     // The mat answer (D-07): the stored mobility profile first; before it

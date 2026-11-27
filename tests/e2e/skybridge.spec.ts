@@ -2,30 +2,31 @@ import { test, expect, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { callTool } from "./helpers";
+import { open } from "./host";
+import { berlinToday } from "../fixtures/berlin-today";
 
 /**
- * The Skybridge views, the default interface, in the local test host (official
+ * The card views (Skybridge web runtime) in the local test host (official
  * AppBridge, sandboxed iframe, no network): overview, its screens, one chat
  * card each for run, mobility and plan change, and the setup. Invented data.
  */
-const DEMO = "http://127.0.0.1:8850";
-const NEW = "http://127.0.0.1:8851";
+/** Each browser project has its own servers: a test's writes stay its own. */
+let DEMO = "";
+let NEW = "";
+let PLAN = "";
+test.beforeEach(({}, info) => {
+  const port = info.project.name === "webkit" ? 8860 : 8850;
+  [DEMO, NEW, PLAN] = [0, 1, 2].map((n) => `http://127.0.0.1:${port + n}`) as [
+    string,
+    string,
+    string,
+  ];
+});
 const SHOTS = resolve("test-results/skybridge");
 mkdirSync(SHOTS, { recursive: true });
 
 test.use({ viewport: { width: 420, height: 900 } });
 
-/** Opens the card a tool would open; returns the card's document. */
-async function open(page: Page, base: string, query = "") {
-  const errors: string[] = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto(`${base}/host${query}`);
-  await expect(page.locator("#host-status")).toHaveAttribute(
-    "data-initialized",
-    "true",
-  );
-  return { app: page.frameLocator("iframe"), errors };
-}
 const shot = (page: Page, name: string) =>
   page
     .locator("iframe")
@@ -61,7 +62,10 @@ test("records show strength and running", async ({ page }) => {
 test("a new goal is stored and listed", async ({ page }) => {
   const { app, errors } = await overview(page);
   await app.getByRole("button", { name: "Ziel hinzufügen" }).click();
-  await expect(app.getByRole("heading", { name: "Ziele" })).toBeVisible();
+  // The overview has a heading "Ziele" too: wait for the goals screen.
+  await expect(
+    app.getByRole("textbox", { name: "Heutiges Körpergewicht" }),
+  ).toBeVisible();
   await app.getByRole("button", { name: "Ziel hinzufügen" }).click();
   await app.getByText("Übung, Körpergewicht oder Laufen wählen").click();
   await app.getByRole("option", { name: "Laufen", exact: true }).click();
@@ -195,7 +199,102 @@ test("a finished training stays on screen and counts for today", async ({
   await app.getByRole("button", { name: "Dashboard" }).click();
   await expect(app.getByText("Krafttraining · 1 Arbeitssatz")).toBeVisible();
   await expect(app.getByText(session, { exact: true })).toBeVisible();
+  // The recap of this training stays until the user dismisses it.
+  const recap = app.getByRole("region", {
+    name: "Rückblick auf dein Training",
+  });
+  await expect(recap).toContainText(`Geschafft: ${session}`);
   await shot(page, "after-training");
+  await recap.getByRole("button", { name: "Verstanden" }).click();
+  await expect(recap).toHaveCount(0);
+  await expect
+    .poll(
+      async () =>
+        (
+          (await callTool(page, "get_arnold_dashboard", {})) as {
+            recap?: unknown;
+          }
+        ).recap ?? null,
+    )
+    .toBeNull();
+  expect(errors).toEqual([]);
+});
+
+test("a stored set is corrected and discarded in the history", async ({
+  page,
+}) => {
+  const { app, errors } = await open(page, DEMO, "?card=history");
+  await app.locator("button[aria-expanded]").first().click();
+  await app.getByRole("button", { name: "Satz korrigieren" }).click();
+  const editor = app.getByRole("group", { name: /korrigieren$/ });
+  const reps = editor.getByRole("textbox", { name: /Wiederholungen$/ });
+  await expect(reps.first()).toBeVisible();
+  const count = await reps.count();
+  await reps.first().fill("3");
+  await shot(page, "set-edit");
+  await editor.getByRole("button", { name: /speichern$/ }).click();
+  await expect(editor.getByRole("button", { name: /speichern$/ })).toHaveCount(
+    0,
+  );
+  await expect(reps.first()).toHaveValue("3");
+  const discard = editor.getByRole("button", { name: /verwerfen$/ }).last();
+  await discard.click();
+  await expect(reps).toHaveCount(count);
+  await editor.getByRole("button", { name: /wirklich verwerfen\?$/ }).click();
+  await expect(reps).toHaveCount(count - 1);
+  expect(errors).toEqual([]);
+});
+
+test("a body weight entry is discarded after a second tap", async ({
+  page,
+}) => {
+  const { app, errors } = await overview(page);
+  await app.getByRole("button", { name: "Ziel hinzufügen" }).click();
+  await app.getByRole("textbox", { name: "Heutiges Körpergewicht" }).fill("99");
+  await app.getByRole("button", { name: "Eintragen" }).click();
+  await expect(app.getByText(/99 kg/).first()).toBeVisible();
+  await app.getByRole("button", { name: "Letzten Eintrag verwerfen" }).click();
+  await app.getByRole("button", { name: "Wirklich verwerfen?" }).click();
+  await expect(app.getByText(/99 kg/)).toHaveCount(0);
+  await shot(page, "weight-discarded");
+  expect(errors).toEqual([]);
+});
+
+test("the overview names a running adjustment and opens it", async ({
+  page,
+}) => {
+  // A page of the same origin without a card, to call tools from.
+  await page.goto(`${PLAN}/health`);
+  const created = (await callTool(page, "create_plan_adjustment", {
+    request_id: "sky-adjust",
+    timezone: "Europe/Berlin",
+    kind: "range",
+    start_date_local: berlinToday(),
+    end_date_local: berlinToday(),
+    sessions_per_week: 1,
+    minutes_per_session: 30,
+    reason: "Urlaub",
+  })) as {
+    result: {
+      plan_adjustment: {
+        adjustment: { plan_adjustment_id: string; row_revision: number };
+      };
+    };
+  };
+  const { adjustment } = created.result.plan_adjustment;
+  const confirmed = (await callTool(page, "confirm_plan_adjustment", {
+    request_id: "sky-adjust-yes",
+    plan_adjustment_id: adjustment.plan_adjustment_id,
+    expected_row_revision: adjustment.row_revision,
+  })) as { ok: boolean };
+  expect(confirmed.ok).toBe(true);
+
+  const { app, errors } = await open(page, PLAN);
+  await expect(app.getByText(/^Anpassung auf Zeit bis /)).toBeVisible();
+  await shot(page, "overview-adjustment");
+  await app.getByRole("button", { name: "Anpassung ansehen" }).click();
+  await expect(app.getByRole("heading", { name: "Urlaub" })).toBeVisible();
+  await expect(app.getByRole("button", { name: "Absagen" })).toBeVisible();
   expect(errors).toEqual([]);
 });
 

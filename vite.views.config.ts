@@ -4,9 +4,10 @@ import tailwindcss from "@tailwindcss/vite";
 import { viteSingleFile } from "vite-plugin-singlefile";
 
 /**
- * The new card views (Skybridge web runtime + Apps SDK UI). Each view is one
- * self-contained HTML file: JS and CSS inlined, no external assets, so the
- * card runs under an empty CSP. One build per view (`VIEW=onboarding|dashboard`).
+ * The card views (Skybridge web runtime + Apps SDK UI) and the local test
+ * host. Each is one self-contained HTML file: JS and CSS inlined, no external
+ * assets, so a card runs under an empty CSP. One build per page
+ * (`VIEW=onboarding|dashboard|host`).
  */
 const view = process.env.VIEW ?? "dashboard";
 export default defineConfig({

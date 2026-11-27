@@ -43,7 +43,7 @@ export default tseslint.config(
   {
     // Hook rules only where React runs. Missing effect dependencies are
     // shown as warnings: each one is a judgement call, not a build stopper.
-    files: ["src/ui/**/*.{ts,tsx}", "src/host/**/*.{ts,tsx}"],
+    files: ["src/views/**/*.{ts,tsx}"],
     plugins: { "react-hooks": reactHooks },
     rules: {
       "react-hooks/rules-of-hooks": "error",

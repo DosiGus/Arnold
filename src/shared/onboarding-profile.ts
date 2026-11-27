@@ -684,7 +684,7 @@ export function buildBrief(
         "Den Plan des Nutzers so übernehmen, wie er ist: dieselben Trainingstage, Übungen, Sätze und Wiederholungen. Die Struktur nicht verbessern oder ersetzen.",
         "Fehlt dem Nutzer noch ein Plan im Chat, zuerst darum bitten, ihn als Text einzufügen oder ein Foto davon zu schicken.",
         "Jede genannte Übung der passenden exercise_id aus exercise_catalog zuordnen. Gibt es keine passende Übung, sie nicht weglassen: in custom_exercises mit key (custom:1, custom:2 …) und name_de so beschreiben, wie der Nutzer sie nennt, und in der Einheit key als exercise_id verwenden. Arnold legt sie als eigene Übung an. Gerät, Muskel und Lastbasis nur angeben, wenn eindeutig.",
-        "Nicht genannte Sätze oder Wiederholungen nicht erfinden: offen lassen und in open_questions nennen; der Nutzer ergänzt sie im Editor.",
+        "Nicht genannte Sätze oder Wiederholungen nicht erfinden: offen lassen und in open_questions nennen; der Nutzer ergänzt sie im Chat.",
         ...shared,
         ...(mobility
           ? mobilityConstraints(mobility, true, training.has_mat)
@@ -840,7 +840,7 @@ export function validateProposalAgainstProfile(
     found.push(
       issue("warning", {
         code: "PROPOSAL_DAYS_MISMATCH",
-        message: `Der Vorschlag hat ${sessions.length} Trainingseinheiten, gewünscht waren ${days} Trainingstage pro Woche. Im Editor lässt sich das anpassen.`,
+        message: `Der Vorschlag hat ${sessions.length} Trainingseinheiten, gewünscht waren ${days} Trainingstage pro Woche. Im Chat lässt sich das anpassen.`,
         field: "sessions",
         step: "plan_review",
       }),
@@ -924,7 +924,7 @@ export function proposalFitIssues(
       found.push(
         issue("warning", {
           code: "PROPOSAL_EQUIPMENT_MISSING",
-          message: `${listOf(missing.map((id) => nameOf(id)!))} ${missing.length === 1 ? "braucht" : "brauchen"} Geräte, die du nicht angegeben hast. Im Editor lässt sich ${missing.length === 1 ? "die Übung" : "das"} ersetzen.`,
+          message: `${listOf(missing.map((id) => nameOf(id)!))} ${missing.length === 1 ? "braucht" : "brauchen"} Geräte, die du nicht angegeben hast. Im Chat lässt sich ${missing.length === 1 ? "die Übung" : "das"} ersetzen.`,
           field: "sessions",
           step: "plan_review",
         }),
@@ -939,7 +939,7 @@ export function proposalFitIssues(
       found.push(
         issue("warning", {
           code: "PROPOSAL_OVER_TIME_BUDGET",
-          message: `${long.length === 1 ? `Die Einheit "${long[0].session_name}" hat` : `Die Einheiten ${listOf(long.map((s) => `"${s.session_name}"`))} haben`} mehr Übungen, als in ${minutes} Minuten sinnvoll Platz haben (höchstens ${max}). Im Editor lässt sich das kürzen.`,
+          message: `${long.length === 1 ? `Die Einheit "${long[0].session_name}" hat` : `Die Einheiten ${listOf(long.map((s) => `"${s.session_name}"`))} haben`} mehr Übungen, als in ${minutes} Minuten sinnvoll Platz haben (höchstens ${max}). Im Chat lässt sich das kürzen.`,
           field: "sessions",
           step: "plan_review",
         }),

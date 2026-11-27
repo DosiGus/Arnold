@@ -7,6 +7,7 @@ import {
 import { ArnoldCallError, useArnoldTool } from "../arnold-client.js";
 import type { Profile, Wearable } from "../demo/model.js";
 import {
+  awaitsChat,
   cardProfileOf,
   cardViewOf,
   isBuilding,
@@ -147,25 +148,25 @@ export function useSetup(
     [flush, accept],
   );
 
-  // While ChatGPT builds the plan, read the state until the proposal is there.
+  // While the plan comes from the chat (built by ChatGPT, or the user's own
+  // plan being sent there), read the state until it is there.
   const building = isBuilding(state);
+  const waiting = awaitsChat(state);
   const { call: read } = readTool;
   useEffect(() => {
-    if (!building) {
-      setSlow(false);
-      return;
-    }
+    if (!building) setSlow(false);
+    if (!waiting) return;
     const started = Date.now();
     const id = setInterval(() => {
-      if (Date.now() - started > BUILD_HINT_MS) setSlow(true);
+      if (building && Date.now() - started > BUILD_HINT_MS) setSlow(true);
       read()
         .then((next) => {
-          if (!isBuilding(next)) accept(next);
+          if (!awaitsChat(next)) accept(next);
         })
         .catch(() => undefined);
     }, BUILD_POLL_MS);
     return () => clearInterval(id);
-  }, [building, read, accept]);
+  }, [building, waiting, read, accept]);
 
   const view = useMemo(() => {
     const v = cardViewOf(state, wearable);

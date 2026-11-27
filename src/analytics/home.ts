@@ -168,7 +168,13 @@ export type HomeAnalytics = Readonly<{
   run_records: readonly RunRecord[];
   goals: readonly GoalProgress[];
   exercise_bests: readonly HomeExerciseBest[];
-  latest_body_weight: Readonly<{ date: string; weight_kg: number }> | null;
+  /** The newest active entry, with what `void_body_weight` needs. */
+  latest_body_weight: Readonly<{
+    body_weight_id: string;
+    row_revision: number;
+    date: string;
+    weight_kg: number;
+  }> | null;
 }>;
 
 function streakOf(
@@ -658,6 +664,8 @@ export function computeHome(
     exercise_bests: Object.freeze(exerciseBests(input)),
     latest_body_weight: lastWeight
       ? Object.freeze({
+          body_weight_id: lastWeight.body_weight_id,
+          row_revision: lastWeight.row_revision,
           date: lastWeight.measured_on,
           weight_kg: lastWeight.weight_kg,
         })

@@ -1,7 +1,6 @@
 import { ArnoldExerciseSchema } from "../src/shared/arnold-schema-v1.js";
 import { expect, it } from "vitest";
 import { similarExercises } from "../src/analytics/alternatives.js";
-import { similarExercises as legacy } from "../src/ui/workout-draft.js";
 import {
   exercise,
   dataset,
@@ -13,8 +12,7 @@ import {
   prepareAnalytics,
   buildHomeAnalytics,
 } from "../src/analytics/index.js";
-it("shares the unchanged alternatives function with the legacy UI export", () => {
-  expect(legacy).toBe(similarExercises);
+it("offers the same movement family first, then the same muscle", () => {
   const catalog = [
     exercise({
       exercise_id: "base",

@@ -326,25 +326,22 @@ export function createHttpApp(options: ServerOptions = {}) {
         },
       );
     });
-  // The query string is carried across the redirect: the preview selects its
-  // entry point from it (`?onboarding=1` opens the setup wizard), and dropping
-  // it here would silently send every such visit to the dashboard instead.
-  app.get("/", (req, res) => {
+  // The local test host (official AppBridge) is the only page. "/" and
+  // "/preview" lead there and keep the query, which chooses the card
+  // (`?onboarding=1`, `?card=goals`). Only this one fixed file is ever sent;
+  // `dotfiles: "allow"` is needed because the checkout itself may sit under a
+  // hidden directory (a worktree in `.claude/…`), which `sendFile` would
+  // otherwise refuse as a dotfile path.
+  app.get(["/", "/preview"], (req, res) => {
     const query = req.originalUrl.slice(req.path.length);
-    res.redirect(`/preview${query}`);
+    res.redirect(`/host${query}`);
   });
-  // Only these two fixed files are ever sent. `dotfiles: "allow"` is needed
-  // because the checkout itself may sit under a hidden directory (a worktree
-  // in `.codex/…`), which `sendFile` would otherwise refuse as a dotfile path.
-  app.get("/preview", (_req, res) =>
-    res.sendFile(resolve(root, "dist/ui/dashboard.html"), {
+  app.get("/host", (_req, res) =>
+    res.sendFile(resolve(root, "dist/views/host/host.html"), {
       dotfiles: "allow",
     }),
   );
-  app.get("/host", (_req, res) =>
-    res.sendFile(resolve(root, "dist/host/host.html"), { dotfiles: "allow" }),
-  );
-  // Which card interface the tools point at (ARNOLD_UI, checked at start).
+  // The card bundles the tools point at (a leftover ARNOLD_UI is checked).
   const uiFiles = cardUiFiles(root, process.env.ARNOLD_UI);
   app.all("/mcp", auth.bearerGate, async (req, res) => {
     logProtocolStep(req.body);
@@ -435,28 +432,24 @@ export function createHttpApp(options: ServerOptions = {}) {
 }
 
 /**
- * The card bundles the MCP tools hand out. `skybridge` (default) is one
- * self-contained file per view in dist/views; `legacy` is the former single
- * React bundle in dist/ui, only when named. Any other value stops the start
- * instead of silently serving the wrong interface.
+ * The card bundles the MCP tools hand out: one self-contained file per view in
+ * dist/views. The former `ARNOLD_UI=legacy` interface is gone; a setting that
+ * asks for anything but `skybridge` stops the start instead of silently
+ * serving something else.
  */
 export function cardUiFiles(
   root: string,
   setting: string | undefined,
 ): { dashboard: string; onboarding: string } {
   const mode = setting?.trim() || "skybridge";
-  if (mode === "legacy") {
-    const file = resolve(root, "dist/ui/dashboard.html");
-    return { dashboard: file, onboarding: file };
-  }
-  if (mode === "skybridge")
-    return {
-      dashboard: resolve(root, "dist/views/dashboard/dashboard.html"),
-      onboarding: resolve(root, "dist/views/onboarding/onboarding.html"),
-    };
-  throw new Error(
-    `ARNOLD_UI="${mode}" ist unbekannt. Erlaubt: skybridge, legacy.`,
-  );
+  if (mode !== "skybridge")
+    throw new Error(
+      `ARNOLD_UI="${mode}" ist unbekannt. Erlaubt: skybridge (die Angabe kann entfallen).`,
+    );
+  return {
+    dashboard: resolve(root, "dist/views/dashboard/dashboard.html"),
+    onboarding: resolve(root, "dist/views/onboarding/onboarding.html"),
+  };
 }
 
 /** The demo runtime's invented watch values (fixture mode only). */

@@ -108,7 +108,7 @@ describe("goal tools", () => {
         row_revision: 1,
       }),
     ]);
-    expect(view.home.latest_body_weight).toEqual({
+    expect(view.home.latest_body_weight).toMatchObject({
       date: "2026-10-20",
       weight_kg: 80.5,
     });

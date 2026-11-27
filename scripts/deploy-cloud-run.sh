@@ -171,7 +171,6 @@ env_vars() {
     "AUTH_SCOPE_CLAIM=$SCOPE_CLAIM"
     TRUST_PROXY=1
     ARNOLD_TOOL_LOG=json
-    ARNOLD_UI=skybridge
     "ARNOLD_RELEASE=$RELEASE"
     "ALLOWED_HOSTS=$1"
   )

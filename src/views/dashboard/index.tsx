@@ -228,7 +228,7 @@ function Overview({ focused }: { focused: boolean }) {
         />
       ) : (
         <DataLLM
-          content={`Arnold-Überblick: Woche ${d.week.done} von ${d.week.goal} Trainingstagen, ${d.goals.length} Ziele, nächstes Training ${d.next?.name ?? "keins geplant"}.`}
+          content={`Arnold-Überblick: Woche ${d.week.done}${d.week.goal === null ? "" : ` von ${d.week.goal}`} Trainingstagen, ${d.goals.length} Ziele, nächstes Training ${d.next?.name ?? "keins geplant"}.`}
         >
           <AppShell
             initial={

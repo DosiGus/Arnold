@@ -224,9 +224,9 @@ export function registerPlanTools(
   server.registerTool(
     "get_plan_editor_context",
     {
-      title: "Planeditor-Kontext laden",
+      title: "Planbearbeitung vorbereiten",
       description:
-        "Lädt alles, was der interaktive Trainingsplan-Editor für eine Ansicht braucht: die angezeigte Planversion, den aktiven Plan, offene Entwürfe, die Planhistorie, den Übungskatalog für die Übungsauswahl, im Text zusätzlich den Mobility-Katalog (ohne Anleitungstexte), das Prüfergebnis und die Schreibrechte dieser Verbindung. Bestätigt keinen zuvor unklaren Schreibvorgang; dafür denselben Vorgang mit derselben request_id erneut aufrufen.",
+        "Lädt alles zum Ansehen und Ändern eines Plans: die angezeigte Planversion, den aktiven Plan, offene Entwürfe, die Planhistorie, den Übungskatalog für die Übungsauswahl, im Text zusätzlich den Mobility-Katalog (ohne Anleitungstexte), das Prüfergebnis und die Schreibrechte dieser Verbindung. Bestätigt keinen zuvor unklaren Schreibvorgang; dafür denselben Vorgang mit derselben request_id erneut aufrufen.",
       inputSchema: z.strictObject({
         plan_version_id: z.string().min(1).optional(),
       }),

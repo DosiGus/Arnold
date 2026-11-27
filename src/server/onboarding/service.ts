@@ -906,7 +906,7 @@ export class OnboardingService {
   private alreadyDone() {
     return fail(
       "ONBOARDING_ALREADY_COMPLETED",
-      "Arnold ist für dieses Konto bereits eingerichtet. Die Einrichtung läuft nur einmal; Trainingsplan und Übungen lassen sich jederzeit über den Plan-Editor ändern.",
+      "Arnold ist für dieses Konto bereits eingerichtet. Die Einrichtung läuft nur einmal; Trainingsplan und Übungen lassen sich jederzeit im Chat ändern.",
     );
   }
 

@@ -559,8 +559,14 @@ export const ArnoldHomeSchema = z.object({
       best_reps: count.nullable(),
     }),
   ),
+  /** The newest active entry, with what `void_body_weight` needs. */
   latest_body_weight: z
-    .object({ date: isoDate, weight_kg: finiteNumber })
+    .object({
+      body_weight_id: ArnoldIdSchema,
+      row_revision: z.number().int().positive(),
+      date: isoDate,
+      weight_kg: finiteNumber,
+    })
     .nullable(),
   /**
    * MOB-005: today's mobility line for the start screen. Present only when
