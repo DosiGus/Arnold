@@ -265,19 +265,19 @@ vorhandenen Login des konfigurierten Kontos. Die Garmin-Uhr und der Abruf
 neuer Garmin-Tageswerte bleiben am regulären Server. Die Vorschau kann
 die bereits gespeicherten Garmin-Daten anzeigen.
 
-1. Einen Arbeitsbranch verwenden. Für die Vorschau einen HTTPS-Tunnel mit
-   WebSocket-Unterstützung auf `127.0.0.1:8788` starten. Ein Cloudflare
-   Quick Tunnel genügt für eine Runde. Eine dauerhafte HTTPS-Adresse erspart
-   die Neueinrichtung nach Tunnel-Neustarts.
-2. In WorkOS Connect → Configuration die exakte Vorschau-Adresse inklusive
-   `/mcp` als zusätzlichen Resource Indicator anlegen. Der Live-Endpunkt
-   bleibt der Standard. In ChatGPT unter Plugins einen separaten
-   benutzerdefinierten MCP-Server mit der Vorschau-Adresse und OAuth verbinden.
-3. Vor `npm run dev:chatgpt` die Variablen `ARNOLD_PREVIEW_URL` (nur der
-   HTTPS-Origin), `ARNOLD_PREVIEW_USER_ID` (freigegebene interne Kontokennung),
-   `AUTH_ISSUER`, `AUTH_JWKS_URI` und `AUTH_SCOPE_CLAIM` setzen. Die
-   Datenbankverbindung `DATABASE_URL` und bei Bedarf `DATABASE_CA_CERT` aus
-   Secret Manager in die Prozessumgebung laden.
+1. Einen Arbeitsbranch verwenden. Die feste Adresse stellt Tailscale Funnel
+   (kostenlos nur für nicht-kommerzielle Nutzung). Einmalig: `brew install
+   tailscale`, anmelden, Funnel im Tailnet freigeben, die interne Kennung des
+   freigegebenen Kontos nach `~/.config/arnold/preview-user-id` schreiben.
+2. Einmalig in WorkOS Connect → Configuration die Vorschau-Adresse inklusive
+   `/mcp` als zusätzlichen Resource Indicator anlegen (der Live-Endpunkt
+   bleibt der Standard) und in ChatGPT unter Plugins einen separaten
+   benutzerdefinierten MCP-Server mit dieser Adresse und OAuth verbinden.
+3. Starten mit `bash scripts/preview-chatgpt.sh <projekt-id>` (ohne Angabe das
+   aktive gcloud-Projekt). Das Skript startet Tailscale ohne Root, liest die
+   Anmeldeeinstellungen vom laufenden Dienst und die Datenbankverbindung aus
+   Secret Manager in die Prozessumgebung, zeigt die Adresse an und hält den
+   Mac wach, solange es läuft.
 4. In einem neuen Chat „Arnold Vorschau“ auswählen und die gewünschte Karte
    öffnen. Änderungen an React-Komponenten und CSS laufen über Vite und den
    WebSocket zum offenen Widget. Serveränderungen starten den lokalen Prozess
@@ -287,9 +287,9 @@ die bereits gespeicherten Garmin-Daten anzeigen.
    Zusammengehörige, abgenommene Änderungen bündeln. Erst den grünen Stand
    auf `main` als Produktionsrelease deployen.
 
-Wenn sich die Tunnel-Adresse ändert, WorkOS und die Vorschau-Verbindung auf
-die neue exakte URL einstellen. Die Vorschau braucht den lokalen Prozess und
-den Tunnel, solange Karten geöffnet sind.
+Die Adresse bleibt über Neustarts gleich. Die Vorschau braucht den lokalen
+Prozess, solange Karten geöffnet sind; ist der Mac aus, ist nur die Vorschau
+nicht erreichbar.
 
 ## Arnold in ChatGPT testen (synthetisch, ohne Konto)
 
