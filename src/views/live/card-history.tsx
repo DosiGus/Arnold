@@ -290,7 +290,7 @@ export function HistoryCard({
             {open === e.id && (
               <>
                 {e.watch.length > 0 && <Note>{e.watch.join(" · ")}</Note>}
-                {e.exercises.length ? (
+                {editing === e.id ? null : e.exercises.length ? (
                   <ul
                     aria-label={`Übungen ${e.title}`}
                     className="m-0 flex list-none flex-col gap-2 p-0"

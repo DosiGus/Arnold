@@ -1,8 +1,8 @@
 # Arnold
 
-Persönlicher Trainingsbegleiter als **MCP-App** für ChatGPT und andere MCP-Hosts. Ein Node-Server stellt Tools bereit (Dashboard, Workout-Logging, Trainingsplan, Einrichtung); eine React-Oberfläche läuft im Chat als eingebettetes iframe. Nutzer melden sich über WorkOS an; ihre Trainingsdaten liegen in Postgres (Supabase), streng getrennt pro Nutzer.
+Persönlicher Trainingsbegleiter als **MCP-App** für ChatGPT und andere MCP-Hosts. Ein Node-Server stellt Tools bereit (Dashboard, Workout-Logging, Trainingsplan, Einrichtung); React-Karten im Look von OpenAIs Apps SDK UI laufen im Chat als eingebettetes iframe. Nutzer melden sich über WorkOS an; ihre Trainingsdaten liegen in Postgres (Supabase), streng getrennt pro Nutzer.
 
-TypeScript, Express, `@modelcontextprotocol/*` 2.x, React 19, Recharts, Zod 4, `pg`, Vitest, Playwright. Node **22.12+** (empfohlen 24).
+TypeScript, Express, `@modelcontextprotocol/*` 2.x, React 19, Skybridge (nur Web), Apps SDK UI, Tailwind 4, Zod 4, `pg`, Vitest, Playwright. Node **22.12+** (empfohlen 24).
 
 ## Schnellstart
 
@@ -12,12 +12,11 @@ npm run build
 npm start          # synthetische Daten auf http://localhost:8787
 ```
 
-| Adresse                  | Zweck                                                  |
-| ------------------------ | ------------------------------------------------------ |
-| `localhost:8787/preview` | Browser-Vorschau, Daten über einen echten MCP-Client   |
-| `localhost:8787/host`    | Lokaler MCP-Apps-Host (isoliertes iframe, `AppBridge`) |
-| `localhost:8787/mcp`     | Streamable-HTTP-Endpunkt für MCP-Clients               |
-| `localhost:8787/health`  | Healthcheck                                            |
+| Adresse                 | Zweck                                                  |
+| ----------------------- | ------------------------------------------------------ |
+| `localhost:8787/host`   | Lokaler MCP-Apps-Host (isoliertes iframe, `AppBridge`) |
+| `localhost:8787/mcp`    | Streamable-HTTP-Endpunkt für MCP-Clients               |
+| `localhost:8787/health` | Healthcheck                                            |
 
 `/mcp` ist kein Browser-Link; ein GET ohne MCP-Header liefert 405/406.
 
@@ -26,7 +25,7 @@ npm start          # synthetische Daten auf http://localhost:8787
 | Befehl               | Wirkung                                            |
 | -------------------- | -------------------------------------------------- |
 | `npm run dev`        | UI bauen, Server mit Watch starten                 |
-| `npm run build:ui`   | Nur die beiden UI-Bundles (App und Host) neu bauen |
+| `npm run build:ui`   | Nur die Ansichten und den Test-Host neu bauen      |
 | `npm run check`      | Build + Typecheck + Unit-Tests + Browser-Tests     |
 | `npm test`           | Vitest, inklusive Tests gegen eine lokale Postgres |
 | `npm run test:e2e`   | Playwright (Chromium, WebKit)                      |
