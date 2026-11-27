@@ -78,6 +78,8 @@ export function ProgressCard({
         aria-label="Kennzahl"
         block
         pill
+        // Five labels have to fit a 375 px phone.
+        size="sm"
         value={metric}
         onChange={(v) => setMetric(v as ProgressMetricKey)}
       >

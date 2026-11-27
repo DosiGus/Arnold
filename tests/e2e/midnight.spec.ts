@@ -46,7 +46,7 @@ for (const c of CASES) {
       ] as const)
         await expect(
           app.getByRole("button", {
-            name: new RegExp(`^${name} ${score.value ?? "unbekannt"}\\.`),
+            name: new RegExp(`^${score.value ?? "–"}\\s*${name}`),
           }),
         ).toBeVisible();
       // The 23rd is a Monday: the week on screen is the user's, not UTC's.

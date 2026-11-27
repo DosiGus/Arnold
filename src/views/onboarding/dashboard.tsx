@@ -184,11 +184,12 @@ function Peek({
   );
 }
 
-function Bar({ value }: { value: number | null }) {
+function Bar({ value, label }: { value: number | null; label: string }) {
   return (
     <div
       className="h-1.5 w-full overflow-hidden rounded-full bg-secondary-soft"
       role="progressbar"
+      aria-label={label}
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={value === null ? undefined : Math.round(value * 100)}
@@ -368,7 +369,6 @@ export function Dashboard({
                   <Popover.Trigger>
                     <button
                       type="button"
-                      aria-label={`${s.name} ${s.value ?? "unbekannt"}. So setzt sich der Wert zusammen`}
                       className="flex w-full flex-col items-center gap-1 focus-visible:outline-2"
                     >
                       <span className="relative flex size-10 shrink-0 items-center justify-center">
@@ -384,6 +384,10 @@ export function Dashboard({
                       </span>
                       <span className="w-full min-w-0 truncate text-center text-[11px] leading-tight text-secondary">
                         {s.name}
+                      </span>
+                      {/* The name starts with the visible text. */}
+                      <span className="sr-only">
+                        So setzt sich der Wert zusammen
                       </span>
                     </button>
                   </Popover.Trigger>
@@ -624,7 +628,7 @@ export function Dashboard({
                   / {g.target}
                 </span>
               </div>
-              <Bar value={g.progress} />
+              <Bar value={g.progress} label={`${g.name} Fortschritt`} />
             </div>
           ))}
           footer={

@@ -55,11 +55,18 @@ const Box = ({ children }: { children: React.ReactNode }) => (
   </section>
 );
 
-function Bar({ value }: { value: number | null }) {
+function Bar({
+  value,
+  label = "Fortschritt",
+}: {
+  value: number | null;
+  label?: string;
+}) {
   return (
     <div
       className="h-1.5 w-full overflow-hidden rounded-full bg-secondary-soft"
       role="progressbar"
+      aria-label={label}
       aria-valuemin={0}
       aria-valuemax={100}
     >
@@ -634,7 +641,7 @@ export function GoalsScreen({
                       {g.current} / {g.target}
                     </span>
                   </div>
-                  <Bar value={g.progress} />
+                  <Bar value={g.progress} label={`${g.name} Fortschritt`} />
                 </button>
               </li>
             ))}
@@ -913,6 +920,8 @@ export function StatsScreen({
           aria-label="Auswertung"
           block
           pill
+          // Up to four short labels on a 375 px phone.
+          size="sm"
           value={s!.key}
           onChange={setKey}
         >
