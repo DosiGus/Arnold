@@ -381,3 +381,13 @@ export function cardViewOf(
 /** True while ChatGPT is building the plan the card asked for. */
 export const isBuilding = (state: OnboardingState) =>
   state.session.status === "WAITING_FOR_PLAN_PROPOSAL";
+
+/**
+ * True while the plan comes from the chat: Arnold's plan is being built, or
+ * the user's own plan has not been sent yet.
+ */
+export const awaitsChat = (state: OnboardingState) =>
+  isBuilding(state) ||
+  (state.session.profile.path === "own_plan" &&
+    !state.plan &&
+    state.session.status !== "COMPLETED");

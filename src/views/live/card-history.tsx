@@ -1,7 +1,7 @@
 /**
  * The chat cards "Verlauf einer Übung" (`get_arnold_exercise_progress`) and
- * "Alle Einheiten" (`get_arnold_workouts`). Reading only; corrections go
- * through the chat.
+ * "Alle Einheiten" (`get_arnold_workouts`). A stored set can be corrected or
+ * discarded in place (set-editor.tsx).
  */
 import { Badge } from "@openai/apps-sdk-ui/components/Badge";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
@@ -27,6 +27,7 @@ import {
 } from "../model/history.js";
 import { Chart } from "../onboarding/screens.js";
 import { Box, Card, Loading, LoadError, Note, useLoad } from "./card-kit.js";
+import { SetEditor } from "./set-editor.js";
 
 export function ProgressCard({
   source,
@@ -77,6 +78,11 @@ export function ProgressCard({
         aria-label="Kennzahl"
         block
         pill
+        // Five labels on a 375 px phone: tight, and swipeable where the
+        // device's font is wider (Android).
+        size="sm"
+        gutterSize="xs"
+        className="overflow-x-auto"
         value={metric}
         onChange={(v) => setMetric(v as ProgressMetricKey)}
       >
@@ -155,6 +161,24 @@ export function HistoryCard({
   const [offset, setOffset] = useState(PAGE);
   const [moreFailed, setMoreFailed] = useState(false);
   const [fromNewest, setFromNewest] = useState(workoutId === null);
+  /** The training whose sets are being corrected. */
+  const [editing, setEditing] = useState<string | null>(null);
+  /** Trainings read again after a correction, newer than their page. */
+  const [updated, setUpdated] = useState<Record<string, ViewWorkoutDetail>>({});
+  const reread = async (id: string, date: string) => {
+    try {
+      const day = await workouts.call({
+        from: date,
+        to: date,
+        workout_statuses: ["in_progress", "completed"],
+        limit: 200,
+      });
+      const found = day.workouts.find((w) => w.workout_id === id);
+      if (found) setUpdated((all) => ({ ...all, [id]: found }));
+    } catch {
+      /* The editor shows the stored sets; the line stays as it was. */
+    }
+  };
   // Opened on one workout (from the chat): the list starts at its date and
   // includes it even when it is open or cancelled.
   const load = useLoad(async () => {
@@ -199,7 +223,9 @@ export function HistoryCard({
     );
   if (!load.data) return <Loading title={title} onBack={onBack} />;
   const data = load.data;
-  const rows = appendWorkouts(data.rows, more);
+  const rows = appendWorkouts(data.rows, more).map(
+    (w) => updated[w.workout_id] ?? w,
+  );
   const entries = rows.map((w) => historyEntry(w, source.home.records));
   const selected = entries.find((e) => e.id === open);
   return (
@@ -267,7 +293,7 @@ export function HistoryCard({
             {open === e.id && (
               <>
                 {e.watch.length > 0 && <Note>{e.watch.join(" · ")}</Note>}
-                {e.exercises.length ? (
+                {editing === e.id ? null : e.exercises.length ? (
                   <ul
                     aria-label={`Übungen ${e.title}`}
                     className="m-0 flex list-none flex-col gap-2 p-0"
@@ -285,19 +311,32 @@ export function HistoryCard({
                 ) : (
                   <Note>Keine Arbeitssätze gespeichert.</Note>
                 )}
-                <Button
-                  color="secondary"
-                  variant="soft"
-                  size="sm"
-                  className="self-start"
-                  onClick={() =>
-                    onAsk(
-                      `Ich möchte im Training „${e.title}“ vom ${e.date} einen Satz korrigieren.`,
-                    )
-                  }
-                >
-                  Satz korrigieren
-                </Button>
+                {editing === e.id ? (
+                  <SetEditor
+                    workoutId={e.id}
+                    title={e.title}
+                    onSaved={() => {
+                      const w = rows.find((r) => r.workout_id === e.id);
+                      if (w) void reread(e.id, w.date);
+                    }}
+                    onAsk={() =>
+                      onAsk(
+                        `Ich möchte im Training „${e.title}“ vom ${e.date} einen Satz korrigieren.`,
+                      )
+                    }
+                    onClose={() => setEditing(null)}
+                  />
+                ) : (
+                  <Button
+                    color="secondary"
+                    variant="soft"
+                    size="sm"
+                    className="self-start"
+                    onClick={() => setEditing(e.id)}
+                  >
+                    Satz korrigieren
+                  </Button>
+                )}
               </>
             )}
           </Box>

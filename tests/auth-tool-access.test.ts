@@ -82,7 +82,7 @@ describe("every published tool is classified", () => {
     const runtime = createFixturePlanning();
     const server = createArnoldMcpServer(
       runtime.source,
-      "dist/ui/dashboard.html",
+      "dist/views/dashboard/dashboard.html",
     );
     const tools = await publishedTools(server);
 
@@ -96,7 +96,7 @@ describe("every published tool is classified", () => {
     const runtime = createFixtureOnboarding();
     const server = createArnoldMcpServer(
       runtime.source,
-      "dist/ui/dashboard.html",
+      "dist/views/dashboard/dashboard.html",
       undefined,
       runtime.service,
       undefined,
@@ -116,7 +116,10 @@ describe("every published tool is classified", () => {
     // docs/GUIDE.md.
     const runtime = createFixturePlanning();
     const readOnly = await publishedTools(
-      createArnoldMcpServer(runtime.source, "dist/ui/dashboard.html"),
+      createArnoldMcpServer(
+        runtime.source,
+        "dist/views/dashboard/dashboard.html",
+      ),
     );
 
     expect(readOnly).not.toContain("log_workout_sets");
@@ -132,7 +135,7 @@ describe("every published tool is classified", () => {
       await publishedTools(
         createArnoldMcpServer(
           runtime.source,
-          "dist/ui/dashboard.html",
+          "dist/views/dashboard/dashboard.html",
           undefined,
           runtime.service,
           undefined,

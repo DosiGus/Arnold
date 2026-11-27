@@ -500,7 +500,7 @@ describe("show_arnold_onboarding", () => {
     expect(description).toMatch(/benchmarks.*run_reference/s);
     expect(description).toMatch(/übersprungen.*nie sagen/s);
     expect(description).toMatch(
-      /plan \(Planvorschlag.*zwei Aktionen.*Selbst bearbeiten/s,
+      /plan \(Planvorschlag.*Plan bestätigen.*per Sprache im Chat/s,
     );
     expect(description).toMatch(/gespeicherten Wert/);
   });

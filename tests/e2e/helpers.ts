@@ -1,12 +1,6 @@
-import { expect, type Page } from "@playwright/test";
-export async function openCard(
-  page: Page,
-  card: string,
-  base = "http://127.0.0.1:8792",
-) {
-  await page.goto(`${base}/preview?card=${card}`);
-  await expect(page.locator(`main[data-card="${card}"]`)).toBeVisible();
-}
+import type { Page } from "@playwright/test";
+
+/** One tool call from the test host's page, past the card. */
 export async function callTool(
   page: Page,
   name: string,

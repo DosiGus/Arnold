@@ -18,13 +18,15 @@ import {
   placeholderFor,
   unitsFor,
   updateGoalInput,
+  voidWeightInput,
 } from "../model/goals.js";
 import { GoalsScreen } from "../onboarding/screens.js";
 
 /**
  * The goals screen on Arnold's goals: the list comes from the dashboard
  * answer, the forms write with create/update/archive_training_goal and
- * log_body_weight, and the dashboard is read again after every write so list and overview agree.
+ * log_body_weight and void_body_weight, and the dashboard is read again after
+ * every write so list and overview agree.
  */
 export function LiveGoalsScreen({
   source,
@@ -39,6 +41,7 @@ export function LiveGoalsScreen({
   const update = useArnoldTool("update_training_goal", WriteResponseSchema);
   const archive = useArnoldTool("archive_training_goal", WriteResponseSchema);
   const weigh = useArnoldTool("log_body_weight", WriteResponseSchema);
+  const discard = useArnoldTool("void_body_weight", WriteResponseSchema);
 
   const write = async (
     call: (args: Record<string, unknown>) => Promise<unknown>,
@@ -71,6 +74,12 @@ export function LiveGoalsScreen({
         live={{
           goals,
           latestWeight: latestWeightText(source),
+          onVoidWeight: () => {
+            const input = voidWeightInput(source, newRequestId());
+            return input
+              ? write(discard.call, { ok: true, input })
+              : Promise.resolve(null);
+          },
           onLogWeight: (text) =>
             write(
               weigh.call,

@@ -29,32 +29,37 @@ src/
     account/      Konto-Tools, Löschbestätigung, Startkatalog, Aufbewahrung
     auth/         Bearer-Prüfung (JWKS), Scopes, Zugriffsklassen pro Tool, Discovery-Dokumente
     identity/     Schnittstelle Login → Arnold-Nutzer (In-Memory-Variante für Tests)
-  views/        Kartenoberfläche (Skybridge als Web-Framework), Standard: je Ansicht eine HTML-Datei
-  ui/           Frühere React-App (ein Bundle), nur noch mit ARNOLD_UI=legacy
-  host/         Lokaler Test-Host mit offiziellem `AppBridge`
+  views/        Kartenoberfläche (Skybridge als Web-Framework), je Ansicht eine HTML-Datei
+    onboarding/   Einrichtung, Überblick und seine Seiten
+    dashboard/    Einstieg aller anderen Karten (wählt die Karte aus der ersten Antwort)
+    live/         Laden und Schreiben je Ansicht über Tool-Aufrufe
+    model/        Antwort → Anzeige, rein und getestet (tests/views-*)
+    host/         Lokaler Test-Host mit offiziellem `AppBridge` (Entwicklung und Browser-Tests)
 db/migrations/  SQL-Migrationen (Tabellen, Zeilenrechte, Funktionen)
 tests/          Vitest (Unit/Integration, tests/db-* gegen echtes Postgres), tests/e2e = Playwright
 ```
 
-Vite bündelt `dashboard.html` (App) und `host.html` (Test-Host) zu je einer Datei mit eingebettetem JS/CSS. Der Server (`dist/server`, `dist/shared`, `dist/analytics`) läuft ohne TypeScript-Loader.
+Vite baut je Seite (`onboarding`, `dashboard`, `host`, `vite.views.config.ts`) eine Datei mit eingebettetem JS/CSS nach `dist/views`. Skybridge dient nur als Web-Framework; MCP-Host bleibt Arnolds eigener Server. Der Server (`dist/server`, `dist/shared`, `dist/analytics`) läuft ohne TypeScript-Loader.
 
 ## MCP-Apps-Lebenszyklus
 
 1. Der Host verbindet sich mit `/mcp` und entdeckt die Tools.
 2. Ein Tool wie `show_arnold_dashboard` verweist über `_meta.ui.resourceUri` auf die UI-Ressource (MIME `text/html;profile=mcp-app`).
 3. Der Host liest die Ressource und startet sie in einem isolierten iframe (CSP `connect-src 'none'`: die UI hat keinen eigenen Netzwerkzugriff).
-4. Die UI registriert ihre Handler (`ontoolresult`, Theme, Teardown) **vor** `App.connect()` und lädt aktuelle Daten per `callServerTool`. ChatGPT kann beim Wiederöffnen einen alten Snapshot liefern; deshalb liest die UI vor dem ersten Anzeigen neu nach.
-5. Schreibende UI-Aktionen laufen über `callServerTool`; das Ergebnis ersetzt den angezeigten Stand.
+4. Die Ansicht zeigt das Ergebnis, mit dem sie geöffnet wurde, und der Überblick liest danach mit `callServerTool` neu nach: ChatGPT kann beim Wiederöffnen einen alten Stand liefern.
+5. Schreibende Aktionen laufen über `callServerTool` (`src/views/arnold-client.ts`, einziger Weg zum Server); danach wird neu gelesen.
 
 ## Karten im Chat
 
-Welche Oberfläche die Tools ausliefern, bestimmt `ARNOLD_UI`: ohne Angabe `skybridge` (`src/views`, Abbildung in `src/views/model`, Laden in `src/views/live`; Browser-Tests `tests/e2e/skybridge.spec.ts`), `legacy` nur ausdrücklich (`src/ui`). Ein anderer Wert stoppt den Start. Die folgenden Abschnitte beschreiben die frühere Oberfläche und `/preview`.
+Arnold zeigt im Chat Karten, keine App: kein Logo, kein Menü, kein Hell-Dunkel-Schalter (das liefert der Host). Es gibt zwei Bundles: `show_arnold_onboarding` öffnet die Einrichtung, alle anderen Karten-Werkzeuge das Dashboard-Bundle. Dieses liest aus der Form der ersten Antwort, welche Karte gemeint ist (`src/views/model/opening.ts`: Lauf, Mobility, Uhr koppeln, Uhrenliste, Konto löschen, sonst Überblick). Bei `show_arnold_dashboard` wählt das Modell mit `card` (`src/shared/dashboard-cards.ts`) eine Seite (`home`/`week`, `today`, `plan`, `stats`, `goals`, `records`) oder eine Karte (`progress`, `history`, `plan_change`, `plan_adjustment`).
 
-Arnold zeigt im Chat Karten, keine App: kein Logo, kein Menü, kein Hell-Dunkel-Schalter (das liefert der Host). Ohne `card` öffnet `show_arnold_dashboard` die monochrome Startansicht `home` mit fünf Widgets: Training, Woche, Scores, Ziele und Rekorde. Aktionen öffnen eine einzelne Ansicht mit Zurück-Knopf; beim Bearbeiten bleiben die anderen Widgets ausgeblendet. Die Woche führt zu allen Einheiten, der Rekordwechsel zeigt die drei neuesten Rekorde und öffnet das zugehörige Training, Ziele führen direkt zu ihrem Detail oder zur Erstellung. `week` bleibt ein älterer Name der Startansicht; die Trainingsentwicklung ist über `stats` erreichbar. Das Modell kann jede Karte direkt wählen (`home`, `today`, `week`, `stats`, `goals`, `records`, `progress`, `history`, `plan`; Liste in `src/shared/dashboard-cards.ts`), die UI liest es über `ontoolinput`. Gestaltungsregeln: `docs/DESIGN.md`.
+- **Überblick:** Woche, Scores, Heute, Ziele, Rekorde; der Rückblick nach einem neuen Training (`mark_recap_seen`) und der Hinweis auf eine Anpassung auf Zeit.
+- **Korrigieren:** In `history` ändert die Karte einzelne Sätze (`update_set`) oder verwirft sie (`void_set`), unter „Ziele“ verwirft sie den letzten Gewichtseintrag (`void_body_weight`); Verwerfen braucht den zweiten Tipp.
+- **Modellkontext:** Jede Karte beschreibt dem Modell kurz, was sie zeigt (`DataLLM`). Sichtbare Chat-Nachrichten entstehen nur durch einen Tipp.
 
-**Chat-Brücke** (`src/ui/model-context.ts`): Jede Karte meldet dem Modell still über `ui/update-model-context`, was sie zeigt, bei laufendem Training mit allen gespeicherten Sätzen samt `set_id`. So kann der Nutzer im Chat nachfragen oder korrigieren. Nur „Training beenden“ schickt eine sichtbare Nachricht, einmal und nur nach einem Tipp in der Karte.
+Es gibt keine Abhängigkeit von `window.openai`. `/host` (auch unter `/` und `/preview`) öffnet die Karten lokal in einem isolierten iframe über `AppBridge` (`?onboarding=1`, `?card=…`, `?tool=…`, `?theme=dark`). Das ist ein Entwicklungswerkzeug, kein Ersatz für einen echten Host. Gestaltungsregeln: `docs/DESIGN.md`.
 
-Es gibt keine Abhängigkeit von `window.openai`. `/preview` nutzt denselben Server über einen normalen MCP-Client ohne iframe, `/host` über `AppBridge`. Beides sind Entwicklungswerkzeuge, kein Ersatz für einen echten Host.
+Nur im früheren Frontend (Git-Tag `archive/old-frontend`), in den Karten heute über den Chat: ganzes Training bearbeiten oder zurücknehmen, offenes Training verwerfen, im Training tauschen, hinzufügen oder „wie letztes Mal“ wählen, Plan in der Karte bearbeiten, ungewöhnliche Werte oder ein doppeltes Training in der Karte trotzdem speichern, Uhr-Stand und die Angebote „Laufen“ und „Mobility“ auf dem Überblick.
 
 ## Datenmodell
 
@@ -140,7 +145,7 @@ Arnold rechnet die Werte fürs nächste Training selbst, ChatGPT erklärt sie nu
 - Gewichtsstufen (`weightStep`): Langhantel und Kabelzug 2,5 kg, Kurzhantel 2 kg je Hantel, Kettlebell 4 kg, Maschine 5 kg; sonst nach Lastdefinition.
 - Ein leichteres Training beendet die Zählung „ohne Fortschritt“; nach einem Deload folgt also nie sofort der nächste. Kann ein Gewicht nicht weiter sinken, baut Arnold Wiederholungen auf.
 - Keine Empfehlung (`source: last_time`, Werte wie beim letzten Mal) ohne Wiederholungsbereich, mit unbekanntem Gewicht, für getauschte oder zusätzliche Übungen. Ohne Verlauf gilt das Planziel bzw. das Startgewicht.
-- Der Vorschlag (`proposals` aus `get_workout`) trägt die Begründung als `progression`; die Karte zeigt „Zuletzt …“ unter dem Übungsnamen und markiert die Änderung mit einem Pfeil, die Chat-Brücke nennt die Regel als Satz. „So gemacht“ und `log_workout` ohne Änderungen speichern genau diesen Vorschlag. Der Umschalter „Wie letztes Mal“ in der Karte schickt die Sätze vom letzten Mal ausdrücklich mit; im Chat speichert `same_as_last_time: true` sie.
+- Der Vorschlag (`proposals` aus `get_workout`) trägt die Begründung als `progression`; die Trainingsansicht belegt jeden Satz mit diesen Werten vor und speichert, was abgehakt ist. `log_workout` ohne Änderungen speichert genau diesen Vorschlag; die Sätze vom letzten Mal speichert im Chat `same_as_last_time: true`.
 - Bewusst nicht berücksichtigt: Pausen zwischen Trainings (die Karte und das Speichern hätten sonst je nach Uhrzeit verschiedene Werte), Wiederholungen in Reserve (die Karte fragt sie nicht ab). Regelversion: `PROGRESSION_VERSION`.
 
 ### Trainingspläne (`src/server/plan`, `src/shared/plan-contract.ts`)
@@ -162,13 +167,13 @@ Der Ablauf aus Nutzersicht:
 1. **Begrüßung** mit zwei Buttons: „Plan mit Arnold erstellen“ oder „Eigenen Plan übernehmen“ (`profile.path`).
 2. **Plan mit Arnold:** Person (freiwillig, eine Karte) und vier Fragen (Ziele, Erfahrung, Tage und Minuten, Ort), danach freiwillige Wünsche (feste Tage, Aufteilung, Schwerpunkt, Geräte, Lieblings- und gemiedene Übungen, Freitext `notes`). Mehrere Ziele: das erste ist `primary_goal`, die übrigen `secondary_goals`; das Briefing ordnet sie dem Hauptziel unter. „Plan erstellen“ schickt eine Nachricht in den Chat, damit ChatGPT den Plan aus dem Briefing baut.
 3. **Eigener Plan:** keine Fragen. Der Nutzer schickt seinen Plan als Text oder Foto; ChatGPT überträgt ihn mit `origin: existing_routine`.
-4. Prüfen, im Editor oder per Chat ändern, **ausdrücklich genau eine Planrevision bestätigen**. Wurde ein Körpergewicht angegeben, schreibt der Abschluss es als ersten Körpergewicht-Eintrag (`log_body_weight` mit fester `request_id`, also höchstens einmal); scheitert nur das, bleibt die Einrichtung trotzdem abgeschlossen. Die Bestätigung schließt die Einrichtung direkt ab: `finishSetup` aktiviert genau diese Revision und setzt den Status `COMPLETED`. Scheitert nur der Abschluss, bleibt die Bestätigung gespeichert (`READY_TO_FINISH`) und `finish_arnold_setup` holt ihn nach; wiederholbar ohne doppelte Aktivierung.
+4. Prüfen, per Chat ändern, **ausdrücklich genau eine Planrevision bestätigen**. Wurde ein Körpergewicht angegeben, schreibt der Abschluss es als ersten Körpergewicht-Eintrag (`log_body_weight` mit fester `request_id`, also höchstens einmal); scheitert nur das, bleibt die Einrichtung trotzdem abgeschlossen. Die Bestätigung schließt die Einrichtung direkt ab: `finishSetup` aktiviert genau diese Revision und setzt den Status `COMPLETED`. Scheitert nur der Abschluss, bleibt die Bestätigung gespeichert (`READY_TO_FINISH`) und `finish_arnold_setup` holt ihn nach; wiederholbar ohne doppelte Aktivierung.
 
 Weitere Regeln:
 
 - Chat-Turns und Oberfläche arbeiten auf demselben Serverzustand. Der Text jedes Einrichtungs-Tools sagt ChatGPT, was als Nächstes zu tun ist.
 - Ein neues Konto bekommt den Startkatalog (`src/shared/exercise-starter-catalog.ts`) und sonst nichts: keine erfundenen Trainings oder Pläne.
-- **Startgewichte:** ChatGPT schätzt nie Gewichte. Fehlende `target_load_kg` von Katalogübungen setzt der Server beim Speichern des Vorschlags (`onboarding/start-loads.ts`) aus `src/analytics/start-load.ts`: feste Tabelle pro Übung (Anteil vom Körpergewicht für 10 Wdh.), skaliert nach Gewicht, Geschlecht, Erfahrung, Alter und Wiederholungen, bewusst vorsichtig und auf Gerätestufen gerundet. Fortgeschrittene im Studio werden nach bekannten Gewichten gefragt (`training.known_loads`: Bankdrücken, Kniebeuge, Latzug für 8–10 Wdh.); daraus rechnet Arnold die Übungen derselben Gruppe hoch. Der Planvorschlag zeigt Schätzungen mit „≈“, der Schalter „Leichter · Passt · Schwerer“ setzt alle Schätzungen um (`load_estimates` im Einrichtungszustand), von Hand gesetzte Gewichte bleiben. Körpergewichtsübungen und eigene Übungen bekommen keine Schätzung. Nach dem ersten Training gelten ohnehin die echten Werte vom letzten Mal.
+- **Startgewichte:** ChatGPT schätzt nie Gewichte. Fehlende `target_load_kg` von Katalogübungen setzt der Server beim Speichern des Vorschlags (`onboarding/start-loads.ts`) aus `src/analytics/start-load.ts`: feste Tabelle pro Übung (Anteil vom Körpergewicht für 10 Wdh.), skaliert nach Gewicht, Geschlecht, Erfahrung, Alter und Wiederholungen, bewusst vorsichtig und auf Gerätestufen gerundet. Fortgeschrittene im Studio werden nach bekannten Gewichten gefragt (`training.known_loads`: Bankdrücken, Kniebeuge, Latzug für 8–10 Wdh.); daraus rechnet Arnold die Übungen derselben Gruppe hoch. Der Planvorschlag zeigt Schätzungen mit „≈“ (`load_estimates` im Einrichtungszustand). Körpergewichtsübungen und eigene Übungen bekommen keine Schätzung. Nach dem ersten Training gelten ohnehin die echten Werte vom letzten Mal.
 - **Hinter einem Login gehört die Einrichtung dem Konto** (`OnboardingAccessControl.perOwner`): höchstens eine offene Einrichtung pro Nutzer, sie wird in jedem neuen Chat fortgesetzt (jede geöffnete Karte bekommt ein eigenes Sitzungsgeheimnis, früher geöffnete Karten bleiben nutzbar, höchstens neun pro Einrichtung), und nach dem Abschluss startet sie nie wieder (`ONBOARDING_ALREADY_COMPLETED`). Solange ein Konto nicht eingerichtet ist, antworten Dashboard- und Workout-Tools mit `SETUP_REQUIRED` (`onboarding/setup-gate.ts`); Plan- und Einrichtungs-Tools bleiben offen.
 - **Unterbrochene Einrichtungsschritte lassen sich wiederholen:** Eine bekannte `request_id` wird vor der Revisionsprüfung erkannt und liefert den gespeicherten Stand. Sitzung und Audit werden in Postgres in einer Transaktion geschrieben. Bricht ein mehrstufiger Schritt (Plan übernehmen, Plan bestätigen) zwischen seinen Teilen ab, führt derselbe Aufruf mit derselben `request_id` und der ursprünglichen Revision ihn zu Ende.
 - Ohne Login (Fixture) bleibt die Einrichtung anonym und wird nur durch das 256-Bit-Sitzungsgeheimnis geschützt.

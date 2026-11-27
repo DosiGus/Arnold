@@ -8,7 +8,12 @@ import { SegmentedControl } from "@openai/apps-sdk-ui/components/SegmentedContro
 import { Select } from "@openai/apps-sdk-ui/components/Select";
 import { useState } from "react";
 import type { HealthData } from "../demo/dashboard.js";
-import type { OnboardingView, PlanDay, PlanKind } from "../demo/model.js";
+import {
+  PLACE_LABEL,
+  type OnboardingView,
+  type PlanDay,
+  type PlanKind,
+} from "../demo/model.js";
 import { PlanOverview } from "./steps.js";
 import type { GoalChoice, GoalFormUnit, LiveGoal } from "../model/goals.js";
 import { clock } from "../model/dashboard.js";
@@ -50,11 +55,18 @@ const Box = ({ children }: { children: React.ReactNode }) => (
   </section>
 );
 
-function Bar({ value }: { value: number | null }) {
+function Bar({
+  value,
+  label = "Fortschritt",
+}: {
+  value: number | null;
+  label?: string;
+}) {
   return (
     <div
       className="h-1.5 w-full overflow-hidden rounded-full bg-secondary-soft"
       role="progressbar"
+      aria-label={label}
       aria-valuemin={0}
       aria-valuemax={100}
     >
@@ -504,6 +516,8 @@ export type GoalsLive = {
   /** The newest body weight, ready to read; null while none is stored. */
   latestWeight: string | null;
   onLogWeight: (text: string) => Promise<string | null>;
+  /** Discards the newest entry (a typo); it stays stored as voided. */
+  onVoidWeight: () => Promise<string | null>;
 };
 
 /** Body weight by hand: without it a weight goal has no current value. */
@@ -511,6 +525,8 @@ function WeightBox({ live }: { live: GoalsLive }) {
   const [weight, setWeight] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Discarding asks once more before it writes. */
+  const [confirming, setConfirming] = useState(false);
   return (
     <Box>
       <div className="flex items-baseline justify-between gap-3">
@@ -544,6 +560,25 @@ function WeightBox({ live }: { live: GoalsLive }) {
           Eintragen
         </Button>
       </div>
+      {live.latestWeight && (
+        <Button
+          color={confirming ? "danger" : "secondary"}
+          variant={confirming ? "soft" : "ghost"}
+          size="sm"
+          className="self-start"
+          disabled={busy}
+          onClick={async () => {
+            if (!confirming) return setConfirming(true);
+            setBusy(true);
+            const failed = await live.onVoidWeight();
+            setBusy(false);
+            setConfirming(false);
+            setError(failed);
+          }}
+        >
+          {confirming ? "Wirklich verwerfen?" : "Letzten Eintrag verwerfen"}
+        </Button>
+      )}
       {error && <Alert color="danger" variant="soft" title={error} />}
     </Box>
   );
@@ -606,7 +641,7 @@ export function GoalsScreen({
                       {g.current} / {g.target}
                     </span>
                   </div>
-                  <Bar value={g.progress} />
+                  <Bar value={g.progress} label={`${g.name} Fortschritt`} />
                 </button>
               </li>
             ))}
@@ -885,6 +920,11 @@ export function StatsScreen({
           aria-label="Auswertung"
           block
           pill
+          // Up to five labels on a 375 px phone: tight, and swipeable where
+          // the device's font is wider (Android).
+          size="sm"
+          gutterSize="xs"
+          className="overflow-x-auto"
           value={s!.key}
           onChange={setKey}
         >
@@ -1028,7 +1068,7 @@ export function SettingsScreen({
           {[
             p.days && `${p.days} Trainingstage`,
             p.minutes && `${p.minutes} Min.`,
-            p.places?.length && `${p.places.length} Orte`,
+            p.places?.length && p.places.map((x) => PLACE_LABEL[x]).join(", "),
           ]
             .filter(Boolean)
             .join(" · ") || "Tage, Dauer und Ort fehlen noch."}
@@ -1110,7 +1150,7 @@ export function HealthScreen({
   const total = h.sleep.phases.reduce((n, p) => n + p.minutes, 0);
   const shades = [
     "bg-primary-solid",
-    "bg-[var(--color-border-stronger)]",
+    "bg-primary-solid opacity-60",
     "bg-[var(--color-border-strong)]",
     "bg-secondary-soft",
   ];

@@ -107,6 +107,9 @@ describe.each(CLOCKS)("clock at %s", (instant) => {
     );
     const home = (view.structuredContent as { home: Record<string, unknown> })
       .home;
-    expect(home.latest_body_weight).toEqual({ date: today, weight_kg: 81.3 });
+    expect(home.latest_body_weight).toMatchObject({
+      date: today,
+      weight_kg: 81.3,
+    });
   });
 });

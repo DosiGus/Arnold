@@ -9,6 +9,7 @@ import { createFixtureOnboarding } from "../src/server/onboarding/fixture";
 import type { OnboardingState } from "../src/shared/onboarding-contract";
 import { planFixtureDataset } from "../src/server/plan/fixture";
 import {
+  awaitsChat,
   cardPlanFrom,
   cardProfileOf,
   cardViewOf,
@@ -186,5 +187,23 @@ describe("card taps → service → card", () => {
     const { onboarding } = createFixtureOnboarding();
     const card = await onboarding.planCard({});
     expect(card).toMatchObject({ plan: null, plan_insights: null });
+  });
+});
+
+describe("awaitsChat", () => {
+  const state = (status: string, path: string | null, plan: unknown = null) =>
+    ({ session: { status, profile: { path } }, plan }) as never;
+
+  it("reads on while Arnold builds or the own plan is still to come", () => {
+    expect(awaitsChat(state("WAITING_FOR_PLAN_PROPOSAL", "arnold_plan"))).toBe(
+      true,
+    );
+    expect(awaitsChat(state("COLLECTING_PROFILE", "own_plan"))).toBe(true);
+  });
+
+  it("stops once the plan is there or the setup is done", () => {
+    expect(awaitsChat(state("REVIEWING_PLAN", "own_plan", {}))).toBe(false);
+    expect(awaitsChat(state("COMPLETED", "own_plan"))).toBe(false);
+    expect(awaitsChat(state("COLLECTING_PROFILE", "arnold_plan"))).toBe(false);
   });
 });

@@ -84,7 +84,7 @@ describe("goals and body weight in Postgres", () => {
       target_value: 100,
       progress: 0,
     });
-    expect(view.home.latest_body_weight).toEqual({
+    expect(view.home.latest_body_weight).toMatchObject({
       date: "2026-10-29",
       weight_kg: 84.5,
     });

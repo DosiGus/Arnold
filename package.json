@@ -10,7 +10,7 @@
     "dev": "npm run build:ui && tsx watch src/server/main.ts",
     "dev:preview": "bash scripts/dev-preview.sh",
     "dev:chatgpt": "tsx watch --clear-screen=false scripts/dev-chatgpt.ts",
-    "build:ui": "vite build && vite build --config vite.host.config.ts && npm run build:views",
+    "build:ui": "VIEW=onboarding vite build -c vite.views.config.ts && VIEW=dashboard vite build -c vite.views.config.ts && VIEW=host vite build -c vite.views.config.ts",
     "build": "npm run typecheck && npm run build:ui && tsc -p tsconfig.server.json",
     "start": "node dist/server/main.js",
     "deploy:cloud-run": "bash scripts/deploy-cloud-run.sh",
@@ -27,8 +27,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",
-    "garmin:check": "bash apps/garmin/scripts/build.sh && bash apps/garmin/scripts/test.sh",
-    "build:views": "VIEW=onboarding vite build -c vite.views.config.ts && VIEW=dashboard vite build -c vite.views.config.ts"
+    "garmin:check": "bash apps/garmin/scripts/build.sh && bash apps/garmin/scripts/test.sh"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "2.4.0",
@@ -39,11 +38,9 @@
     "@modelcontextprotocol/server": "2.4.0",
     "@openai/apps-sdk-ui": "^0.2.2",
     "express": "^5.1.0",
-    "lucide-react": "^1.76.0",
     "pg": "^8.23.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "recharts": "^3.11.0",
     "skybridge": "^2.1.2",
     "zod": "^4.2.0"
   },
