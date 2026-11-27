@@ -267,7 +267,7 @@ die bereits gespeicherten Garmin-Daten anzeigen.
 
 1. Einen Arbeitsbranch verwenden. Die feste Adresse stellt Tailscale Funnel
    (kostenlos nur für nicht-kommerzielle Nutzung). Einmalig: `brew install
-   tailscale`, anmelden, Funnel im Tailnet freigeben, die interne Kennung des
+tailscale`, anmelden, Funnel im Tailnet freigeben, die interne Kennung des
    freigegebenen Kontos nach `~/.config/arnold/preview-user-id` schreiben.
 2. Einmalig in WorkOS Connect → Configuration die Vorschau-Adresse inklusive
    `/mcp` als zusätzlichen Resource Indicator anlegen (der Live-Endpunkt
