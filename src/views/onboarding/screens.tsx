@@ -260,15 +260,21 @@ export function TrainingScreen({
                 <span className="w-12 shrink-0 text-sm text-secondary">
                   Satz {i + 1}
                 </span>
-                <Input
-                  aria-label={`${e.name} Satz ${i + 1} Gewicht`}
-                  inputMode="decimal"
-                  value={r.kg}
-                  disabled={r.stored}
-                  endAdornment="kg"
-                  placeholder="offen"
-                  onChange={(ev) => patch(e.id, i, { kg: ev.target.value })}
-                />
+                {e.bodyweight ? (
+                  <span className="w-full text-sm text-secondary">
+                    Körpergewicht
+                  </span>
+                ) : (
+                  <Input
+                    aria-label={`${e.name} Satz ${i + 1} Gewicht`}
+                    inputMode="decimal"
+                    value={r.kg}
+                    disabled={r.stored}
+                    endAdornment="kg"
+                    placeholder="offen"
+                    onChange={(ev) => patch(e.id, i, { kg: ev.target.value })}
+                  />
+                )}
                 <Input
                   aria-label={`${e.name} Satz ${i + 1} Wiederholungen`}
                   inputMode="numeric"

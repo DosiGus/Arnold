@@ -468,3 +468,75 @@ test("running goals stay selected and open while profile saves are queued", asyn
     releaseGoalsSave();
   }
 });
+
+// Last in the file: it moves another session to the front of the plan.
+test("a bodyweight exercise has no weight field and is stored", async ({
+  page,
+}) => {
+  await open(page, DEMO);
+  type Ctx = {
+    active_plan_version_id: string;
+    plan: {
+      row_revision: number;
+      sessions: { session_id: string; items?: unknown }[];
+    };
+  };
+  const context = (id?: string) =>
+    callTool(
+      page,
+      "get_plan_editor_context",
+      id ? { plan_version_id: id } : {},
+    ) as Promise<Ctx>;
+  // The session with the pull-ups becomes the one the card proposes.
+  const { proposals } = (await callTool(page, "get_workout", {})) as {
+    proposals: {
+      session_id: string;
+      exercises: { conventions: { load_basis: string } }[];
+    }[];
+  };
+  const pull = proposals.find((p) =>
+    p.exercises.some((e) => e.conventions.load_basis === "bodyweight_only"),
+  )!.session_id;
+  const created = (await callTool(page, "create_plan_version", {
+    request_id: "sky-bw-draft",
+    source_plan_version_id: (await context()).active_plan_version_id,
+  })) as { result: { plan: { version: { plan_version_id: string } } } };
+  const draftId = created.result.plan.version.plan_version_id;
+  const draft = (await context(draftId)).plan;
+  const ids = draft.sessions.map((s) => s.session_id);
+  await callTool(page, "update_plan_draft", {
+    request_id: "sky-bw-order",
+    plan_version_id: draftId,
+    expected_row_revision: draft.row_revision,
+    edits: [
+      {
+        type: "reorder_sessions",
+        session_ids: [pull, ...ids.filter((id) => id !== pull)],
+      },
+    ],
+  });
+  const { app, errors } = await open(page, DEMO, "?card=plan_change");
+  const apply = app.getByRole("button", { name: "Übernehmen", exact: true });
+  await apply.click();
+  await expect(apply).toHaveCount(0);
+
+  await open(page, DEMO, "?card=today");
+  const reps = app.getByRole("textbox", {
+    name: /Klimmzüge Satz 1 Wiederholungen$/,
+  });
+  await expect(reps).toBeVisible();
+  await expect(
+    app.getByRole("textbox", { name: /Klimmzüge Satz \d+ Gewicht$/ }),
+  ).toHaveCount(0);
+  await reps.fill("8");
+  await app.locator("li").filter({ has: reps }).getByRole("checkbox").click();
+  await shot(page, "bodyweight-set");
+  await app.getByRole("button", { name: "Training beenden" }).click();
+  // After an earlier test this session is already saved today.
+  const stored = app.getByText("Training gespeichert.");
+  const again = app.getByRole("button", { name: "Zusätzlich speichern" });
+  await expect(stored.or(again)).toBeVisible();
+  if (await again.isVisible()) await again.click();
+  await expect(stored).toBeVisible();
+  expect(errors).toEqual([]);
+});

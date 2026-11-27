@@ -56,6 +56,7 @@ export function trainingDayOf(proposal: SessionProposal): PlanDay {
       reps: range(e.rep_min, e.rep_max),
       kg: e.sets[0]?.load_kg ?? null,
       estimated: false,
+      bodyweight: e.conventions.load_basis === "bodyweight_only",
     })),
   };
 }

@@ -80,6 +80,7 @@ describe("training card model", () => {
       ["Bankdrücken", 2, "8–12", 62.5],
       ["Dips", 1, "10", null],
     ]);
+    expect(day.exercises.map((e) => e.bodyweight)).toEqual([false, true]);
     expect(rowsOf(proposal)).toEqual({
       "pi-bench": [
         { kg: "62,5", reps: "8", done: false },

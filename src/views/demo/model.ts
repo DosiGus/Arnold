@@ -116,6 +116,8 @@ export type PlanExercise = {
   /** null = unknown. Never shown as 0. */
   kg: number | null;
   estimated: boolean;
+  /** Trained with bodyweight: there is no weight to type. */
+  bodyweight?: boolean;
   /** Primary muscle group (strength only), for the weekly volume overview. */
   muscle?: string;
   /** Free text for runs, mobility and morning routine (instead of sets × reps). */
