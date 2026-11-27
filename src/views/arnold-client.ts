@@ -24,6 +24,8 @@ export class ArnoldCallError extends Error {
     readonly code: string,
     message: string,
     readonly retryable = false,
+    /** The write error's `details`, e.g. the ids a refusal is about. */
+    readonly details: readonly string[] = [],
   ) {
     super(message);
     this.name = "ArnoldCallError";
@@ -79,6 +81,7 @@ export function readResult<S extends z.ZodType>(
       code,
       message,
       m?.retryable === true || e?.recovery === "retry_same_request",
+      Array.isArray(e?.details) ? e.details.map(String) : [],
     );
   }
   const parsed = schema.safeParse(

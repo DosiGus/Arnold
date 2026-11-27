@@ -7,9 +7,10 @@
  * back what the user actually did. Unknown stays unknown: an empty weight is
  * sent as no weight, never as 0.
  */
-import type {
-  SessionProposal,
-  WorkoutContext,
+import {
+  UNUSUAL_SET_LIMITS,
+  type SessionProposal,
+  type WorkoutContext,
 } from "../../shared/workout-contract.js";
 import type { PlanDay } from "../demo/model.js";
 import type { SetRow } from "../onboarding/screens.js";
@@ -222,4 +223,56 @@ export function newSetsOf(
     }
   }
   return { ok: true, sets };
+}
+
+/* ------------------------------------------------------ Arnold asks back */
+
+/** A refusal the card can answer: its question and the taps that answer it. */
+export interface SaveQuestion {
+  question: string;
+  choices: {
+    label: string;
+    kind: "primary" | "soft" | "ghost";
+    /** Absent: only closes the question, nothing is written. */
+    run?: () => Promise<SaveOutcome>;
+  }[];
+}
+
+/** Null: stored. A string: why not. A question: the user decides. */
+export type SaveOutcome = string | SaveQuestion | null;
+
+/** Server texts address the model; the card keeps what concerns the user. */
+export function cardMessage(message: string): string {
+  const cut = message.indexOf(" Es wurde nichts gespeichert.");
+  return cut < 0 ? message : `${message.slice(0, cut)} Nichts gespeichert.`;
+}
+
+/** Names the ticked values behind a `CONFIRMATION_REQUIRED`. */
+export function unusualQuestion(
+  proposal: SessionProposal,
+  rows: Record<string, SetRow[]>,
+): string {
+  const found: string[] = [];
+  for (const [i, e] of proposal.exercises.entries())
+    for (const r of rows[keyOf(e, i)] ?? []) {
+      if (!r.done || r.stored) continue;
+      const kg = number(r.kg);
+      const reps = number(r.reps);
+      if (kg !== null && kg > UNUSUAL_SET_LIMITS.load_kg)
+        found.push(`${r.kg.trim()} kg bei ${e.exercise_name}`);
+      if (reps !== null && reps > UNUSUAL_SET_LIMITS.reps)
+        found.push(`${r.reps.trim()} Wiederholungen bei ${e.exercise_name}`);
+    }
+  return found.length
+    ? `Ungewöhnlich hoch: ${[...new Set(found)].join(", ")}. Stimmt das?`
+    : "Ein Wert ist ungewöhnlich hoch. Stimmt er?";
+}
+
+/**
+ * The one saved training a `DUPLICATE_WORKOUT` is about (`workout_id=…` in
+ * its details), if unambiguous.
+ */
+export function savedTwinId(details: readonly string[]): string | null {
+  const ids = details.flatMap((d) => /^workout_id=(.+)$/.exec(d)?.[1] ?? []);
+  return ids.length === 1 ? ids[0]! : null;
 }

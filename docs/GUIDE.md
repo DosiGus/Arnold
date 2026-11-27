@@ -55,11 +55,12 @@ Arnold zeigt im Chat Karten, keine App: kein Logo, kein Menü, kein Hell-Dunkel-
 
 - **Überblick:** Woche, Scores, Heute, Ziele, Rekorde; der Rückblick nach einem neuen Training (`mark_recap_seen`) und der Hinweis auf eine Anpassung auf Zeit.
 - **Korrigieren:** In `history` ändert die Karte einzelne Sätze (`update_set`) oder verwirft sie (`void_set`), unter „Ziele“ verwirft sie den letzten Gewichtseintrag (`void_body_weight`); Verwerfen braucht den zweiten Tipp.
+- **Training:** Bei ungewöhnlichen Werten und bei einer am selben Tag schon gespeicherten Einheit fragt die Karte nach (so speichern, ersetzen, zusätzlich); ein offenes Training lässt sich mit zweitem Tipp verwerfen (`cancel_workout`).
 - **Modellkontext:** Jede Karte beschreibt dem Modell kurz, was sie zeigt (`DataLLM`). Sichtbare Chat-Nachrichten entstehen nur durch einen Tipp.
 
 Es gibt keine Abhängigkeit von `window.openai`. `/host` (auch unter `/` und `/preview`) öffnet die Karten lokal in einem isolierten iframe über `AppBridge` (`?onboarding=1`, `?card=…`, `?tool=…`, `?theme=dark`). Das ist ein Entwicklungswerkzeug, kein Ersatz für einen echten Host. Gestaltungsregeln: `docs/DESIGN.md`.
 
-Nur im früheren Frontend (Git-Tag `archive/old-frontend`), in den Karten heute über den Chat: ganzes Training bearbeiten oder zurücknehmen, offenes Training verwerfen, im Training tauschen, hinzufügen oder „wie letztes Mal“ wählen, Plan in der Karte bearbeiten, ungewöhnliche Werte oder ein doppeltes Training in der Karte trotzdem speichern, Uhr-Stand und die Angebote „Laufen“ und „Mobility“ auf dem Überblick.
+Nur im früheren Frontend (Git-Tag `archive/old-frontend`), in den Karten heute über den Chat: ganzes Training bearbeiten oder zurücknehmen, im Training tauschen, hinzufügen oder „wie letztes Mal“ wählen, Plan in der Karte bearbeiten, Uhr-Stand und die Angebote „Laufen“ und „Mobility“ auf dem Überblick.
 
 ## Datenmodell
 

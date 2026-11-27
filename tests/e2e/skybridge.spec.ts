@@ -220,6 +220,95 @@ test("a finished training stays on screen and counts for today", async ({
   expect(errors).toEqual([]);
 });
 
+type Proposals = {
+  proposals: {
+    plan_version_id: string;
+    session_id: string;
+    session_name: string;
+  }[];
+};
+const today = (page: Page) =>
+  callTool(page, "get_workout", {}) as Promise<unknown> as Promise<Proposals>;
+const savedToday = () => ({
+  request_id: crypto.randomUUID(),
+  workout_date_local: berlinToday(),
+  timezone: "Europe/Berlin",
+});
+
+test("an unusual value and a second training are asked about", async ({
+  page,
+}) => {
+  const { app, errors } = await open(page, DEMO, "?card=today");
+  // An exercise that is trained with a weight, not with bodyweight.
+  const weights = app.getByRole("textbox", { name: /Satz 1 Gewicht$/ });
+  await expect(weights.first()).toBeVisible();
+  const values = await weights.evaluateAll((inputs) =>
+    inputs.map((i) => (i as HTMLInputElement).value),
+  );
+  const found = weights.nth(values.findIndex((v) => v !== ""));
+  const set = (await found.getAttribute("aria-label"))!.replace(
+    / Gewicht$/,
+    "",
+  );
+  const weight = app.getByRole("textbox", { name: `${set} Gewicht` });
+  const finish = app.getByRole("button", { name: "Training beenden" });
+  await weight.fill("800");
+  await app.getByRole("textbox", { name: `${set} Wiederholungen` }).fill("5");
+  await app
+    .locator("li")
+    .filter({
+      has: app.getByRole("textbox", { name: `${set} Gewicht` }),
+    })
+    .getByRole("checkbox")
+    .click();
+  await finish.click();
+  await expect(app.getByText(/Ungewöhnlich hoch: 800 kg/)).toBeVisible();
+  await shot(page, "ask-unusual");
+  await app.getByRole("button", { name: "Wert ändern" }).click();
+  await weight.fill("100");
+  // The chat saves the same session meanwhile.
+  const shown = await app
+    .getByRole("heading", { level: 2 })
+    .first()
+    .innerText();
+  const next = (await today(page)).proposals.find(
+    (p) => p.session_name === shown,
+  );
+  await callTool(page, "log_workout", {
+    ...savedToday(),
+    plan_version_id: next!.plan_version_id,
+    session_id: next!.session_id,
+    confirm_duplicate: true,
+  });
+  await finish.click();
+  await expect(app.getByText(/ist für heute schon gespeichert/)).toBeVisible();
+  await shot(page, "ask-duplicate");
+  await expect(
+    app.getByRole("button", { name: "Zusätzlich speichern" }),
+  ).toBeVisible();
+  await app.getByRole("button", { name: "Gespeichertes ersetzen" }).click();
+  await expect(app.getByText("Training gespeichert.")).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("an open training is discarded after a second tap", async ({ page }) => {
+  await open(page, DEMO, "?card=today");
+  const [next] = (await today(page)).proposals;
+  await callTool(page, "start_workout", {
+    ...savedToday(),
+    session_name: next!.session_name,
+    plan_version_id: next!.plan_version_id,
+    session_id: next!.session_id,
+  });
+  const { app, errors } = await open(page, DEMO, "?card=today");
+  await app.getByRole("button", { name: "Offenes verwerfen" }).click();
+  await shot(page, "discard-open");
+  await app.getByRole("button", { name: "Wirklich verwerfen?" }).click();
+  await expect(app.getByRole("textbox").first()).toBeVisible();
+  await expect(app.getByText(/offenes Training/)).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test("a stored set is corrected and discarded in the history", async ({
   page,
 }) => {

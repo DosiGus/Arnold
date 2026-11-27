@@ -11,12 +11,15 @@ import {
   type WorkoutContext,
 } from "../src/shared/workout-contract";
 import {
+  cardMessage,
   logWorkoutInput,
   newSetsOf,
   openWorkoutOf,
   resumeRows,
   rowsOf,
+  savedTwinId,
   trainingDayOf,
+  unusualQuestion,
 } from "../src/views/model/training";
 
 const conventions = {
@@ -177,5 +180,37 @@ describe("an open training", () => {
       load_kg: 62.5,
       set_type: "working",
     });
+  });
+});
+
+describe("what the card says when Arnold asks back", () => {
+  it("keeps the server's instructions to the model off the screen", () => {
+    expect(
+      cardMessage(
+        "Es fehlen Angaben: Bankdrücken (Gewicht). Es wurde nichts gespeichert. Den Nutzer nach den fehlenden Werten fragen.",
+      ),
+    ).toBe("Es fehlen Angaben: Bankdrücken (Gewicht). Nichts gespeichert.");
+    expect(cardMessage("Speicher nicht erreichbar.")).toBe(
+      "Speicher nicht erreichbar.",
+    );
+  });
+
+  it("names the unusually high ticked values only", () => {
+    const rows = rowsOf(proposal);
+    const key = Object.keys(rows)[0]!;
+    rows[key]![0] = { kg: "800", reps: "8", done: true };
+    expect(unusualQuestion(proposal, rows)).toBe(
+      "Ungewöhnlich hoch: 800 kg bei Bankdrücken. Stimmt das?",
+    );
+    rows[key]![0] = { kg: "800", reps: "8", done: false };
+    expect(unusualQuestion(proposal, rows)).toBe(
+      "Ein Wert ist ungewöhnlich hoch. Stimmt er?",
+    );
+  });
+
+  it("offers to replace only an unambiguous saved training", () => {
+    expect(savedTwinId(["workout_id=wo-1"])).toBe("wo-1");
+    expect(savedTwinId(["workout_id=wo-1", "workout_id=wo-2"])).toBeNull();
+    expect(savedTwinId([])).toBeNull();
   });
 });

@@ -18,6 +18,7 @@ import { PlanOverview } from "./steps.js";
 import type { GoalChoice, GoalFormUnit, LiveGoal } from "../model/goals.js";
 import { clock } from "../model/dashboard.js";
 import type { LiveSeries } from "../model/stats.js";
+import type { SaveOutcome, SaveQuestion } from "../model/training.js";
 
 /* -------------------------------------------------------------- shared */
 
@@ -151,8 +152,11 @@ export function TrainingScreen({
   liveDay?: PlanDay;
   /** Arnold's proposal per set (live). */
   initialRows?: Record<string, SetRow[]>;
-  /** Saves the training; resolves with an error text, or null when stored. */
-  onFinish?: (rows: Record<string, SetRow[]>) => Promise<string | null>;
+  /**
+   * Saves the training; resolves with null when stored, an error text, or a
+   * question the user has to answer first.
+   */
+  onFinish?: (rows: Record<string, SetRow[]>) => Promise<SaveOutcome>;
   /** Every change of the rows, so unsaved ticks survive leaving the screen. */
   onRowsChange?: (rows: Record<string, SetRow[]>) => void;
   /** A hint above the sets (live), e.g. an open training being continued. */
@@ -164,6 +168,7 @@ export function TrainingScreen({
     view.plan?.days[0];
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const [question, setQuestion] = useState<SaveQuestion | null>(null);
   const [sets, setSets] = useState<Record<string, SetRow[]>>(
     () =>
       initialRows ??
@@ -191,6 +196,21 @@ export function TrainingScreen({
     };
     setSets(next);
     onRowsChange?.(next);
+    // An answer must never apply to values that were changed meanwhile.
+    setQuestion(null);
+    setFailure(null);
+  };
+  const settle = (write: () => Promise<SaveOutcome>) => {
+    if (saving) return;
+    setSaving(true);
+    void write().then((outcome) => {
+      setSaving(false);
+      setFailure(typeof outcome === "string" ? outcome : null);
+      setQuestion(
+        outcome !== null && typeof outcome !== "string" ? outcome : null,
+      );
+      if (outcome === null) setSaved(true);
+    });
   };
 
   if (!day)
@@ -282,6 +302,29 @@ export function TrainingScreen({
             </>
           )}
         </Box>
+      ) : question ? (
+        <>
+          <Alert color="warning" variant="soft" title={question.question} />
+          {question.choices.map(({ label, kind, run }) => (
+            <Button
+              key={label}
+              color={kind === "primary" ? "primary" : "secondary"}
+              variant={
+                kind === "primary"
+                  ? "solid"
+                  : kind === "soft"
+                    ? "soft"
+                    : "ghost"
+              }
+              block
+              disabled={saving}
+              loading={saving && kind === "primary"}
+              onClick={() => (run ? settle(run) : setQuestion(null))}
+            >
+              {label}
+            </Button>
+          ))}
+        </>
       ) : (
         <Button
           color="primary"
@@ -291,13 +334,7 @@ export function TrainingScreen({
           loading={saving}
           onClick={() => {
             if (!onFinish) return setSaved(true);
-            if (saving) return;
-            setSaving(true);
-            void onFinish(sets).then((error) => {
-              setSaving(false);
-              setFailure(error);
-              if (!error) setSaved(true);
-            });
+            settle(() => onFinish(sets));
           }}
         >
           Training beenden

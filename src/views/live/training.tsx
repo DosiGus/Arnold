@@ -12,13 +12,17 @@ import { ArnoldCallError, localDate, useArnoldTool } from "../arnold-client.js";
 import type { OnboardingView, PlanKind } from "../demo/model.js";
 import { shortDate } from "../model/dashboard.js";
 import {
+  cardMessage,
   logWorkoutInput,
   newSetsOf,
   openWorkoutOf,
   proposalFor,
   resumeRows,
   rowsOf,
+  savedTwinId,
   trainingDayOf,
+  unusualQuestion,
+  type SaveOutcome,
 } from "../model/training.js";
 import {
   ScreenHeader,
@@ -63,17 +67,25 @@ export function LiveTrainingScreen(props: Props) {
   );
 }
 
-/** A write, or the sentence the screen shows when it failed. */
-async function saved(write: () => Promise<unknown>): Promise<string | null> {
-  try {
-    await write();
-    return null;
-  } catch (e) {
-    return e instanceof ArnoldCallError
-      ? e.message
-      : "Das Training ließ sich nicht speichern.";
-  }
-}
+const failureText = (e: unknown) =>
+  e instanceof ArnoldCallError
+    ? cardMessage(e.message)
+    : "Das Training ließ sich nicht speichern.";
+
+const refusedAs = (e: unknown, code: string) =>
+  e instanceof ArnoldCallError && e.code === code;
+
+/** Unusual values are stored only after the explicit yes. */
+const askUnusual = (
+  question: string,
+  confirmed: () => Promise<SaveOutcome>,
+): SaveOutcome => ({
+  question,
+  choices: [
+    { label: "Ja, so speichern", kind: "primary", run: confirmed },
+    { label: "Wert ändern", kind: "soft" },
+  ],
+});
 
 /**
  * "Training beenden" saves the ticked sets with one `log_workout`. A training
@@ -84,6 +96,11 @@ function LiveStrength({ view, kind, sessionId, onBack }: Props) {
   const sendFollowUp = useSendFollowUpMessage();
   const read = useArnoldTool("get_workout", WorkoutContextSchema);
   const log = useArnoldTool("log_workout", WriteResponseSchema);
+  const cancel = useArnoldTool("cancel_workout", WriteResponseSchema);
+  /** Discarding an open training takes a second tap. */
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [discardFailed, setDiscardFailed] = useState<string | null>(null);
+  const discardId = useRef(crypto.randomUUID());
   const [context, setContext] = useState<WorkoutContext | null>(null);
   const [failed, setFailed] = useState(false);
   /** Answer to "continue the open training?"; null while not asked. */
@@ -139,6 +156,36 @@ function LiveStrength({ view, kind, sessionId, onBack }: Props) {
           >
             Neues Training
           </Button>
+          <Button
+            color="danger"
+            variant={confirmDiscard ? "soft" : "ghost"}
+            block
+            loading={cancel.pending}
+            onClick={() => {
+              if (!confirmDiscard) return setConfirmDiscard(true);
+              setDiscardFailed(null);
+              cancel
+                .call({
+                  request_id: discardId.current,
+                  workout_id: open.workout_id,
+                  expected_row_revision: open.row_revision,
+                })
+                .then(() => {
+                  dropDraft(`resume:${open.workout_id}`);
+                  dataChanged();
+                  return call().then(setContext);
+                })
+                .catch((e) => {
+                  setDiscardFailed(failureText(e));
+                })
+                .finally(() => setConfirmDiscard(false));
+            }}
+          >
+            {confirmDiscard ? "Wirklich verwerfen?" : "Offenes verwerfen"}
+          </Button>
+          {discardFailed && (
+            <Alert color="danger" variant="soft" title={discardFailed} />
+          )}
         </>,
       );
     if (resume)
@@ -191,12 +238,81 @@ function LiveStrength({ view, kind, sessionId, onBack }: Props) {
             timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           });
           if (!built.ok) return built.error;
-          const error = await saved(() => log.call(built.input));
-          if (!error) {
-            dropDraft(key);
-            dataChanged();
-          }
-          return error;
+          // Every answer of the user is a new input with its own request id.
+          const attempt = async (
+            extra: Record<string, unknown>,
+            answered: string,
+          ): Promise<SaveOutcome> => {
+            try {
+              await log.call({
+                ...built.input,
+                ...extra,
+                request_id: `${draft.requestId}${answered}`,
+              });
+              dropDraft(key);
+              dataChanged();
+              return null;
+            } catch (e) {
+              if (refusedAs(e, "CONFIRMATION_REQUIRED"))
+                return askUnusual(unusualQuestion(proposal, rows), () =>
+                  attempt(
+                    { ...extra, confirm_unusual_values: true },
+                    `${answered}-unusual`,
+                  ),
+                );
+              if (refusedAs(e, "DUPLICATE_WORKOUT"))
+                return askDuplicate(
+                  (e as ArnoldCallError).details,
+                  extra,
+                  answered,
+                );
+              return failureText(e);
+            }
+          };
+          const askDuplicate = async (
+            details: readonly string[],
+            extra: Record<string, unknown>,
+            answered: string,
+          ): Promise<SaveOutcome> => {
+            const id = savedTwinId(details);
+            // Replacing needs the saved training's current revision.
+            let twin: WorkoutContext["workout"] = null;
+            try {
+              if (id) twin = (await call({ workout_id: id })).workout;
+            } catch (e) {
+              return failureText(e);
+            }
+            const replace = twin && {
+              label: "Gespeichertes ersetzen",
+              kind: "primary" as const,
+              run: () =>
+                attempt(
+                  {
+                    ...extra,
+                    replaces_workout_id: twin.workout_id,
+                    expected_row_revision: twin.row_revision,
+                  },
+                  `${answered}-replace`,
+                ),
+            };
+            return {
+              question: `„${proposal.session_name}“ ist für heute schon gespeichert.`,
+              choices: [
+                ...(replace ? [replace] : []),
+                {
+                  label: "Zusätzlich speichern",
+                  kind: "soft",
+                  run: () =>
+                    attempt(
+                      { ...extra, confirm_duplicate: true },
+                      `${answered}-again`,
+                    ),
+                },
+                { label: "Abbrechen", kind: "ghost" },
+              ],
+            };
+          };
+          return attempt({}, "");
         }}
       />
     </DataLLM>
@@ -258,27 +374,35 @@ function ResumedTraining({
         onFinish={async (rows) => {
           const built = newSetsOf(proposal, rows);
           if (!built.ok) return built.error;
-          const error = await saved(async () => {
-            let revision = workout.row_revision;
-            if (built.sets.length) {
-              const res = await add.call({
-                request_id: `${draft.requestId}-sets`,
+          const attempt = async (confirmed: boolean): Promise<SaveOutcome> => {
+            try {
+              let revision = workout.row_revision;
+              if (built.sets.length) {
+                const res = await add.call({
+                  request_id: `${draft.requestId}-sets${confirmed ? "-unusual" : ""}`,
+                  workout_id: workoutId,
+                  sets: built.sets,
+                  ...(confirmed ? { confirm_unusual_values: true } : {}),
+                });
+                revision = res.result?.workout?.row_revision ?? revision;
+              }
+              await complete.call({
+                request_id: `${draft.requestId}-done`,
                 workout_id: workoutId,
-                sets: built.sets,
+                expected_row_revision: revision,
               });
-              revision = res.result?.workout?.row_revision ?? revision;
+              dropDraft(key);
+              dataChanged();
+              return null;
+            } catch (e) {
+              return refusedAs(e, "CONFIRMATION_REQUIRED")
+                ? askUnusual(unusualQuestion(proposal, rows), () =>
+                    attempt(true),
+                  )
+                : failureText(e);
             }
-            await complete.call({
-              request_id: `${draft.requestId}-done`,
-              workout_id: workoutId,
-              expected_row_revision: revision,
-            });
-          });
-          if (!error) {
-            dropDraft(key);
-            dataChanged();
-          }
-          return error;
+          };
+          return attempt(false);
         }}
       />
     </DataLLM>
