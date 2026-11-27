@@ -78,8 +78,11 @@ export function ProgressCard({
         aria-label="Kennzahl"
         block
         pill
-        // Five labels have to fit a 375 px phone.
+        // Five labels on a 375 px phone: tight, and swipeable where the
+        // device's font is wider (Android).
         size="sm"
+        gutterSize="xs"
+        className="overflow-x-auto"
         value={metric}
         onChange={(v) => setMetric(v as ProgressMetricKey)}
       >

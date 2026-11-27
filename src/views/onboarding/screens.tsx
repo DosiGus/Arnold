@@ -920,8 +920,11 @@ export function StatsScreen({
           aria-label="Auswertung"
           block
           pill
-          // Up to four short labels on a 375 px phone.
+          // Up to five labels on a 375 px phone: tight, and swipeable where
+          // the device's font is wider (Android).
           size="sm"
+          gutterSize="xs"
+          className="overflow-x-auto"
           value={s!.key}
           onChange={setKey}
         >
