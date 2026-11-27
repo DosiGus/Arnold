@@ -257,7 +257,7 @@ Ohne jede Einstellung läuft `arnold_fixture` mit `ARNOLD_WRITE_MODE=fixture`. H
 ## Live-Vorschau in ChatGPT
 
 Für gemeinsame Entwicklungsrunden gibt es das persönliche Custom-MCP-Plugin
-**Arnold Vorschau**. Dieselben ChatGPT-Werkzeuge und Karten speichern
+**Arnold Live-Vorschau**. Dieselben ChatGPT-Werkzeuge und Karten speichern
 Einrichtung, Pläne und Training im freigegebenen Arnold-Testkonto.
 Änderungen sind damit auch im regulären Arnold sichtbar. Die Vorschau
 verlangt WorkOS-OAuth mit eigener Audience und akzeptiert nur den
@@ -278,7 +278,7 @@ tailscale`, anmelden, Funnel im Tailnet freigeben, die interne Kennung des
    Anmeldeeinstellungen vom laufenden Dienst und die Datenbankverbindung aus
    Secret Manager in die Prozessumgebung, zeigt die Adresse an und hält den
    Mac wach, solange es läuft.
-4. In einem neuen Chat „Arnold Vorschau“ auswählen und die gewünschte Karte
+4. In einem neuen Chat „Arnold Live-Vorschau“ auswählen und die gewünschte Karte
    öffnen. Änderungen an React-Komponenten und CSS laufen über Vite und den
    WebSocket zum offenen Widget. Serveränderungen starten den lokalen Prozess
    neu. Nach Änderungen an Tool-Namen, Schemas oder Metadaten in ChatGPT
